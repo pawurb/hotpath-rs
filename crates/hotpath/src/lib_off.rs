@@ -8,6 +8,79 @@ macro_rules! measure_block {
     }};
 }
 
+/// No-op channel macro when hotpath is disabled
+#[macro_export]
+macro_rules! channel {
+    ($expr:expr) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr) => {
+        $expr
+    };
+    ($expr:expr, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, capacity = $capacity:expr, label = $label:expr) => {
+        $expr
+    };
+    ($expr:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, log = true, label = $label:expr) => {
+        $expr
+    };
+    ($expr:expr, capacity = $capacity:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, log = true, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr, capacity = $capacity:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr, log = true, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, capacity = $capacity:expr, label = $label:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, capacity = $capacity:expr, log = true, label = $label:expr) => {
+        $expr
+    };
+    ($expr:expr, log = true, label = $label:expr, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, log = true, capacity = $capacity:expr, label = $label:expr) => {
+        $expr
+    };
+}
+
+/// No-op stream macro when hotpath is disabled
+#[macro_export]
+macro_rules! stream {
+    ($expr:expr) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr) => {
+        $expr
+    };
+    ($expr:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, log = true, label = $label:expr) => {
+        $expr
+    };
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Format {
     #[default]

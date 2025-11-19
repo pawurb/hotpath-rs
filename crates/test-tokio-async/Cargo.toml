@@ -1,11 +1,11 @@
 [package]
-name = "hotpath-test-tokio-async"
+name = "test-tokio-async"
 version = "0.0.0"
 publish = false
 edition = "2021"
 
 [dependencies]
-hotpath = { path = "../hotpath" }
+hotpath = { path = "../hotpath", features = ["tokio"] }
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"

@@ -1,6 +1,6 @@
 mod cmd;
 use clap::{Parser, Subcommand};
-#[cfg(feature = "tui")]
+#[cfg(all(feature = "tui", not(feature = "hotpath-off")))]
 use cmd::console::ConsoleArgs;
 use cmd::profile_pr::ProfilePrArgs;
 use eyre::Result;
@@ -9,7 +9,7 @@ use eyre::Result;
 pub enum HPSubcommand {
     #[command(about = "Profile a PR, compare with main branch, and post a GitHub comment")]
     ProfilePr(ProfilePrArgs),
-    #[cfg(feature = "tui")]
+    #[cfg(all(feature = "tui", not(feature = "hotpath-off")))]
     #[command(about = "Launch TUI console to monitor profiling metrics in real-time")]
     Console(ConsoleArgs),
 }
@@ -34,7 +34,7 @@ fn main() -> Result<()> {
         HPSubcommand::ProfilePr(args) => {
             args.run()?;
         }
-        #[cfg(feature = "tui")]
+        #[cfg(all(feature = "tui", not(feature = "hotpath-off")))]
         HPSubcommand::Console(args) => {
             args.run()?;
         }

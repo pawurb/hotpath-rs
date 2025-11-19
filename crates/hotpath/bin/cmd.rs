@@ -1,4 +1,4 @@
 pub mod profile_pr;
 
-#[cfg(feature = "tui")]
+#[cfg(all(feature = "tui", not(feature = "hotpath-off")))]
 pub mod console;

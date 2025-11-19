@@ -443,9 +443,9 @@ You can combine multiple parameters:
 You can implement your own reporting to control how profiling results are handled. This allows you to plug `hotpath` into existing tools like loggers, CI pipelines, or monitoring systems.
 
 For complete working examples, see:
-- [`examples/csv_file_reporter.rs`](crates/hotpath-test-tokio-async/examples/csv_file_reporter.rs) - Save metrics to CSV file
-- [`examples/json_file_reporter.rs`](crates/hotpath-test-tokio-async/examples/json_file_reporter.rs) - Save metrics to JSON file
-- [`examples/tracing_reporter.rs`](crates/hotpath-test-tokio-async/examples/tracing_reporter.rs) - Log metrics using the tracing crate 
+- [`examples/csv_file_reporter.rs`](crates/test-tokio-async/examples/csv_file_reporter.rs) - Save metrics to CSV file
+- [`examples/json_file_reporter.rs`](crates/test-tokio-async/examples/json_file_reporter.rs) - Save metrics to JSON file
+- [`examples/tracing_reporter.rs`](crates/test-tokio-async/examples/tracing_reporter.rs) - Log metrics using the tracing crate
 
 ## Benchmarking
 

@@ -1,0 +1,11 @@
+[package]
+name = "test-channels-std"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+hotpath = { workspace = true, optional = true }
+
+[features]
+hotpath = ["dep:hotpath"]

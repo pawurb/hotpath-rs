@@ -18,7 +18,10 @@ hotpath = ["hotpath-macros/hotpath", "hotpath-macros/hotpath-off"]
 hotpath-alloc-bytes-total = ["dep:tokio"]
 hotpath-alloc-count-total = ["dep:tokio"]
 hotpath-off = []
-tui = ["dep:ratatui", "dep:crossterm"]
+tui = ["dep:crossterm", "dep:ratatui", "dep:chrono"]
+tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
+futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
+crossbeam = []
 
 [dependencies]
 arc-swap = "1.7"
@@ -39,3 +42,7 @@ serde_json = "1.0"
 tiny_http = "0.12"
 tokio = { version = "1.47", features = ["rt"], optional = true }
 ureq = { version = "3.1", features = ["json"] }
+futures-channel = { version = "0.3", features = ["sink"], optional = true }
+futures-util = { version = "0.3", features = ["sink"] }
+regex = "1"
+chrono = { version = "0.4", optional = true }

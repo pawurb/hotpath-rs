@@ -8,9 +8,9 @@ use ratatui::{
 
 pub(crate) fn render_help_bar(frame: &mut Frame, area: Rect) {
     let spans = vec![
-        Span::raw("Quit "),
+        Span::raw("Tabs "),
         Span::styled(
-            "<q>",
+            "<1/2>",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -32,6 +32,13 @@ pub(crate) fn render_help_bar(frame: &mut Frame, area: Rect) {
         Span::raw(" | Pause "),
         Span::styled(
             "<p>",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" | Quit "),
+        Span::styled(
+            "<q>",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),

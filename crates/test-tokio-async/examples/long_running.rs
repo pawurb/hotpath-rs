@@ -1,5 +1,6 @@
 use rand::Rng;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use tokio::time::sleep;
 
 #[cfg_attr(feature = "hotpath", hotpath::measure)]
@@ -109,6 +110,36 @@ fn process_data(arrays: Vec<Vec<u64>>) -> u64 {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting 60-second profiling test...");
 
+    // Create two instrumented channels
+    let (fast_tx, fast_rx) = mpsc::channel::<u64>(100);
+    let (slow_tx, slow_rx) = mpsc::channel::<String>(50);
+
+    #[cfg(feature = "hotpath")]
+    let (fast_tx, fast_rx) = hotpath::channel!((fast_tx, fast_rx), label = "fast_metrics");
+    #[cfg(feature = "hotpath")]
+    let (slow_tx, slow_rx) = hotpath::channel!((slow_tx, slow_rx), label = "slow_events");
+
+    let mut fast_rx = fast_rx;
+    let mut slow_rx = slow_rx;
+
+    // Spawn fast channel consumer
+    let fast_consumer = tokio::spawn(async move {
+        let mut count = 0u64;
+        while let Some(value) = fast_rx.recv().await {
+            count = count.wrapping_add(value);
+            if count % 1000 == 0 {
+                std::hint::black_box(count);
+            }
+        }
+    });
+
+    // Spawn slow channel consumer
+    let slow_consumer = tokio::spawn(async move {
+        while let Some(msg) = slow_rx.recv().await {
+            std::hint::black_box(msg.len());
+        }
+    });
+
     let start = Instant::now();
     let duration = Duration::from_secs(60);
     let mut iteration = 0;
@@ -125,6 +156,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let mut rng = rand::thread_rng();
+
+        // Send data to fast channel frequently
+        let _ = fast_tx.send(rng.gen()).await;
+
+        // Send data to slow channel occasionally
+        if iteration % 5 == 0 {
+            let _ = slow_tx
+                .send(format!("Event at iteration {}", iteration))
+                .await;
+        }
 
         // Call allocator functions which now randomly allocate 1-10 arrays each
         let data1 = fast_sync_allocator();
@@ -157,6 +198,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::hint::black_box(&temp);
         });
     }
+
+    // Close channels
+    drop(fast_tx);
+    drop(slow_tx);
+
+    // Wait for consumers to finish
+    let _ = fast_consumer.await;
+    let _ = slow_consumer.await;
 
     Ok(())
 }

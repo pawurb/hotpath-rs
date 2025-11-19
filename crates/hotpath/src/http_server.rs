@@ -1,14 +1,33 @@
+use crate::channels::{get_channel_logs, get_channels_json, get_stream_logs, get_streams_json};
 use crate::output::MetricsJson;
 use crate::{QueryRequest, SamplesJson, HOTPATH_STATE};
 use crossbeam_channel::bounded;
+use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::sync::{LazyLock, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tiny_http::{Header, Request, Response, Server};
 
-pub fn start_metrics_server(port: u16) {
+static RE_CHANNEL_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/channels/(\d+)/logs$").unwrap());
+static RE_STREAM_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/streams/(\d+)/logs$").unwrap());
+
+/// Tracks whether the HTTP server has been started to prevent duplicate instances
+static HTTP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
+
+/// Starts the HTTP metrics server if it hasn't been started yet.
+/// Uses OnceLock to ensure only one server instance is created.
+pub fn start_metrics_server_once(port: u16) {
+    HTTP_SERVER_STARTED.get_or_init(|| {
+        start_metrics_server(port);
+    });
+}
+
+fn start_metrics_server(port: u16) {
     thread::Builder::new()
         .name("hotpath-http-server".into())
         .spawn(move || {
@@ -35,13 +54,46 @@ pub fn start_metrics_server(port: u16) {
 fn handle_request(request: Request) {
     let path = request.url().split('?').next().unwrap_or("/").to_string();
 
-    if path == "/metrics" {
-        let metrics = get_current_metrics();
-        respond_json(request, &metrics);
-    } else if let Some(encoded_key) = path.strip_prefix("/samples/") {
-        handle_samples_request(request, encoded_key);
-    } else {
-        respond_error(request, 404, "Not found");
+    match path.as_str() {
+        "/metrics" => {
+            let metrics = get_metrics_json();
+            respond_json(request, &metrics);
+        }
+        "/channels" => {
+            let channels = get_channels_json();
+            respond_json(request, &channels);
+        }
+        "/streams" => {
+            let streams = get_streams_json();
+            respond_json(request, &streams);
+        }
+        _ => {
+            // Handle /samples/<encoded_key>
+            if let Some(encoded_key) = path.strip_prefix("/samples/") {
+                handle_samples_request(request, encoded_key);
+                return;
+            }
+
+            // Handle /channels/<id>/logs
+            if let Some(caps) = RE_CHANNEL_LOGS.captures(&path) {
+                match get_channel_logs(&caps[1]) {
+                    Some(logs) => respond_json(request, &logs),
+                    None => respond_error(request, 404, "Channel not found"),
+                }
+                return;
+            }
+
+            // Handle /streams/<id>/logs
+            if let Some(caps) = RE_STREAM_LOGS.captures(&path) {
+                match get_stream_logs(&caps[1]) {
+                    Some(logs) => respond_json(request, &logs),
+                    None => respond_error(request, 404, "Stream not found"),
+                }
+                return;
+            }
+
+            respond_error(request, 404, "Not found");
+        }
     }
 }
 
@@ -133,7 +185,7 @@ fn get_samples_for_function(function_name: &str) -> Option<SamplesJson> {
     }
 }
 
-fn get_current_metrics() -> MetricsJson {
+fn get_metrics_json() -> MetricsJson {
     if let Some(metrics) = try_get_metrics_from_worker() {
         return metrics;
     }

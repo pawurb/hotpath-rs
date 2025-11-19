@@ -3,9 +3,27 @@ use hotpath::{MetricsJson, SamplesJson};
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
 
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelectedTab {
+    #[default]
+    Metrics,
+    Channels,
+}
+
+impl SelectedTab {
+    pub(crate) fn title(&self) -> &'static str {
+        match self {
+            SelectedTab::Metrics => "1 Metrics",
+            SelectedTab::Channels => "2 Channels",
+        }
+    }
+}
+
 pub(crate) struct App {
     pub(crate) metrics: MetricsJson,
+    pub(crate) channels: hotpath::channels::ChannelsJson,
     pub(crate) table_state: TableState,
+    pub(crate) selected_tab: SelectedTab,
     pub(crate) paused: bool,
     pub(crate) last_refresh: Instant,
     pub(crate) last_successful_fetch: Option<Instant>,
@@ -34,7 +52,12 @@ impl App {
                 percentiles: vec![95],
                 data: hotpath::MetricsDataJson(std::collections::HashMap::new()),
             },
+            channels: hotpath::channels::ChannelsJson {
+                current_elapsed_ns: 0,
+                channels: vec![],
+            },
             table_state: TableState::default().with_selected(0),
+            selected_tab: SelectedTab::default(),
             paused: false,
             last_refresh: Instant::now(),
             last_successful_fetch: None,
@@ -78,6 +101,10 @@ impl App {
         self.paused = !self.paused;
     }
 
+    pub(crate) fn switch_to_tab(&mut self, tab: SelectedTab) {
+        self.selected_tab = tab;
+    }
+
     pub(crate) fn update_metrics(&mut self, metrics: MetricsJson) {
         // Capture the currently selected function name (not index!)
         let selected_function_name = self.selected_function_name();
@@ -114,6 +141,12 @@ impl App {
 
     pub(crate) fn set_error(&mut self, error: String) {
         self.error_message = Some(error);
+    }
+
+    pub(crate) fn update_channels(&mut self, channels: hotpath::channels::ChannelsJson) {
+        self.channels = channels;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
     }
 
     pub(crate) fn toggle_samples(&mut self) {
@@ -216,16 +249,29 @@ impl App {
     }
 
     fn refresh_data(&mut self) {
-        match super::http::fetch_metrics(&self.agent, self.metrics_port) {
-            Ok(metrics) => {
-                self.update_metrics(metrics);
+        match self.selected_tab {
+            SelectedTab::Metrics => {
+                match super::http::fetch_metrics(&self.agent, self.metrics_port) {
+                    Ok(metrics) => {
+                        self.update_metrics(metrics);
+                    }
+                    Err(e) => {
+                        self.set_error(format!("{}", e));
+                    }
+                }
+                self.fetch_samples_if_open(self.metrics_port);
             }
-            Err(e) => {
-                self.set_error(format!("{}", e));
+            SelectedTab::Channels => {
+                match super::http::fetch_channels(&self.agent, self.metrics_port) {
+                    Ok(channels) => {
+                        self.update_channels(channels);
+                    }
+                    Err(e) => {
+                        self.set_error(format!("{}", e));
+                    }
+                }
             }
         }
-
-        self.fetch_samples_if_open(self.metrics_port);
         self.last_refresh = Instant::now();
     }
 
@@ -263,6 +309,14 @@ impl App {
         match key_code {
             KeyCode::Char('q') | KeyCode::Char('Q') => self.exit(),
             KeyCode::Char('p') | KeyCode::Char('P') => self.toggle_pause(),
+            KeyCode::Char('1') => {
+                self.switch_to_tab(SelectedTab::Metrics);
+                self.refresh_data();
+            }
+            KeyCode::Char('2') => {
+                self.switch_to_tab(SelectedTab::Channels);
+                self.refresh_data();
+            }
             KeyCode::Char('o') | KeyCode::Char('O') => {
                 self.toggle_samples();
                 self.fetch_samples_if_open(self.metrics_port);

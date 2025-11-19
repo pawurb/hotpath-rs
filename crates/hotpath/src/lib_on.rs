@@ -5,6 +5,12 @@ use crate::output::{MetricsJson, MetricsProvider, SamplesJson};
 pub use cfg_if::cfg_if;
 pub use hotpath_macros::{main, measure, measure_all, skip};
 
+// Channels module for instrumenting channels and streams
+pub mod channels;
+
+// Re-export channels types and traits
+pub use channels::{Instrument, InstrumentLog, InstrumentStream, InstrumentStreamLog};
+
 use crossbeam_channel::Sender;
 
 /// Query request sent from TUI HTTP server to profiler worker thread
@@ -620,12 +626,12 @@ impl HotPath {
 
         arc_swap.store(Some(Arc::clone(&state_arc)));
 
-        // Start HTTP metrics server if HOTPATH_HTTP_PORT is set
-        if let Ok(port_str) = std::env::var("HOTPATH_HTTP_PORT") {
-            if let Ok(port) = port_str.parse::<u16>() {
-                crate::http_server::start_metrics_server(port);
-            }
-        }
+        // Start HTTP metrics server (default port 6770, customizable via HOTPATH_HTTP_PORT)
+        let port = std::env::var("HOTPATH_HTTP_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(6770);
+        crate::http_server::start_metrics_server_once(port);
 
         // Override reporter with JsonReporter when HOTPATH_JSON env var is enabled
         let reporter: Box<dyn Reporter> = if std::env::var("HOTPATH_JSON")

@@ -17,7 +17,7 @@ pub mod tests {
                 .args([
                     "run",
                     "-p",
-                    "hotpath-test-tokio-async",
+                    "test-tokio-async",
                     "--example",
                     "basic",
                     "--features",
@@ -69,7 +69,7 @@ pub mod tests {
                 .args([
                     "run",
                     "-p",
-                    "hotpath-test-tokio-async",
+                    "test-tokio-async",
                     "--example",
                     "early_returns",
                     "--features",
@@ -106,7 +106,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "unsupported_async",
                 "--features",
@@ -132,7 +132,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "main_empty",
                 "--features",
@@ -165,7 +165,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "main_percentiles",
                 "--features",
@@ -203,7 +203,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "main_format",
                 "--features",
@@ -239,7 +239,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "main_percentiles_format",
                 "--features",
@@ -276,7 +276,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-smol-async",
+                "test-smol-async",
                 "--example",
                 "basic_smol",
                 "--features",
@@ -310,7 +310,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-all-features",
+                "test-all-features",
                 "--example",
                 "basic_all_features",
                 "--all-features",
@@ -350,7 +350,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "csv_file_reporter",
                 "--features",
@@ -397,7 +397,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "tracing_reporter",
                 "--features",
@@ -445,7 +445,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "json_file_reporter",
                 "--features",
@@ -505,13 +505,7 @@ pub mod tests {
     #[test]
     fn test_no_op_block_output() {
         let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "hotpath-test-tokio-async",
-                "--example",
-                "no_op_block",
-            ])
+            .args(["run", "-p", "test-tokio-async", "--example", "no_op_block"])
             .output()
             .expect("Failed to execute command");
 
@@ -531,7 +525,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "custom_guard",
                 "--features",
@@ -562,7 +556,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "measure_all_mod",
                 "--features",
@@ -610,7 +604,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "measure_all_impl",
                 "--features",
@@ -650,7 +644,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "limit",
                 "--features",
@@ -705,7 +699,7 @@ pub mod tests {
             cmd.args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "multithread_alloc",
                 "--features",
@@ -738,7 +732,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "main_timeout",
                 "--features",
@@ -775,7 +769,7 @@ pub mod tests {
             .args([
                 "run",
                 "-p",
-                "hotpath-test-tokio-async",
+                "test-tokio-async",
                 "--example",
                 "guard_timeout",
                 "--features",

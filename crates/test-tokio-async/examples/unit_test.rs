@@ -3,8 +3,7 @@ use std::time::Duration;
 use hotpath::Reporter;
 
 /// Run with:
-/// cargo test -p hotpath-test-tokio-async --example unit_test --features hotpath -- --nocapture --test-threads=1
-
+/// cargo test -p test-tokio-async --example unit_test --features hotpath -- --nocapture --test-threads=1
 #[cfg_attr(feature = "hotpath", hotpath::measure)]
 fn sync_function(sleep: u64) {
     let vec1 = vec![1, 2, 3, 5, 6];

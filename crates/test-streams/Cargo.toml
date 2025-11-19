@@ -1,0 +1,18 @@
+[package]
+name = "test-streams"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+hotpath = { workspace = true, optional = true, features = ["futures"] }
+futures-util = "0.3"
+smol = "2.0"
+
+[dev-dependencies]
+hotpath = { workspace = true, features = ["futures"] }
+ureq = "2.10"
+serde_json = "1.0"
+
+[features]
+hotpath = ["dep:hotpath"]

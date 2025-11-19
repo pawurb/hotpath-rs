@@ -26,6 +26,7 @@ async fn async_function(sleep: u64) {
 
 use hotpath::Reporter;
 
+#[allow(unused)]
 struct FileReporter;
 
 impl Reporter for FileReporter {

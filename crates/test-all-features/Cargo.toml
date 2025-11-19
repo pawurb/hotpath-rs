@@ -1,16 +1,16 @@
 [package]
-name = "hotpath-test-all-features"
+name = "test-all-features"
 version = "0.0.0"
 publish = false
 edition = "2021"
 
 [features]
-default = []
+default = ['hotpath']
 hotpath = ["dep:hotpath", "hotpath/hotpath"]
 hotpath-alloc-bytes-total = ["hotpath/hotpath-alloc-bytes-total"]
 hotpath-alloc-count-total = ["hotpath/hotpath-alloc-count-total"]
 hotpath-off = ["hotpath/hotpath-off"]
 
 [dependencies]
-hotpath = { path = "../hotpath", optional = true }
+hotpath = { path = "../hotpath", optional = true, features = ["tokio"] }
 tokio = { version = "1.47", features = ["full"] }

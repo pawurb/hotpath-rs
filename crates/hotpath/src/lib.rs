@@ -10,6 +10,10 @@ pub use lib_on::*;
 #[cfg(not(feature = "hotpath-off"))]
 mod lib_on;
 
+// Re-export channels module when profiling is enabled
+#[cfg(not(feature = "hotpath-off"))]
+pub use lib_on::channels;
+
 #[allow(dead_code)]
 pub(crate) mod output;
 pub use output::{

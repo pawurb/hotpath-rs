@@ -10,7 +10,7 @@ jobs:
   build:
     name: test ${{ matrix.rust }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 7
     strategy:
       fail-fast: false
       matrix:
@@ -71,5 +71,24 @@ jobs:
         run: | 
           cargo test -p hotpath --bin hotpath
       - name: Run integration tests
-        run: | 
-          cargo test --test cli_tests -- --nocapture
+        run: |
+          cargo test --test hotpath_integration -- --nocapture --test-threads=1
+      - name: Run hot integration tests
+        run: |
+          cargo test --test hotpath_integration -- --nocapture --test-threads=1
+
+      - name: Run streams integration tests
+        run: |
+          cargo test --test streams -- --nocapture --test-threads=1
+      - name: Run channels crossbeam tests
+        run: |
+          cargo test --test channels_crossbeam -- --nocapture --test-threads=1
+      - name: Run channels futures tests
+        run: |
+          cargo test --test channels_futures -- --nocapture --test-threads=1
+      - name: Run channels std tests
+        run: |
+          cargo test --test channels_std -- --nocapture --test-threads=1
+      - name: Run channels tokio tests
+        run: |
+          cargo test --test channels_tokio -- --nocapture --test-threads=1
