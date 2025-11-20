@@ -1,9 +1,21 @@
-use crossterm::event::KeyCode;
+//! TUI application state and main run loop
+//!
+//! The App struct manages all TUI state including metrics, channels, UI state,
+//! and user interactions. Implementation is split across modules:
+//! - `state`: Navigation and selection logic
+//! - `data`: Data fetching and updates
+//! - `keys`: Keyboard input handling
+
 use hotpath::channels::{ChannelLogs, LogEntry};
 use hotpath::{MetricsJson, SamplesJson};
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+
+// Helper modules containing App implementation
+mod data;
+mod keys;
+mod state;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SelectedTab {
@@ -35,33 +47,72 @@ pub(crate) struct CachedLogs {
     pub(crate) received_map: HashMap<u64, LogEntry>,
 }
 
+/// Main TUI application state
+///
+/// This struct manages all application state including:
+/// - Metrics data and channels data from the profiled application
+/// - UI state (selected tab, table selections, focus)
+/// - HTTP client for fetching data from the metrics server
+/// - Error handling and connection status
+///
+/// The implementation is split across multiple modules to improve maintainability.
 pub(crate) struct App {
+    // Data from profiled application
+    /// Current metrics data (functions, timings, allocations)
     pub(crate) metrics: MetricsJson,
+    /// Current channels data (message passing statistics)
     pub(crate) channels: hotpath::channels::ChannelsJson,
+
+    // UI state - navigation and selection
+    /// Selection state for main table (functions or channels)
     pub(crate) table_state: TableState,
+    /// Currently selected tab (Metrics or Channels)
     pub(crate) selected_tab: SelectedTab,
+    /// Whether automatic refresh is paused
     pub(crate) paused: bool,
+
+    // Timing and status
+    /// Last time data was refreshed
     pub(crate) last_refresh: Instant,
+    /// Last successful data fetch (for connection status)
     pub(crate) last_successful_fetch: Option<Instant>,
+    /// Current error message to display, if any
     pub(crate) error_message: Option<String>,
+
+    // Samples panel (Metrics tab)
+    /// Whether samples panel is visible
     pub(crate) show_samples: bool,
+    /// Current samples data for selected function
     pub(crate) current_samples: Option<SamplesJson>,
+    /// Function pinned for samples display
     pub(crate) pinned_function: Option<String>,
+
+    // HTTP client and configuration
+    /// HTTP client for fetching data from metrics server
     pub(crate) agent: ureq::Agent,
+    /// Port where metrics HTTP server is running
     pub(crate) metrics_port: u16,
+    /// Whether the application should exit
     exit: bool,
-    // Channels-specific state
+
+    // Channels tab specific state
+    /// Selection state for logs table
     pub(crate) logs_table_state: TableState,
+    /// Which component has focus in Channels tab
     pub(crate) focus: Focus,
+    /// Whether logs panel is visible
     pub(crate) show_logs: bool,
+    /// Cached logs data for selected channel
     pub(crate) logs: Option<CachedLogs>,
+    /// Log entry being inspected in popup
     pub(crate) inspected_log: Option<LogEntry>,
 }
 
 impl App {
+    /// Create a new App instance
     pub(crate) fn new(metrics_port: u16) -> Self {
         let config = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_millis(2000)))
+            .timeout_global(Some(super::constants::http_timeout()))
             .build();
         let agent: ureq::Agent = config.into();
 
@@ -98,435 +149,17 @@ impl App {
         }
     }
 
-    pub(crate) fn next_function(&mut self) {
-        let function_count = self.metrics.data.0.len();
-        if function_count == 0 {
-            return;
-        }
-
-        let i = match self.table_state.selected() {
-            Some(i) => (i + 1).min(function_count - 1), // Bounded, stop at last
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-    }
-
-    pub(crate) fn previous_function(&mut self) {
-        let function_count = self.metrics.data.0.len();
-        if function_count == 0 {
-            return;
-        }
-
-        let i = match self.table_state.selected() {
-            Some(i) => i.saturating_sub(1), // Bounded, stop at 0
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-    }
-
-    pub(crate) fn toggle_pause(&mut self) {
-        self.paused = !self.paused;
-    }
-
-    pub(crate) fn switch_to_tab(&mut self, tab: SelectedTab) {
-        self.selected_tab = tab;
-    }
-
-    pub(crate) fn update_metrics(&mut self, metrics: MetricsJson) {
-        // Capture the currently selected function name (not index!)
-        let selected_function_name = self.selected_function_name();
-
-        self.metrics = metrics;
-        self.last_successful_fetch = Some(Instant::now());
-        self.error_message = None;
-
-        let sorted_entries = self.get_sorted_entries();
-
-        if let Some(function_name) = selected_function_name {
-            // Find the new index of the previously selected function in sorted order
-            if let Some(new_idx) = sorted_entries
-                .iter()
-                .position(|(name, _)| name == &function_name)
-            {
-                self.table_state.select(Some(new_idx));
-            } else {
-                // Function no longer exists, select the last one
-                if !sorted_entries.is_empty() {
-                    self.table_state.select(Some(sorted_entries.len() - 1));
-                }
-            }
-        } else if let Some(selected) = self.table_state.selected() {
-            // Bound check: if current selection is now out of bounds
-            if selected >= sorted_entries.len() && !sorted_entries.is_empty() {
-                self.table_state.select(Some(sorted_entries.len() - 1));
-            }
-        } else if !sorted_entries.is_empty() {
-            // No selection yet, select first item
-            self.table_state.select(Some(0));
-        }
-    }
-
-    pub(crate) fn set_error(&mut self, error: String) {
-        self.error_message = Some(error);
-    }
-
-    pub(crate) fn update_channels(&mut self, channels: hotpath::channels::ChannelsJson) {
-        // Capture the currently selected channel ID (not index!)
-        let selected_channel_id = self
-            .table_state
-            .selected()
-            .and_then(|idx| self.channels.channels.get(idx))
-            .map(|stat| stat.id);
-
-        self.channels = channels;
-        self.last_successful_fetch = Some(Instant::now());
-        self.error_message = None;
-
-        // Try to restore selection to the same channel ID
-        if let Some(channel_id) = selected_channel_id {
-            // Find the new index of the previously selected channel
-            if let Some(new_idx) = self
-                .channels
-                .channels
-                .iter()
-                .position(|stat| stat.id == channel_id)
-            {
-                self.table_state.select(Some(new_idx));
-            } else {
-                // Channel no longer exists, select the last one if available
-                if !self.channels.channels.is_empty() {
-                    self.table_state
-                        .select(Some(self.channels.channels.len() - 1));
-                }
-            }
-        } else if let Some(selected) = self.table_state.selected() {
-            if selected >= self.channels.channels.len() && !self.channels.channels.is_empty() {
-                self.table_state
-                    .select(Some(self.channels.channels.len() - 1));
-            }
-        }
-
-        if self.show_logs {
-            self.refresh_logs();
-        }
-    }
-
-    pub(crate) fn refresh_logs(&mut self) {
-        if self.paused {
-            return;
-        }
-
-        self.logs = None;
-
-        if let Some(selected) = self.table_state.selected() {
-            if !self.channels.channels.is_empty() && selected < self.channels.channels.len() {
-                let channel_id = self.channels.channels[selected].id;
-                if let Ok(logs) =
-                    super::http::fetch_channel_logs(&self.agent, self.metrics_port, channel_id)
-                {
-                    let received_map: HashMap<u64, LogEntry> = logs
-                        .received_logs
-                        .iter()
-                        .map(|entry| (entry.index, entry.clone()))
-                        .collect();
-
-                    self.logs = Some(CachedLogs { logs, received_map });
-
-                    // Ensure logs table selection is valid
-                    if let Some(ref cached_logs) = self.logs {
-                        let log_count = cached_logs.logs.sent_logs.len();
-                        if let Some(selected) = self.logs_table_state.selected() {
-                            if selected >= log_count && log_count > 0 {
-                                self.logs_table_state.select(Some(log_count - 1));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn select_previous_channel(&mut self) {
-        let count = self.channels.channels.len();
-        if count == 0 {
-            return;
-        }
-
-        let i = match self.table_state.selected() {
-            Some(i) => i.saturating_sub(1),
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-
-        if self.paused && self.show_logs {
-            self.logs = None;
-        } else if self.show_logs {
-            self.refresh_logs();
-        }
-    }
-
-    fn select_next_channel(&mut self) {
-        let count = self.channels.channels.len();
-        if count == 0 {
-            return;
-        }
-
-        let i = match self.table_state.selected() {
-            Some(i) => (i + 1).min(count - 1),
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-
-        if self.paused && self.show_logs {
-            self.logs = None;
-        } else if self.show_logs {
-            self.refresh_logs();
-        }
-    }
-
-    fn toggle_logs(&mut self) {
-        let has_valid_selection = self
-            .table_state
-            .selected()
-            .map(|i| i < self.channels.channels.len())
-            .unwrap_or(false);
-
-        if !self.channels.channels.is_empty() && has_valid_selection {
-            if self.show_logs {
-                self.hide_logs();
-            } else {
-                self.show_logs = true;
-                if self.paused {
-                    self.logs = None;
-                } else {
-                    self.refresh_logs();
-                }
-            }
-        }
-    }
-
-    fn hide_logs(&mut self) {
-        self.show_logs = false;
-        self.logs = None;
-        self.logs_table_state.select(None);
-        self.focus = Focus::Channels;
-    }
-
-    fn focus_channels(&mut self) {
-        self.focus = Focus::Channels;
-        self.logs_table_state.select(None);
-    }
-
-    fn focus_logs(&mut self) {
-        if !self.show_logs {
-            self.toggle_logs();
-        } else if !self.channels.channels.is_empty() {
-            if let Some(ref cached_logs) = self.logs {
-                if !cached_logs.logs.sent_logs.is_empty() {
-                    self.focus = Focus::Logs;
-                    if self.logs_table_state.selected().is_none() {
-                        self.logs_table_state.select(Some(0));
-                    }
-                }
-            }
-        }
-    }
-
-    fn select_previous_log(&mut self) {
-        if let Some(ref cached_logs) = self.logs {
-            let log_count = cached_logs.logs.sent_logs.len();
-            if log_count > 0 {
-                let i = match self.logs_table_state.selected() {
-                    Some(i) => i.saturating_sub(1),
-                    None => 0,
-                };
-                self.logs_table_state.select(Some(i));
-
-                // Update inspected log if inspect popup is open
-                if self.focus == Focus::Inspect {
-                    if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
-                        self.inspected_log = Some(entry.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    fn select_next_log(&mut self) {
-        if let Some(ref cached_logs) = self.logs {
-            let log_count = cached_logs.logs.sent_logs.len();
-            if log_count > 0 {
-                let i = match self.logs_table_state.selected() {
-                    Some(i) => (i + 1).min(log_count - 1),
-                    None => 0,
-                };
-                self.logs_table_state.select(Some(i));
-
-                // Update inspected log if inspect popup is open
-                if self.focus == Focus::Inspect {
-                    if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
-                        self.inspected_log = Some(entry.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    fn toggle_inspect(&mut self) {
-        if self.focus == Focus::Inspect {
-            // Closing inspect popup
-            self.focus = Focus::Logs;
-            self.inspected_log = None;
-        } else if self.focus == Focus::Logs && self.logs_table_state.selected().is_some() {
-            // Opening inspect popup - capture the current log entry
-            if let Some(selected) = self.logs_table_state.selected() {
-                if let Some(ref cached_logs) = self.logs {
-                    if let Some(entry) = cached_logs.logs.sent_logs.get(selected) {
-                        self.inspected_log = Some(entry.clone());
-                        self.focus = Focus::Inspect;
-                    }
-                }
-            }
-        }
-    }
-
-    fn close_inspect_and_refocus_channels(&mut self) {
-        self.inspected_log = None;
-        self.hide_logs();
-    }
-
-    fn close_inspect_only(&mut self) {
-        self.inspected_log = None;
-        self.focus = Focus::Channels;
-        self.logs_table_state.select(None);
-    }
-
-    pub(crate) fn toggle_samples(&mut self) {
-        self.show_samples = !self.show_samples;
-        if self.show_samples {
-            // Pin the currently selected function when opening samples panel
-            self.pinned_function = self.selected_function_name();
-        } else {
-            // Clear pinned function when closing samples panel
-            self.pinned_function = None;
-        }
-    }
-
-    /// Get sorted entries (sorted by percentage, highest first)
-    pub(crate) fn get_sorted_entries(&self) -> Vec<(String, Vec<hotpath::MetricType>)> {
-        use hotpath::MetricType;
-
-        let mut entries: Vec<(String, Vec<MetricType>)> = self
-            .metrics
-            .data
-            .0
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        entries.sort_by(|(_, metrics_a), (_, metrics_b)| {
-            let percent_a = metrics_a
-                .iter()
-                .find_map(|m| {
-                    if let MetricType::Percentage(p) = m {
-                        Some(*p)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0);
-
-            let percent_b = metrics_b
-                .iter()
-                .find_map(|m| {
-                    if let MetricType::Percentage(p) = m {
-                        Some(*p)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0);
-
-            percent_b.cmp(&percent_a)
-        });
-
-        entries
-    }
-
-    pub(crate) fn selected_function_name(&self) -> Option<String> {
-        let sorted_entries = self.get_sorted_entries();
-        self.table_state
-            .selected()
-            .and_then(|idx| sorted_entries.get(idx).map(|(name, _)| name.clone()))
-    }
-
-    pub(crate) fn update_samples(&mut self, samples: SamplesJson) {
-        self.current_samples = Some(samples);
-    }
-
-    pub(crate) fn clear_samples(&mut self) {
-        self.current_samples = None;
-    }
-
-    pub(crate) fn update_pinned_function(&mut self) {
-        if self.show_samples {
-            self.pinned_function = self.selected_function_name();
-        }
-    }
-
-    pub(crate) fn samples_function_name(&self) -> Option<&str> {
-        self.pinned_function.as_deref()
-    }
-
-    /// Fetch samples for pinned function if panel is open
-    pub(crate) fn fetch_samples_if_open(&mut self, port: u16) {
-        if self.show_samples {
-            if let Some(function_name) = self.samples_function_name() {
-                match super::http::fetch_samples(&self.agent, port, function_name) {
-                    Ok(samples) => self.update_samples(samples),
-                    Err(_) => self.clear_samples(),
-                }
-            }
-        }
-    }
-
-    /// Update pinned function and fetch samples if panel is open
-    pub(crate) fn update_and_fetch_samples(&mut self, port: u16) {
-        self.update_pinned_function();
-        self.fetch_samples_if_open(port);
-    }
-
+    /// Request application exit
     pub(crate) fn exit(&mut self) {
         self.exit = true;
     }
 
-    fn refresh_data(&mut self) {
-        match self.selected_tab {
-            SelectedTab::Metrics => {
-                match super::http::fetch_metrics(&self.agent, self.metrics_port) {
-                    Ok(metrics) => {
-                        self.update_metrics(metrics);
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
-                self.fetch_samples_if_open(self.metrics_port);
-            }
-            SelectedTab::Channels => {
-                match super::http::fetch_channels(&self.agent, self.metrics_port) {
-                    Ok(channels) => {
-                        self.update_channels(channels);
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
-            }
-        }
-        self.last_refresh = Instant::now();
-    }
-
+    /// Main TUI run loop
+    ///
+    /// This runs the event loop, handling:
+    /// - Periodic data refresh (unless paused)
+    /// - Rendering the UI
+    /// - Processing keyboard input
     pub(crate) fn run(
         &mut self,
         terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
@@ -545,7 +178,7 @@ impl App {
 
             terminal.draw(|frame| super::views::render_ui(frame, self))?;
 
-            if event::poll(Duration::from_millis(100))? {
+            if event::poll(super::constants::event_poll_interval())? {
                 if let Event::Key(key_event) = event::read()? {
                     if key_event.kind == KeyEventKind::Press {
                         self.handle_key_event(key_event.code);
@@ -556,73 +189,9 @@ impl App {
 
         Ok(())
     }
-
-    fn handle_key_event(&mut self, key_code: KeyCode) {
-        match key_code {
-            KeyCode::Char('q') | KeyCode::Char('Q') => self.exit(),
-            KeyCode::Char('p') | KeyCode::Char('P') => self.toggle_pause(),
-            KeyCode::Char('1') => {
-                self.switch_to_tab(SelectedTab::Metrics);
-                self.refresh_data();
-            }
-            KeyCode::Char('2') => {
-                self.switch_to_tab(SelectedTab::Channels);
-                self.refresh_data();
-            }
-            KeyCode::Char('o') | KeyCode::Char('O') => {
-                if self.selected_tab == SelectedTab::Channels {
-                    match self.focus {
-                        Focus::Inspect => self.close_inspect_and_refocus_channels(),
-                        Focus::Logs => self.hide_logs(),
-                        Focus::Channels => self.toggle_logs(),
-                    }
-                } else {
-                    self.toggle_samples();
-                    self.fetch_samples_if_open(self.metrics_port);
-                }
-            }
-            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
-                if self.selected_tab == SelectedTab::Channels {
-                    if self.focus == Focus::Inspect {
-                        self.close_inspect_only();
-                    } else {
-                        self.focus_channels();
-                    }
-                }
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                if self.selected_tab == SelectedTab::Channels {
-                    self.focus_logs();
-                }
-            }
-            KeyCode::Char('i') | KeyCode::Char('I') => {
-                if self.selected_tab == SelectedTab::Channels {
-                    self.toggle_inspect();
-                }
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                if self.selected_tab == SelectedTab::Channels {
-                    match self.focus {
-                        Focus::Channels => self.select_next_channel(),
-                        Focus::Logs | Focus::Inspect => self.select_next_log(),
-                    }
-                } else {
-                    self.next_function();
-                    self.update_and_fetch_samples(self.metrics_port);
-                }
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                if self.selected_tab == SelectedTab::Channels {
-                    match self.focus {
-                        Focus::Channels => self.select_previous_channel(),
-                        Focus::Logs | Focus::Inspect => self.select_previous_log(),
-                    }
-                } else {
-                    self.previous_function();
-                    self.update_and_fetch_samples(self.metrics_port);
-                }
-            }
-            _ => {}
-        }
-    }
 }
+
+// Note: Most App methods are implemented in submodules for better organization:
+// - app/state.rs: Navigation and selection methods (next_function, toggle_logs, etc.)
+// - app/data.rs: Data fetching and update methods (update_metrics, refresh_data, etc.)
+// - app/keys.rs: Keyboard input handling (handle_key_event)

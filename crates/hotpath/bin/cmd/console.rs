@@ -1,4 +1,5 @@
 mod app;
+mod constants;
 mod http;
 mod views;
 mod widgets;

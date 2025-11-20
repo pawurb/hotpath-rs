@@ -60,7 +60,17 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
     bottom_bar::render_help_bar(frame, main_chunks[3], app.selected_tab, app.focus);
 }
 
-/// Renders the channels view including the main table, logs panel, and error states
+/// Orchestrates the Channels tab layout
+///
+/// This function coordinates the layout for the Channels view, including:
+/// - Error states and empty states
+/// - Channels table and logs panel (split 50/50 when logs are visible)
+/// - Inspect popup overlay
+///
+/// The actual rendering of individual components is delegated to:
+/// - `channels::render_channels_panel` for the channels table
+/// - `logs::render_logs_panel` for the logs panel
+/// - `inspect::render_inspect_popup` for the inspect popup
 fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let stats = &app.channels.channels;
 
