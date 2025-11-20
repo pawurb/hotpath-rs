@@ -1,6 +1,8 @@
 pub(crate) mod bottom_bar;
 pub(crate) mod channels;
 pub(crate) mod functions;
+pub(crate) mod inspect;
+pub(crate) mod logs;
 pub(crate) mod main_view;
 pub(crate) mod samples;
 pub(crate) mod top_bar;

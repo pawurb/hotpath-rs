@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut count = 0u64;
         while let Some(value) = fast_rx.recv().await {
             count = count.wrapping_add(value);
-            if count % 1000 == 0 {
+            if count.is_multiple_of(1000) {
                 std::hint::black_box(count);
             }
         }

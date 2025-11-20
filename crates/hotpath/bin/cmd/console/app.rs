@@ -1,6 +1,8 @@
 use crossterm::event::KeyCode;
+use hotpath::channels::{ChannelLogs, LogEntry};
 use hotpath::{MetricsJson, SamplesJson};
 use ratatui::widgets::TableState;
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +21,20 @@ impl SelectedTab {
     }
 }
 
+/// Represents which UI component has focus in the Channels tab
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Focus {
+    Channels,
+    Logs,
+    Inspect,
+}
+
+/// Cached logs with a lookup map for received entries
+pub(crate) struct CachedLogs {
+    pub(crate) logs: ChannelLogs,
+    pub(crate) received_map: HashMap<u64, LogEntry>,
+}
+
 pub(crate) struct App {
     pub(crate) metrics: MetricsJson,
     pub(crate) channels: hotpath::channels::ChannelsJson,
@@ -34,6 +50,12 @@ pub(crate) struct App {
     pub(crate) agent: ureq::Agent,
     pub(crate) metrics_port: u16,
     exit: bool,
+    // Channels-specific state
+    pub(crate) logs_table_state: TableState,
+    pub(crate) focus: Focus,
+    pub(crate) show_logs: bool,
+    pub(crate) logs: Option<CachedLogs>,
+    pub(crate) inspected_log: Option<LogEntry>,
 }
 
 impl App {
@@ -68,6 +90,11 @@ impl App {
             agent,
             metrics_port,
             exit: false,
+            logs_table_state: TableState::default(),
+            focus: Focus::Channels,
+            show_logs: false,
+            logs: None,
+            inspected_log: None,
         }
     }
 
@@ -144,9 +171,234 @@ impl App {
     }
 
     pub(crate) fn update_channels(&mut self, channels: hotpath::channels::ChannelsJson) {
+        // Capture the currently selected channel ID (not index!)
+        let selected_channel_id = self
+            .table_state
+            .selected()
+            .and_then(|idx| self.channels.channels.get(idx))
+            .map(|stat| stat.id);
+
         self.channels = channels;
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
+
+        // Try to restore selection to the same channel ID
+        if let Some(channel_id) = selected_channel_id {
+            // Find the new index of the previously selected channel
+            if let Some(new_idx) = self
+                .channels
+                .channels
+                .iter()
+                .position(|stat| stat.id == channel_id)
+            {
+                self.table_state.select(Some(new_idx));
+            } else {
+                // Channel no longer exists, select the last one if available
+                if !self.channels.channels.is_empty() {
+                    self.table_state
+                        .select(Some(self.channels.channels.len() - 1));
+                }
+            }
+        } else if let Some(selected) = self.table_state.selected() {
+            if selected >= self.channels.channels.len() && !self.channels.channels.is_empty() {
+                self.table_state
+                    .select(Some(self.channels.channels.len() - 1));
+            }
+        }
+
+        if self.show_logs {
+            self.refresh_logs();
+        }
+    }
+
+    pub(crate) fn refresh_logs(&mut self) {
+        if self.paused {
+            return;
+        }
+
+        self.logs = None;
+
+        if let Some(selected) = self.table_state.selected() {
+            if !self.channels.channels.is_empty() && selected < self.channels.channels.len() {
+                let channel_id = self.channels.channels[selected].id;
+                if let Ok(logs) =
+                    super::http::fetch_channel_logs(&self.agent, self.metrics_port, channel_id)
+                {
+                    let received_map: HashMap<u64, LogEntry> = logs
+                        .received_logs
+                        .iter()
+                        .map(|entry| (entry.index, entry.clone()))
+                        .collect();
+
+                    self.logs = Some(CachedLogs { logs, received_map });
+
+                    // Ensure logs table selection is valid
+                    if let Some(ref cached_logs) = self.logs {
+                        let log_count = cached_logs.logs.sent_logs.len();
+                        if let Some(selected) = self.logs_table_state.selected() {
+                            if selected >= log_count && log_count > 0 {
+                                self.logs_table_state.select(Some(log_count - 1));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn select_previous_channel(&mut self) {
+        let count = self.channels.channels.len();
+        if count == 0 {
+            return;
+        }
+
+        let i = match self.table_state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        self.table_state.select(Some(i));
+
+        if self.paused && self.show_logs {
+            self.logs = None;
+        } else if self.show_logs {
+            self.refresh_logs();
+        }
+    }
+
+    fn select_next_channel(&mut self) {
+        let count = self.channels.channels.len();
+        if count == 0 {
+            return;
+        }
+
+        let i = match self.table_state.selected() {
+            Some(i) => (i + 1).min(count - 1),
+            None => 0,
+        };
+        self.table_state.select(Some(i));
+
+        if self.paused && self.show_logs {
+            self.logs = None;
+        } else if self.show_logs {
+            self.refresh_logs();
+        }
+    }
+
+    fn toggle_logs(&mut self) {
+        let has_valid_selection = self
+            .table_state
+            .selected()
+            .map(|i| i < self.channels.channels.len())
+            .unwrap_or(false);
+
+        if !self.channels.channels.is_empty() && has_valid_selection {
+            if self.show_logs {
+                self.hide_logs();
+            } else {
+                self.show_logs = true;
+                if self.paused {
+                    self.logs = None;
+                } else {
+                    self.refresh_logs();
+                }
+            }
+        }
+    }
+
+    fn hide_logs(&mut self) {
+        self.show_logs = false;
+        self.logs = None;
+        self.logs_table_state.select(None);
+        self.focus = Focus::Channels;
+    }
+
+    fn focus_channels(&mut self) {
+        self.focus = Focus::Channels;
+        self.logs_table_state.select(None);
+    }
+
+    fn focus_logs(&mut self) {
+        if !self.show_logs {
+            self.toggle_logs();
+        } else if !self.channels.channels.is_empty() {
+            if let Some(ref cached_logs) = self.logs {
+                if !cached_logs.logs.sent_logs.is_empty() {
+                    self.focus = Focus::Logs;
+                    if self.logs_table_state.selected().is_none() {
+                        self.logs_table_state.select(Some(0));
+                    }
+                }
+            }
+        }
+    }
+
+    fn select_previous_log(&mut self) {
+        if let Some(ref cached_logs) = self.logs {
+            let log_count = cached_logs.logs.sent_logs.len();
+            if log_count > 0 {
+                let i = match self.logs_table_state.selected() {
+                    Some(i) => i.saturating_sub(1),
+                    None => 0,
+                };
+                self.logs_table_state.select(Some(i));
+
+                // Update inspected log if inspect popup is open
+                if self.focus == Focus::Inspect {
+                    if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
+                        self.inspected_log = Some(entry.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    fn select_next_log(&mut self) {
+        if let Some(ref cached_logs) = self.logs {
+            let log_count = cached_logs.logs.sent_logs.len();
+            if log_count > 0 {
+                let i = match self.logs_table_state.selected() {
+                    Some(i) => (i + 1).min(log_count - 1),
+                    None => 0,
+                };
+                self.logs_table_state.select(Some(i));
+
+                // Update inspected log if inspect popup is open
+                if self.focus == Focus::Inspect {
+                    if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
+                        self.inspected_log = Some(entry.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    fn toggle_inspect(&mut self) {
+        if self.focus == Focus::Inspect {
+            // Closing inspect popup
+            self.focus = Focus::Logs;
+            self.inspected_log = None;
+        } else if self.focus == Focus::Logs && self.logs_table_state.selected().is_some() {
+            // Opening inspect popup - capture the current log entry
+            if let Some(selected) = self.logs_table_state.selected() {
+                if let Some(ref cached_logs) = self.logs {
+                    if let Some(entry) = cached_logs.logs.sent_logs.get(selected) {
+                        self.inspected_log = Some(entry.clone());
+                        self.focus = Focus::Inspect;
+                    }
+                }
+            }
+        }
+    }
+
+    fn close_inspect_and_refocus_channels(&mut self) {
+        self.inspected_log = None;
+        self.hide_logs();
+    }
+
+    fn close_inspect_only(&mut self) {
+        self.inspected_log = None;
+        self.focus = Focus::Channels;
+        self.logs_table_state.select(None);
     }
 
     pub(crate) fn toggle_samples(&mut self) {
@@ -318,16 +570,57 @@ impl App {
                 self.refresh_data();
             }
             KeyCode::Char('o') | KeyCode::Char('O') => {
-                self.toggle_samples();
-                self.fetch_samples_if_open(self.metrics_port);
+                if self.selected_tab == SelectedTab::Channels {
+                    match self.focus {
+                        Focus::Inspect => self.close_inspect_and_refocus_channels(),
+                        Focus::Logs => self.hide_logs(),
+                        Focus::Channels => self.toggle_logs(),
+                    }
+                } else {
+                    self.toggle_samples();
+                    self.fetch_samples_if_open(self.metrics_port);
+                }
+            }
+            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
+                if self.selected_tab == SelectedTab::Channels {
+                    if self.focus == Focus::Inspect {
+                        self.close_inspect_only();
+                    } else {
+                        self.focus_channels();
+                    }
+                }
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                if self.selected_tab == SelectedTab::Channels {
+                    self.focus_logs();
+                }
+            }
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                if self.selected_tab == SelectedTab::Channels {
+                    self.toggle_inspect();
+                }
             }
             KeyCode::Char('j') | KeyCode::Down => {
-                self.next_function();
-                self.update_and_fetch_samples(self.metrics_port);
+                if self.selected_tab == SelectedTab::Channels {
+                    match self.focus {
+                        Focus::Channels => self.select_next_channel(),
+                        Focus::Logs | Focus::Inspect => self.select_next_log(),
+                    }
+                } else {
+                    self.next_function();
+                    self.update_and_fetch_samples(self.metrics_port);
+                }
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                self.previous_function();
-                self.update_and_fetch_samples(self.metrics_port);
+                if self.selected_tab == SelectedTab::Channels {
+                    match self.focus {
+                        Focus::Channels => self.select_previous_channel(),
+                        Focus::Logs | Focus::Inspect => self.select_previous_log(),
+                    }
+                } else {
+                    self.previous_function();
+                    self.update_and_fetch_samples(self.metrics_port);
+                }
             }
             _ => {}
         }

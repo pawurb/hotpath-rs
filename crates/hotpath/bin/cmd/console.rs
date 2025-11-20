@@ -1,6 +1,7 @@
 mod app;
 mod http;
 mod views;
+mod widgets;
 
 use app::App;
 use clap::Parser;
