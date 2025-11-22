@@ -1,7 +1,7 @@
 # hotpath - real-time Rust performance and data flow profiler
 [![Latest Version](https://img.shields.io/crates/v/hotpath.svg)](https://crates.io/crates/hotpath) [![GH Actions](https://github.com/pawurb/hotpath/actions/workflows/ci.yml/badge.svg)](https://github.com/pawurb/hotpath/actions)
 
-[![Profiling report for mevlog-rs](hotpath-timing-report.png)](https://github.com/pawurb/mevlog-rs)
+![hotpath TUI Example](hotpath-tui3.gif)
 
 A lightweight Rust profiler for latency, memory, and data-flow insight. Instrument functions, channels, and streams to find bottlenecks and optimize where it counts.
 
@@ -18,6 +18,18 @@ In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain th
 - **Detailed stats**: avg, total time, call count, % of total runtime, and configurable percentiles (p95, p99, etc.).
 - **Background processing** for minimal profiling impact.
 - **GitHub Actions integration** - configure CI to automatically benchmark your program against a base branch for each PR
+
+## Roadmap 
+
+- [x] latency, memory method calls tracking
+- [x] channels/streams profiling
+- [ ] process threads monitoring
+- [ ] Tokio runtime metrics 
+- [ ] Tokio tasks monitoring
+- [ ] improved docs on [hotpath.rs](https://hotpath.rs)
+- [ ] hosted backend integration
+- [ ] interactive SSH demo 
+- [ ] MCP/LLM interface
 
 ## Quick Start
 
@@ -98,7 +110,7 @@ Output:
 
 ## Live Performance Metrics TUI
 
-![hotpath TUI Example](hotpath-tui.gif)
+![hotpath TUI Example](hotpath-tui3.gif)
 
 `hotpath` includes a live terminal-based dashboard for real-time monitoring of profiling metrics, including function performance, channel statistics, and stream throughput. This is particularly useful for long-running applications like web servers, where you want to observe performance characteristics while the application is running.
 
@@ -191,6 +203,8 @@ async fn main() {
     let msg = rx.recv().await.unwrap();
 }
 ```
+
+[std::sync](https://doc.rust-lang.org/stable/std/sync/mpsc/index.html) channels can be instrumented by default. Enable `tokio`, `futures`, or `crossbeam` features for [Tokio](https://github.com/tokio-rs/tokio), [futures-rs](https://github.com/rust-lang/futures-rs), and [crossbeam](https://github.com/crossbeam-rs/crossbeam) channels, respectively.
 
 **Supported channel types:**
 - [`tokio::sync::mpsc::channel`](https://docs.rs/tokio/latest/tokio/sync/mpsc/fn.channel.html)
