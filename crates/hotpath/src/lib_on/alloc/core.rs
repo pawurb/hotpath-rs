@@ -27,6 +27,7 @@ impl std::ops::AddAssign for AllocationInfo {
 pub struct AllocationInfoStack {
     pub depth: Cell<u32>,
     pub elements: [AllocationInfo; MAX_DEPTH],
+    pub tracking_enabled: Cell<bool>,
 }
 
 thread_local! {
@@ -37,6 +38,7 @@ thread_local! {
             count_total: Cell::new(0),
             unsupported_async: Cell::new(false)
         } }; MAX_DEPTH],
+        tracking_enabled: Cell::new(true),
     } };
 }
 
@@ -44,6 +46,9 @@ thread_local! {
 #[inline]
 pub fn track_alloc(size: usize) {
     ALLOCATIONS.with(|stack| {
+        if !stack.tracking_enabled.get() {
+            return;
+        }
         let depth = stack.depth.get() as usize;
         let info = &stack.elements[depth];
         info.bytes_total.set(info.bytes_total.get() + size as u64);

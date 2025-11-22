@@ -503,6 +503,13 @@ impl HotPath {
         _reporter: Box<dyn Reporter>,
         recent_logs_limit: usize,
     ) -> Self {
+        // Disable allocation tracking during infrastructure initialization
+        // to prevent profiling overhead from being included in measurements
+        #[cfg(feature = "hotpath-alloc")]
+        alloc::core::ALLOCATIONS.with(|stack| {
+            stack.tracking_enabled.set(false);
+        });
+
         let percentiles = percentiles.to_vec();
 
         let arc_swap = HOTPATH_STATE.get_or_init(|| ArcSwapOption::from(None));
@@ -634,6 +641,12 @@ impl HotPath {
         };
 
         let wrapper_guard = MeasurementGuard::build(caller_name, true, false);
+
+        // Re-enable allocation tracking after infrastructure is initialized
+        #[cfg(feature = "hotpath-alloc")]
+        alloc::core::ALLOCATIONS.with(|stack| {
+            stack.tracking_enabled.set(true);
+        });
 
         Self {
             state: Arc::clone(&state_arc),

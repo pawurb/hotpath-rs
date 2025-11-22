@@ -64,6 +64,12 @@ impl Drop for MeasurementGuard {
                 })
             };
 
+        // Temporarily disable allocation tracking to prevent measurement overhead
+        // from being attributed to the parent function
+        super::core::ALLOCATIONS.with(|stack| {
+            stack.tracking_enabled.set(false);
+        });
+
         super::state::send_alloc_measurement(
             self.name,
             bytes_total,
@@ -72,5 +78,10 @@ impl Drop for MeasurementGuard {
             self.wrapper,
             cross_thread,
         );
+
+        // Re-enable allocation tracking
+        super::core::ALLOCATIONS.with(|stack| {
+            stack.tracking_enabled.set(true);
+        });
     }
 }
