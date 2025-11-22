@@ -83,13 +83,7 @@ pub(crate) fn render_logs_panel(
             let msg = entry.message.as_deref().unwrap_or("");
             let truncated_msg = truncate_message(msg, msg_width);
 
-            let row = Row::new(vec![entry.index.to_string(), truncated_msg, time_ago]);
-
-            if !is_focused {
-                row.style(Style::default().fg(Color::DarkGray))
-            } else {
-                row
-            }
+            Row::new(vec![entry.index.to_string(), truncated_msg, time_ago])
         })
         .collect();
 

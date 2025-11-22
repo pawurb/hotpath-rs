@@ -96,18 +96,12 @@ pub(crate) fn render_logs_panel(
                 "queued".to_string()
             };
 
-            let row = Row::new(vec![
+            Row::new(vec![
                 entry.index.to_string(),
                 truncated_msg,
                 delay_str,
                 time_ago,
-            ]);
-
-            if !is_focused {
-                row.style(Style::default().fg(Color::DarkGray))
-            } else {
-                row
-            }
+            ])
         })
         .collect();
 

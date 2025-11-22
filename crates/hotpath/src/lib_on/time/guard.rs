@@ -9,6 +9,7 @@ pub struct MeasurementGuard {
     name: &'static str,
     start: Instant,
     wrapper: bool,
+    tid: u64,
 }
 
 impl MeasurementGuard {
@@ -18,6 +19,7 @@ impl MeasurementGuard {
             name,
             start: Instant::now(),
             wrapper,
+            tid: crate::tid::current_tid(),
         }
     }
 }
@@ -26,6 +28,6 @@ impl Drop for MeasurementGuard {
     #[inline]
     fn drop(&mut self) {
         let dur = self.start.elapsed();
-        super::state::send_duration_measurement(self.name, dur, self.wrapper);
+        super::state::send_duration_measurement(self.name, dur, self.wrapper, self.tid);
     }
 }

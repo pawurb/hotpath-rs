@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 pub enum Measurement {
-    Duration(u64, Duration, &'static str, bool), // duration_ns, elapsed_since_start, function_name, wrapper
+    Duration(u64, Duration, &'static str, bool, u64), // duration_ns, elapsed_since_start, function_name, wrapper, tid
 }
 
 #[derive(Debug)]
@@ -15,7 +15,7 @@ pub struct FunctionStats {
     hist: Option<Histogram<u64>>,
     pub has_data: bool,
     pub wrapper: bool,
-    pub recent_logs: VecDeque<(u64, Duration)>,
+    pub recent_logs: VecDeque<(u64, Duration, u64)>, // (duration_ns, elapsed, tid)
 }
 
 impl FunctionStats {
@@ -28,12 +28,13 @@ impl FunctionStats {
         elapsed: Duration,
         wrapper: bool,
         recent_logs_limit: usize,
+        tid: u64,
     ) -> Self {
         let hist = Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
             .expect("hdrhistogram init");
 
         let mut recent_logs = VecDeque::with_capacity(recent_logs_limit);
-        recent_logs.push_back((first_ns, elapsed));
+        recent_logs.push_back((first_ns, elapsed, tid));
 
         let mut s = Self {
             total_duration_ns: first_ns,
@@ -55,7 +56,7 @@ impl FunctionStats {
         }
     }
 
-    pub fn update_duration(&mut self, duration_ns: u64, elapsed: Duration) {
+    pub fn update_duration(&mut self, duration_ns: u64, elapsed: Duration, tid: u64) {
         self.total_duration_ns += duration_ns;
         self.count += 1;
         self.record_time(duration_ns);
@@ -64,7 +65,7 @@ impl FunctionStats {
         {
             self.recent_logs.pop_front();
         }
-        self.recent_logs.push_back((duration_ns, elapsed));
+        self.recent_logs.push_back((duration_ns, elapsed, tid));
     }
 
     pub fn avg_duration_ns(&self) -> u64 {
@@ -103,13 +104,19 @@ pub(crate) fn process_measurement(
     recent_logs_limit: usize,
 ) {
     match m {
-        Measurement::Duration(duration_ns, elapsed, name, wrapper) => {
+        Measurement::Duration(duration_ns, elapsed, name, wrapper, tid) => {
             if let Some(s) = stats.get_mut(name) {
-                s.update_duration(duration_ns, elapsed);
+                s.update_duration(duration_ns, elapsed, tid);
             } else {
                 stats.insert(
                     name,
-                    FunctionStats::new_duration(duration_ns, elapsed, wrapper, recent_logs_limit),
+                    FunctionStats::new_duration(
+                        duration_ns,
+                        elapsed,
+                        wrapper,
+                        recent_logs_limit,
+                        tid,
+                    ),
                 );
             }
         }
@@ -118,7 +125,7 @@ pub(crate) fn process_measurement(
 
 use super::super::HOTPATH_STATE;
 
-pub fn send_duration_measurement(name: &'static str, duration: Duration, wrapper: bool) {
+pub fn send_duration_measurement(name: &'static str, duration: Duration, wrapper: bool, tid: u64) {
     let Some(arc_swap) = HOTPATH_STATE.get() else {
         panic!(
             "GuardBuilder::new(\"main\").build() must be called when --features hotpath is enabled"
@@ -137,6 +144,7 @@ pub fn send_duration_measurement(name: &'static str, duration: Duration, wrapper
     };
 
     let elapsed = state_guard.start_time.elapsed();
-    let measurement = Measurement::Duration(duration.as_nanos() as u64, elapsed, name, wrapper);
+    let measurement =
+        Measurement::Duration(duration.as_nanos() as u64, elapsed, name, wrapper, tid);
     let _ = sender.try_send(measurement);
 }

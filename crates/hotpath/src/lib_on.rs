@@ -584,16 +584,16 @@ impl HotPath {
                                         let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
                                             cfg_if::cfg_if! {
                                                 if #[cfg(feature = "hotpath-alloc")] {
-                                                    let logs: Vec<(u64, u64, Option<u64>)> = stats.recent_logs
+                                                    let logs: Vec<(u64, u64, Option<u64>, u64)> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(bytes, count, elapsed)| (*bytes, elapsed.as_nanos() as u64, Some(*count)))
+                                                        .map(|(bytes, count, elapsed, tid)| (*bytes, elapsed.as_nanos() as u64, Some(*count), *tid))
                                                         .collect();
                                                 } else {
-                                                    let logs: Vec<(u64, u64, Option<u64>)> = stats.recent_logs
+                                                    let logs: Vec<(u64, u64, Option<u64>, u64)> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(duration_ns, elapsed)| (*duration_ns, elapsed.as_nanos() as u64, None))
+                                                        .map(|(duration_ns, elapsed, tid)| (*duration_ns, elapsed.as_nanos() as u64, None, *tid))
                                                         .collect();
                                                 }
                                             }

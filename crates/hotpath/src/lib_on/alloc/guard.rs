@@ -2,7 +2,7 @@ pub struct MeasurementGuard {
     name: &'static str,
     wrapper: bool,
     unsupported_async: bool,
-    thread_id: std::thread::ThreadId,
+    tid: u64,
 }
 
 impl MeasurementGuard {
@@ -24,7 +24,7 @@ impl MeasurementGuard {
             name,
             wrapper,
             unsupported_async,
-            thread_id: std::thread::current().id(),
+            tid: crate::tid::current_tid(),
         }
     }
 }
@@ -32,7 +32,7 @@ impl MeasurementGuard {
 impl Drop for MeasurementGuard {
     #[inline]
     fn drop(&mut self) {
-        let cross_thread = std::thread::current().id() != self.thread_id;
+        let cross_thread = crate::tid::current_tid() != self.tid;
 
         let (bytes_total, count_total, unsupported_async) =
             if self.unsupported_async || cross_thread {
@@ -77,6 +77,7 @@ impl Drop for MeasurementGuard {
             unsupported_async,
             self.wrapper,
             cross_thread,
+            self.tid,
         );
 
         // Re-enable allocation tracking

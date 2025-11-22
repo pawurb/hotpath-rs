@@ -59,6 +59,11 @@ pub(crate) fn render_function_logs_panel(frame: &mut Frame, area: Rect, app: &Ap
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
                 ),
+                Cell::from("TID").style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ])
         } else {
             Row::new(vec![
@@ -77,6 +82,11 @@ pub(crate) fn render_function_logs_panel(frame: &mut Frame, area: Rect, app: &Ap
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
                 ),
+                Cell::from("TID").style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ])
         };
 
@@ -84,7 +94,7 @@ pub(crate) fn render_function_logs_panel(frame: &mut Frame, area: Rect, app: &Ap
             .logs
             .iter()
             .enumerate()
-            .map(|(idx, &(value, elapsed_nanos, count))| {
+            .map(|(idx, &(value, elapsed_nanos, count, tid))| {
                 let total_elapsed = app.functions.total_elapsed;
                 let time_ago_str = if total_elapsed >= elapsed_nanos {
                     let nanos_ago = total_elapsed - elapsed_nanos;
@@ -98,18 +108,20 @@ pub(crate) fn render_function_logs_panel(frame: &mut Frame, area: Rect, app: &Ap
                     let obj_str = count.map_or("0".to_string(), |c| c.to_string());
 
                     Row::new(vec![
-                        Cell::from(format!("{}", idx + 1)).style(Style::default().fg(Color::Green)),
-                        Cell::from(mem_str).style(Style::default().fg(Color::Cyan)),
-                        Cell::from(obj_str).style(Style::default().fg(Color::Cyan)),
-                        Cell::from(time_ago_str).style(Style::default().fg(Color::DarkGray)),
+                        Cell::from(format!("{}", idx + 1)),
+                        Cell::from(mem_str),
+                        Cell::from(obj_str),
+                        Cell::from(time_ago_str),
+                        Cell::from(tid.to_string()),
                     ])
                 } else {
                     let time_str = hotpath::format_duration(value);
 
                     Row::new(vec![
-                        Cell::from(format!("{}", idx + 1)).style(Style::default().fg(Color::Green)),
-                        Cell::from(time_str).style(Style::default().fg(Color::Cyan)),
-                        Cell::from(time_ago_str).style(Style::default().fg(Color::DarkGray)),
+                        Cell::from(format!("{}", idx + 1)),
+                        Cell::from(time_str),
+                        Cell::from(time_ago_str),
+                        Cell::from(tid.to_string()),
                     ])
                 }
             })
@@ -121,6 +133,7 @@ pub(crate) fn render_function_logs_panel(frame: &mut Frame, area: Rect, app: &Ap
                 Constraint::Min(10),    // Mem column
                 Constraint::Length(9),  // Objects column
                 Constraint::Length(12), // Ago column
+                Constraint::Length(10), // TID column
             ]
             .as_slice()
         } else {
@@ -128,6 +141,7 @@ pub(crate) fn render_function_logs_panel(frame: &mut Frame, area: Rect, app: &Ap
                 Constraint::Length(7),  // Index column
                 Constraint::Min(15),    // Latency column (flexible)
                 Constraint::Length(12), // Ago column
+                Constraint::Length(10), // TID column
             ]
             .as_slice()
         };

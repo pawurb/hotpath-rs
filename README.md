@@ -3,7 +3,7 @@
 
 ![hotpath TUI Example](hotpath-tui3.gif)
 
-A lightweight Rust profiler for latency, memory, and data-flow insight. Instrument functions, channels, and streams to find bottlenecks and optimize where it counts.
+A lightweight Rust profiler for latency, memory, and data-flow insight. Instrument functions, channels, and streams to find bottlenecks and focus optimizations where they matter most.
 
 In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain the motivation behind the project and its inner workings.
 

@@ -176,6 +176,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
                                     stream_stats.items_yielded,
                                     timestamp,
                                     log,
+                                    None,
                                 ));
                             }
                         }

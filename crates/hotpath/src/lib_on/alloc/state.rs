@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 pub enum Measurement {
-    Allocation(&'static str, u64, u64, Duration, bool, bool, bool), // function_name, bytes_total, count_total, elapsed_since_start, unsupported_async, wrapper, cross_thread
+    Allocation(&'static str, u64, u64, Duration, bool, bool, bool, u64), // function_name, bytes_total, count_total, elapsed_since_start, unsupported_async, wrapper, cross_thread, tid
 }
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,7 @@ pub struct FunctionStats {
     pub has_unsupported_async: bool,
     pub wrapper: bool,
     pub cross_thread: bool,
-    pub recent_logs: VecDeque<(u64, u64, Duration)>, // (bytes, count, elapsed)
+    pub recent_logs: VecDeque<(u64, u64, Duration, u64)>, // (bytes, count, elapsed, tid)
 }
 
 impl FunctionStats {
@@ -27,6 +27,7 @@ impl FunctionStats {
     const HIGH_COUNT: u64 = 1_000_000_000; // 1B allocations
     const SIGFIGS: u8 = 3;
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_alloc(
         bytes_total: u64,
         count_total: u64,
@@ -35,6 +36,7 @@ impl FunctionStats {
         wrapper: bool,
         cross_thread: bool,
         recent_logs_limit: usize,
+        tid: u64,
     ) -> Self {
         let bytes_total_hist =
             Histogram::<u64>::new_with_bounds(Self::LOW_BYTES, Self::HIGH_BYTES, Self::SIGFIGS)
@@ -45,7 +47,7 @@ impl FunctionStats {
                 .expect("count_total histogram init");
 
         let mut recent_logs = VecDeque::with_capacity(recent_logs_limit);
-        recent_logs.push_back((bytes_total, count_total, elapsed));
+        recent_logs.push_back((bytes_total, count_total, elapsed, tid));
 
         let mut s = Self {
             count: 1,
@@ -84,6 +86,7 @@ impl FunctionStats {
         elapsed: Duration,
         unsupported_async: bool,
         cross_thread: bool,
+        tid: u64,
     ) {
         self.count += 1;
         self.has_unsupported_async |= unsupported_async;
@@ -95,7 +98,7 @@ impl FunctionStats {
             self.recent_logs.pop_front();
         }
         self.recent_logs
-            .push_back((bytes_total, count_total, elapsed));
+            .push_back((bytes_total, count_total, elapsed, tid));
     }
 
     #[inline]
@@ -186,6 +189,7 @@ pub(crate) fn process_measurement(
             unsupported_async,
             wrapper,
             cross_thread,
+            tid,
         ) => {
             if let Some(s) = stats.get_mut(name) {
                 s.update_alloc(
@@ -194,6 +198,7 @@ pub(crate) fn process_measurement(
                     elapsed,
                     unsupported_async,
                     cross_thread,
+                    tid,
                 );
             } else {
                 stats.insert(
@@ -206,6 +211,7 @@ pub(crate) fn process_measurement(
                         wrapper,
                         cross_thread,
                         recent_logs_limit,
+                        tid,
                     ),
                 );
             }
@@ -222,6 +228,7 @@ pub fn send_alloc_measurement(
     unsupported_async: bool,
     wrapper: bool,
     cross_thread: bool,
+    tid: u64,
 ) {
     let Some(arc_swap) = HOTPATH_STATE.get() else {
         panic!(
@@ -249,6 +256,7 @@ pub fn send_alloc_measurement(
         unsupported_async,
         wrapper,
         cross_thread,
+        tid,
     );
     let _ = sender.try_send(measurement);
 }

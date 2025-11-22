@@ -149,8 +149,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Spawn slow channel consumer
-    let slow_consumer = tokio::spawn(async move {
-        while let Some(msg) = slow_rx.recv().await {
+    let slow_consumer = std::thread::spawn(move || {
+        while let Some(msg) = slow_rx.blocking_recv() {
             std::hint::black_box(msg.len());
         }
     });
@@ -195,26 +195,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Call allocator functions which now randomly allocate 1-10 arrays each
-        let data1 = fast_sync_allocator();
-        let data2 = medium_sync_allocator();
+        // Run some sync functions on separate threads to show different TIDs
+        let data1_task = tokio::task::spawn_blocking(fast_sync_allocator);
+        let data2_task = tokio::task::spawn_blocking(medium_sync_allocator);
 
         if iteration % 3 == 0 {
-            let data3 = slow_sync_allocator();
-            process_data(data3);
+            let data3_task = tokio::task::spawn_blocking(|| {
+                let data = slow_sync_allocator();
+                process_data(data)
+            });
+            let _ = data3_task.await;
         }
 
         let data4 = fast_async_allocator().await;
-        process_data(data4);
+        let data4_task = tokio::task::spawn_blocking(move || process_data(data4));
+        let _ = data4_task.await;
 
         if iteration % 2 == 0 {
             let data5 = slow_async_allocator().await;
-            process_data(data5);
+            let data5_task = tokio::task::spawn_blocking(move || process_data(data5));
+            let _ = data5_task.await;
         }
 
-        process_data(data1);
+        let data1 = data1_task.await.unwrap();
+        let data1_process_task = tokio::task::spawn_blocking(move || process_data(data1));
+        let _ = data1_process_task.await;
 
         if iteration % 4 == 0 {
-            process_data(data2);
+            let data2 = data2_task.await.unwrap();
+            let data2_process_task = tokio::task::spawn_blocking(move || process_data(data2));
+            let _ = data2_process_task.await;
+        } else {
+            // Still need to consume data2_task to avoid leaking it
+            let _ = data2_task.await;
         }
 
         sleep(Duration::from_millis(rng.gen_range(10..50))).await;
@@ -232,7 +245,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Wait for consumers to finish
     let _ = fast_consumer.await;
-    let _ = slow_consumer.await;
+
+    slow_consumer.join().unwrap();
 
     Ok(())
 }

@@ -186,13 +186,13 @@ impl fmt::Display for ProfilingMode {
 }
 
 /// Response containing recent logs for a function
-/// Each log entry is a tuple of (value, elapsed_nanos, optional_alloc_count)
-/// - For timing mode: (duration_ns, elapsed_nanos, None)
-/// - For alloc mode: (bytes, elapsed_nanos, Some(count))
+/// Each log entry is a tuple of (value, elapsed_nanos, optional_alloc_count, tid)
+/// - For timing mode: (duration_ns, elapsed_nanos, None, tid)
+/// - For alloc mode: (bytes, elapsed_nanos, Some(count), tid)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionLogsJson {
     pub function_name: String,
-    pub logs: Vec<(u64, u64, Option<u64>)>,
+    pub logs: Vec<(u64, u64, Option<u64>, u64)>,
     pub count: usize,
 }
 

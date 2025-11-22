@@ -16,16 +16,23 @@ pub struct LogEntry {
     pub index: u64,
     pub timestamp: u64,
     pub message: Option<String>,
+    pub tid: Option<u64>,
 }
 
 impl LogEntry {
-    pub(crate) fn new(index: u64, timestamp: Instant, message: Option<String>) -> Self {
+    pub(crate) fn new(
+        index: u64,
+        timestamp: Instant,
+        message: Option<String>,
+        tid: Option<u64>,
+    ) -> Self {
         let start_time = START_TIME.get().copied().unwrap_or(timestamp);
         let timestamp_nanos = timestamp.duration_since(start_time).as_nanos() as u64;
         Self {
             index,
             timestamp: timestamp_nanos,
             message,
+            tid,
         }
     }
 }
@@ -373,6 +380,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
                                     channel_stats.sent_count,
                                     timestamp,
                                     log,
+                                    None,
                                 ));
                             }
                         }
@@ -388,6 +396,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
                                 channel_stats.received_logs.push_back(LogEntry::new(
                                     channel_stats.received_count,
                                     timestamp,
+                                    None,
                                     None,
                                 ));
                             }
