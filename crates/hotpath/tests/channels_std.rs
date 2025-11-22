@@ -171,4 +171,83 @@ pub mod tests {
             stdout
         );
     }
+
+    #[test]
+    fn test_data_endpoints() {
+        use hotpath::channels::ChannelsJson;
+        use std::{thread::sleep, time::Duration};
+
+        // Spawn example process
+        let mut child = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-channels-std",
+                "--example",
+                "basic_std",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_HTTP_PORT", "6770")
+            .env("TEST_SLEEP_SECONDS", "10")
+            .spawn()
+            .expect("Failed to spawn command");
+
+        let mut json_text = String::new();
+        let mut last_error = None;
+
+        // Test /channels endpoint
+        // Give the server some time to start up
+
+        for _attempt in 0..12 {
+            sleep(Duration::from_millis(500));
+
+            match ureq::get("http://127.0.0.1:6770/channels").call() {
+                Ok(mut response) => {
+                    json_text = response
+                        .body_mut()
+                        .read_to_string()
+                        .expect("Failed to read response body");
+                    last_error = None;
+                    break;
+                }
+                Err(e) => {
+                    last_error = Some(format!("Request error: {}", e));
+                }
+            }
+        }
+
+        if let Some(error) = last_error {
+            let _ = child.kill();
+            panic!("Failed after 8 retries: {}", error);
+        }
+
+        let all_expected = ["basic_std.rs", "unbounded-channel", "Actor 1"];
+        for expected in all_expected {
+            assert!(
+                json_text.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{json_text}",
+            );
+        }
+
+        // Test /channels/:id/logs endpoint
+        let channels_response: ChannelsJson =
+            serde_json::from_str(&json_text).expect("Failed to parse channels JSON");
+
+        if let Some(first_channel) = channels_response.channels.first() {
+            let logs_url = format!("http://127.0.0.1:6770/channels/{}/logs", first_channel.id);
+            let response = ureq::get(&logs_url)
+                .call()
+                .expect("Failed to call /channels/:id/logs endpoint");
+
+            assert_eq!(
+                response.status(),
+                200,
+                "Expected status 200 for /channels/:id/logs endpoint"
+            );
+        }
+
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }

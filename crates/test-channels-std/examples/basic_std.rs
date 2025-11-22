@@ -45,4 +45,11 @@ fn main() {
     }
 
     println!("\nStd channel example completed!");
+
+    // Keep running if TEST_SLEEP_SECONDS is set (for testing HTTP endpoints)
+    if let Ok(secs) = std::env::var("TEST_SLEEP_SECONDS") {
+        if let Ok(duration) = secs.parse::<u64>() {
+            thread::sleep(Duration::from_secs(duration));
+        }
+    }
 }

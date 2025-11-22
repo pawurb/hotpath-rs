@@ -66,7 +66,7 @@ jobs:
       - name: Run integration tests
         run: |
           cargo test --test hotpath_integration -- --nocapture --test-threads=1
-      - name: Run hot integration tests
+      - name: Run integration tests
         run: |
           cargo test --test hotpath_integration -- --nocapture --test-threads=1
 

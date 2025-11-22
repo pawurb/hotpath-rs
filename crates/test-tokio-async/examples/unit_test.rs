@@ -30,7 +30,6 @@ impl Reporter for UnitTestReporter {
         let metric_data = metrics_provider.metric_data();
 
         let sync_function_metrics = metric_data.get("unit_test::sync_function").unwrap();
-        dbg!(sync_function_metrics);
 
         let alloc_count = &sync_function_metrics[1];
         if let hotpath::MetricType::Alloc(_bytes, count) = alloc_count {
