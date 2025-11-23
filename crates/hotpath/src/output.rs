@@ -550,12 +550,14 @@ pub(crate) fn get_sorted_measurements(
     let metric_data = metrics_provider.metric_data();
 
     let mut sorted_entries: Vec<(String, Vec<MetricType>)> = metric_data.into_iter().collect();
-    sorted_entries.sort_by(|(_name_a, metrics_a), (_name_b, metrics_b)| {
+    sorted_entries.sort_by(|(name_a, metrics_a), (name_b, metrics_b)| {
         let key_a = metrics_provider.sort_key(metrics_a);
         let key_b = metrics_provider.sort_key(metrics_b);
+
         key_b
             .partial_cmp(&key_a)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| name_a.cmp(name_b))
     });
 
     sorted_entries

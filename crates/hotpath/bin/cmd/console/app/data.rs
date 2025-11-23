@@ -175,7 +175,7 @@ impl App {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
-        entries.sort_by(|(_, metrics_a), (_, metrics_b)| {
+        entries.sort_by(|(name_a, metrics_a), (name_b, metrics_b)| {
             let percent_a = metrics_a
                 .iter()
                 .find_map(|m| {
@@ -198,7 +198,7 @@ impl App {
                 })
                 .unwrap_or(0);
 
-            percent_b.cmp(&percent_a)
+            percent_b.cmp(&percent_a).then_with(|| name_a.cmp(name_b))
         });
 
         entries

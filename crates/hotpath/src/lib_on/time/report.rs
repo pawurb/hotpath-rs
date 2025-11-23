@@ -54,7 +54,11 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
 
         let mut entries: Vec<_> = self.stats.iter().filter(|(_, s)| s.has_data).collect();
 
-        entries.sort_by(|a, b| b.1.total_duration_ns.cmp(&a.1.total_duration_ns));
+        entries.sort_by(|a, b| {
+            b.1.total_duration_ns
+                .cmp(&a.1.total_duration_ns)
+                .then_with(|| a.0.cmp(b.0))
+        });
 
         let entries = if self.limit > 0 {
             entries.into_iter().take(self.limit).collect::<Vec<_>>()

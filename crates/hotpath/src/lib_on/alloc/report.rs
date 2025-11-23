@@ -65,8 +65,11 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             .filter(|(_, s)| s.has_data && !(s.wrapper && s.cross_thread))
             .collect();
 
-        // Sort by bytes (primary metric as requested by user)
-        filtered_stats.sort_by(|a, b| b.1.total_bytes().cmp(&a.1.total_bytes()));
+        filtered_stats.sort_by(|a, b| {
+            b.1.total_bytes()
+                .cmp(&a.1.total_bytes())
+                .then_with(|| a.0.cmp(b.0))
+        });
 
         let filtered_stats = if self.limit > 0 {
             filtered_stats
@@ -217,8 +220,11 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
             .filter(|(_, s)| s.has_data && !(s.wrapper && s.cross_thread))
             .collect();
 
-        // Sort by total duration (primary metric for timing)
-        filtered_stats.sort_by(|a, b| b.1.total_duration_ns.cmp(&a.1.total_duration_ns));
+        filtered_stats.sort_by(|a, b| {
+            b.1.total_duration_ns
+                .cmp(&a.1.total_duration_ns)
+                .then_with(|| a.0.cmp(b.0))
+        });
 
         let filtered_stats = if self.limit > 0 {
             filtered_stats
