@@ -87,7 +87,7 @@ pub(crate) fn render_function_logs_panel(
                     "now".to_string()
                 };
 
-                let time_str = hotpath::format_duration(value);
+                let time_str = value.map_or("N/A".to_string(), |v| hotpath::format_duration(v));
                 let invocation_number = total_invocations - idx;
 
                 Row::new(vec![

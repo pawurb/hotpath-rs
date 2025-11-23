@@ -92,8 +92,8 @@ pub(crate) fn render_function_logs_panel(
                     "now".to_string()
                 };
 
-                let mem_str = hotpath::format_bytes(value);
-                let obj_str = count.map_or("0".to_string(), |c| c.to_string());
+                let mem_str = value.map_or("N/A".to_string(), |v| hotpath::format_bytes(v));
+                let obj_str = count.map_or("N/A".to_string(), |c| c.to_string());
                 let invocation_number = total_invocations - idx;
 
                 Row::new(vec![

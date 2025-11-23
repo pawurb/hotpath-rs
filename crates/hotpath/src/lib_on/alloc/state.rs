@@ -16,6 +16,10 @@ pub struct Measurement {
     pub tid: u64,
 }
 
+/// Log entry for function execution metrics.
+/// bytes/count are None if cross_thread or unsupported_async.
+type LogEntry = (Option<u64>, Option<u64>, u64, Duration, u64);
+
 #[derive(Debug, Clone)]
 pub struct FunctionStats {
     pub count: u64,
@@ -27,7 +31,7 @@ pub struct FunctionStats {
     pub has_unsupported_async: bool,
     pub wrapper: bool,
     pub cross_thread: bool,
-    pub recent_logs: VecDeque<(u64, u64, u64, Duration, u64)>, // (bytes, count, duration_ns, elapsed, tid)
+    pub recent_logs: VecDeque<LogEntry>, // (bytes, count, duration_ns, elapsed, tid)
 }
 
 impl FunctionStats {
@@ -68,7 +72,12 @@ impl FunctionStats {
 
         let duration_ns = duration.as_nanos() as u64;
         let mut recent_logs = VecDeque::with_capacity(recent_logs_limit);
-        recent_logs.push_back((bytes_total, count_total, duration_ns, elapsed, tid));
+        let (bytes_opt, count_opt) = if unsupported_async || cross_thread {
+            (None, None)
+        } else {
+            (Some(bytes_total), Some(count_total))
+        };
+        recent_logs.push_back((bytes_opt, count_opt, duration_ns, elapsed, tid));
 
         let mut s = Self {
             count: 1,
@@ -138,8 +147,13 @@ impl FunctionStats {
         {
             self.recent_logs.pop_front();
         }
+        let (bytes_opt, count_opt) = if unsupported_async || cross_thread {
+            (None, None)
+        } else {
+            (Some(bytes_total), Some(count_total))
+        };
         self.recent_logs
-            .push_back((bytes_total, count_total, duration_ns, elapsed, tid));
+            .push_back((bytes_opt, count_opt, duration_ns, elapsed, tid));
     }
 
     #[inline]
