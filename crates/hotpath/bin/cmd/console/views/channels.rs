@@ -15,6 +15,7 @@ use ratatui::{
 };
 
 /// Renders the channels table with channel statistics
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_channels_panel(
     stats: &[SerializableChannelStats],

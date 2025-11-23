@@ -6,6 +6,7 @@ use hotpath::{FunctionLogsJson, FunctionsJson};
 use std::collections::HashMap;
 use std::time::Instant;
 
+#[cfg_attr(feature = "hotpath", hotpath::measure_all)]
 impl App {
     pub(crate) fn update_timing_metrics(&mut self, metrics: FunctionsJson) {
         // Capture the currently selected function name (not index!)

@@ -11,6 +11,7 @@ use ratatui::{
     Frame,
 };
 
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = format!(
         " {} - {} ",

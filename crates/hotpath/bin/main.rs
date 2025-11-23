@@ -27,6 +27,7 @@ pub struct HPArgs {
     pub cmd: HPSubcommand,
 }
 
+#[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() -> Result<()> {
     let root_args = HPArgs::parse();
 

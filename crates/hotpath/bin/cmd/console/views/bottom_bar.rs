@@ -23,6 +23,7 @@ const CLOSE_LABEL: &str = " | Close ";
 const CLOSE_KEYS: &str = "<i/o/h> ";
 
 /// Renders the bottom controls bar showing context-aware keybindings
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn render_help_bar(
     frame: &mut Frame,
     area: Rect,

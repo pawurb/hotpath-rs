@@ -44,6 +44,7 @@ impl Route {
 }
 
 /// Fetches timing metrics from the hotpath HTTP server
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_functions_timing(agent: &ureq::Agent, port: u16) -> Result<FunctionsJson> {
     let url = Route::FunctionsTiming.to_url(port);
     let metrics: FunctionsJson = agent
@@ -58,6 +59,7 @@ pub(crate) fn fetch_functions_timing(agent: &ureq::Agent, port: u16) -> Result<F
 
 /// Fetches allocation metrics from the hotpath HTTP server
 /// Returns None if hotpath-alloc feature is not enabled (404 response)
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_functions_alloc(
     agent: &ureq::Agent,
     port: u16,
@@ -82,6 +84,7 @@ pub(crate) fn fetch_functions_alloc(
 }
 
 /// Fetches channels from the hotpath HTTP server
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_channels(
     agent: &ureq::Agent,
     port: u16,
@@ -99,6 +102,7 @@ pub(crate) fn fetch_channels(
 
 /// Fetches recent timing logs for a specific function
 /// Returns None if function is not found (404 response)
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_function_logs_timing(
     agent: &ureq::Agent,
     port: u16,
@@ -128,6 +132,7 @@ pub(crate) fn fetch_function_logs_timing(
 
 /// Fetches recent allocation logs for a specific function
 /// Returns None if hotpath-alloc feature is not enabled (404 response)
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_function_logs_alloc(
     agent: &ureq::Agent,
     port: u16,
@@ -156,6 +161,7 @@ pub(crate) fn fetch_function_logs_alloc(
 }
 
 /// Fetches logs for a specific channel from the HTTP server
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_channel_logs(
     agent: &ureq::Agent,
     port: u16,
@@ -173,6 +179,7 @@ pub(crate) fn fetch_channel_logs(
 }
 
 /// Fetches streams from the hotpath HTTP server
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_streams(agent: &ureq::Agent, port: u16) -> Result<StreamsJson> {
     let url = Route::Streams.to_url(port);
     let streams: StreamsJson = agent
@@ -186,6 +193,7 @@ pub(crate) fn fetch_streams(agent: &ureq::Agent, port: u16) -> Result<StreamsJso
 }
 
 /// Fetches logs for a specific stream from the HTTP server
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn fetch_stream_logs(
     agent: &ureq::Agent,
     port: u16,

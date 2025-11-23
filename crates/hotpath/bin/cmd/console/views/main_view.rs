@@ -13,6 +13,7 @@ use ratatui::{
     Frame,
 };
 
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -106,6 +107,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
     );
 }
 
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let stats = &app.channels.channels;
 
@@ -226,6 +228,7 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let stats = &app.streams.streams;
 
@@ -344,6 +347,7 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: SelectedTab) {
     let create_tab_line = |tab: SelectedTab| {
         let name = if tab == selected_tab {

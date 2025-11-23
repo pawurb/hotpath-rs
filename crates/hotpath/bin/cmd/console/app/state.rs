@@ -2,6 +2,7 @@
 
 use super::{App, ChannelsFocus, FunctionsFocus, SelectedTab, StreamsFocus};
 
+#[cfg_attr(feature = "hotpath", hotpath::measure_all)]
 impl App {
     pub(crate) fn next_function(&mut self) {
         let function_count = self.active_functions().data.0.len();

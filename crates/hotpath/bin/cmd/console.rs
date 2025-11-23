@@ -21,6 +21,7 @@ pub struct ConsoleArgs {
     pub refresh_interval: u64,
 }
 
+#[cfg_attr(feature = "hotpath", hotpath::measure_all)]
 impl ConsoleArgs {
     pub fn run(&self) -> Result<()> {
         let mut app = App::new(self.metrics_port);

@@ -173,6 +173,7 @@ pub(crate) struct App {
     pub(crate) inspected_stream_log: Option<LogEntry>,
 }
 
+#[cfg_attr(feature = "hotpath", hotpath::measure_all)]
 impl App {
     /// Create a new App instance
     pub(crate) fn new(metrics_port: u16) -> Self {

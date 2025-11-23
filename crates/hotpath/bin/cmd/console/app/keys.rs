@@ -3,6 +3,7 @@
 use super::{App, ChannelsFocus, FunctionsFocus, SelectedTab, StreamsFocus};
 use crossterm::event::KeyCode;
 
+#[cfg_attr(feature = "hotpath", hotpath::measure_all)]
 impl App {
     pub(crate) fn handle_key_event(&mut self, key_code: KeyCode) {
         match key_code {

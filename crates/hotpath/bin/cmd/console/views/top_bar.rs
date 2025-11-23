@@ -9,6 +9,7 @@ use ratatui::{
 use std::time::Instant;
 
 /// Renders the top status bar showing connection status and refresh timer
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 pub(crate) fn render_status_bar(
     frame: &mut Frame,
     area: Rect,

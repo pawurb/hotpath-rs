@@ -15,6 +15,7 @@ use ratatui::{
 };
 
 /// Renders the streams table with stream statistics
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_streams_panel(
     stats: &[SerializableStreamStats],
