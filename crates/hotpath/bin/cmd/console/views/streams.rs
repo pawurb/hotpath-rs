@@ -1,13 +1,14 @@
 pub(crate) mod inspect;
 pub(crate) mod logs;
 
+use super::common_styles;
 use crate::cmd::console::app::StreamsFocus;
 use crate::cmd::console::widgets::formatters::truncate_left;
 use hotpath::channels::ChannelState;
 use hotpath::streams::SerializableStreamStats;
 use ratatui::{
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     symbols::border,
     widgets::{Block, Cell, HighlightSpacing, Row, Table, TableState},
     Frame,
@@ -28,16 +29,12 @@ pub(crate) fn render_streams_panel(
     let available_width = area.width.saturating_sub(10);
     let stream_width = ((available_width as f32 * 0.60) as usize).max(36);
 
-    let header_style = Style::default()
-        .fg(Color::Yellow)
-        .add_modifier(Modifier::BOLD);
-
     let header = Row::new(vec![
         Cell::from("Stream"),
         Cell::from("State"),
         Cell::from("Yielded"),
     ])
-    .style(header_style)
+    .style(common_styles::HEADER_STYLE)
     .height(1);
 
     let rows: Vec<Row> = stats
@@ -65,10 +62,6 @@ pub(crate) fn render_streams_panel(
         Constraint::Percentage(20), // Yielded
     ];
 
-    let selected_row_style = Style::default()
-        .bg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD);
-
     let table_block = if show_logs {
         let border_set = if focus == StreamsFocus::Streams {
             border::THICK
@@ -81,7 +74,7 @@ pub(crate) fn render_streams_panel(
             .border_style(if focus == StreamsFocus::Streams {
                 Style::default()
             } else {
-                Style::default().fg(Color::DarkGray)
+                common_styles::UNFOCUSED_BORDER_STYLE
             })
     } else {
         Block::bordered()
@@ -93,7 +86,7 @@ pub(crate) fn render_streams_panel(
         .header(header)
         .block(table_block)
         .column_spacing(1)
-        .row_highlight_style(selected_row_style)
+        .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
         .highlight_symbol(">> ")
         .highlight_spacing(HighlightSpacing::Always);
 

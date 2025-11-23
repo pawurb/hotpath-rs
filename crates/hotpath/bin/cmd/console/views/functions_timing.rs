@@ -1,9 +1,10 @@
 pub(crate) mod logs;
 
 use super::super::app::{App, FunctionsFocus};
+use super::common_styles;
 use ratatui::{
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
+    style::Style,
     symbols::border,
     text::Span,
     widgets::{Block, Cell, Row, Table},
@@ -30,13 +31,7 @@ pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rec
             .collect::<Vec<_>>(),
     )
     .chain(vec!["Total".to_string(), "% Total".to_string()])
-    .map(|h| {
-        Cell::from(h).style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
-    })
+    .map(|h| Cell::from(h).style(common_styles::HEADER_STYLE_CYAN))
     .collect::<Vec<_>>();
 
     let header = Row::new(header_cells).height(1);
@@ -90,29 +85,15 @@ pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rec
             .border_style(if focus == FunctionsFocus::Functions {
                 Style::default()
             } else {
-                Style::default().fg(Color::DarkGray)
+                common_styles::UNFOCUSED_BORDER_STYLE
             })
-            .title(Span::styled(
-                title,
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ))
+            .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
     } else {
         Block::bordered()
             .border_set(border::THICK)
-            .title(Span::styled(
-                title,
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ))
+            .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
     })
-    .row_highlight_style(
-        Style::default()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    )
+    .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
     .highlight_symbol(">> ");
 
     frame.render_stateful_widget(table, area, &mut app.timing_table_state);

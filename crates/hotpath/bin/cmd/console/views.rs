@@ -1,5 +1,6 @@
 pub(crate) mod bottom_bar;
 pub(crate) mod channels;
+pub(crate) mod common_styles;
 pub(crate) mod functions_memory;
 pub(crate) mod functions_timing;
 pub(crate) mod main_view;

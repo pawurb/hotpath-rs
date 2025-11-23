@@ -1,8 +1,9 @@
+use super::super::common_styles;
 use crate::cmd::console::app::CachedStreamLogs;
 use crate::cmd::console::widgets::formatters::{format_time_ago, truncate_message};
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::Style,
     symbols::border,
     widgets::{Block, HighlightSpacing, Row, Table, TableState},
     Frame,
@@ -29,7 +30,7 @@ pub(crate) fn render_logs_placeholder(
     if x < inner_area.x + inner_area.width && y < inner_area.y + inner_area.height {
         frame
             .buffer_mut()
-            .set_string(x, y, message, Style::default().fg(Color::DarkGray));
+            .set_string(x, y, message, common_styles::PLACEHOLDER_STYLE);
     }
 }
 
@@ -55,7 +56,7 @@ pub(crate) fn render_logs_panel(
         .border_style(if is_focused {
             Style::default()
         } else {
-            Style::default().fg(Color::DarkGray)
+            common_styles::UNFOCUSED_BORDER_STYLE
         });
 
     let inner_area = block.inner(area);
@@ -64,12 +65,8 @@ pub(crate) fn render_logs_panel(
     let available_width = inner_area.width.saturating_sub(2);
     let msg_width = (available_width.saturating_sub(20) as usize).max(20);
 
-    let header_style = Style::default()
-        .fg(Color::Yellow)
-        .add_modifier(Modifier::BOLD);
-
     let header = Row::new(vec!["Index", "Message", "Ago"])
-        .style(header_style)
+        .style(common_styles::HEADER_STYLE)
         .height(1);
 
     let rows: Vec<Row> = cached_logs
@@ -92,13 +89,9 @@ pub(crate) fn render_logs_panel(
         ratatui::layout::Constraint::Length(13), // Ago
     ];
 
-    let selected_row_style = Style::default()
-        .bg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD);
-
     let table = Table::new(rows, widths)
         .header(header)
-        .row_highlight_style(selected_row_style)
+        .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
         .highlight_symbol(">> ")
         .highlight_spacing(HighlightSpacing::Always);
 

@@ -1,13 +1,14 @@
 pub(crate) mod inspect;
 pub(crate) mod logs;
 
+use super::common_styles;
 use crate::cmd::console::app::ChannelsFocus;
 use crate::cmd::console::widgets::formatters::{queue_status, truncate_left};
 use hotpath::channels::{ChannelState, ChannelType, SerializableChannelStats};
 use hotpath::format_bytes;
 use ratatui::{
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     symbols::border,
     widgets::{Block, Cell, HighlightSpacing, Row, Table, TableState},
     Frame,
@@ -28,10 +29,6 @@ pub(crate) fn render_channels_panel(
     let available_width = area.width.saturating_sub(10);
     let channel_width = ((available_width as f32 * 0.22) as usize).max(36);
 
-    let header_style = Style::default()
-        .fg(Color::Yellow)
-        .add_modifier(Modifier::BOLD);
-
     let header = Row::new(vec![
         Cell::from("Channel"),
         Cell::from("Type"),
@@ -41,7 +38,7 @@ pub(crate) fn render_channels_panel(
         Cell::from("Queue"),
         Cell::from("Mem"),
     ])
-    .style(header_style)
+    .style(common_styles::HEADER_STYLE)
     .height(1);
 
     let rows: Vec<Row> = stats
@@ -88,10 +85,6 @@ pub(crate) fn render_channels_panel(
         Constraint::Percentage(10), // Mem
     ];
 
-    let selected_row_style = Style::default()
-        .bg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD);
-
     let table_block = if show_logs {
         let border_set = if focus == ChannelsFocus::Channels {
             border::THICK
@@ -104,7 +97,7 @@ pub(crate) fn render_channels_panel(
             .border_style(if focus == ChannelsFocus::Channels {
                 Style::default()
             } else {
-                Style::default().fg(Color::DarkGray)
+                common_styles::UNFOCUSED_BORDER_STYLE
             })
     } else {
         Block::bordered()
@@ -116,7 +109,7 @@ pub(crate) fn render_channels_panel(
         .header(header)
         .block(table_block)
         .column_spacing(1)
-        .row_highlight_style(selected_row_style)
+        .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
         .highlight_symbol(">> ")
         .highlight_spacing(HighlightSpacing::Always);
 
