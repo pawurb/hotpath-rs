@@ -17,17 +17,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - id: head_timing_metrics
-        env:
-          HOTPATH_JSON: true
-        run: |
-          # Extract timing metrics from head branch
-          {
-            echo 'metrics<<EOF'
-            cargo run --example benchmark --features='hotpath' | grep '^{"hotpath_profiling_mode"'
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
       - id: head_alloc_metrics
         env:
           HOTPATH_JSON: true
@@ -43,17 +32,6 @@ jobs:
         run: |
           git checkout ${{ github.event.pull_request.base.sha }}
 
-      - id: base_timing_metrics
-        env:
-          HOTPATH_JSON: true
-        run: |
-          # Extract timing metrics from base branch
-          {
-            echo 'metrics<<EOF'
-            cargo run --example benchmark --features='hotpath' | grep '^{"hotpath_profiling_mode"'
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
       - id: base_alloc_metrics
         env:
           HOTPATH_JSON: true
@@ -68,8 +46,6 @@ jobs:
       - name: Save metrics to artifact
         run: |
           mkdir -p /tmp/metrics
-          echo '${{ steps.head_timing_metrics.outputs.metrics }}' > /tmp/metrics/head_timing.json
-          echo '${{ steps.base_timing_metrics.outputs.metrics }}' > /tmp/metrics/base_timing.json
           echo '${{ steps.head_alloc_metrics.outputs.metrics }}' > /tmp/metrics/head_alloc.json
           echo '${{ steps.base_alloc_metrics.outputs.metrics }}' > /tmp/metrics/base_alloc.json
           echo '${{ github.event.pull_request.number }}' > /tmp/metrics/pr_number.txt

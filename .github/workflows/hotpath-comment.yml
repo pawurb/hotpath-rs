@@ -30,20 +30,6 @@ jobs:
       - name: Install hotpath CLI
         run: cargo install hotpath
 
-      - name: Post PR comment - timing mode
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          HEAD_METRICS=$(cat /tmp/metrics/head_timing.json)
-          BASE_METRICS=$(cat /tmp/metrics/base_timing.json)
-          PR_NUMBER=$(cat /tmp/metrics/pr_number.txt)
-          hotpath profile-pr \
-            --head-metrics "$HEAD_METRICS" \
-            --base-metrics "$BASE_METRICS" \
-            --github-token "$GH_TOKEN" \
-            --pr-number "$PR_NUMBER"
-
       - name: Post PR comment - alloc mode
         env:
           GH_TOKEN: ${{ github.token }}
