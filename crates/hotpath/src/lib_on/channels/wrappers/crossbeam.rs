@@ -44,42 +44,30 @@ where
     // Forward outer -> inner (proxy the send path)
     std::thread::spawn(move || {
         loop {
-            // Check for close signal (non-blocking)
-            match close_signal_rx.try_recv() {
-                Ok(_) => {
-                    // Outer receiver was closed/dropped
+            crossbeam_channel::select! {
+                recv(close_signal_rx) -> _ => {
+                    // Outer receiver was closed/dropped (or close signal sender dropped)
                     break;
                 }
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    // Close signal sender dropped, which means recv forwarder ended
-                    break;
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {
-                    // No close signal, continue
-                }
-            }
-
-            // Try to receive with timeout to periodically check close signal
-            match to_inner_rx.recv_timeout(std::time::Duration::from_millis(10)) {
-                Ok(msg) => {
-                    let log = log_on_send(&msg);
-                    if inner_tx.send(msg).is_err() {
-                        // Inner receiver dropped
-                        break;
+                recv(to_inner_rx) -> msg => {
+                    match msg {
+                        Ok(msg) => {
+                            let log = log_on_send(&msg);
+                            if inner_tx.send(msg).is_err() {
+                                // Inner receiver dropped
+                                break;
+                            }
+                            let _ = stats_tx_send.send(ChannelEvent::MessageSent {
+                                id,
+                                log,
+                                timestamp: std::time::Instant::now(),
+                            });
+                        }
+                        Err(_) => {
+                            // Outer sender dropped
+                            break;
+                        }
                     }
-                    let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                        id,
-                        log,
-                        timestamp: std::time::Instant::now(),
-                    });
-                }
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-                    // No message, loop again to check close signal
-                    continue;
-                }
-                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    // Outer sender dropped
-                    break;
                 }
             }
         }
@@ -169,42 +157,30 @@ where
     // Forward outer -> inner (proxy the send path)
     std::thread::spawn(move || {
         loop {
-            // Check for close signal (non-blocking)
-            match close_signal_rx.try_recv() {
-                Ok(_) => {
-                    // Outer receiver was closed/dropped
+            crossbeam_channel::select! {
+                recv(close_signal_rx) -> _ => {
+                    // Outer receiver was closed/dropped (or close signal sender dropped)
                     break;
                 }
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    // Close signal sender dropped, which means recv forwarder ended
-                    break;
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {
-                    // No close signal, continue
-                }
-            }
-
-            // Try to receive with timeout to periodically check close signal
-            match to_inner_rx.recv_timeout(std::time::Duration::from_millis(10)) {
-                Ok(msg) => {
-                    let log = log_on_send(&msg);
-                    if inner_tx.send(msg).is_err() {
-                        // Inner receiver dropped
-                        break;
+                recv(to_inner_rx) -> msg => {
+                    match msg {
+                        Ok(msg) => {
+                            let log = log_on_send(&msg);
+                            if inner_tx.send(msg).is_err() {
+                                // Inner receiver dropped
+                                break;
+                            }
+                            let _ = stats_tx_send.send(ChannelEvent::MessageSent {
+                                id,
+                                log,
+                                timestamp: std::time::Instant::now(),
+                            });
+                        }
+                        Err(_) => {
+                            // Outer sender dropped
+                            break;
+                        }
                     }
-                    let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                        id,
-                        log,
-                        timestamp: std::time::Instant::now(),
-                    });
-                }
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-                    // No message, loop again to check close signal
-                    continue;
-                }
-                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    // Outer sender dropped
-                    break;
                 }
             }
         }

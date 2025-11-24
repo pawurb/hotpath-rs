@@ -28,7 +28,6 @@ where
 
     let (stats_tx, _) = init_channels_state();
 
-    // Generate unique ID for this channel
     let id = CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
     let _ = stats_tx.send(ChannelEvent::Created {
@@ -143,7 +142,6 @@ where
 
     let (stats_tx, _) = init_channels_state();
 
-    // Generate unique ID for this channel
     let id = CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
     let _ = stats_tx.send(ChannelEvent::Created {
@@ -253,7 +251,6 @@ where
 
     let (stats_tx, _) = init_channels_state();
 
-    // Generate unique ID for this channel
     let id = CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
     let _ = stats_tx.send(ChannelEvent::Created {
