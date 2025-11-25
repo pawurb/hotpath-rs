@@ -12,4 +12,4 @@ hotpath-off = ["hotpath/hotpath-off"]
 
 [dependencies]
 hotpath = { path = "../hotpath", optional = true, features = ["tokio"] }
-tokio = { version = "1.47", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
