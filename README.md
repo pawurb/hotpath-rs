@@ -75,7 +75,7 @@ hotpath-off = ["hotpath/hotpath-off"]
 
 This config ensures that the lib has **zero** overhead unless explicitly enabled via a `hotpath` feature.
 
-Profiling features are mutually exclusive. To ensure compatibility with `--all-features` setting, the crate defines an additional `hotpath-off` flag. This is handled automatically - you should never need to enable it manually.
+To ensure compatibility with `--all-features` setting, the crate defines an additional `hotpath-off` flag. This is handled automatically - you should never need to enable it manually.
 
 ## Usage
 
