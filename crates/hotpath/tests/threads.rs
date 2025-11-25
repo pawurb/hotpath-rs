@@ -66,16 +66,15 @@ pub mod tests {
             "thread_count should match threads.len()"
         );
 
-        // Check that hotpath threads are present (hotpath-http-server, hotpath-threads)
-        let hotpath_threads: Vec<_> = threads_response
+        let hp_threads: Vec<_> = threads_response
             .threads
             .iter()
-            .filter(|t| t.name.starts_with("hotpath-"))
+            .filter(|t| t.name.starts_with("hp-"))
             .collect();
 
         assert!(
-            !hotpath_threads.is_empty(),
-            "Expected at least one hotpath- thread, found none. Threads: {:?}",
+            !hp_threads.is_empty(),
+            "Expected at least one hp- thread, found none. Threads: {:?}",
             threads_response
                 .threads
                 .iter()
