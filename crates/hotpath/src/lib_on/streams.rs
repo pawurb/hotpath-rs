@@ -137,7 +137,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
-            .name("stream-stats-collector".into())
+            .name("hotpath-streams".into())
             .spawn(move || {
                 while let Ok(event) = rx.recv() {
                     let mut stats = stats_map_clone.write().unwrap();

@@ -32,6 +32,8 @@ pub enum Route {
     Channels,
     /// GET /streams - Returns all stream statistics
     Streams,
+    /// GET /threads - Returns thread metrics
+    Threads,
     /// GET /functions_timing/{base64_name}/logs - Returns timing logs for a function
     FunctionTimingLogs { function_name: String },
     /// GET /functions_alloc/{base64_name}/logs - Returns allocation logs for a function
@@ -51,6 +53,7 @@ impl Route {
             Route::FunctionsAlloc => "/functions_alloc".to_string(),
             Route::Channels => "/channels".to_string(),
             Route::Streams => "/streams".to_string(),
+            Route::Threads => "/threads".to_string(),
             Route::FunctionTimingLogs { function_name } => {
                 let encoded =
                     base64::engine::general_purpose::STANDARD.encode(function_name.as_bytes());
@@ -81,6 +84,7 @@ impl Route {
             "/functions_alloc" => return Some(Route::FunctionsAlloc),
             "/channels" => return Some(Route::Channels),
             "/streams" => return Some(Route::Streams),
+            "/threads" => return Some(Route::Threads),
             _ => {}
         }
 
@@ -120,6 +124,8 @@ pub fn start_metrics_server_once(port: u16) {
 }
 
 fn start_metrics_server(port: u16) {
+    crate::threads::init_threads_monitoring();
+
     thread::Builder::new()
         .name("hotpath-http-server".into())
         .spawn(move || {
@@ -197,6 +203,19 @@ fn handle_request(request: Request) {
             Some(logs) => respond_json(request, &logs),
             None => respond_error(request, 404, "Stream not found"),
         },
+        #[cfg(feature = "threads")]
+        Some(Route::Threads) => {
+            let threads = crate::threads::get_threads_json();
+            respond_json(request, &threads);
+        }
+        #[cfg(not(feature = "threads"))]
+        Some(Route::Threads) => {
+            respond_error(
+                request,
+                404,
+                "Thread monitoring not available - enable threads feature",
+            );
+        }
         None => respond_error(request, 404, "Not found"),
     }
 }

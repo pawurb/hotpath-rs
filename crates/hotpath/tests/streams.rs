@@ -118,7 +118,6 @@ pub mod tests {
                     break;
                 }
                 Err(e) => {
-                    dbg!(&e);
                     last_error = Some(format!("Request error: {}", e));
                 }
             }

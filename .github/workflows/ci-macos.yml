@@ -1,0 +1,33 @@
+name: Rust CI (macOS)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: test ${{ matrix.rust }}
+    runs-on: macos-latest
+    timeout-minutes: 7
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust }}
+      - name: Run lib tests
+        run: | 
+          cargo test --lib --features hotpath
+      - name: Run threads tests
+        run: |
+          cargo test --test threads -- --nocapture --test-threads=1

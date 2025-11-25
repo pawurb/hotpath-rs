@@ -81,3 +81,6 @@ jobs:
       - name: Run channels tokio tests
         run: |
           cargo test --test channels_tokio -- --nocapture --test-threads=1
+      - name: Run threads tests
+        run: |
+          cargo test --test threads -- --nocapture --test-threads=1

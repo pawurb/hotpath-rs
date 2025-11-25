@@ -13,7 +13,7 @@ name = "hotpath"
 path = "bin/main.rs"
 
 [features]
-default = []
+default = ["threads"]
 hotpath = ["hotpath-macros/hotpath", "hotpath-macros/hotpath-off"]
 hotpath-alloc = ["dep:tokio"]
 hotpath-off = []
@@ -21,6 +21,7 @@ tui = ["dep:crossterm", "dep:ratatui", "dep:chrono"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
 crossbeam = []
+threads = []  
 
 [dependencies]
 arc-swap = "1.7"
