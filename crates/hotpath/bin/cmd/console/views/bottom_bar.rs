@@ -32,7 +32,17 @@ pub(crate) fn render_help_bar(
     streams_focus: StreamsFocus,
     functions_focus: FunctionsFocus,
 ) {
-    let controls_line = if selected_tab == SelectedTab::Streams {
+    let controls_line = if selected_tab == SelectedTab::Threads {
+        // Threads tab - simple controls, no logs
+        Line::from(vec![
+            NAV_LABEL.into(),
+            NAV_KEYS_FULL.blue().bold(),
+            PAUSE_LABEL.into(),
+            PAUSE_KEY.blue().bold(),
+            QUIT_LABEL.into(),
+            QUIT_KEY.blue().bold(),
+        ])
+    } else if selected_tab == SelectedTab::Streams {
         match streams_focus {
             StreamsFocus::Streams => Line::from(vec![
                 NAV_LABEL.into(),

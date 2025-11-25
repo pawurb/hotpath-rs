@@ -1,6 +1,7 @@
 use eyre::Result;
 use hotpath::channels::ChannelLogs;
 use hotpath::streams::{StreamLogs, StreamsJson};
+use hotpath::threads::ThreadsJson;
 use hotpath::{FunctionLogsJson, FunctionsJson, Route};
 
 /// Fetches timing metrics from the hotpath HTTP server
@@ -168,4 +169,18 @@ pub(crate) fn fetch_stream_logs(
         .read_json()
         .map_err(|e| eyre::eyre!("JSON deserialization failed: {}", e))?;
     Ok(logs)
+}
+
+/// Fetches thread metrics from the hotpath HTTP server
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
+pub(crate) fn fetch_threads(agent: &ureq::Agent, port: u16) -> Result<ThreadsJson> {
+    let url = Route::Threads.to_url(port);
+    let threads: ThreadsJson = agent
+        .get(&url)
+        .call()
+        .map_err(|e| eyre::eyre!("HTTP request failed: {}", e))?
+        .body_mut()
+        .read_json()
+        .map_err(|e| eyre::eyre!("JSON deserialization failed: {}", e))?;
+    Ok(threads)
 }

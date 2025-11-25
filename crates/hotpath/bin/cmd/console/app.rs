@@ -8,6 +8,7 @@
 
 use hotpath::channels::{ChannelLogs, LogEntry};
 use hotpath::streams::{StreamLogs, StreamsJson};
+use hotpath::threads::ThreadsJson;
 use hotpath::{channels::ChannelsJson, FunctionLogsJson, FunctionsJson};
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
@@ -25,6 +26,7 @@ pub(crate) enum SelectedTab {
     Memory,
     Channels,
     Streams,
+    Threads,
 }
 
 impl SelectedTab {
@@ -34,6 +36,7 @@ impl SelectedTab {
             SelectedTab::Memory => 2,
             SelectedTab::Channels => 3,
             SelectedTab::Streams => 4,
+            SelectedTab::Threads => 5,
         }
     }
 
@@ -43,6 +46,7 @@ impl SelectedTab {
             SelectedTab::Memory => "Memory",
             SelectedTab::Channels => "Channels",
             SelectedTab::Streams => "Streams",
+            SelectedTab::Threads => "Threads",
         }
     }
 
@@ -171,6 +175,10 @@ pub(crate) struct App {
     pub(crate) stream_logs: Option<CachedStreamLogs>,
     /// Stream log entry being inspected in popup
     pub(crate) inspected_stream_log: Option<LogEntry>,
+    /// Current threads data
+    pub(crate) threads: ThreadsJson,
+    /// Selection state for threads tab table
+    pub(crate) threads_table_state: TableState,
 }
 
 #[cfg_attr(feature = "hotpath", hotpath::measure_all)]
@@ -230,6 +238,13 @@ impl App {
             show_stream_logs: false,
             stream_logs: None,
             inspected_stream_log: None,
+            threads: ThreadsJson {
+                current_elapsed_ns: 0,
+                sample_interval_ms: 1000,
+                threads: vec![],
+                thread_count: 0,
+            },
+            threads_table_state: TableState::default().with_selected(0),
         }
     }
 
@@ -254,6 +269,7 @@ impl App {
             SelectedTab::Memory => &mut self.memory_table_state,
             SelectedTab::Channels => &mut self.channels_table_state,
             SelectedTab::Streams => &mut self.streams_table_state,
+            SelectedTab::Threads => &mut self.threads_table_state,
         }
     }
 

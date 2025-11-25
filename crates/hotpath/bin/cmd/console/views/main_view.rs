@@ -3,7 +3,7 @@ use super::channels::{inspect, logs as channel_logs};
 use super::functions_memory::logs as memory_logs;
 use super::functions_timing::logs as timing_logs;
 use super::streams::{inspect as stream_inspect, logs as stream_logs};
-use super::{bottom_bar, channels, functions_memory, functions_timing, streams, top_bar};
+use super::{bottom_bar, channels, functions_memory, functions_timing, streams, threads, top_bar};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -30,6 +30,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         SelectedTab::Memory => !app.memory_functions.data.0.is_empty(),
         SelectedTab::Channels => !app.channels.channels.is_empty(),
         SelectedTab::Streams => !app.streams.streams.is_empty(),
+        SelectedTab::Threads => !app.threads.threads.is_empty(),
     };
 
     top_bar::render_status_bar(
@@ -94,6 +95,9 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         }
         SelectedTab::Streams => {
             render_streams_view(frame, app, main_chunks[2]);
+        }
+        SelectedTab::Threads => {
+            render_threads_view(frame, app, main_chunks[2]);
         }
     }
 
@@ -348,6 +352,60 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 #[cfg_attr(feature = "hotpath", hotpath::measure)]
+fn render_threads_view(frame: &mut Frame, app: &mut App, area: Rect) {
+    let thread_list = &app.threads.threads;
+
+    if let Some(ref error_msg) = app.error_message {
+        if thread_list.is_empty() {
+            let error_text = vec![
+                Line::from(""),
+                Line::from("Error").red().bold().centered(),
+                Line::from(""),
+                Line::from(error_msg.as_str()).red().centered(),
+                Line::from(""),
+                Line::from(format!(
+                    "Make sure the metrics server is running on http://127.0.0.1:{}",
+                    app.metrics_port
+                ))
+                .yellow()
+                .centered(),
+            ];
+
+            let block = Block::bordered().border_set(border::THICK);
+            frame.render_widget(Paragraph::new(error_text).block(block), area);
+            return;
+        }
+    }
+
+    if thread_list.is_empty() {
+        let empty_text = vec![
+            Line::from(""),
+            Line::from("No thread statistics found").yellow().centered(),
+            Line::from(""),
+            Line::from("Make sure thread monitoring is enabled and the server is running")
+                .centered(),
+        ];
+
+        let block = Block::bordered().border_set(border::THICK);
+        frame.render_widget(Paragraph::new(empty_text).block(block), area);
+        return;
+    }
+
+    let selected_index = app.threads_table_state.selected().unwrap_or(0);
+    let thread_position = selected_index + 1; // 1-indexed
+    let total_threads = thread_list.len();
+
+    threads::render_threads_panel(
+        thread_list,
+        area,
+        frame,
+        &mut app.threads_table_state,
+        thread_position,
+        total_threads,
+    );
+}
+
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
 fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: SelectedTab) {
     let create_tab_line = |tab: SelectedTab| {
         let name = if tab == selected_tab {
@@ -371,6 +429,7 @@ fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: Sel
         create_tab_line(SelectedTab::Memory),
         create_tab_line(SelectedTab::Channels),
         create_tab_line(SelectedTab::Streams),
+        create_tab_line(SelectedTab::Threads),
     ];
 
     let selected_index = (selected_tab.number() - 1) as usize;

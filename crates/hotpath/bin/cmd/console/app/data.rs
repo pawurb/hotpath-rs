@@ -2,6 +2,7 @@
 
 use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use hotpath::streams::StreamsJson;
+use hotpath::threads::ThreadsJson;
 use hotpath::{FunctionLogsJson, FunctionsJson};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -339,6 +340,43 @@ impl App {
         }
     }
 
+    pub(crate) fn update_threads(&mut self, threads: ThreadsJson) {
+        // Capture the currently selected thread TID (not index!)
+        let selected_thread_tid = self
+            .threads_table_state
+            .selected()
+            .and_then(|idx| self.threads.threads.get(idx))
+            .map(|stat| stat.os_tid);
+
+        self.threads = threads;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        // Try to restore selection to the same thread TID
+        if let Some(thread_tid) = selected_thread_tid {
+            // Find the new index of the previously selected thread
+            if let Some(new_idx) = self
+                .threads
+                .threads
+                .iter()
+                .position(|stat| stat.os_tid == thread_tid)
+            {
+                self.threads_table_state.select(Some(new_idx));
+            } else {
+                // Thread no longer exists, select the last one if available
+                if !self.threads.threads.is_empty() {
+                    self.threads_table_state
+                        .select(Some(self.threads.threads.len() - 1));
+                }
+            }
+        } else if let Some(selected) = self.threads_table_state.selected() {
+            if selected >= self.threads.threads.len() && !self.threads.threads.is_empty() {
+                self.threads_table_state
+                    .select(Some(self.threads.threads.len() - 1));
+            }
+        }
+    }
+
     pub(crate) fn refresh_stream_logs(&mut self) {
         if self.paused {
             return;
@@ -414,6 +452,16 @@ impl App {
                 match super::super::http::fetch_streams(&self.agent, self.metrics_port) {
                     Ok(streams) => {
                         self.update_streams(streams);
+                    }
+                    Err(e) => {
+                        self.set_error(format!("{}", e));
+                    }
+                }
+            }
+            SelectedTab::Threads => {
+                match super::super::http::fetch_threads(&self.agent, self.metrics_port) {
+                    Ok(threads) => {
+                        self.update_threads(threads);
                     }
                     Err(e) => {
                         self.set_error(format!("{}", e));

@@ -411,4 +411,31 @@ impl App {
         self.streams_focus = StreamsFocus::Streams;
         self.stream_logs_table_state.select(None);
     }
+
+    // Threads state management methods
+    pub(crate) fn select_previous_thread(&mut self) {
+        let count = self.threads.threads.len();
+        if count == 0 {
+            return;
+        }
+
+        let i = match self.threads_table_state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        self.threads_table_state.select(Some(i));
+    }
+
+    pub(crate) fn select_next_thread(&mut self) {
+        let count = self.threads.threads.len();
+        if count == 0 {
+            return;
+        }
+
+        let i = match self.threads_table_state.selected() {
+            Some(i) => (i + 1).min(count - 1),
+            None => 0,
+        };
+        self.threads_table_state.select(Some(i));
+    }
 }

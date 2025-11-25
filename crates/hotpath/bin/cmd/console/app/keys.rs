@@ -25,6 +25,10 @@ impl App {
                 self.switch_to_tab(SelectedTab::Streams);
                 self.refresh_data();
             }
+            KeyCode::Char('5') => {
+                self.switch_to_tab(SelectedTab::Threads);
+                self.refresh_data();
+            }
             KeyCode::Char('o') | KeyCode::Char('O') => {
                 if self.selected_tab == SelectedTab::Channels {
                     match self.channels_focus {
@@ -38,6 +42,8 @@ impl App {
                         StreamsFocus::Logs => self.hide_stream_logs(),
                         StreamsFocus::Streams => self.toggle_stream_logs(),
                     }
+                } else if self.selected_tab == SelectedTab::Threads {
+                    // No logs panel for threads tab - do nothing
                 } else {
                     self.toggle_function_logs();
                     self.fetch_function_logs_if_open(self.metrics_port);
@@ -87,6 +93,8 @@ impl App {
                         StreamsFocus::Streams => self.select_next_stream(),
                         StreamsFocus::Logs | StreamsFocus::Inspect => self.select_next_stream_log(),
                     }
+                } else if self.selected_tab == SelectedTab::Threads {
+                    self.select_next_thread();
                 } else if self.selected_tab.is_functions_tab() {
                     match self.functions_focus {
                         FunctionsFocus::Functions => {
@@ -110,6 +118,8 @@ impl App {
                             self.select_previous_stream_log()
                         }
                     }
+                } else if self.selected_tab == SelectedTab::Threads {
+                    self.select_previous_thread();
                 } else if self.selected_tab.is_functions_tab() {
                     match self.functions_focus {
                         FunctionsFocus::Functions => {
