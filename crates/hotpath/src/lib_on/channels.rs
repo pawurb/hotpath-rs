@@ -338,7 +338,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
-            .name("hotpath-channels".into())
+            .name("hp-channels".into())
             .spawn(move || {
                 while let Ok(event) = rx.recv() {
                     let mut stats = stats_map_clone.write().unwrap();

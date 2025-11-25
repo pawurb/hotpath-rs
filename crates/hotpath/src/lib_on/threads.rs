@@ -114,7 +114,7 @@ pub fn init_threads_monitoring() {
         let state_clone = Arc::clone(&state);
 
         std::thread::Builder::new()
-            .name("hotpath-threads".into())
+            .name("hp-threads".into())
             .spawn(move || {
                 collector_loop(state_clone, sample_interval);
             })

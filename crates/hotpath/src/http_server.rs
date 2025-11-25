@@ -127,7 +127,7 @@ fn start_metrics_server(port: u16) {
     crate::threads::init_threads_monitoring();
 
     thread::Builder::new()
-        .name("hotpath-http-server".into())
+        .name("hp-server".into())
         .spawn(move || {
             let addr = format!("0.0.0.0:{}", port);
             let server = match Server::http(&addr) {
