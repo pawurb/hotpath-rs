@@ -75,6 +75,12 @@ pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rec
     let header = Row::new(header_cells).height(1);
 
     let entries = app.get_memory_measurements();
+    let total_functions = entries.len();
+    let function_position = app
+        .memory_table_state
+        .selected()
+        .map(|s| s + 1)
+        .unwrap_or(0);
 
     let rows = entries.iter().map(|(function_name, metrics)| {
         let short_name = hotpath::shorten_function_name(function_name);
@@ -119,17 +125,19 @@ pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rec
             border::PLAIN
         };
         Block::bordered()
+            .title(format!(" [{}/{}] ", function_position, total_functions))
+            .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
             .border_set(border_set)
             .border_style(if focus == FunctionsFocus::Functions {
                 Style::default()
             } else {
                 common_styles::UNFOCUSED_BORDER_STYLE
             })
-            .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
     } else {
         Block::bordered()
-            .border_set(border::THICK)
+            .title(format!(" [{}/{}] ", function_position, total_functions))
             .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
+            .border_set(border::THICK)
     })
     .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
     .highlight_symbol(">> ");
