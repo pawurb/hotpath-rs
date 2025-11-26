@@ -9,8 +9,7 @@ use ratatui::{
 };
 
 // Control text constants
-const NAV_LABEL: &str = " Navigate ";
-const NAV_KEYS_FULL: &str = "<←↑↓→/hjkl> ";
+const NAV_KEYS_FULL: &str = " <←↑↓→/hjkl> ";
 const TOGGLE_LOGS_LABEL: &str = " | Toggle Logs ";
 const TOGGLE_LOGS_KEY: &str = "<o> ";
 const PAUSE_LABEL: &str = " | Pause ";
@@ -35,7 +34,6 @@ pub(crate) fn render_help_bar(
     let controls_line = if selected_tab == SelectedTab::Threads {
         // Threads tab - simple controls, no logs
         Line::from(vec![
-            NAV_LABEL.into(),
             NAV_KEYS_FULL.blue().bold(),
             PAUSE_LABEL.into(),
             PAUSE_KEY.blue().bold(),
@@ -45,7 +43,6 @@ pub(crate) fn render_help_bar(
     } else if selected_tab == SelectedTab::Streams {
         match streams_focus {
             StreamsFocus::Streams => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -55,7 +52,6 @@ pub(crate) fn render_help_bar(
                 QUIT_KEY.blue().bold(),
             ]),
             StreamsFocus::Logs => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -67,7 +63,6 @@ pub(crate) fn render_help_bar(
                 QUIT_KEY.blue().bold(),
             ]),
             StreamsFocus::Inspect => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -82,7 +77,6 @@ pub(crate) fn render_help_bar(
     } else if selected_tab == SelectedTab::Channels {
         match channels_focus {
             ChannelsFocus::Channels => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -92,7 +86,6 @@ pub(crate) fn render_help_bar(
                 QUIT_KEY.blue().bold(),
             ]),
             ChannelsFocus::Logs => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -104,7 +97,6 @@ pub(crate) fn render_help_bar(
                 QUIT_KEY.blue().bold(),
             ]),
             ChannelsFocus::Inspect => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -119,7 +111,6 @@ pub(crate) fn render_help_bar(
     } else {
         match functions_focus {
             FunctionsFocus::Functions => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -129,7 +120,6 @@ pub(crate) fn render_help_bar(
                 QUIT_KEY.blue().bold(),
             ]),
             FunctionsFocus::Logs => Line::from(vec![
-                NAV_LABEL.into(),
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -141,9 +131,7 @@ pub(crate) fn render_help_bar(
         }
     };
 
-    let block = Block::bordered()
-        .title(" Controls ")
-        .border_set(border::PLAIN);
+    let block = Block::bordered().border_set(border::PLAIN);
 
     let paragraph = Paragraph::new(controls_line).block(block).left_aligned();
 
