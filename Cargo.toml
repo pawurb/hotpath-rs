@@ -14,8 +14,8 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-hotpath-macros = { path = "./crates/hotpath-macros", version = "0.7.4" }
-hotpath = { path = "./crates/hotpath", version = "0.7.4" }
+hotpath-macros = { path = "./crates/hotpath-macros", version = "0.7.5" }
+hotpath = { path = "./crates/hotpath", version = "0.7.5" }
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
