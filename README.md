@@ -1,9 +1,7 @@
 # <img src="hotpath-logo2.png" alt="hotpath-rs logo" width="80px" align="left"> hotpath - real-time Rust performance and data flow profiler
 [![Latest Version](https://img.shields.io/crates/v/hotpath.svg)](https://crates.io/crates/hotpath) [![GH Actions](https://github.com/pawurb/hotpath/actions/workflows/ci.yml/badge.svg)](https://github.com/pawurb/hotpath/actions)
 
-
-
-![hotpath TUI Example](hotpath-tui3.gif)
+![hotpath TUI Example](hotpath-tui6.gif)
 
 A lightweight Rust profiler for latency, memory, and data-flow insight. Instrument functions, channels, and streams to find bottlenecks and focus optimizations where they matter most.
 
