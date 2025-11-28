@@ -277,6 +277,9 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn measure(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
+
+    let attrs = &input.attrs;
+
     let vis = &input.vis;
     let sig = &input.sig;
     let block = &input.block;
@@ -300,6 +303,7 @@ pub fn measure(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let output = quote! {
+        #(#attrs)*
         #vis #sig {
             #wrapped
         }
