@@ -238,10 +238,8 @@ fn cpu_intensive_worker(stop_flag: Arc<Mutex<bool>>) {
             let mut counter = 0u64;
             loop {
                 // Check stop flag periodically
-                if counter % 1_000_000 == 0 {
-                    if *stop_flag.lock().unwrap() {
-                        break;
-                    }
+                if counter.is_multiple_of(1_000_000) && *stop_flag.lock().unwrap() {
+                    break;
                 }
                 // CPU-intensive work - should show as "Running"
                 counter = counter.wrapping_add(1);
@@ -268,7 +266,7 @@ fn blocking_io_worker(stop_flag: Arc<Mutex<bool>>) {
 
                 // Write to file (may briefly show as blocked during I/O)
                 let data: Vec<u8> = (0..4096).map(|x| (x % 256) as u8).collect();
-                if let Ok(_) = std::fs::write(&file_path, &data) {
+                if std::fs::write(&file_path, &data).is_ok() {
                     // Sync to disk - more likely to show blocked state
                     if let Ok(file) = std::fs::File::open(&file_path) {
                         let _ = file.sync_all();
