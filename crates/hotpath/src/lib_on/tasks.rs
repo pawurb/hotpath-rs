@@ -183,7 +183,6 @@ pub(crate) enum PollResult {
 
 /// Events emitted during the lifecycle of an instrumented task (future).
 #[derive(Debug)]
-#[allow(dead_code)]
 pub(crate) enum TaskEvent {
     Created {
         id: u64,

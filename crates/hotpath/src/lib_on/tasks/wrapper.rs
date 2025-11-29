@@ -132,6 +132,10 @@ impl<F: Future> Future for InstrumentedTask<F> {
             log_message: None,
         });
 
+        if *this.completed {
+            send_task_event(TaskEvent::Completed { id });
+        }
+
         result
     }
 }
@@ -214,6 +218,10 @@ where
             result: poll_result,
             log_message,
         });
+
+        if *this.completed {
+            send_task_event(TaskEvent::Completed { id });
+        }
 
         result
     }
