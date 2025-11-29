@@ -89,7 +89,10 @@ impl<F> InstrumentedFuture<F> {
     }
 }
 
-impl<F: Future> Future for InstrumentedFuture<F> {
+impl<F: Future> Future for InstrumentedFuture<F>
+where
+    F::Output: std::fmt::Debug,
+{
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -106,7 +109,12 @@ impl<F: Future> Future for InstrumentedFuture<F> {
 
         match &result {
             Poll::Pending => println!("[FUTURE {}] Poll #{} -> Pending", location, count),
-            Poll::Ready(_) => println!("[FUTURE {}] Poll #{} -> Ready", location, count),
+            Poll::Ready(value) => {
+                println!(
+                    "[FUTURE {}] Poll #{} -> Ready({:?})",
+                    location, count, value
+                )
+            }
         }
 
         result

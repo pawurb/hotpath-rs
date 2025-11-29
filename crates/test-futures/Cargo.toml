@@ -12,6 +12,3 @@ tokio = { version = "1.0", features = ["full"] }
 default = []
 hotpath = ["hotpath/hotpath"]
 
-[[example]]
-name = "basic"
-path = "examples/basic.rs"

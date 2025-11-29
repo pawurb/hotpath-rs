@@ -51,4 +51,15 @@ async fn main() {
     println!("Result: {}\n", outer);
 
     println!("=== Demo Complete ===");
+
+    // Example: Future returning a type without Debug - will cause compile error
+    // Uncomment to see the error:
+    struct NoDebug(i32);
+
+    async fn returns_no_debug() -> NoDebug {
+        NoDebug(42)
+    }
+
+    // This will fail to compile because NoDebug doesn't implement Debug
+    let _result = future!(returns_no_debug()).await;
 }
