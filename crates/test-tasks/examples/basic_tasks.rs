@@ -6,7 +6,7 @@ use hotpath::future;
 use hotpath::tasks::FuturesGuard;
 use std::time::Duration;
 
-// A type that does NOT implement Debug
+#[allow(dead_code)]
 struct NoDebug(i32);
 
 async fn returns_no_debug() -> NoDebug {
@@ -99,4 +99,11 @@ async fn main() {
 
     // Small delay to let background thread process all events
     tokio::time::sleep(Duration::from_millis(10)).await;
+
+    // For testing: allow configurable sleep to keep server running
+    if let Ok(secs) = std::env::var("TEST_SLEEP_SECONDS") {
+        if let Ok(secs) = secs.parse::<u64>() {
+            tokio::time::sleep(Duration::from_secs(secs)).await;
+        }
+    }
 }

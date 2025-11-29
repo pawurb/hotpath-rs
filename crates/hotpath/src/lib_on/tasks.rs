@@ -214,6 +214,13 @@ pub fn init_tasks_state() {
     TASKS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
+        // Start HTTP server if HOTPATH_HTTP_PORT is set
+        if let Ok(port_str) = std::env::var("HOTPATH_HTTP_PORT") {
+            if let Ok(port) = port_str.parse::<u16>() {
+                crate::http_server::start_metrics_server_once(port);
+            }
+        }
+
         let (tx, rx) = unbounded::<TaskEvent>();
         let stats_map = Arc::new(RwLock::new(HashMap::<u64, TaskStats>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
