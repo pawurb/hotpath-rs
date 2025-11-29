@@ -61,6 +61,9 @@ pin_project! {
     /// - Each poll call with result (Pending/Ready)
     /// - Wake events (via instrumented waker)
     /// - Drop (via PinnedDrop)
+    ///
+    /// This variant does NOT require `Debug` on the output type.
+    /// Use `InstrumentedFutureLog` (via `future!(expr, log = true)`) to print the output value.
     pub struct InstrumentedFuture<F> {
         #[pin]
         inner: F,
@@ -89,7 +92,70 @@ impl<F> InstrumentedFuture<F> {
     }
 }
 
-impl<F: Future> Future for InstrumentedFuture<F>
+impl<F: Future> Future for InstrumentedFuture<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        *this.poll_count += 1;
+        let count = *this.poll_count;
+        let location = *this.location;
+
+        // Create an instrumented waker that will log wake events
+        let instrumented_waker = create_instrumented_waker(cx.waker(), location);
+        let mut instrumented_cx = Context::from_waker(&instrumented_waker);
+
+        let result = this.inner.poll(&mut instrumented_cx);
+
+        match &result {
+            Poll::Pending => println!("[FUTURE {}] Poll #{} -> Pending", location, count),
+            Poll::Ready(_) => println!("[FUTURE {}] Poll #{} -> Ready", location, count),
+        }
+
+        result
+    }
+}
+
+// ============================================================================
+// InstrumentedFutureLog (with Debug bound)
+// ============================================================================
+
+pin_project! {
+    /// A wrapper around a future that prints lifecycle events including the output value.
+    ///
+    /// Created via the `future!(expr, log = true)` macro, this wrapper tracks:
+    /// - Creation (printed by the macro)
+    /// - Each poll call with result (Pending/Ready with Debug output)
+    /// - Wake events (via instrumented waker)
+    /// - Drop (via PinnedDrop)
+    ///
+    /// This variant requires `Debug` on the output type to print the value.
+    pub struct InstrumentedFutureLog<F> {
+        #[pin]
+        inner: F,
+        location: &'static str,
+        poll_count: usize,
+    }
+
+    impl<F> PinnedDrop for InstrumentedFutureLog<F> {
+        fn drop(this: Pin<&mut Self>) {
+            println!("[FUTURE {}] Dropped", this.location);
+        }
+    }
+}
+
+impl<F> InstrumentedFutureLog<F> {
+    /// Create a new instrumented future with logging.
+    pub fn new(inner: F, location: &'static str) -> Self {
+        Self {
+            inner,
+            location,
+            poll_count: 0,
+        }
+    }
+}
+
+impl<F: Future> Future for InstrumentedFutureLog<F>
 where
     F::Output: std::fmt::Debug,
 {

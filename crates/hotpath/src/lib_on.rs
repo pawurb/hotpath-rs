@@ -19,7 +19,7 @@ pub mod futures;
 pub mod threads;
 
 pub use channels::{Instrument, InstrumentLog};
-pub use futures::InstrumentFuture;
+pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 use crossbeam_channel::Sender;

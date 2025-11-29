@@ -1,9 +1,16 @@
-//! Basic example demonstrating the `future!` macro for instrumenting futures.
+//! Example demonstrating the `future!` macro with and without `log = true`.
 //!
-//! Run with: cargo run -p test-futures --example basic --features hotpath
+//! Run with: cargo run -p test-futures --example basic_tasks --features hotpath
 
 use hotpath::future;
 use std::time::Duration;
+
+// A type that does NOT implement Debug
+struct NoDebug(i32);
+
+async fn returns_no_debug() -> NoDebug {
+    NoDebug(42)
+}
 
 async fn slow_operation() -> i32 {
     tokio::time::sleep(Duration::from_millis(10)).await;
@@ -20,46 +27,56 @@ async fn multi_step_operation() -> String {
 
 #[tokio::main]
 async fn main() {
-    println!("=== Basic Future Instrumentation Demo ===\n");
+    println!("=== Future Instrumentation Demo ===\n");
 
-    // Instrument a simple async block
-    println!("--- Simple async block ---");
-    let result = future!(async { 1 + 1 }).await;
-    println!("Result: {}\n", result);
+    // =========================================================================
+    // WITHOUT log = true (no Debug requirement)
+    // =========================================================================
+    println!("--- Without log = true (works with any type) ---\n");
 
-    // Instrument an async function call
-    println!("--- Async function (slow_operation) ---");
+    // Works with non-Debug types!
+    println!("Future returning NoDebug type:");
+    let _result = future!(returns_no_debug()).await;
+    println!();
+
+    // Also works with Debug types, just doesn't print the value
+    println!("Future returning i32 (no value printed):");
     let result = future!(slow_operation()).await;
     println!("Result: {}\n", result);
 
-    // Instrument a multi-step async operation
-    println!("--- Multi-step async operation ---");
-    let result = future!(multi_step_operation()).await;
+    // =========================================================================
+    // WITH log = true (requires Debug)
+    // =========================================================================
+    println!("--- With log = true (prints Debug output) ---\n");
+
+    // Prints the value when Ready
+    println!("Future returning i32 (value printed):");
+    let result = future!(slow_operation(), log = true).await;
     println!("Result: {}\n", result);
 
-    // Nested instrumented futures
-    println!("--- Nested instrumented futures ---");
-    let outer = future!(async {
-        let inner_result = future!(async {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-            100
-        })
-        .await;
-        inner_result * 2
-    })
+    // Multi-step operation with logging
+    println!("Multi-step future with logging:");
+    let result = future!(multi_step_operation(), log = true).await;
+    println!("Result: {}\n", result);
+
+    // Nested futures with logging
+    println!("Nested futures with logging:");
+    let outer = future!(
+        async {
+            let inner_result = future!(
+                async {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    100
+                },
+                log = true
+            )
+            .await;
+            inner_result * 2
+        },
+        log = true
+    )
     .await;
     println!("Result: {}\n", outer);
 
     println!("=== Demo Complete ===");
-
-    // Example: Future returning a type without Debug - will cause compile error
-    // Uncomment to see the error:
-    struct NoDebug(i32);
-
-    async fn returns_no_debug() -> NoDebug {
-        NoDebug(42)
-    }
-
-    // This will fail to compile because NoDebug doesn't implement Debug
-    let _result = future!(returns_no_debug()).await;
 }
