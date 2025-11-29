@@ -207,9 +207,9 @@ pub(crate) enum TaskEvent {
     },
 }
 
-pub(crate) type TasksState = (CbSender<TaskEvent>, Arc<RwLock<HashMap<u64, TaskStats>>>);
+pub(crate) type TasksStatsState = (CbSender<TaskEvent>, Arc<RwLock<HashMap<u64, TaskStats>>>);
 
-static TASKS_STATE: OnceLock<TasksState> = OnceLock::new();
+static TASKS_STATE: OnceLock<TasksStatsState> = OnceLock::new();
 
 /// Initialize the tasks event collection system (called on first instrumented future).
 #[doc(hidden)]
