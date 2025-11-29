@@ -5,6 +5,8 @@ static RE_CHANNEL_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/channels/(\d+)/logs$").unwrap());
 static RE_STREAM_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/streams/(\d+)/logs$").unwrap());
+static RE_TASK_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/tasks/(\d+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
@@ -21,6 +23,8 @@ pub enum Route {
     Channels,
     /// GET /streams - Returns all stream statistics
     Streams,
+    /// GET /tasks - Returns all task statistics
+    Tasks,
     /// GET /threads - Returns thread metrics
     Threads,
     /// GET /functions_timing/{base64_name}/logs - Returns timing logs for a function
@@ -31,6 +35,8 @@ pub enum Route {
     ChannelLogs { channel_id: u64 },
     /// GET /streams/{id}/logs - Returns logs for a specific stream
     StreamLogs { stream_id: u64 },
+    /// GET /tasks/{id}/logs - Returns logs for a specific task by call ID
+    TaskLogs { task_id: u64 },
 }
 
 impl Route {
@@ -42,6 +48,7 @@ impl Route {
             Route::FunctionsAlloc => "/functions_alloc".to_string(),
             Route::Channels => "/channels".to_string(),
             Route::Streams => "/streams".to_string(),
+            Route::Tasks => "/tasks".to_string(),
             Route::Threads => "/threads".to_string(),
             Route::FunctionTimingLogs { function_name } => {
                 let encoded =
@@ -55,6 +62,7 @@ impl Route {
             }
             Route::ChannelLogs { channel_id } => format!("/channels/{}/logs", channel_id),
             Route::StreamLogs { stream_id } => format!("/streams/{}/logs", stream_id),
+            Route::TaskLogs { task_id } => format!("/tasks/{}/logs", task_id),
         }
     }
 
@@ -73,6 +81,7 @@ impl Route {
             "/functions_alloc" => return Some(Route::FunctionsAlloc),
             "/channels" => return Some(Route::Channels),
             "/streams" => return Some(Route::Streams),
+            "/tasks" => return Some(Route::Tasks),
             "/threads" => return Some(Route::Threads),
             _ => {}
         }
@@ -97,6 +106,11 @@ impl Route {
             return Some(Route::StreamLogs { stream_id });
         }
 
+        if let Some(caps) = RE_TASK_LOGS.captures(path) {
+            let task_id = caps[1].parse().ok()?;
+            return Some(Route::TaskLogs { task_id });
+        }
+
         None
     }
 }
@@ -116,6 +130,7 @@ mod server {
     use crate::channels::{get_channel_logs, get_channels_json};
     use crate::output::FunctionsJson;
     use crate::streams::{get_stream_logs, get_streams_json};
+    use crate::tasks::{get_task_logs, get_tasks_json};
     use crate::{FunctionLogsJson, QueryRequest, HOTPATH_STATE};
     use crossbeam_channel::bounded;
     use serde::Serialize;
@@ -188,6 +203,10 @@ mod server {
                 let streams = get_streams_json();
                 respond_json(request, &streams);
             }
+            Some(Route::Tasks) => {
+                let tasks = get_tasks_json();
+                respond_json(request, &tasks);
+            }
             Some(Route::FunctionTimingLogs { function_name }) => {
                 match get_function_logs_timing(&function_name) {
                     Some(logs) => respond_json(request, &logs),
@@ -220,6 +239,10 @@ mod server {
                     None => respond_error(request, 404, "Stream not found"),
                 }
             }
+            Some(Route::TaskLogs { task_id }) => match get_task_logs(task_id) {
+                Some(logs) => respond_json(request, &logs),
+                None => respond_error(request, 404, "Task not found"),
+            },
             #[cfg(feature = "threads")]
             Some(Route::Threads) => {
                 let threads = crate::threads::get_threads_json();

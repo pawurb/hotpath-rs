@@ -14,6 +14,8 @@ mod lib_on;
 pub use lib_on::channels;
 #[cfg(not(feature = "hotpath-off"))]
 pub use lib_on::streams;
+#[cfg(not(feature = "hotpath-off"))]
+pub use lib_on::tasks;
 #[cfg(all(not(feature = "hotpath-off"), feature = "threads"))]
 pub use lib_on::threads;
 

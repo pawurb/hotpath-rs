@@ -10,6 +10,7 @@ members = [
     "crates/test-channels-std",
     "crates/test-streams",
     "crates/test-channels-tokio",
+    "crates/test-tasks",
 ]
 resolver = "2"
 

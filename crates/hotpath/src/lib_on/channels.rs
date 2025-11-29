@@ -216,7 +216,7 @@ impl From<&ChannelStats> for SerializableChannelStats {
         let label = resolve_label(
             channel_stats.source,
             channel_stats.label.as_deref(),
-            channel_stats.iter,
+            Some(channel_stats.iter),
         );
 
         Self {
@@ -333,7 +333,6 @@ pub(crate) fn get_log_limit() -> usize {
 }
 
 /// Initialize the channel statistics collection system (called on first instrumented channel).
-/// Returns a reference to the global state.
 pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
     CHANNELS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
@@ -435,7 +434,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
     })
 }
 
-pub(crate) fn resolve_label(id: &'static str, provided: Option<&str>, iter: u32) -> String {
+pub(crate) fn resolve_label(id: &'static str, provided: Option<&str>, iter: Option<u32>) -> String {
     let base_label = if let Some(l) = provided {
         l.to_string()
     } else if let Some(pos) = id.rfind(':') {
@@ -446,14 +445,13 @@ pub(crate) fn resolve_label(id: &'static str, provided: Option<&str>, iter: u32)
         extract_filename(id)
     };
 
-    if iter > 0 {
-        format!("{}-{}", base_label, iter + 1)
-    } else {
-        base_label
+    match iter {
+        Some(i) if i > 0 => format!("{}-{}", base_label, i + 1),
+        _ => base_label,
     }
 }
 
-fn extract_filename(path: &str) -> String {
+pub(crate) fn extract_filename(path: &str) -> String {
     let components: Vec<&str> = path.split('/').collect();
     if components.len() >= 2 {
         format!(

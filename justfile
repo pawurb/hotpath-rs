@@ -13,3 +13,4 @@ test_all:
     cargo test --test channels_std -- --nocapture --test-threads=1
     cargo test --test channels_tokio -- --nocapture --test-threads=1
     cargo test --test threads -- --nocapture --test-threads=1
+    cargo test --test tasks -- --nocapture --test-threads=1
