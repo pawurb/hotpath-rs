@@ -35,9 +35,8 @@ pub mod tests {
             "=== Future Statistics",
             "Futures:",
             "Future",
-            "State",
+            "Calls",
             "Polls",
-            "Result",
         ];
 
         for expected in all_expected {
@@ -49,7 +48,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_futures_states() {
+    fn test_futures_aggregation() {
         let output = Command::new("cargo")
             .args([
                 "run",
@@ -71,71 +70,7 @@ pub mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        // Check for ready states (completed futures)
-        // Now we have 8 ready futures (6 from future! + 2 from #[future_fn])
-        let ready_count = stdout.matches("| ready").count();
-        assert!(
-            ready_count >= 8,
-            "Expected at least 8 'ready' states for futures, found {}.\nOutput:\n{}",
-            ready_count,
-            stdout
-        );
-
-        // Check for cancelled state (the dropped future)
-        assert!(
-            stdout.contains("| cancelled"),
-            "Expected 'cancelled' state for dropped future.\nOutput:\n{}",
-            stdout
-        );
-    }
-
-    #[test]
-    fn test_futures_results() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tasks",
-                "--example",
-                "basic_tasks",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        // Check for N/A results (futures without log=true)
-        // Now we have 3 N/A results (2 from future! + 1 from #[future_fn] without log)
-        let na_count = stdout.matches("| N/A").count();
-        assert!(
-            na_count >= 3,
-            "Expected at least 3 'N/A' results for futures without log=true, found {}.\nOutput:\n{}",
-            na_count,
-            stdout
-        );
-
-        // Check for actual logged results
-        assert!(
-            stdout.contains("| 42"),
-            "Expected '42' result for slow_operation with log=true.\nOutput:\n{}",
-            stdout
-        );
-
-        assert!(
-            stdout.contains("\"Hello World\""),
-            "Expected 'Hello World' result for multi_step_operation.\nOutput:\n{}",
-            stdout
-        );
-
-        // Check for #[future_fn] attributed function results
+        // Check for #[future_fn] attributed function names (aggregated)
         assert!(
             stdout.contains("attributed_no_log"),
             "Expected 'attributed_no_log' function name in output.\nOutput:\n{}",
@@ -148,16 +83,13 @@ pub mod tests {
             stdout
         );
 
+        // Check that aggregation shows correct call counts and polls
+        // attributed_no_log and attributed_with_log are each called 2 times
+        // Each call has 2 polls, so total is 4 polls
+        // The table should show "| 2     | 4     |" for call count and polls
         assert!(
-            stdout.contains("\"attributed result\""),
-            "Expected 'attributed result' from #[future_fn(log = true)].\nOutput:\n{}",
-            stdout
-        );
-
-        // Check for dash result (cancelled future)
-        assert!(
-            stdout.contains("| -"),
-            "Expected '-' result for cancelled future.\nOutput:\n{}",
+            stdout.contains("| 2     | 4"),
+            "Expected aggregated call count of 2 and poll count of 4.\nOutput:\n{}",
             stdout
         );
     }
@@ -219,21 +151,24 @@ pub mod tests {
             );
         }
 
-        // Test /tasks/:id/logs endpoint
+        // Test /tasks/{id}/logs endpoint
         let tasks_response: TasksJson =
             serde_json::from_str(&json_text).expect("Failed to parse tasks JSON");
 
         if let Some(first_task) = tasks_response.tasks.first() {
-            let logs_url = format!("http://127.0.0.1:6775/tasks/{}/logs", first_task.id);
-            let response = ureq::get(&logs_url)
-                .call()
-                .expect("Failed to call /tasks/:id/logs endpoint");
+            // Get the first call's ID from the calls array
+            if let Some(first_call) = first_task.task_calls.first() {
+                let logs_url = format!("http://127.0.0.1:6775/tasks/{}/logs", first_call.id);
+                let response = ureq::get(&logs_url)
+                    .call()
+                    .expect("Failed to call /tasks/{id}/logs endpoint");
 
-            assert_eq!(
-                response.status(),
-                200,
-                "Expected status 200 for /tasks/:id/logs endpoint"
-            );
+                assert_eq!(
+                    response.status(),
+                    200,
+                    "Expected status 200 for /tasks/{{id}}/logs endpoint"
+                );
+            }
         }
 
         let _ = child.kill();

@@ -147,7 +147,7 @@ impl Drop for StreamsGuard {
                     let label = resolve_label(
                         stream_stats.source,
                         stream_stats.label.as_deref(),
-                        stream_stats.iter,
+                        Some(stream_stats.iter),
                     );
                     table.add_row(Row::new(vec![
                         Cell::new(&label),

@@ -35,7 +35,7 @@ pub enum Route {
     ChannelLogs { channel_id: u64 },
     /// GET /streams/{id}/logs - Returns logs for a specific stream
     StreamLogs { stream_id: u64 },
-    /// GET /tasks/{id}/logs - Returns logs for a specific task
+    /// GET /tasks/{id}/logs - Returns logs for a specific task by call ID
     TaskLogs { task_id: u64 },
 }
 
@@ -239,7 +239,7 @@ mod server {
                     None => respond_error(request, 404, "Stream not found"),
                 }
             }
-            Some(Route::TaskLogs { task_id }) => match get_task_logs(&task_id.to_string()) {
+            Some(Route::TaskLogs { task_id }) => match get_task_logs(task_id) {
                 Some(logs) => respond_json(request, &logs),
                 None => respond_error(request, 404, "Task not found"),
             },

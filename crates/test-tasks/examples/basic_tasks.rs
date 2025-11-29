@@ -106,10 +106,19 @@ async fn main() {
         );
         // _cancelled is dropped here without being awaited
     }
+    println!("Future was dropped without being awaited\n");
+
+    // =========================================================================
+    // Using #[future_fn] attribute macro
+    // =========================================================================
+    println!("--- Using #[future_fn] attribute macro ---\n");
+
     let _result = attributed_no_log().await;
     let _result = attributed_with_log().await;
     let _result = attributed_no_log().await;
     let _result = attributed_with_log().await;
+
+    println!("=== Demo Complete ===\n");
 
     // Small delay to let background thread process all events
     tokio::time::sleep(Duration::from_millis(10)).await;

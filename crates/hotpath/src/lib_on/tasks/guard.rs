@@ -6,8 +6,10 @@ use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
 
-use crate::channels::{resolve_label, Format};
-use crate::tasks::{get_sorted_task_stats, init_tasks_state, SerializableTaskStats, TasksJson};
+use crate::channels::Format;
+use crate::tasks::{
+    get_sorted_task_stats, init_tasks_state, resolve_label, SerializableTaskStats, TasksJson,
+};
 
 /// Builder for creating a FuturesGuard with custom configuration.
 ///
@@ -141,34 +143,18 @@ impl Drop for FuturesGuard {
 
                 table.add_row(Row::new(vec![
                     Cell::new("Future"),
-                    Cell::new("State"),
+                    Cell::new("Calls"),
                     Cell::new("Polls"),
-                    Cell::new("Result"),
                 ]));
 
                 for future_stats in futures {
-                    let label = resolve_label(
-                        future_stats.source,
-                        future_stats.label.as_deref(),
-                        future_stats.iter,
-                    );
-                    let result = match future_stats.get_result() {
-                        Some(s) => shorten_result(s),
-                        None => {
-                            // If ready but no result, it means log=true wasn't used
-                            if future_stats.state == crate::tasks::TaskState::Ready {
-                                "N/A".to_string()
-                            } else {
-                                "-".to_string()
-                            }
-                        }
-                    };
+                    let label =
+                        resolve_label(future_stats.source, future_stats.label.as_deref(), None);
 
                     table.add_row(Row::new(vec![
                         Cell::new(&label),
-                        Cell::new(future_stats.state.as_str()),
-                        Cell::new(&future_stats.poll_count.to_string()),
-                        Cell::new(&result),
+                        Cell::new(&future_stats.call_count().to_string()),
+                        Cell::new(&future_stats.total_polls().to_string()),
                     ]));
                 }
 
@@ -196,14 +182,5 @@ impl Drop for FuturesGuard {
                 }
             }
         }
-    }
-}
-
-/// Shorten a result string for display.
-fn shorten_result(result: &str) -> String {
-    if result.len() > 50 {
-        format!("{}...", &result[..47])
-    } else {
-        result.to_string()
     }
 }

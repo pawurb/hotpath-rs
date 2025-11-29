@@ -76,53 +76,62 @@ impl<'de> Deserialize<'de> for TaskState {
     }
 }
 
-/// Statistics for a single instrumented task.
+/// A single invocation/call of a task.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskCall {
+    pub id: u64,
+    pub task_id: u64,
+    pub state: TaskState,
+    pub poll_count: u64,
+    pub result: Option<String>,
+}
+
+impl TaskCall {
+    fn new(id: u64, task_id: u64) -> Self {
+        Self {
+            id,
+            task_id,
+            state: TaskState::default(),
+            poll_count: 0,
+            result: None,
+        }
+    }
+}
+
+/// Aggregated statistics for a source location.
 #[derive(Debug, Clone)]
 pub struct TaskStats {
     pub id: u64,
     pub source: &'static str,
     pub label: Option<String>,
-    pub iter: u32,
-    pub state: TaskState,
-    pub poll_count: u64,
-    pub result: Option<String>,
+    pub task_calls: Vec<TaskCall>,
     pub poll_logs: VecDeque<LogEntry>,
 }
 
 impl TaskStats {
-    fn new(id: u64, source: &'static str, label: Option<String>, iter: u32) -> Self {
+    fn new(id: u64, source: &'static str, label: Option<String>) -> Self {
         Self {
             id,
             source,
             label,
-            iter,
-            state: TaskState::default(),
-            poll_count: 0,
-            result: None,
+            task_calls: Vec::new(),
             poll_logs: VecDeque::new(),
         }
     }
 
-    /// Whether task is still active (not completed/cancelled)
-    pub fn is_active(&self) -> bool {
-        matches!(
-            self.state,
-            TaskState::Pending | TaskState::Running | TaskState::Suspended
-        )
+    /// Total number of invocations at this source location
+    pub fn call_count(&self) -> usize {
+        self.task_calls.len()
     }
 
-    /// Get the result, either from the dedicated field or from the last poll log
-    pub fn get_result(&self) -> Option<&str> {
-        if let Some(ref result) = self.result {
-            return Some(result.as_str());
-        }
-        // Try to get from last poll log if state is completed
-        if self.state == TaskState::Ready {
-            if let Some(last_log) = self.poll_logs.back() {
-                return last_log.message.as_deref();
-            }
-        }
-        None
+    /// Total polls across all invocations
+    pub fn total_polls(&self) -> u64 {
+        self.task_calls.iter().map(|c| c.poll_count).sum()
+    }
+
+    /// Find a call by ID
+    fn find_call_mut(&mut self, id: u64) -> Option<&mut TaskCall> {
+        self.task_calls.iter_mut().find(|c| c.id == id)
     }
 }
 
@@ -140,29 +149,23 @@ pub struct SerializableTaskStats {
     pub source: String,
     pub label: String,
     pub has_custom_label: bool,
-    pub state: TaskState,
-    pub iter: u32,
-    pub poll_count: u64,
-    pub result: Option<String>,
+    pub call_count: usize,
+    pub total_polls: u64,
+    pub task_calls: Vec<TaskCall>,
 }
 
 impl From<&TaskStats> for SerializableTaskStats {
     fn from(task_stats: &TaskStats) -> Self {
-        let label = resolve_label(
-            task_stats.source,
-            task_stats.label.as_deref(),
-            task_stats.iter,
-        );
+        let label = resolve_label(task_stats.source, task_stats.label.as_deref(), None);
 
         Self {
             id: task_stats.id,
             source: task_stats.source.to_string(),
             label,
             has_custom_label: task_stats.label.is_some(),
-            state: task_stats.state,
-            iter: task_stats.iter,
-            poll_count: task_stats.poll_count,
-            result: task_stats.get_result().map(|s| s.to_string()),
+            call_count: task_stats.call_count(),
+            total_polls: task_stats.total_polls(),
+            task_calls: task_stats.task_calls.clone(),
         }
     }
 }
@@ -204,7 +207,7 @@ pub(crate) enum TaskEvent {
     },
 }
 
-type TasksState = (CbSender<TaskEvent>, Arc<RwLock<HashMap<u64, TaskStats>>>);
+pub(crate) type TasksState = (CbSender<TaskEvent>, Arc<RwLock<HashMap<u64, TaskStats>>>);
 
 static TASKS_STATE: OnceLock<TasksState> = OnceLock::new();
 
@@ -229,6 +232,11 @@ pub fn init_tasks_state() {
         std::thread::Builder::new()
             .name("hp-tasks".into())
             .spawn(move || {
+                // Thread-local lookup maps
+                let mut source_to_id: HashMap<&'static str, u64> = HashMap::new();
+                let mut call_to_task: HashMap<u64, u64> = HashMap::new();
+                let mut next_task_id: u64 = 0;
+
                 while let Ok(event) = rx.recv() {
                     let mut stats = stats_map_clone.write().unwrap();
                     match event {
@@ -237,9 +245,24 @@ pub fn init_tasks_state() {
                             source,
                             display_label,
                         } => {
-                            let iter = stats.values().filter(|s| s.source == source).count() as u32;
+                            // Get or create TaskStats for this source location
+                            let task_id = *source_to_id.entry(source).or_insert_with(|| {
+                                let task_id = next_task_id;
+                                next_task_id += 1;
+                                stats.insert(
+                                    task_id,
+                                    TaskStats::new(task_id, source, display_label),
+                                );
+                                task_id
+                            });
 
-                            stats.insert(id, TaskStats::new(id, source, display_label, iter));
+                            // Add new call/invocation with foreign key to task
+                            if let Some(task_stats) = stats.get_mut(&task_id) {
+                                task_stats.task_calls.push(TaskCall::new(id, task_id));
+                            }
+
+                            // Track call id -> task id mapping for routing events
+                            call_to_task.insert(id, task_id);
                         }
                         TaskEvent::Polled {
                             id,
@@ -248,44 +271,59 @@ pub fn init_tasks_state() {
                             result,
                             log_message,
                         } => {
-                            if let Some(task_stats) = stats.get_mut(&id) {
-                                task_stats.poll_count += 1;
+                            // Look up task from call id
+                            if let Some(&task_id) = call_to_task.get(&id) {
+                                if let Some(task_stats) = stats.get_mut(&task_id) {
+                                    if let Some(call) = task_stats.find_call_mut(id) {
+                                        call.poll_count += 1;
 
-                                // Update state and capture result based on poll result
-                                match result {
-                                    PollResult::Pending => {
-                                        task_stats.state = TaskState::Suspended;
+                                        // Update state and capture result based on poll result
+                                        match result {
+                                            PollResult::Pending => {
+                                                call.state = TaskState::Suspended;
+                                            }
+                                            PollResult::Ready => {
+                                                call.state = TaskState::Ready;
+                                                // Capture the result if available
+                                                if log_message.is_some() {
+                                                    call.result = log_message.clone();
+                                                }
+                                            }
+                                        };
                                     }
-                                    PollResult::Ready => {
-                                        task_stats.state = TaskState::Ready;
-                                        // Capture the result if available
-                                        if log_message.is_some() {
-                                            task_stats.result = log_message.clone();
-                                        }
-                                    }
-                                };
 
-                                let limit = get_log_limit();
-                                if task_stats.poll_logs.len() >= limit {
-                                    task_stats.poll_logs.pop_front();
+                                    // Add to poll logs at the TaskStats level
+                                    let total_polls = task_stats.total_polls();
+                                    let limit = get_log_limit();
+                                    if task_stats.poll_logs.len() >= limit {
+                                        task_stats.poll_logs.pop_front();
+                                    }
+                                    task_stats.poll_logs.push_back(LogEntry::new(
+                                        total_polls,
+                                        timestamp,
+                                        log_message,
+                                        Some(tid),
+                                    ));
                                 }
-                                task_stats.poll_logs.push_back(LogEntry::new(
-                                    task_stats.poll_count,
-                                    timestamp,
-                                    log_message,
-                                    Some(tid),
-                                ));
                             }
                         }
                         TaskEvent::Completed { id } => {
-                            if let Some(task_stats) = stats.get_mut(&id) {
-                                task_stats.state = TaskState::Ready;
+                            if let Some(&task_id) = call_to_task.get(&id) {
+                                if let Some(task_stats) = stats.get_mut(&task_id) {
+                                    if let Some(call) = task_stats.find_call_mut(id) {
+                                        call.state = TaskState::Ready;
+                                    }
+                                }
                             }
                         }
                         TaskEvent::Cancelled { id } => {
-                            if let Some(task_stats) = stats.get_mut(&id) {
-                                if task_stats.state != TaskState::Ready {
-                                    task_stats.state = TaskState::Cancelled;
+                            if let Some(&task_id) = call_to_task.get(&id) {
+                                if let Some(task_stats) = stats.get_mut(&task_id) {
+                                    if let Some(call) = task_stats.find_call_mut(id) {
+                                        if call.state != TaskState::Ready {
+                                            call.state = TaskState::Cancelled;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -351,7 +389,7 @@ fn get_all_task_stats() -> HashMap<u64, TaskStats> {
 }
 
 /// Compare two task stats for sorting.
-/// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
+/// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source).
 fn compare_task_stats(a: &TaskStats, b: &TaskStats) -> std::cmp::Ordering {
     let a_has_label = a.label.is_some();
     let b_has_label = b.label.is_some();
@@ -359,13 +397,8 @@ fn compare_task_stats(a: &TaskStats, b: &TaskStats) -> std::cmp::Ordering {
     match (a_has_label, b_has_label) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
-        (true, true) => a
-            .label
-            .as_ref()
-            .unwrap()
-            .cmp(b.label.as_ref().unwrap())
-            .then_with(|| a.iter.cmp(&b.iter)),
-        (false, false) => a.source.cmp(b.source).then_with(|| a.iter.cmp(&b.iter)),
+        (true, true) => a.label.as_ref().unwrap().cmp(b.label.as_ref().unwrap()),
+        (false, false) => a.source.cmp(b.source),
     }
 }
 
@@ -392,10 +425,10 @@ pub fn get_tasks_json() -> TasksJson {
     }
 }
 
-pub fn get_task_logs(task_id: &str) -> Option<TaskLogs> {
-    let id = task_id.parse::<u64>().ok()?;
+pub fn get_task_logs(task_id: u64) -> Option<TaskLogs> {
     let stats = get_all_task_stats();
-    stats.get(&id).map(|task_stats| {
+    // Look up TaskStats directly by task_id
+    stats.get(&task_id).map(|task_stats| {
         let mut poll_logs: Vec<LogEntry> = task_stats.poll_logs.iter().cloned().collect();
 
         // Sort by index descending (most recent first)
