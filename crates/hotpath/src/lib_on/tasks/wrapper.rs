@@ -17,9 +17,6 @@ use std::time::Instant;
 
 struct WakerData {
     inner: Waker,
-    id: u64,
-    #[allow(dead_code)]
-    location: &'static str,
 }
 
 fn waker_clone(data: *const ()) -> RawWaker {
@@ -48,11 +45,9 @@ fn waker_drop(data: *const ()) {
 static VTABLE: RawWakerVTable =
     RawWakerVTable::new(waker_clone, waker_wake, waker_wake_by_ref, waker_drop);
 
-fn create_instrumented_waker(waker: &Waker, id: u64, location: &'static str) -> Waker {
+fn create_instrumented_waker(waker: &Waker) -> Waker {
     let data = Arc::new(WakerData {
         inner: waker.clone(),
-        id,
-        location,
     });
     let raw = RawWaker::new(Arc::into_raw(data) as *const (), &VTABLE);
     unsafe { Waker::from_raw(raw) }
@@ -113,9 +108,8 @@ impl<F: Future> Future for InstrumentedTask<F> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let id = *this.id;
-        let location = *this.location;
 
-        let instrumented_waker = create_instrumented_waker(cx.waker(), id, location);
+        let instrumented_waker = create_instrumented_waker(cx.waker());
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
 
         let timestamp = Instant::now();
@@ -197,9 +191,8 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let id = *this.id;
-        let location = *this.location;
 
-        let instrumented_waker = create_instrumented_waker(cx.waker(), id, location);
+        let instrumented_waker = create_instrumented_waker(cx.waker());
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
 
         let timestamp = Instant::now();
