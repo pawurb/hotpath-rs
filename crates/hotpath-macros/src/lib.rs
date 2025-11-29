@@ -373,8 +373,8 @@ pub fn future_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Ensure the function is async
     if sig.asyncness.is_none() {
         return syn::Error::new_spanned(
-            &sig.fn_token,
-            "The #[future] attribute can only be applied to async functions",
+            sig.fn_token,
+            "The #[future_fn] attribute can only be applied to async functions",
         )
         .to_compile_error()
         .into();
