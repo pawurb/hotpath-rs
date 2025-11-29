@@ -1,6 +1,6 @@
 //! Instrumented Future wrapper that prints lifecycle events.
 
-use super::{FutureEvent, FUTURE_ID_COUNTER};
+use super::{send_future_event, FutureEvent, PollResult, FUTURE_ID_COUNTER};
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::mem::ManuallyDrop;
@@ -11,6 +11,7 @@ use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 struct WakerData {
     inner: Waker,
+    id: u64,
     location: &'static str,
 }
 
@@ -24,7 +25,7 @@ fn waker_wake(data: *const ()) {
     // Increment first for panic safety, then from_raw "takes" ownership
     unsafe { Arc::increment_strong_count(data as *const WakerData) };
     let arc = unsafe { Arc::from_raw(data as *const WakerData) };
-    println!("[FUTURE {}] Wake", arc.location);
+    super::send_future_event(FutureEvent::Wake { id: arc.id });
     arc.inner.wake_by_ref();
     // arc drops here, decrementing count back - net effect: original consumed
 }
@@ -32,7 +33,7 @@ fn waker_wake(data: *const ()) {
 fn waker_wake_by_ref(data: *const ()) {
     // Use ManuallyDrop for panic safety - even if wake_by_ref panics, we won't double-free
     let arc = ManuallyDrop::new(unsafe { Arc::from_raw(data as *const WakerData) });
-    println!("[FUTURE {}] Wake", arc.location);
+    super::send_future_event(FutureEvent::Wake { id: arc.id });
     arc.inner.wake_by_ref();
 }
 
@@ -46,9 +47,10 @@ fn waker_drop(data: *const ()) {
 static VTABLE: RawWakerVTable =
     RawWakerVTable::new(waker_clone, waker_wake, waker_wake_by_ref, waker_drop);
 
-fn create_instrumented_waker(waker: &Waker, location: &'static str) -> Waker {
+fn create_instrumented_waker(waker: &Waker, id: u64, location: &'static str) -> Waker {
     let data = Arc::new(WakerData {
         inner: waker.clone(),
+        id,
         location,
     });
     let raw = RawWaker::new(Arc::into_raw(data) as *const (), &VTABLE);
@@ -76,24 +78,20 @@ pin_project! {
 
     impl<F> PinnedDrop for InstrumentedFuture<F> {
         fn drop(this: Pin<&mut Self>) {
-            println!("[FUTURE {} id={}] Dropped", this.location, this.id);
+            send_future_event(FutureEvent::Dropped { id: this.id });
         }
     }
 }
 
 impl<F> InstrumentedFuture<F> {
     /// Create a new instrumented future.
-    ///
-    /// Note: The "Created" message is printed by the `future!` macro,
-    /// not here, to capture the correct source location.
     pub fn new(inner: F, location: &'static str) -> Self {
         let id = FUTURE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        // Create the FutureEvent::Created event
-        let _event = FutureEvent::Created {
+        send_future_event(FutureEvent::Created {
             id,
             source: location,
-        };
+        });
 
         Self {
             inner,
@@ -115,15 +113,21 @@ impl<F: Future> Future for InstrumentedFuture<F> {
         let location = *this.location;
 
         // Create an instrumented waker that will log wake events
-        let instrumented_waker = create_instrumented_waker(cx.waker(), location);
+        let instrumented_waker = create_instrumented_waker(cx.waker(), id, location);
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
 
         let result = this.inner.poll(&mut instrumented_cx);
 
-        match &result {
-            Poll::Pending => println!("[FUTURE {} id={}] Poll #{} -> Pending", location, id, count),
-            Poll::Ready(_) => println!("[FUTURE {} id={}] Poll #{} -> Ready", location, id, count),
-        }
+        let poll_result = match &result {
+            Poll::Pending => PollResult::Pending,
+            Poll::Ready(_) => PollResult::Ready(None),
+        };
+
+        send_future_event(FutureEvent::Polled {
+            id,
+            poll_count: count,
+            result: poll_result,
+        });
 
         result
     }
@@ -149,7 +153,7 @@ pin_project! {
 
     impl<F> PinnedDrop for InstrumentedFutureLog<F> {
         fn drop(this: Pin<&mut Self>) {
-            println!("[FUTURE {} id={}] Dropped", this.location, this.id);
+            send_future_event(FutureEvent::Dropped { id: this.id });
         }
     }
 }
@@ -159,11 +163,10 @@ impl<F> InstrumentedFutureLog<F> {
     pub fn new(inner: F, location: &'static str) -> Self {
         let id = FUTURE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        // Create the FutureEvent::Created event
-        let _event = FutureEvent::Created {
+        send_future_event(FutureEvent::Created {
             id,
             source: location,
-        };
+        });
 
         Self {
             inner,
@@ -188,20 +191,21 @@ where
         let location = *this.location;
 
         // Create an instrumented waker that will log wake events
-        let instrumented_waker = create_instrumented_waker(cx.waker(), location);
+        let instrumented_waker = create_instrumented_waker(cx.waker(), id, location);
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
 
         let result = this.inner.poll(&mut instrumented_cx);
 
-        match &result {
-            Poll::Pending => println!("[FUTURE {} id={}] Poll #{} -> Pending", location, id, count),
-            Poll::Ready(value) => {
-                println!(
-                    "[FUTURE {} id={}] Poll #{} -> Ready({:?})",
-                    location, id, count, value
-                )
-            }
-        }
+        let poll_result = match &result {
+            Poll::Pending => PollResult::Pending,
+            Poll::Ready(value) => PollResult::Ready(Some(format!("{:?}", value))),
+        };
+
+        send_future_event(FutureEvent::Polled {
+            id,
+            poll_count: count,
+            result: poll_result,
+        });
 
         result
     }

@@ -333,7 +333,6 @@ pub(crate) fn get_log_limit() -> usize {
 }
 
 /// Initialize the channel statistics collection system (called on first instrumented channel).
-/// Returns a reference to the global state.
 pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
     CHANNELS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);

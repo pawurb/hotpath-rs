@@ -1,12 +1,50 @@
 //! Futures instrumentation module - prints lifecycle events for debugging.
 
+use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::sync::atomic::AtomicU64;
+use std::sync::OnceLock;
 
 pub(crate) mod wrapper;
 
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
 pub(crate) static FUTURE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+type FuturesState = CbSender<FutureEvent>;
+
+static FUTURES_STATE: OnceLock<FuturesState> = OnceLock::new();
+
+/// Initialize the futures event collection system (called on first instrumented future).
+pub fn init_futures_state() {
+    FUTURES_STATE.get_or_init(|| {
+        let (tx, rx) = unbounded::<FutureEvent>();
+
+        std::thread::Builder::new()
+            .name("hp-futures".into())
+            .spawn(move || {
+                while let Ok(event) = rx.recv() {
+                    dbg!(&event);
+                }
+            })
+            .expect("Failed to spawn futures event collector thread");
+
+        tx
+    });
+}
+
+/// Send a future event to the background thread.
+pub(crate) fn send_future_event(event: FutureEvent) {
+    if let Some(tx) = FUTURES_STATE.get() {
+        let _ = tx.send(event);
+    }
+}
+
+/// Result of polling a future.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PollResult {
+    Pending,
+    Ready(Option<String>),
+}
 
 /// Events emitted during the lifecycle of an instrumented future.
 #[derive(Debug, Clone)]
@@ -17,6 +55,25 @@ pub(crate) enum FutureEvent {
         id: u64,
         /// Source location where the future was created (file:line).
         source: &'static str,
+    },
+    /// The future was polled.
+    Polled {
+        /// Unique identifier for this future instance.
+        id: u64,
+        /// The poll count (1-indexed).
+        poll_count: usize,
+        /// The result of the poll.
+        result: PollResult,
+    },
+    /// The future's waker was invoked.
+    Wake {
+        /// Unique identifier for this future instance.
+        id: u64,
+    },
+    /// The future was dropped.
+    Dropped {
+        /// Unique identifier for this future instance.
+        id: u64,
     },
 }
 
@@ -80,14 +137,14 @@ macro_rules! future {
     // Basic: no Debug requirement
     ($fut:expr) => {{
         const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
-        println!("[FUTURE] Created at {}", FUTURE_LOC);
+        $crate::futures::init_futures_state();
         $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC)
     }};
 
     // With logging: requires Debug
     ($fut:expr, log = true) => {{
         const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
-        println!("[FUTURE] Created at {}", FUTURE_LOC);
+        $crate::futures::init_futures_state();
         $crate::InstrumentFutureLog::instrument_future_log($fut, FUTURE_LOC)
     }};
 }
