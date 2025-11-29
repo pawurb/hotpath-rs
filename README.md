@@ -1,4 +1,4 @@
-# <img src="hotpath-logo2.png" alt="hotpath-rs logo" width="80px" align="left"> hotpath - real-time Rust performance and data flow profiler
+# <img src="hotpath-logo2.png" alt="hotpath-rs logo" width="80px" align="left"> hotpath - real-time Rust performance, memory and data flow profiler
 [![Latest Version](https://img.shields.io/crates/v/hotpath.svg)](https://crates.io/crates/hotpath) [![GH Actions](https://github.com/pawurb/hotpath/actions/workflows/ci.yml/badge.svg)](https://github.com/pawurb/hotpath/actions)
 
 ![hotpath TUI Example](hotpath-tui6.gif)
@@ -23,9 +23,9 @@ In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain th
 
 - [x] latency, memory method calls tracking
 - [x] channels/streams profiling
-- [ ] process threads monitoring
-- [ ] Tokio runtime metrics 
-- [ ] Tokio tasks monitoring
+- [x] process threads monitoring
+- [ ] futures monitoring
+- [ ] runtime metrics 
 - [ ] improved docs on [hotpath.rs](https://hotpath.rs)
 - [ ] hosted backend integration
 - [ ] interactive SSH demo 
