@@ -16,8 +16,11 @@ struct WakerData {
 }
 
 fn waker_clone(data: *const ()) -> RawWaker {
+    // Reconstruct the Arc without taking ownership (ManuallyDrop prevents the drop)
     let arc = ManuallyDrop::new(unsafe { Arc::from_raw(data as *const WakerData) });
+    // Clone increments the refcount
     let cloned = Arc::clone(&arc);
+    // Convert the cloned Arc back to a raw pointer for the new RawWaker
     RawWaker::new(Arc::into_raw(cloned) as *const (), &VTABLE)
 }
 
