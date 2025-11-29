@@ -1,6 +1,6 @@
-//! Instrumented Future wrapper that prints lifecycle events.
+//! Instrumented Task wrapper that prints lifecycle events.
 
-use super::{send_future_event, FutureEvent, PollResult, FUTURE_ID_COUNTER};
+use super::{send_task_event, PollResult, TaskEvent, TASK_ID_COUNTER};
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::mem::ManuallyDrop;
@@ -25,7 +25,7 @@ fn waker_wake(data: *const ()) {
     // Increment first for panic safety, then from_raw "takes" ownership
     unsafe { Arc::increment_strong_count(data as *const WakerData) };
     let arc = unsafe { Arc::from_raw(data as *const WakerData) };
-    super::send_future_event(FutureEvent::Wake { id: arc.id });
+    super::send_task_event(TaskEvent::Wake { id: arc.id });
     arc.inner.wake_by_ref();
     // arc drops here, decrementing count back - net effect: original consumed
 }
@@ -33,7 +33,7 @@ fn waker_wake(data: *const ()) {
 fn waker_wake_by_ref(data: *const ()) {
     // Use ManuallyDrop for panic safety - even if wake_by_ref panics, we won't double-free
     let arc = ManuallyDrop::new(unsafe { Arc::from_raw(data as *const WakerData) });
-    super::send_future_event(FutureEvent::Wake { id: arc.id });
+    super::send_task_event(TaskEvent::Wake { id: arc.id });
     arc.inner.wake_by_ref();
 }
 
@@ -67,8 +67,8 @@ pin_project! {
     /// - Drop (via PinnedDrop)
     ///
     /// This variant does NOT require `Debug` on the output type.
-    /// Use `InstrumentedFutureLog` (via `future!(expr, log = true)`) to print the output value.
-    pub struct InstrumentedFuture<F> {
+    /// Use `InstrumentedTaskLog` (via `future!(expr, log = true)`) to print the output value.
+    pub struct InstrumentedTask<F> {
         #[pin]
         inner: F,
         id: u64,
@@ -76,19 +76,19 @@ pin_project! {
         poll_count: usize,
     }
 
-    impl<F> PinnedDrop for InstrumentedFuture<F> {
+    impl<F> PinnedDrop for InstrumentedTask<F> {
         fn drop(this: Pin<&mut Self>) {
-            send_future_event(FutureEvent::Dropped { id: this.id });
+            send_task_event(TaskEvent::Dropped { id: this.id });
         }
     }
 }
 
-impl<F> InstrumentedFuture<F> {
-    /// Create a new instrumented future.
+impl<F> InstrumentedTask<F> {
+    /// Create a new instrumented task.
     pub fn new(inner: F, location: &'static str) -> Self {
-        let id = FUTURE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = TASK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        send_future_event(FutureEvent::Created {
+        send_task_event(TaskEvent::Created {
             id,
             source: location,
         });
@@ -102,7 +102,7 @@ impl<F> InstrumentedFuture<F> {
     }
 }
 
-impl<F: Future> Future for InstrumentedFuture<F> {
+impl<F: Future> Future for InstrumentedTask<F> {
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -123,7 +123,7 @@ impl<F: Future> Future for InstrumentedFuture<F> {
             Poll::Ready(_) => PollResult::Ready(None),
         };
 
-        send_future_event(FutureEvent::Polled {
+        send_task_event(TaskEvent::Polled {
             id,
             poll_count: count,
             result: poll_result,
@@ -143,7 +143,7 @@ pin_project! {
     /// - Drop (via PinnedDrop)
     ///
     /// This variant requires `Debug` on the output type to print the value.
-    pub struct InstrumentedFutureLog<F> {
+    pub struct InstrumentedTaskLog<F> {
         #[pin]
         inner: F,
         id: u64,
@@ -151,19 +151,19 @@ pin_project! {
         poll_count: usize,
     }
 
-    impl<F> PinnedDrop for InstrumentedFutureLog<F> {
+    impl<F> PinnedDrop for InstrumentedTaskLog<F> {
         fn drop(this: Pin<&mut Self>) {
-            send_future_event(FutureEvent::Dropped { id: this.id });
+            send_task_event(TaskEvent::Dropped { id: this.id });
         }
     }
 }
 
-impl<F> InstrumentedFutureLog<F> {
-    /// Create a new instrumented future with logging.
+impl<F> InstrumentedTaskLog<F> {
+    /// Create a new instrumented task with logging.
     pub fn new(inner: F, location: &'static str) -> Self {
-        let id = FUTURE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = TASK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        send_future_event(FutureEvent::Created {
+        send_task_event(TaskEvent::Created {
             id,
             source: location,
         });
@@ -177,7 +177,7 @@ impl<F> InstrumentedFutureLog<F> {
     }
 }
 
-impl<F: Future> Future for InstrumentedFutureLog<F>
+impl<F: Future> Future for InstrumentedTaskLog<F>
 where
     F::Output: std::fmt::Debug,
 {
@@ -201,7 +201,7 @@ where
             Poll::Ready(value) => PollResult::Ready(Some(format!("{:?}", value))),
         };
 
-        send_future_event(FutureEvent::Polled {
+        send_task_event(TaskEvent::Polled {
             id,
             poll_count: count,
             result: poll_result,

@@ -11,16 +11,16 @@ pub mod channels;
 // Streams module for instrumenting streams
 pub mod streams;
 
-// Futures module for instrumenting futures
-pub mod futures;
+// Tasks module for instrumenting futures/tasks
+pub mod tasks;
 
 // Threads module for monitoring OS thread metrics
 #[cfg(feature = "threads")]
 pub mod threads;
 
 pub use channels::{Instrument, InstrumentLog};
-pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use streams::{InstrumentStream, InstrumentStreamLog};
+pub use tasks::{InstrumentTask, InstrumentTaskLog};
 
 use crossbeam_channel::Sender;
 

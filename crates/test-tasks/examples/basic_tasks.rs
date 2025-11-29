@@ -1,6 +1,6 @@
 //! Example demonstrating the `future!` macro with and without `log = true`.
 //!
-//! Run with: cargo run -p test-futures --example basic_tasks --features hotpath
+//! Run with: cargo run -p test-tasks --example basic_tasks --features hotpath
 
 use hotpath::future;
 use std::time::Duration;

@@ -136,15 +136,15 @@ where
 macro_rules! future {
     // Basic: no Debug requirement
     ($fut:expr) => {{
-        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        const TASK_LOC: &'static str = concat!(file!(), ":", line!());
         $crate::futures::init_futures_state();
-        $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC)
+        $crate::InstrumentFuture::instrument_future($fut, TASK_LOC)
     }};
 
     // With logging: requires Debug
     ($fut:expr, log = true) => {{
-        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        const TASK_LOC: &'static str = concat!(file!(), ":", line!());
         $crate::futures::init_futures_state();
-        $crate::InstrumentFutureLog::instrument_future_log($fut, FUTURE_LOC)
+        $crate::InstrumentFutureLog::instrument_future_log($fut, TASK_LOC)
     }};
 }
