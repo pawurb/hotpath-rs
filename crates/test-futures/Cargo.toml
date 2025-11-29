@@ -1,0 +1,17 @@
+[package]
+name = "test-futures"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+hotpath = { path = "../hotpath" }
+tokio = { version = "1.0", features = ["full"] }
+
+[features]
+default = []
+hotpath = ["hotpath/hotpath"]
+
+[[example]]
+name = "basic"
+path = "examples/basic.rs"
