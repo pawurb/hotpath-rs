@@ -1,9 +1,11 @@
 //! Instrumented Future wrapper that prints lifecycle events.
 
+use super::{FutureEvent, FUTURE_ID_COUNTER};
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
@@ -67,13 +69,14 @@ pin_project! {
     pub struct InstrumentedFuture<F> {
         #[pin]
         inner: F,
+        id: u64,
         location: &'static str,
         poll_count: usize,
     }
 
     impl<F> PinnedDrop for InstrumentedFuture<F> {
         fn drop(this: Pin<&mut Self>) {
-            println!("[FUTURE {}] Dropped", this.location);
+            println!("[FUTURE {} id={}] Dropped", this.location, this.id);
         }
     }
 }
@@ -84,8 +87,17 @@ impl<F> InstrumentedFuture<F> {
     /// Note: The "Created" message is printed by the `future!` macro,
     /// not here, to capture the correct source location.
     pub fn new(inner: F, location: &'static str) -> Self {
+        let id = FUTURE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        // Create the FutureEvent::Created event
+        let _event = FutureEvent::Created {
+            id,
+            source: location,
+        };
+
         Self {
             inner,
+            id,
             location,
             poll_count: 0,
         }
@@ -99,6 +111,7 @@ impl<F: Future> Future for InstrumentedFuture<F> {
         let this = self.project();
         *this.poll_count += 1;
         let count = *this.poll_count;
+        let id = *this.id;
         let location = *this.location;
 
         // Create an instrumented waker that will log wake events
@@ -108,17 +121,13 @@ impl<F: Future> Future for InstrumentedFuture<F> {
         let result = this.inner.poll(&mut instrumented_cx);
 
         match &result {
-            Poll::Pending => println!("[FUTURE {}] Poll #{} -> Pending", location, count),
-            Poll::Ready(_) => println!("[FUTURE {}] Poll #{} -> Ready", location, count),
+            Poll::Pending => println!("[FUTURE {} id={}] Poll #{} -> Pending", location, id, count),
+            Poll::Ready(_) => println!("[FUTURE {} id={}] Poll #{} -> Ready", location, id, count),
         }
 
         result
     }
 }
-
-// ============================================================================
-// InstrumentedFutureLog (with Debug bound)
-// ============================================================================
 
 pin_project! {
     /// A wrapper around a future that prints lifecycle events including the output value.
@@ -133,13 +142,14 @@ pin_project! {
     pub struct InstrumentedFutureLog<F> {
         #[pin]
         inner: F,
+        id: u64,
         location: &'static str,
         poll_count: usize,
     }
 
     impl<F> PinnedDrop for InstrumentedFutureLog<F> {
         fn drop(this: Pin<&mut Self>) {
-            println!("[FUTURE {}] Dropped", this.location);
+            println!("[FUTURE {} id={}] Dropped", this.location, this.id);
         }
     }
 }
@@ -147,8 +157,17 @@ pin_project! {
 impl<F> InstrumentedFutureLog<F> {
     /// Create a new instrumented future with logging.
     pub fn new(inner: F, location: &'static str) -> Self {
+        let id = FUTURE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        // Create the FutureEvent::Created event
+        let _event = FutureEvent::Created {
+            id,
+            source: location,
+        };
+
         Self {
             inner,
+            id,
             location,
             poll_count: 0,
         }
@@ -165,6 +184,7 @@ where
         let this = self.project();
         *this.poll_count += 1;
         let count = *this.poll_count;
+        let id = *this.id;
         let location = *this.location;
 
         // Create an instrumented waker that will log wake events
@@ -174,11 +194,11 @@ where
         let result = this.inner.poll(&mut instrumented_cx);
 
         match &result {
-            Poll::Pending => println!("[FUTURE {}] Poll #{} -> Pending", location, count),
+            Poll::Pending => println!("[FUTURE {} id={}] Poll #{} -> Pending", location, id, count),
             Poll::Ready(value) => {
                 println!(
-                    "[FUTURE {}] Poll #{} -> Ready({:?})",
-                    location, count, value
+                    "[FUTURE {} id={}] Poll #{} -> Ready({:?})",
+                    location, id, count, value
                 )
             }
         }

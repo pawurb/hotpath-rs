@@ -1,8 +1,24 @@
 //! Futures instrumentation module - prints lifecycle events for debugging.
 
+use std::sync::atomic::AtomicU64;
+
 pub(crate) mod wrapper;
 
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
+
+pub(crate) static FUTURE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Events emitted during the lifecycle of an instrumented future.
+#[derive(Debug, Clone)]
+pub(crate) enum FutureEvent {
+    /// A new instrumented future was created.
+    Created {
+        /// Unique identifier for this future instance.
+        id: u64,
+        /// Source location where the future was created (file:line).
+        source: &'static str,
+    },
+}
 
 /// Trait for instrumenting futures (no Debug requirement).
 ///
