@@ -215,6 +215,7 @@ pub fn init_tasks_state() {
         START_TIME.get_or_init(Instant::now);
 
         // Start HTTP server if HOTPATH_HTTP_PORT is set
+        #[cfg(feature = "hotpath")]
         if let Ok(port_str) = std::env::var("HOTPATH_HTTP_PORT") {
             if let Ok(port) = port_str.parse::<u16>() {
                 crate::http_server::start_metrics_server_once(port);
