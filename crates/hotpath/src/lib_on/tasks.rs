@@ -20,6 +20,35 @@ pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedTask, InstrumentedTaskLog};
 
 pub(crate) static TASK_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+pub(crate) static TASK_CALL_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Thread-safe map from source location to task_id
+static SOURCE_TO_TASK_ID: OnceLock<RwLock<HashMap<&'static str, u64>>> = OnceLock::new();
+
+/// Get or create a task_id for a source location.
+/// Returns (task_id, is_new) where is_new indicates if this is a newly created task.
+pub(crate) fn get_or_create_task_id(source: &'static str) -> (u64, bool) {
+    let map = SOURCE_TO_TASK_ID.get_or_init(|| RwLock::new(HashMap::new()));
+
+    // First try read lock
+    {
+        let read_guard = map.read().unwrap();
+        if let Some(&task_id) = read_guard.get(source) {
+            return (task_id, false);
+        }
+    }
+
+    // Need write lock to insert
+    let mut write_guard = map.write().unwrap();
+    // Double-check after acquiring write lock
+    if let Some(&task_id) = write_guard.get(source) {
+        return (task_id, false);
+    }
+
+    let task_id = TASK_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    write_guard.insert(source, task_id);
+    (task_id, true)
+}
 
 /// State of an instrumented task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -187,23 +216,32 @@ pub(crate) enum PollResult {
 /// Events emitted during the lifecycle of an instrumented task (future).
 #[derive(Debug)]
 pub(crate) enum TaskEvent {
-    Created {
-        id: u64,
+    /// A new task (source location) was encountered
+    TaskCreated {
+        task_id: u64,
         source: &'static str,
         display_label: Option<String>,
     },
+    /// A new call/invocation of a task was created
+    CallCreated {
+        task_id: u64,
+        call_id: u64,
+    },
     Polled {
-        id: u64,
+        task_id: u64,
+        call_id: u64,
         timestamp: Instant,
         tid: u64,
         result: PollResult,
         log_message: Option<String>,
     },
     Completed {
-        id: u64,
+        task_id: u64,
+        call_id: u64,
     },
     Cancelled {
-        id: u64,
+        task_id: u64,
+        call_id: u64,
     },
 }
 
@@ -232,97 +270,76 @@ pub fn init_tasks_state() {
         std::thread::Builder::new()
             .name("hp-tasks".into())
             .spawn(move || {
-                // Thread-local lookup maps
-                let mut source_to_id: HashMap<&'static str, u64> = HashMap::new();
-                let mut call_to_task: HashMap<u64, u64> = HashMap::new();
-                let mut next_task_id: u64 = 0;
-
                 while let Ok(event) = rx.recv() {
                     let mut stats = stats_map_clone.write().unwrap();
                     match event {
-                        TaskEvent::Created {
-                            id,
+                        TaskEvent::TaskCreated {
+                            task_id,
                             source,
                             display_label,
                         } => {
-                            // Get or create TaskStats for this source location
-                            let task_id = *source_to_id.entry(source).or_insert_with(|| {
-                                let task_id = next_task_id;
-                                next_task_id += 1;
-                                stats.insert(
-                                    task_id,
-                                    TaskStats::new(task_id, source, display_label),
-                                );
-                                task_id
-                            });
-
+                            // Create new TaskStats entry
+                            stats.insert(task_id, TaskStats::new(task_id, source, display_label));
+                        }
+                        TaskEvent::CallCreated { task_id, call_id } => {
                             // Add new call/invocation with foreign key to task
                             if let Some(task_stats) = stats.get_mut(&task_id) {
-                                task_stats.task_calls.push(TaskCall::new(id, task_id));
+                                task_stats.task_calls.push(TaskCall::new(call_id, task_id));
                             }
-
-                            // Track call id -> task id mapping for routing events
-                            call_to_task.insert(id, task_id);
                         }
                         TaskEvent::Polled {
-                            id,
+                            task_id,
+                            call_id,
                             timestamp,
                             tid,
                             result,
                             log_message,
                         } => {
-                            // Look up task from call id
-                            if let Some(&task_id) = call_to_task.get(&id) {
-                                if let Some(task_stats) = stats.get_mut(&task_id) {
-                                    if let Some(call) = task_stats.find_call_mut(id) {
-                                        call.poll_count += 1;
+                            if let Some(task_stats) = stats.get_mut(&task_id) {
+                                if let Some(call) = task_stats.find_call_mut(call_id) {
+                                    call.poll_count += 1;
 
-                                        // Update state and capture result based on poll result
-                                        match result {
-                                            PollResult::Pending => {
-                                                call.state = TaskState::Suspended;
-                                            }
-                                            PollResult::Ready => {
-                                                call.state = TaskState::Ready;
-                                                // Capture the result if available
-                                                if log_message.is_some() {
-                                                    call.result = log_message.clone();
-                                                }
-                                            }
-                                        };
-                                    }
-
-                                    // Add to poll logs at the TaskStats level
-                                    let total_polls = task_stats.total_polls();
-                                    let limit = get_log_limit();
-                                    if task_stats.poll_logs.len() >= limit {
-                                        task_stats.poll_logs.pop_front();
-                                    }
-                                    task_stats.poll_logs.push_back(LogEntry::new(
-                                        total_polls,
-                                        timestamp,
-                                        log_message,
-                                        Some(tid),
-                                    ));
-                                }
-                            }
-                        }
-                        TaskEvent::Completed { id } => {
-                            if let Some(&task_id) = call_to_task.get(&id) {
-                                if let Some(task_stats) = stats.get_mut(&task_id) {
-                                    if let Some(call) = task_stats.find_call_mut(id) {
-                                        call.state = TaskState::Ready;
-                                    }
-                                }
-                            }
-                        }
-                        TaskEvent::Cancelled { id } => {
-                            if let Some(&task_id) = call_to_task.get(&id) {
-                                if let Some(task_stats) = stats.get_mut(&task_id) {
-                                    if let Some(call) = task_stats.find_call_mut(id) {
-                                        if call.state != TaskState::Ready {
-                                            call.state = TaskState::Cancelled;
+                                    // Update state and capture result based on poll result
+                                    match result {
+                                        PollResult::Pending => {
+                                            call.state = TaskState::Suspended;
                                         }
+                                        PollResult::Ready => {
+                                            call.state = TaskState::Ready;
+                                            // Capture the result if available
+                                            if log_message.is_some() {
+                                                call.result = log_message.clone();
+                                            }
+                                        }
+                                    };
+                                }
+
+                                // Add to poll logs at the TaskStats level
+                                let total_polls = task_stats.total_polls();
+                                let limit = get_log_limit();
+                                if task_stats.poll_logs.len() >= limit {
+                                    task_stats.poll_logs.pop_front();
+                                }
+                                task_stats.poll_logs.push_back(LogEntry::new(
+                                    total_polls,
+                                    timestamp,
+                                    log_message,
+                                    Some(tid),
+                                ));
+                            }
+                        }
+                        TaskEvent::Completed { task_id, call_id } => {
+                            if let Some(task_stats) = stats.get_mut(&task_id) {
+                                if let Some(call) = task_stats.find_call_mut(call_id) {
+                                    call.state = TaskState::Ready;
+                                }
+                            }
+                        }
+                        TaskEvent::Cancelled { task_id, call_id } => {
+                            if let Some(task_stats) = stats.get_mut(&task_id) {
+                                if let Some(call) = task_stats.find_call_mut(call_id) {
+                                    if call.state != TaskState::Ready {
+                                        call.state = TaskState::Cancelled;
                                     }
                                 }
                             }

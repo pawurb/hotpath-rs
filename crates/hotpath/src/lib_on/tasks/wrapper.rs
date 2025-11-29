@@ -1,6 +1,6 @@
 //! Instrumented Task wrapper that tracks lifecycle events.
 
-use super::{send_task_event, PollResult, TaskEvent, TASK_ID_COUNTER};
+use super::{get_or_create_task_id, send_task_event, PollResult, TaskEvent, TASK_CALL_ID_COUNTER};
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::mem::ManuallyDrop;
@@ -68,15 +68,15 @@ pin_project! {
     pub struct InstrumentedTask<F: Future> {
         #[pin]
         inner: F,
-        id: u64,
-        location: &'static str,
+        task_id: u64,
+        call_id: u64,
         completed: bool,
     }
 
     impl<F: Future> PinnedDrop for InstrumentedTask<F> {
         fn drop(this: Pin<&mut Self>) {
             if !this.completed {
-                send_task_event(TaskEvent::Cancelled { id: this.id });
+                send_task_event(TaskEvent::Cancelled { task_id: this.task_id, call_id: this.call_id });
             }
         }
     }
@@ -85,18 +85,25 @@ pin_project! {
 impl<F: Future> InstrumentedTask<F> {
     /// Create a new instrumented task.
     pub fn new(inner: F, location: &'static str) -> Self {
-        let id = TASK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let (task_id, is_new) = get_or_create_task_id(location);
+        let call_id = TASK_CALL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        send_task_event(TaskEvent::Created {
-            id,
-            source: location,
-            display_label: None,
-        });
+        // Only send TaskCreated if this is a new task (source location)
+        if is_new {
+            send_task_event(TaskEvent::TaskCreated {
+                task_id,
+                source: location,
+                display_label: None,
+            });
+        }
+
+        // Always send CallCreated for each invocation
+        send_task_event(TaskEvent::CallCreated { task_id, call_id });
 
         Self {
             inner,
-            id,
-            location,
+            task_id,
+            call_id,
             completed: false,
         }
     }
@@ -107,7 +114,8 @@ impl<F: Future> Future for InstrumentedTask<F> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let id = *this.id;
+        let task_id = *this.task_id;
+        let call_id = *this.call_id;
 
         let instrumented_waker = create_instrumented_waker(cx.waker());
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
@@ -125,7 +133,8 @@ impl<F: Future> Future for InstrumentedTask<F> {
         };
 
         send_task_event(TaskEvent::Polled {
-            id,
+            task_id,
+            call_id,
             timestamp,
             tid,
             result: poll_result,
@@ -133,7 +142,7 @@ impl<F: Future> Future for InstrumentedTask<F> {
         });
 
         if *this.completed {
-            send_task_event(TaskEvent::Completed { id });
+            send_task_event(TaskEvent::Completed { task_id, call_id });
         }
 
         result
@@ -152,15 +161,15 @@ pin_project! {
     pub struct InstrumentedTaskLog<F: Future> {
         #[pin]
         inner: F,
-        id: u64,
-        location: &'static str,
+        task_id: u64,
+        call_id: u64,
         completed: bool,
     }
 
     impl<F: Future> PinnedDrop for InstrumentedTaskLog<F> {
         fn drop(this: Pin<&mut Self>) {
             if !this.completed {
-                send_task_event(TaskEvent::Cancelled { id: this.id });
+                send_task_event(TaskEvent::Cancelled { task_id: this.task_id, call_id: this.call_id });
             }
         }
     }
@@ -169,18 +178,25 @@ pin_project! {
 impl<F: Future> InstrumentedTaskLog<F> {
     /// Create a new instrumented task with logging.
     pub fn new(inner: F, location: &'static str) -> Self {
-        let id = TASK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let (task_id, is_new) = get_or_create_task_id(location);
+        let call_id = TASK_CALL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        send_task_event(TaskEvent::Created {
-            id,
-            source: location,
-            display_label: None,
-        });
+        // Only send TaskCreated if this is a new task (source location)
+        if is_new {
+            send_task_event(TaskEvent::TaskCreated {
+                task_id,
+                source: location,
+                display_label: None,
+            });
+        }
+
+        // Always send CallCreated for each invocation
+        send_task_event(TaskEvent::CallCreated { task_id, call_id });
 
         Self {
             inner,
-            id,
-            location,
+            task_id,
+            call_id,
             completed: false,
         }
     }
@@ -194,7 +210,8 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let id = *this.id;
+        let task_id = *this.task_id;
+        let call_id = *this.call_id;
 
         let instrumented_waker = create_instrumented_waker(cx.waker());
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
@@ -212,7 +229,8 @@ where
         };
 
         send_task_event(TaskEvent::Polled {
-            id,
+            task_id,
+            call_id,
             timestamp,
             tid,
             result: poll_result,
@@ -220,7 +238,7 @@ where
         });
 
         if *this.completed {
-            send_task_event(TaskEvent::Completed { id });
+            send_task_event(TaskEvent::Completed { task_id, call_id });
         }
 
         result
