@@ -1,4 +1,4 @@
-//! Instrumented Task wrapper that prints lifecycle events.
+//! Instrumented Task wrapper that tracks lifecycle events.
 
 use super::{send_task_event, PollResult, TaskEvent, TASK_ID_COUNTER};
 use pin_project_lite::pin_project;
@@ -9,41 +9,39 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
+#[cfg(target_os = "linux")]
+use quanta::Instant;
+
+#[cfg(not(target_os = "linux"))]
+use std::time::Instant;
+
 struct WakerData {
     inner: Waker,
     id: u64,
+    #[allow(dead_code)]
     location: &'static str,
 }
 
 fn waker_clone(data: *const ()) -> RawWaker {
-    // Reconstruct the Arc without taking ownership (ManuallyDrop prevents the drop)
     let arc = ManuallyDrop::new(unsafe { Arc::from_raw(data as *const WakerData) });
-    // Clone increments the refcount
     let cloned = Arc::clone(&arc);
-    // Convert the cloned Arc back to a raw pointer for the new RawWaker
     RawWaker::new(Arc::into_raw(cloned) as *const (), &VTABLE)
 }
 
 fn waker_wake(data: *const ()) {
-    // Increment first for panic safety, then from_raw "takes" ownership
     unsafe { Arc::increment_strong_count(data as *const WakerData) };
     let arc = unsafe { Arc::from_raw(data as *const WakerData) };
-    super::send_task_event(TaskEvent::Wake { id: arc.id });
     arc.inner.wake_by_ref();
-    // arc drops here, decrementing count back - net effect: original consumed
 }
 
 fn waker_wake_by_ref(data: *const ()) {
-    // Use ManuallyDrop for panic safety - even if wake_by_ref panics, we won't double-free
     let arc = ManuallyDrop::new(unsafe { Arc::from_raw(data as *const WakerData) });
-    super::send_task_event(TaskEvent::Wake { id: arc.id });
     arc.inner.wake_by_ref();
 }
 
 fn waker_drop(data: *const ()) {
     unsafe {
         Arc::from_raw(data as *const WakerData);
-        // Arc drops here, decrementing refcount
     }
 }
 
@@ -60,33 +58,36 @@ fn create_instrumented_waker(waker: &Waker, id: u64, location: &'static str) -> 
     unsafe { Waker::from_raw(raw) }
 }
 
+use crate::tid::current_tid;
+
 pin_project! {
-    /// A wrapper around a future that prints lifecycle events.
+    /// A wrapper around a future that tracks lifecycle events.
     ///
     /// Created via the `future!` macro, this wrapper tracks:
-    /// - Creation (printed by the macro)
-    /// - Each poll call with result (Pending/Ready)
-    /// - Wake events (via instrumented waker)
-    /// - Drop (via PinnedDrop)
+    /// - Creation
+    /// - Each poll call with result (Pending/Ready) and thread ID
+    /// - Drop (cancellation if not completed)
     ///
     /// This variant does NOT require `Debug` on the output type.
-    /// Use `InstrumentedTaskLog` (via `future!(expr, log = true)`) to print the output value.
-    pub struct InstrumentedTask<F> {
+    /// Use `InstrumentedTaskLog` (via `future!(expr, log = true)`) to log the output value.
+    pub struct InstrumentedTask<F: Future> {
         #[pin]
         inner: F,
         id: u64,
         location: &'static str,
-        poll_count: usize,
+        completed: bool,
     }
 
-    impl<F> PinnedDrop for InstrumentedTask<F> {
+    impl<F: Future> PinnedDrop for InstrumentedTask<F> {
         fn drop(this: Pin<&mut Self>) {
-            send_task_event(TaskEvent::Dropped { id: this.id });
+            if !this.completed {
+                send_task_event(TaskEvent::Cancelled { id: this.id });
+            }
         }
     }
 }
 
-impl<F> InstrumentedTask<F> {
+impl<F: Future> InstrumentedTask<F> {
     /// Create a new instrumented task.
     pub fn new(inner: F, location: &'static str) -> Self {
         let id = TASK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -94,13 +95,14 @@ impl<F> InstrumentedTask<F> {
         send_task_event(TaskEvent::Created {
             id,
             source: location,
+            display_label: None,
         });
 
         Self {
             inner,
             id,
             location,
-            poll_count: 0,
+            completed: false,
         }
     }
 }
@@ -110,26 +112,30 @@ impl<F: Future> Future for InstrumentedTask<F> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        *this.poll_count += 1;
-        let count = *this.poll_count;
         let id = *this.id;
         let location = *this.location;
 
-        // Create an instrumented waker that will log wake events
         let instrumented_waker = create_instrumented_waker(cx.waker(), id, location);
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
 
+        let timestamp = Instant::now();
+        let tid = current_tid();
         let result = this.inner.poll(&mut instrumented_cx);
 
         let poll_result = match &result {
             Poll::Pending => PollResult::Pending,
-            Poll::Ready(_) => PollResult::Ready(None),
+            Poll::Ready(_) => {
+                *this.completed = true;
+                PollResult::Ready
+            }
         };
 
         send_task_event(TaskEvent::Polled {
             id,
-            poll_count: count,
+            timestamp,
+            tid,
             result: poll_result,
+            log_message: None,
         });
 
         result
@@ -137,31 +143,32 @@ impl<F: Future> Future for InstrumentedTask<F> {
 }
 
 pin_project! {
-    /// A wrapper around a future that prints lifecycle events including the output value.
+    /// A wrapper around a future that tracks lifecycle events including the output value.
     ///
     /// Created via the `future!(expr, log = true)` macro, this wrapper tracks:
-    /// - Creation (printed by the macro)
-    /// - Each poll call with result (Pending/Ready with Debug output)
-    /// - Wake events (via instrumented waker)
-    /// - Drop (via PinnedDrop)
+    /// - Creation
+    /// - Each poll call with result (Pending/Ready with Debug output) and thread ID
+    /// - Drop (cancellation if not completed)
     ///
-    /// This variant requires `Debug` on the output type to print the value.
-    pub struct InstrumentedTaskLog<F> {
+    /// This variant requires `Debug` on the output type to log the value.
+    pub struct InstrumentedTaskLog<F: Future> {
         #[pin]
         inner: F,
         id: u64,
         location: &'static str,
-        poll_count: usize,
+        completed: bool,
     }
 
-    impl<F> PinnedDrop for InstrumentedTaskLog<F> {
+    impl<F: Future> PinnedDrop for InstrumentedTaskLog<F> {
         fn drop(this: Pin<&mut Self>) {
-            send_task_event(TaskEvent::Dropped { id: this.id });
+            if !this.completed {
+                send_task_event(TaskEvent::Cancelled { id: this.id });
+            }
         }
     }
 }
 
-impl<F> InstrumentedTaskLog<F> {
+impl<F: Future> InstrumentedTaskLog<F> {
     /// Create a new instrumented task with logging.
     pub fn new(inner: F, location: &'static str) -> Self {
         let id = TASK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -169,13 +176,14 @@ impl<F> InstrumentedTaskLog<F> {
         send_task_event(TaskEvent::Created {
             id,
             source: location,
+            display_label: None,
         });
 
         Self {
             inner,
             id,
             location,
-            poll_count: 0,
+            completed: false,
         }
     }
 }
@@ -188,26 +196,30 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        *this.poll_count += 1;
-        let count = *this.poll_count;
         let id = *this.id;
         let location = *this.location;
 
-        // Create an instrumented waker that will log wake events
         let instrumented_waker = create_instrumented_waker(cx.waker(), id, location);
         let mut instrumented_cx = Context::from_waker(&instrumented_waker);
 
+        let timestamp = Instant::now();
+        let tid = current_tid();
         let result = this.inner.poll(&mut instrumented_cx);
 
-        let poll_result = match &result {
-            Poll::Pending => PollResult::Pending,
-            Poll::Ready(value) => PollResult::Ready(Some(format!("{:?}", value))),
+        let (poll_result, log_message) = match &result {
+            Poll::Pending => (PollResult::Pending, None),
+            Poll::Ready(value) => {
+                *this.completed = true;
+                (PollResult::Ready, Some(format!("{:?}", value)))
+            }
         };
 
         send_task_event(TaskEvent::Polled {
             id,
-            poll_count: count,
+            timestamp,
+            tid,
             result: poll_result,
+            log_message,
         });
 
         result

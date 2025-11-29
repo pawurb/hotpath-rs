@@ -3,6 +3,7 @@
 //! Run with: cargo run -p test-tasks --example basic_tasks --features hotpath
 
 use hotpath::future;
+use hotpath::tasks::FuturesGuard;
 use std::time::Duration;
 
 // A type that does NOT implement Debug
@@ -27,6 +28,8 @@ async fn multi_step_operation() -> String {
 
 #[tokio::main]
 async fn main() {
+    let _guard = FuturesGuard::new();
+
     println!("=== Future Instrumentation Demo ===\n");
 
     // =========================================================================
@@ -78,5 +81,22 @@ async fn main() {
     .await;
     println!("Result: {}\n", outer);
 
+    // Cancelled future (never resolved)
+    println!("Creating a future that will be cancelled:");
+    {
+        let _cancelled = future!(
+            async {
+                tokio::time::sleep(Duration::from_secs(1000)).await;
+                "never reached"
+            },
+            log = true
+        );
+        // _cancelled is dropped here without being awaited
+    }
+    println!("Future was dropped without being awaited\n");
+
     println!("=== Demo Complete ===");
+
+    // Small delay to let background thread process all events
+    tokio::time::sleep(Duration::from_millis(10)).await;
 }
