@@ -30,6 +30,7 @@ pub mod tests {
             "Without log = true",
             "With log = true",
             "Future was dropped without being awaited",
+            "Using #[future_fn] attribute macro",
             "=== Demo Complete ===",
             "=== Future Statistics",
             "Futures:",
@@ -71,10 +72,11 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         // Check for ready states (completed futures)
+        // Now we have 8 ready futures (6 from future! + 2 from #[future_fn])
         let ready_count = stdout.matches("| ready").count();
         assert!(
-            ready_count >= 6,
-            "Expected at least 6 'ready' states for futures, found {}.\nOutput:\n{}",
+            ready_count >= 8,
+            "Expected at least 8 'ready' states for futures, found {}.\nOutput:\n{}",
             ready_count,
             stdout
         );
@@ -111,10 +113,11 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         // Check for N/A results (futures without log=true)
+        // Now we have 3 N/A results (2 from future! + 1 from #[future_fn] without log)
         let na_count = stdout.matches("| N/A").count();
         assert!(
-            na_count >= 2,
-            "Expected at least 2 'N/A' results for futures without log=true, found {}.\nOutput:\n{}",
+            na_count >= 3,
+            "Expected at least 3 'N/A' results for futures without log=true, found {}.\nOutput:\n{}",
             na_count,
             stdout
         );
@@ -129,6 +132,25 @@ pub mod tests {
         assert!(
             stdout.contains("\"Hello World\""),
             "Expected 'Hello World' result for multi_step_operation.\nOutput:\n{}",
+            stdout
+        );
+
+        // Check for #[future_fn] attributed function results
+        assert!(
+            stdout.contains("attributed_no_log"),
+            "Expected 'attributed_no_log' function name in output.\nOutput:\n{}",
+            stdout
+        );
+
+        assert!(
+            stdout.contains("attributed_with_log"),
+            "Expected 'attributed_with_log' function name in output.\nOutput:\n{}",
+            stdout
+        );
+
+        assert!(
+            stdout.contains("\"attributed result\""),
+            "Expected 'attributed result' from #[future_fn(log = true)].\nOutput:\n{}",
             stdout
         );
 

@@ -1,4 +1,4 @@
-//! Example demonstrating the `future!` macro with and without `log = true`.
+//! Example demonstrating the `future!` macro and `#[future_fn]` attribute.
 //!
 //! Run with: cargo run -p test-tasks --example basic_tasks --features hotpath
 
@@ -26,6 +26,22 @@ async fn multi_step_operation() -> String {
     step1 + step2
 }
 
+// =========================================================================
+// Functions instrumented with #[future_fn] attribute macro
+// =========================================================================
+
+#[cfg_attr(feature = "hotpath", hotpath::future_fn)]
+async fn attributed_no_log() -> i32 {
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    100
+}
+
+#[cfg_attr(feature = "hotpath", hotpath::future_fn(log = true))]
+async fn attributed_with_log() -> String {
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    "attributed result".to_string()
+}
+
 #[tokio::main]
 async fn main() {
     let _guard = FuturesGuard::new();
@@ -47,9 +63,6 @@ async fn main() {
     let result = future!(slow_operation()).await;
     println!("Result: {}\n", result);
 
-    // =========================================================================
-    // WITH log = true (requires Debug)
-    // =========================================================================
     println!("--- With log = true (prints Debug output) ---\n");
 
     // Prints the value when Ready
@@ -93,9 +106,10 @@ async fn main() {
         );
         // _cancelled is dropped here without being awaited
     }
-    println!("Future was dropped without being awaited\n");
-
-    println!("=== Demo Complete ===");
+    let _result = attributed_no_log().await;
+    let _result = attributed_with_log().await;
+    let _result = attributed_no_log().await;
+    let _result = attributed_with_log().await;
 
     // Small delay to let background thread process all events
     tokio::time::sleep(Duration::from_millis(10)).await;

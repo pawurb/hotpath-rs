@@ -3,7 +3,7 @@ use crate::output::{FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricsPr
 
 #[doc(hidden)]
 pub use cfg_if::cfg_if;
-pub use hotpath_macros::{main, measure, measure_all, skip};
+pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 
 // Channels module for instrumenting channels
 pub mod channels;

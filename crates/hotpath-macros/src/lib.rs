@@ -312,6 +312,131 @@ pub fn measure(_attr: TokenStream, item: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// Instruments an async function to track its lifecycle as a Future.
+///
+/// This attribute macro wraps async functions with the `future!` macro, enabling
+/// tracking of poll counts, state transitions (pending/ready/cancelled), and
+/// optionally logging the result value.
+///
+/// # Parameters
+///
+/// * `log` - If `true`, logs the result value when the future completes (requires `Debug` on return type)
+///
+/// # Examples
+///
+/// Basic usage (no Debug requirement on return type):
+///
+/// ```rust,no_run
+/// #[cfg_attr(feature = "hotpath", hotpath::future_fn)]
+/// async fn fetch_data() -> Vec<u8> {
+///     // This future's lifecycle will be tracked
+///     vec![1, 2, 3]
+/// }
+/// ```
+///
+/// With result logging (requires Debug on return type):
+///
+/// ```rust,no_run
+/// #[cfg_attr(feature = "hotpath", hotpath::future_fn(log = true))]
+/// async fn compute() -> i32 {
+///     // The result value will be logged when complete
+///     42
+/// }
+/// ```
+///
+/// # Output
+///
+/// When used with `FuturesGuard`, the statistics table will show:
+/// - Future location (file:line)
+/// - State (pending, ready, cancelled)
+/// - Poll count
+/// - Result value (if `log = true`)
+///
+/// # Note
+///
+/// This macro can only be applied to async functions. For sync functions,
+/// use [`measure`](macro@measure) instead.
+///
+/// # See Also
+///
+/// * [`measure`](macro@measure) - Attribute macro for instrumenting sync/async function timing
+/// * [`future!`](../hotpath/macro.future.html) - Declarative macro for instrumenting future expressions
+#[proc_macro_attribute]
+pub fn future_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemFn);
+
+    let attrs = &input.attrs;
+    let vis = &input.vis;
+    let sig = &input.sig;
+    let block = &input.block;
+
+    // Ensure the function is async
+    if sig.asyncness.is_none() {
+        return syn::Error::new_spanned(
+            &sig.fn_token,
+            "The #[future] attribute can only be applied to async functions",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    // Parse optional `log = true` attribute
+    let mut log_result = false;
+
+    if !attr.is_empty() {
+        let parser = syn::meta::parser(|meta| {
+            if meta.path.is_ident("log") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let lit: syn::LitBool = meta.input.parse()?;
+                log_result = lit.value();
+                return Ok(());
+            }
+
+            Err(meta.error("Unknown parameter. Supported: log = true"))
+        });
+
+        if let Err(e) = parser.parse2(proc_macro2::TokenStream::from(attr)) {
+            return e.to_compile_error().into();
+        }
+    }
+
+    let fn_name = &sig.ident;
+
+    // Generate the wrapped body using the future! macro pattern
+    let wrapped_body = if log_result {
+        quote! {
+            {
+                const TASK_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
+                hotpath::tasks::init_tasks_state();
+                hotpath::InstrumentTaskLog::instrument_task_log(
+                    async #block,
+                    TASK_LOC
+                ).await
+            }
+        }
+    } else {
+        quote! {
+            {
+                const TASK_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
+                hotpath::tasks::init_tasks_state();
+                hotpath::InstrumentTask::instrument_task(
+                    async #block,
+                    TASK_LOC
+                ).await
+            }
+        }
+    };
+
+    let output = quote! {
+        #(#attrs)*
+        #vis #sig {
+            #wrapped_body
+        }
+    };
+
+    output.into()
+}
+
 /// Marks a function to be excluded from profiling when used with [`measure_all`](macro@measure_all).
 ///
 /// # Usage
