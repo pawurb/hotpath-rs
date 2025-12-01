@@ -1,4 +1,4 @@
-use super::super::super::widgets::formatters::format_time_ago;
+use super::super::super::widgets::formatters::{format_time_ago, truncate_right};
 use hotpath::{FunctionLogsJson, ProfilingMode};
 use ratatui::{
     layout::{Constraint, Rect},
@@ -47,6 +47,12 @@ pub(crate) fn render_function_logs_panel(
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::BOLD),
         ));
+
+    // Calculate available width for Result column
+    // Fixed columns: Index(7) + Timing(12) + Ago(12) + TID(10) + spacing(8) + borders(2) + highlight(3) = 54
+    let inner_width = area.width.saturating_sub(2); // borders
+    let fixed_width: u16 = 7 + 12 + 12 + 10 + 8 + 3; // columns + spacing + highlight
+    let result_width = (inner_width.saturating_sub(fixed_width) as usize).max(20);
 
     if let Some(function_logs_data) = current_function_logs {
         // Timing tab always shows timing/latency data
@@ -97,13 +103,14 @@ pub(crate) fn render_function_logs_panel(
                     .map_or("N/A".to_string(), |v| hotpath::format_duration(v));
                 let invocation_number = total_invocations - idx;
                 let result_str = entry.result.as_deref().unwrap_or("N/A");
+                let result_truncated = truncate_right(result_str, result_width);
 
                 Row::new(vec![
                     Cell::from(format!("{}", invocation_number)),
                     Cell::from(time_str),
                     Cell::from(time_ago_str),
                     Cell::from(entry.tid.map_or("N/A".to_string(), |t| t.to_string())),
-                    Cell::from(result_str.to_string()),
+                    Cell::from(result_truncated),
                 ])
             })
             .collect();

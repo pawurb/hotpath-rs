@@ -320,7 +320,7 @@ impl App {
 
     pub(crate) fn close_function_inspect_and_refocus_functions(&mut self) {
         self.inspected_function_log = None;
-        self.toggle_function_logs(); // This will hide the logs panel
+        self.toggle_function_logs();
     }
 
     pub(crate) fn close_function_inspect_only(&mut self) {
