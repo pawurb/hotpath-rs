@@ -5,7 +5,7 @@ fn noop_sync_function() {
     std::hint::black_box((vec1, vec2));
 }
 
-#[cfg_attr(feature = "hotpath", hotpath::measure)]
+#[cfg_attr(feature = "hotpath", hotpath::measure(log = true))]
 async fn noop_async_function() {
     let vec1 = vec![1, 2, 3, 5, 6, 10];
     std::hint::black_box(vec1);
