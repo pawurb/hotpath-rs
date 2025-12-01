@@ -1,3 +1,4 @@
+pub(crate) mod inspect;
 pub(crate) mod logs;
 
 use super::super::app::{App, FunctionsFocus};

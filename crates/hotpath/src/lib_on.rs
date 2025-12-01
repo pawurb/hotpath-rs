@@ -699,13 +699,25 @@ impl HotPath {
                                                     let logs: Vec<FunctionLogEntry> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| (Some(*duration_ns), elapsed.as_nanos() as u64, None, *tid, result_log.clone()))
+                                                        .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| FunctionLogEntry {
+                                                            value: Some(*duration_ns),
+                                                            elapsed_nanos: elapsed.as_nanos() as u64,
+                                                            alloc_count: None,
+                                                            tid: *tid,
+                                                            result: result_log.clone(),
+                                                        })
                                                         .collect();
                                                 } else {
                                                     let logs: Vec<FunctionLogEntry> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(duration_ns, elapsed, tid, result_log)| (Some(*duration_ns), elapsed.as_nanos() as u64, None, *tid, result_log.clone()))
+                                                        .map(|(duration_ns, elapsed, tid, result_log)| FunctionLogEntry {
+                                                            value: Some(*duration_ns),
+                                                            elapsed_nanos: elapsed.as_nanos() as u64,
+                                                            alloc_count: None,
+                                                            tid: *tid,
+                                                            result: result_log.clone(),
+                                                        })
                                                         .collect();
                                                 }
                                             }
@@ -727,7 +739,13 @@ impl HotPath {
                                                     let logs: Vec<FunctionLogEntry> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(bytes, count, _duration_ns, elapsed, tid, result_log)| (*bytes, elapsed.as_nanos() as u64, *count, *tid, result_log.clone()))
+                                                        .map(|(bytes, count, _duration_ns, elapsed, tid, result_log)| FunctionLogEntry {
+                                                            value: *bytes,
+                                                            elapsed_nanos: elapsed.as_nanos() as u64,
+                                                            alloc_count: *count,
+                                                            tid: *tid,
+                                                            result: result_log.clone(),
+                                                        })
                                                         .collect();
                                                     Some(FunctionLogsJson {
                                                         function_name,

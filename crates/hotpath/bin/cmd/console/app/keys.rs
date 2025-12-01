@@ -54,9 +54,19 @@ impl App {
                     }
                 } else if self.selected_tab == SelectedTab::Threads {
                     // No logs panel for threads tab - do nothing
-                } else {
-                    self.toggle_function_logs();
-                    self.fetch_function_logs_if_open(self.metrics_port);
+                } else if self.selected_tab.is_functions_tab() {
+                    match self.functions_focus {
+                        FunctionsFocus::Inspect => {
+                            self.close_function_inspect_and_refocus_functions()
+                        }
+                        FunctionsFocus::Logs => {
+                            self.toggle_function_logs();
+                        }
+                        FunctionsFocus::Functions => {
+                            self.toggle_function_logs();
+                            self.fetch_function_logs_if_open(self.metrics_port);
+                        }
+                    }
                 }
             }
             KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
@@ -79,7 +89,11 @@ impl App {
                         self.focus_futures();
                     }
                 } else if self.selected_tab.is_functions_tab() {
-                    self.focus_functions();
+                    if self.functions_focus == FunctionsFocus::Inspect {
+                        self.close_function_inspect_only();
+                    } else {
+                        self.focus_functions();
+                    }
                 }
             }
             KeyCode::Right | KeyCode::Char('l') => {
@@ -100,6 +114,8 @@ impl App {
                     self.toggle_stream_inspect();
                 } else if self.selected_tab == SelectedTab::Futures {
                     self.toggle_future_inspect();
+                } else if self.selected_tab.is_functions_tab() {
+                    self.toggle_function_inspect();
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => {
@@ -128,7 +144,9 @@ impl App {
                             self.next_function();
                             self.update_and_fetch_function_logs(self.metrics_port);
                         }
-                        FunctionsFocus::Logs => self.select_next_function_log(),
+                        FunctionsFocus::Logs | FunctionsFocus::Inspect => {
+                            self.select_next_function_log()
+                        }
                     }
                 }
             }
@@ -160,7 +178,9 @@ impl App {
                             self.previous_function();
                             self.update_and_fetch_function_logs(self.metrics_port);
                         }
-                        FunctionsFocus::Logs => self.select_previous_function_log(),
+                        FunctionsFocus::Logs | FunctionsFocus::Inspect => {
+                            self.select_previous_function_log()
+                        }
                     }
                 }
             }

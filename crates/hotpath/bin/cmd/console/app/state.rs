@@ -1,6 +1,9 @@
 //! UI state management - navigation, selection, and focus handling
 
-use super::{App, ChannelsFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus};
+use super::{
+    App, ChannelsFocus, FunctionsFocus, FuturesFocus, InspectedFunctionLog, SelectedTab,
+    StreamsFocus,
+};
 
 #[cfg_attr(feature = "hotpath", hotpath::measure_all)]
 impl App {
@@ -237,6 +240,22 @@ impl App {
                     None => 0,
                 };
                 self.function_logs_table_state.select(Some(i));
+
+                // Update inspected log if inspect popup is open
+                if self.functions_focus == FunctionsFocus::Inspect {
+                    let total_invocations = function_logs.count;
+                    let invocation_number = total_invocations - i;
+                    if let Some(entry) = function_logs.logs.get(i) {
+                        self.inspected_function_log = Some(InspectedFunctionLog {
+                            invocation_index: invocation_number,
+                            value: entry.value,
+                            elapsed_nanos: entry.elapsed_nanos,
+                            alloc_count: entry.alloc_count,
+                            tid: entry.tid,
+                            result: entry.result.clone(),
+                        });
+                    }
+                }
             }
         }
     }
@@ -250,8 +269,64 @@ impl App {
                     None => 0,
                 };
                 self.function_logs_table_state.select(Some(i));
+
+                // Update inspected log if inspect popup is open
+                if self.functions_focus == FunctionsFocus::Inspect {
+                    let total_invocations = function_logs.count;
+                    let invocation_number = total_invocations - i;
+                    if let Some(entry) = function_logs.logs.get(i) {
+                        self.inspected_function_log = Some(InspectedFunctionLog {
+                            invocation_index: invocation_number,
+                            value: entry.value,
+                            elapsed_nanos: entry.elapsed_nanos,
+                            alloc_count: entry.alloc_count,
+                            tid: entry.tid,
+                            result: entry.result.clone(),
+                        });
+                    }
+                }
             }
         }
+    }
+
+    pub(crate) fn toggle_function_inspect(&mut self) {
+        if self.functions_focus == FunctionsFocus::Inspect {
+            // Closing inspect popup
+            self.functions_focus = FunctionsFocus::Logs;
+            self.inspected_function_log = None;
+        } else if self.functions_focus == FunctionsFocus::Logs
+            && self.function_logs_table_state.selected().is_some()
+        {
+            // Opening inspect popup - capture the current log entry
+            if let Some(selected) = self.function_logs_table_state.selected() {
+                if let Some(ref function_logs) = self.current_function_logs {
+                    if let Some(entry) = function_logs.logs.get(selected) {
+                        let total_invocations = function_logs.count;
+                        let invocation_number = total_invocations - selected;
+                        self.inspected_function_log = Some(InspectedFunctionLog {
+                            invocation_index: invocation_number,
+                            value: entry.value,
+                            elapsed_nanos: entry.elapsed_nanos,
+                            alloc_count: entry.alloc_count,
+                            tid: entry.tid,
+                            result: entry.result.clone(),
+                        });
+                        self.functions_focus = FunctionsFocus::Inspect;
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn close_function_inspect_and_refocus_functions(&mut self) {
+        self.inspected_function_log = None;
+        self.toggle_function_logs(); // This will hide the logs panel
+    }
+
+    pub(crate) fn close_function_inspect_only(&mut self) {
+        self.inspected_function_log = None;
+        self.functions_focus = FunctionsFocus::Functions;
+        self.function_logs_table_state.select(None);
     }
 
     // Streams state management methods

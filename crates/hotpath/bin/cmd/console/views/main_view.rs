@@ -2,8 +2,8 @@ use super::super::app::{
     App, ChannelsFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
 };
 use super::channels::{inspect, logs as channel_logs};
-use super::functions_memory::logs as memory_logs;
-use super::functions_timing::logs as timing_logs;
+use super::functions_memory::{inspect as memory_inspect, logs as memory_logs};
+use super::functions_timing::{inspect as timing_inspect, logs as timing_logs};
 use super::futures::{calls as future_calls, inspect as future_inspect};
 use super::streams::{inspect as stream_inspect, logs as stream_logs};
 use super::{
@@ -70,6 +70,17 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                     &mut app.function_logs_table_state,
                     app.functions_focus == FunctionsFocus::Logs,
                 );
+
+                if app.functions_focus == FunctionsFocus::Inspect {
+                    if let Some(ref inspected_log) = app.inspected_function_log {
+                        timing_inspect::render_inspect_popup(
+                            inspected_log,
+                            main_chunks[2],
+                            frame,
+                            app.timing_functions.total_elapsed,
+                        );
+                    }
+                }
             } else {
                 functions_timing::render_functions_table(frame, app, main_chunks[2]);
             }
@@ -92,6 +103,17 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                     &mut app.function_logs_table_state,
                     app.functions_focus == FunctionsFocus::Logs,
                 );
+
+                if app.functions_focus == FunctionsFocus::Inspect {
+                    if let Some(ref inspected_log) = app.inspected_function_log {
+                        memory_inspect::render_inspect_popup(
+                            inspected_log,
+                            main_chunks[2],
+                            frame,
+                            app.memory_functions.total_elapsed,
+                        );
+                    }
+                }
             } else {
                 functions_memory::render_functions_table(frame, app, main_chunks[2]);
             }

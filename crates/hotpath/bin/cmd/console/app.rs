@@ -81,6 +81,7 @@ pub(crate) enum StreamsFocus {
 pub(crate) enum FunctionsFocus {
     Functions,
     Logs,
+    Inspect,
 }
 
 /// Represents which UI component has focus in the Futures tab
@@ -95,6 +96,23 @@ pub(crate) enum FuturesFocus {
 pub(crate) struct CachedLogs {
     pub(crate) logs: ChannelLogs,
     pub(crate) received_map: HashMap<u64, LogEntry>,
+}
+
+/// Inspected function log entry for the inspect popup
+#[derive(Debug, Clone)]
+pub(crate) struct InspectedFunctionLog {
+    /// Invocation index (1-indexed, most recent first)
+    pub(crate) invocation_index: usize,
+    /// Measured value (duration in ns for timing, bytes for memory)
+    pub(crate) value: Option<u64>,
+    /// Timestamp when the measurement was taken (nanoseconds since start)
+    pub(crate) elapsed_nanos: u64,
+    /// Allocation count (only for memory mode)
+    pub(crate) alloc_count: Option<u64>,
+    /// Thread ID where the function was executed
+    pub(crate) tid: Option<u64>,
+    /// Debug representation of the return value (when log = true)
+    pub(crate) result: Option<String>,
 }
 
 pub(crate) struct CachedStreamLogs {
@@ -156,6 +174,8 @@ pub(crate) struct App {
     pub(crate) current_function_logs: Option<FunctionLogsJson>,
     /// Function pinned for logs display
     pub(crate) pinned_function: Option<String>,
+    /// Function log entry being inspected in popup
+    pub(crate) inspected_function_log: Option<InspectedFunctionLog>,
 
     // HTTP client and configuration
     /// HTTP client for fetching data from metrics server
@@ -254,6 +274,7 @@ impl App {
             show_function_logs: false,
             current_function_logs: None,
             pinned_function: None,
+            inspected_function_log: None,
             agent,
             metrics_port,
             exit: false,

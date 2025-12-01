@@ -185,13 +185,26 @@ impl fmt::Display for ProfilingMode {
     }
 }
 
-/// Log entry tuple: (value, elapsed_nanos, optional_alloc_count, tid, result_log)
-/// - For timing mode: (Some(duration_ns), elapsed_nanos, None, tid, result_log)
-/// - For alloc mode with valid data: (Some(bytes), elapsed_nanos, Some(count), tid, result_log)
-/// - For alloc mode with invalid data: (None, elapsed_nanos, None, tid, None) - cross_thread or unsupported_async
-/// - tid is None if cross-thread execution was detected
-/// - result_log contains the Debug representation of the return value when log = true
-pub type FunctionLogEntry = (Option<u64>, u64, Option<u64>, Option<u64>, Option<String>);
+/// A single log entry for a function invocation.
+///
+/// - For timing mode: `value` is duration in nanoseconds, `alloc_count` is None
+/// - For alloc mode with valid data: `value` is bytes allocated, `alloc_count` is allocation count
+/// - For alloc mode with invalid data: `value` and `alloc_count` are None (cross-thread or unsupported async)
+/// - `tid` is None if cross-thread execution was detected
+/// - `result` contains the Debug representation of the return value when `log = true`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionLogEntry {
+    /// Measured value (duration in ns for timing, bytes for memory). None if invalid.
+    pub value: Option<u64>,
+    /// Timestamp when the measurement was taken (nanoseconds since profiler start)
+    pub elapsed_nanos: u64,
+    /// Allocation count (only for memory mode)
+    pub alloc_count: Option<u64>,
+    /// Thread ID where the function was executed, None if cross-thread execution
+    pub tid: Option<u64>,
+    /// Debug representation of the return value (when log = true)
+    pub result: Option<String>,
+}
 
 /// Response containing recent logs for a function
 #[derive(Debug, Clone, Serialize, Deserialize)]

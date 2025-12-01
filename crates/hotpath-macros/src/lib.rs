@@ -281,7 +281,7 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```rust,no_run
 /// #[cfg_attr(feature = "hotpath", hotpath::measure(log = true))]
 /// fn compute() -> i32 {
-///     // The result value will be logged when complete
+///     // The result value will be logged in TUI console
 ///     42
 /// }
 /// ```
@@ -387,7 +387,7 @@ pub fn measure(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```rust,no_run
 /// #[cfg_attr(feature = "hotpath", hotpath::future_fn(log = true))]
 /// async fn compute() -> i32 {
-///     // The result value will be logged when complete
+///     // The result value will be logged in TUI console
 ///     42
 /// }
 /// ```

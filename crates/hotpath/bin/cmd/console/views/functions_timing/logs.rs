@@ -84,28 +84,28 @@ pub(crate) fn render_function_logs_panel(
             .logs
             .iter()
             .enumerate()
-            .map(
-                |(idx, &(value, elapsed_nanos, _count, tid, ref result_log))| {
-                    let time_ago_str = if total_elapsed >= elapsed_nanos {
-                        let nanos_ago = total_elapsed - elapsed_nanos;
-                        format_time_ago(nanos_ago)
-                    } else {
-                        "now".to_string()
-                    };
+            .map(|(idx, entry)| {
+                let time_ago_str = if total_elapsed >= entry.elapsed_nanos {
+                    let nanos_ago = total_elapsed - entry.elapsed_nanos;
+                    format_time_ago(nanos_ago)
+                } else {
+                    "now".to_string()
+                };
 
-                    let time_str = value.map_or("N/A".to_string(), |v| hotpath::format_duration(v));
-                    let invocation_number = total_invocations - idx;
-                    let result_str = result_log.as_deref().unwrap_or("N/A");
+                let time_str = entry
+                    .value
+                    .map_or("N/A".to_string(), |v| hotpath::format_duration(v));
+                let invocation_number = total_invocations - idx;
+                let result_str = entry.result.as_deref().unwrap_or("N/A");
 
-                    Row::new(vec![
-                        Cell::from(format!("{}", invocation_number)),
-                        Cell::from(time_str),
-                        Cell::from(time_ago_str),
-                        Cell::from(tid.map_or("N/A".to_string(), |t| t.to_string())),
-                        Cell::from(result_str.to_string()),
-                    ])
-                },
-            )
+                Row::new(vec![
+                    Cell::from(format!("{}", invocation_number)),
+                    Cell::from(time_str),
+                    Cell::from(time_ago_str),
+                    Cell::from(entry.tid.map_or("N/A".to_string(), |t| t.to_string())),
+                    Cell::from(result_str.to_string()),
+                ])
+            })
             .collect();
 
         let widths = [
