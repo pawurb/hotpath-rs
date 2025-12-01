@@ -8,7 +8,7 @@ use tokio::time::sleep;
 #[cfg(feature = "hotpath")]
 use hotpath::future;
 
-#[cfg_attr(feature = "hotpath", hotpath::measure)]
+#[cfg_attr(feature = "hotpath", hotpath::measure(log = true))]
 fn fast_sync_allocator() -> Vec<Vec<u64>> {
     let mut rng = rand::thread_rng();
     let num_arrays = rng.gen_range(1..=10);
@@ -92,7 +92,7 @@ async fn future_fn_with_logging() -> u64 {
     total
 }
 
-#[cfg_attr(feature = "hotpath", hotpath::measure)]
+#[cfg_attr(feature = "hotpath", hotpath::measure(log = true))]
 async fn fast_async_allocator() -> Vec<Vec<u64>> {
     let mut rng = rand::thread_rng();
     let num_arrays = rng.gen_range(1..=10);
@@ -128,7 +128,7 @@ async fn slow_async_allocator() -> Vec<Vec<u64>> {
 
 /// Async function designed to migrate between threads.
 /// Many yield points give the executor opportunities to reschedule on different workers.
-#[cfg_attr(feature = "hotpath", hotpath::measure)]
+#[cfg_attr(feature = "hotpath", hotpath::measure(log = true))]
 async fn cross_thread_worker() -> u64 {
     let mut total = 0u64;
 
@@ -164,7 +164,7 @@ async fn heavy_async_work() -> Vec<u64> {
     results
 }
 
-#[cfg_attr(feature = "hotpath", hotpath::measure)]
+#[cfg_attr(feature = "hotpath", hotpath::measure(log = true))]
 fn process_data(arrays: Vec<Vec<u64>>) -> u64 {
     let mut rng = rand::thread_rng();
     let mut total_sum = 0u64;

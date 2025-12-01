@@ -103,6 +103,38 @@ impl MeasurementGuard {
     pub fn build_with_timeout(self, _duration: std::time::Duration) {}
 }
 
+pub struct MeasurementGuardWithLog {}
+
+impl MeasurementGuardWithLog {
+    pub fn new(_name: &'static str, _wrapper: bool, _unsupported_async: bool) -> Self {
+        Self {}
+    }
+
+    pub fn build(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
+        Self {}
+    }
+
+    pub fn finish_with_result<T: std::fmt::Debug>(self, _result: &T) {}
+}
+
+#[inline]
+pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
+    _name: &'static str,
+    _wrapper: bool,
+    _is_async: bool,
+    f: F,
+) -> T {
+    f()
+}
+
+pub async fn measure_with_log_async<T: std::fmt::Debug, F, Fut>(_name: &'static str, f: F) -> T
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = T>,
+{
+    f().await
+}
+
 pub struct HotPath;
 
 impl Default for HotPath {

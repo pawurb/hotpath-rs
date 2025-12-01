@@ -185,12 +185,13 @@ impl fmt::Display for ProfilingMode {
     }
 }
 
-/// Log entry tuple: (value, elapsed_nanos, optional_alloc_count, tid)
-/// - For timing mode: (Some(duration_ns), elapsed_nanos, None, tid)
-/// - For alloc mode with valid data: (Some(bytes), elapsed_nanos, Some(count), tid)
-/// - For alloc mode with invalid data: (None, elapsed_nanos, None, tid) - cross_thread or unsupported_async
+/// Log entry tuple: (value, elapsed_nanos, optional_alloc_count, tid, result_log)
+/// - For timing mode: (Some(duration_ns), elapsed_nanos, None, tid, result_log)
+/// - For alloc mode with valid data: (Some(bytes), elapsed_nanos, Some(count), tid, result_log)
+/// - For alloc mode with invalid data: (None, elapsed_nanos, None, tid, None) - cross_thread or unsupported_async
 /// - tid is None if cross-thread execution was detected
-pub type FunctionLogEntry = (Option<u64>, u64, Option<u64>, Option<u64>);
+/// - result_log contains the Debug representation of the return value when log = true
+pub type FunctionLogEntry = (Option<u64>, u64, Option<u64>, Option<u64>, Option<String>);
 
 /// Response containing recent logs for a function
 #[derive(Debug, Clone, Serialize, Deserialize)]

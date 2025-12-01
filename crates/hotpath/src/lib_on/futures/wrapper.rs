@@ -1,5 +1,7 @@
 //! Instrumented Future wrapper that tracks lifecycle events.
 
+use crate::truncate_result;
+
 use super::{
     get_or_create_future_id, send_future_event, FutureEvent, PollResult, FUTURE_CALL_ID_COUNTER,
 };
@@ -10,16 +12,6 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-
-const MAX_RESULT_LEN: usize = 1024;
-
-fn truncate_result(s: String) -> String {
-    if s.len() <= MAX_RESULT_LEN {
-        s
-    } else {
-        format!("{}...", &s[..MAX_RESULT_LEN.saturating_sub(3)])
-    }
-}
 
 struct WakerData {
     inner: Waker,

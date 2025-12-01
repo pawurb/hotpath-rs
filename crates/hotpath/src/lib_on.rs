@@ -24,6 +24,8 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 use crossbeam_channel::Sender;
 
+pub(crate) const MAX_RESULT_LEN: usize = 1024;
+
 /// Query request sent from TUI HTTP server to profiler worker thread
 pub enum QueryRequest {
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
@@ -52,7 +54,7 @@ cfg_if::cfg_if! {
         #[global_allocator]
         static GLOBAL: alloc::allocator::CountingAllocator = alloc::allocator::CountingAllocator {};
 
-        pub use alloc::guard::MeasurementGuard;
+        pub use alloc::guard::{MeasurementGuard, MeasurementGuardWithLog};
         pub use alloc::state::FunctionStats;
         use alloc::{
             report::{StatsData, TimingStatsData},
@@ -61,7 +63,7 @@ cfg_if::cfg_if! {
     } else {
         // Time-based profiling (when no allocation features are enabled)
         mod time;
-        pub use time::guard::MeasurementGuard;
+        pub use time::guard::{MeasurementGuard, MeasurementGuardWithLog};
         pub use time::state::FunctionStats;
         use time::{
             report::StatsData,
@@ -97,6 +99,60 @@ impl MeasurementGuard {
 
         MeasurementGuard::new(measurement_name, wrapper, unsupported_async)
     }
+}
+
+impl MeasurementGuardWithLog {
+    pub fn build(measurement_name: &'static str, wrapper: bool, _is_async: bool) -> Self {
+        #[allow(clippy::needless_bool)]
+        let unsupported_async = if wrapper {
+            false
+        } else {
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "hotpath-alloc")] {
+                    if _is_async {
+                        match Handle::try_current() {
+                            Ok(h) => h.runtime_flavor() != RuntimeFlavor::CurrentThread,
+                            Err(_) => true,
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+        };
+
+        MeasurementGuardWithLog::new(measurement_name, wrapper, unsupported_async)
+    }
+}
+
+/// Measure a sync function and log its result.
+#[doc(hidden)]
+#[inline]
+pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
+    name: &'static str,
+    wrapper: bool,
+    is_async: bool,
+    f: F,
+) -> T {
+    let guard = MeasurementGuardWithLog::build(name, wrapper, is_async);
+    let result = f();
+    guard.finish_with_result(&result);
+    result
+}
+
+/// Measure an async function and log its result.
+#[doc(hidden)]
+pub async fn measure_with_log_async<T: std::fmt::Debug, F, Fut>(name: &'static str, f: F) -> T
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = T>,
+{
+    let guard = MeasurementGuardWithLog::build(name, false, true);
+    let result = f().await;
+    guard.finish_with_result(&result);
+    result
 }
 
 /// Output format for profiling reports.
@@ -643,13 +699,13 @@ impl HotPath {
                                                     let logs: Vec<FunctionLogEntry> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(_bytes, _count, duration_ns, elapsed, tid)| (Some(*duration_ns), elapsed.as_nanos() as u64, None, *tid))
+                                                        .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| (Some(*duration_ns), elapsed.as_nanos() as u64, None, *tid, result_log.clone()))
                                                         .collect();
                                                 } else {
                                                     let logs: Vec<FunctionLogEntry> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(duration_ns, elapsed, tid)| (Some(*duration_ns), elapsed.as_nanos() as u64, None, *tid))
+                                                        .map(|(duration_ns, elapsed, tid, result_log)| (Some(*duration_ns), elapsed.as_nanos() as u64, None, *tid, result_log.clone()))
                                                         .collect();
                                                 }
                                             }
@@ -671,7 +727,7 @@ impl HotPath {
                                                     let logs: Vec<FunctionLogEntry> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(bytes, count, _duration_ns, elapsed, tid)| (*bytes, elapsed.as_nanos() as u64, *count, *tid))
+                                                        .map(|(bytes, count, _duration_ns, elapsed, tid, result_log)| (*bytes, elapsed.as_nanos() as u64, *count, *tid, result_log.clone()))
                                                         .collect();
                                                     Some(FunctionLogsJson {
                                                         function_name,
@@ -800,6 +856,14 @@ impl Drop for HotPath {
         if let Some(arc_swap) = HOTPATH_STATE.get() {
             arc_swap.store(None);
         }
+    }
+}
+
+pub(crate) fn truncate_result(s: String) -> String {
+    if s.len() <= MAX_RESULT_LEN {
+        s
+    } else {
+        format!("{}...", &s[..MAX_RESULT_LEN.saturating_sub(3)])
     }
 }
 

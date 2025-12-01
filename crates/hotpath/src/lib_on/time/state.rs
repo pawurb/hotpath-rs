@@ -4,8 +4,13 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-pub enum Measurement {
-    Duration(u64, Duration, &'static str, bool, Option<u64>), // duration_ns, elapsed_since_start, function_name, wrapper, tid (None = cross-thread)
+pub struct Measurement {
+    pub duration_ns: u64,
+    pub elapsed: Duration,
+    pub name: &'static str,
+    pub wrapper: bool,
+    pub tid: Option<u64>,
+    pub result_log: Option<String>,
 }
 
 #[derive(Debug)]
@@ -15,7 +20,7 @@ pub struct FunctionStats {
     hist: Option<Histogram<u64>>,
     pub has_data: bool,
     pub wrapper: bool,
-    pub recent_logs: VecDeque<(u64, Duration, Option<u64>)>, // (duration_ns, elapsed, tid - None = cross-thread)
+    pub recent_logs: VecDeque<(u64, Duration, Option<u64>, Option<String>)>, // (duration_ns, elapsed, tid, result_log)
 }
 
 impl FunctionStats {
@@ -29,12 +34,13 @@ impl FunctionStats {
         wrapper: bool,
         recent_logs_limit: usize,
         tid: Option<u64>,
+        result_log: Option<String>,
     ) -> Self {
         let hist = Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
             .expect("hdrhistogram init");
 
         let mut recent_logs = VecDeque::with_capacity(recent_logs_limit);
-        recent_logs.push_back((first_ns, elapsed, tid));
+        recent_logs.push_back((first_ns, elapsed, tid, result_log));
 
         let mut s = Self {
             total_duration_ns: first_ns,
@@ -56,7 +62,13 @@ impl FunctionStats {
         }
     }
 
-    pub fn update_duration(&mut self, duration_ns: u64, elapsed: Duration, tid: Option<u64>) {
+    pub fn update_duration(
+        &mut self,
+        duration_ns: u64,
+        elapsed: Duration,
+        tid: Option<u64>,
+        result_log: Option<String>,
+    ) {
         self.total_duration_ns += duration_ns;
         self.count += 1;
         self.record_time(duration_ns);
@@ -65,7 +77,8 @@ impl FunctionStats {
         {
             self.recent_logs.pop_front();
         }
-        self.recent_logs.push_back((duration_ns, elapsed, tid));
+        self.recent_logs
+            .push_back((duration_ns, elapsed, tid, result_log));
     }
 
     pub fn avg_duration_ns(&self) -> u64 {
@@ -104,23 +117,20 @@ pub(crate) fn process_measurement(
     m: Measurement,
     recent_logs_limit: usize,
 ) {
-    match m {
-        Measurement::Duration(duration_ns, elapsed, name, wrapper, tid) => {
-            if let Some(s) = stats.get_mut(name) {
-                s.update_duration(duration_ns, elapsed, tid);
-            } else {
-                stats.insert(
-                    name,
-                    FunctionStats::new_duration(
-                        duration_ns,
-                        elapsed,
-                        wrapper,
-                        recent_logs_limit,
-                        tid,
-                    ),
-                );
-            }
-        }
+    if let Some(s) = stats.get_mut(m.name) {
+        s.update_duration(m.duration_ns, m.elapsed, m.tid, m.result_log);
+    } else {
+        stats.insert(
+            m.name,
+            FunctionStats::new_duration(
+                m.duration_ns,
+                m.elapsed,
+                m.wrapper,
+                recent_logs_limit,
+                m.tid,
+                m.result_log,
+            ),
+        );
     }
 }
 
@@ -131,6 +141,16 @@ pub fn send_duration_measurement(
     duration: Duration,
     wrapper: bool,
     tid: Option<u64>,
+) {
+    send_duration_measurement_with_log(name, duration, wrapper, tid, None);
+}
+
+pub fn send_duration_measurement_with_log(
+    name: &'static str,
+    duration: Duration,
+    wrapper: bool,
+    tid: Option<u64>,
+    result_log: Option<String>,
 ) {
     let Some(arc_swap) = HOTPATH_STATE.get() else {
         panic!(
@@ -150,7 +170,13 @@ pub fn send_duration_measurement(
     };
 
     let elapsed = state_guard.start_time.elapsed();
-    let measurement =
-        Measurement::Duration(duration.as_nanos() as u64, elapsed, name, wrapper, tid);
+    let measurement = Measurement {
+        duration_ns: duration.as_nanos() as u64,
+        elapsed,
+        name,
+        wrapper,
+        tid,
+        result_log,
+    };
     let _ = sender.try_send(measurement);
 }

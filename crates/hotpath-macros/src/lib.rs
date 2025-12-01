@@ -270,16 +270,31 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// When the `hotpath` feature is disabled, this macro compiles to zero overhead (no instrumentation).
 ///
+/// # Parameters
+///
+/// * `log` - If `true`, logs the result value when the function returns (requires `Debug` on return type)
+///
+/// # Examples
+///
+/// With result logging (requires Debug on return type):
+///
+/// ```rust,no_run
+/// #[cfg_attr(feature = "hotpath", hotpath::measure(log = true))]
+/// fn compute() -> i32 {
+///     // The result value will be logged when complete
+///     42
+/// }
+/// ```
+///
 /// # See Also
 ///
 /// * [`main`](macro@main) - Attribute macro that initializes profiling
 /// * [`measure_block!`](../hotpath/macro.measure_block.html) - Macro for measuring code blocks
 #[proc_macro_attribute]
-pub fn measure(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn measure(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
 
     let attrs = &input.attrs;
-
     let vis = &input.vis;
     let sig = &input.sig;
     let block = &input.block;
@@ -287,19 +302,52 @@ pub fn measure(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = sig.ident.to_string();
     let asyncness = sig.asyncness.is_some();
 
-    let guard_init = quote! {
-        let _guard = hotpath::MeasurementGuard::build(
-            concat!(module_path!(), "::", #name),
-            false,
-            #asyncness
-        );
-        #block
-    };
+    // Parse optional `log = true` attribute
+    let mut log_result = false;
 
-    let wrapped = if asyncness {
-        quote! { async { #guard_init }.await }
+    if !attr.is_empty() {
+        let parser = syn::meta::parser(|meta| {
+            if meta.path.is_ident("log") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let lit: syn::LitBool = meta.input.parse()?;
+                log_result = lit.value();
+                return Ok(());
+            }
+
+            Err(meta.error("Unknown parameter. Supported: log = true"))
+        });
+
+        if let Err(e) = parser.parse2(proc_macro2::TokenStream::from(attr)) {
+            return e.to_compile_error().into();
+        }
+    }
+
+    let wrapped = if log_result {
+        let loc = quote! { concat!(module_path!(), "::", #name) };
+        if asyncness {
+            quote! {
+                hotpath::measure_with_log_async(#loc, || async #block).await
+            }
+        } else {
+            quote! {
+                hotpath::measure_with_log(#loc, false, false, || #block)
+            }
+        }
     } else {
-        guard_init
+        let guard_init = quote! {
+            let _guard = hotpath::MeasurementGuard::build(
+                concat!(module_path!(), "::", #name),
+                false,
+                #asyncness
+            );
+            #block
+        };
+
+        if asyncness {
+            quote! { async { #guard_init }.await }
+        } else {
+            guard_init
+        }
     };
 
     let output = quote! {

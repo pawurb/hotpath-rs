@@ -13,13 +13,22 @@ pub struct Measurement {
     pub unsupported_async: bool,
     pub wrapper: bool,
     pub cross_thread: bool,
-    pub tid: Option<u64>, // None = cross-thread
+    pub tid: Option<u64>,
+    pub result_log: Option<String>,
 }
 
 /// Log entry for function execution metrics.
 /// bytes/count are None if cross_thread or unsupported_async.
 /// tid is None if cross-thread.
-type LogEntry = (Option<u64>, Option<u64>, u64, Duration, Option<u64>);
+/// result_log contains the Debug representation of the return value when log = true.
+type LogEntry = (
+    Option<u64>,
+    Option<u64>,
+    u64,
+    Duration,
+    Option<u64>,
+    Option<String>,
+);
 
 #[derive(Debug, Clone)]
 pub struct FunctionStats {
@@ -55,6 +64,7 @@ impl FunctionStats {
         cross_thread: bool,
         recent_logs_limit: usize,
         tid: Option<u64>,
+        result_log: Option<String>,
     ) -> Self {
         let bytes_total_hist =
             Histogram::<u64>::new_with_bounds(Self::LOW_BYTES, Self::HIGH_BYTES, Self::SIGFIGS)
@@ -78,7 +88,7 @@ impl FunctionStats {
         } else {
             (Some(bytes_total), Some(count_total))
         };
-        recent_logs.push_back((bytes_opt, count_opt, duration_ns, elapsed, tid));
+        recent_logs.push_back((bytes_opt, count_opt, duration_ns, elapsed, tid, result_log));
 
         let mut s = Self {
             count: 1,
@@ -134,6 +144,7 @@ impl FunctionStats {
         unsupported_async: bool,
         cross_thread: bool,
         tid: Option<u64>,
+        result_log: Option<String>,
     ) {
         self.count += 1;
         self.has_unsupported_async |= unsupported_async;
@@ -154,7 +165,7 @@ impl FunctionStats {
             (Some(bytes_total), Some(count_total))
         };
         self.recent_logs
-            .push_back((bytes_opt, count_opt, duration_ns, elapsed, tid));
+            .push_back((bytes_opt, count_opt, duration_ns, elapsed, tid, result_log));
     }
 
     #[inline]
@@ -262,6 +273,7 @@ pub(crate) fn process_measurement(
             m.unsupported_async,
             m.cross_thread,
             m.tid,
+            m.result_log,
         );
     } else {
         stats.insert(
@@ -276,6 +288,7 @@ pub(crate) fn process_measurement(
                 m.cross_thread,
                 recent_logs_limit,
                 m.tid,
+                m.result_log,
             ),
         );
     }
@@ -293,6 +306,31 @@ pub fn send_alloc_measurement(
     wrapper: bool,
     cross_thread: bool,
     tid: Option<u64>,
+) {
+    send_alloc_measurement_with_log(
+        name,
+        bytes_total,
+        count_total,
+        duration,
+        unsupported_async,
+        wrapper,
+        cross_thread,
+        tid,
+        None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn send_alloc_measurement_with_log(
+    name: &'static str,
+    bytes_total: u64,
+    count_total: u64,
+    duration: Duration,
+    unsupported_async: bool,
+    wrapper: bool,
+    cross_thread: bool,
+    tid: Option<u64>,
+    result_log: Option<String>,
 ) {
     let Some(arc_swap) = HOTPATH_STATE.get() else {
         panic!(
@@ -322,6 +360,7 @@ pub fn send_alloc_measurement(
         wrapper,
         cross_thread,
         tid,
+        result_log,
     };
     let _ = sender.try_send(measurement);
 }
