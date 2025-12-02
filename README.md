@@ -3,7 +3,7 @@
 
 ![hotpath TUI Example](hotpath-tui6.gif)
 
-A lightweight Rust profiler for latency, memory, and data-flow insight. Instrument functions, channels, and streams to find bottlenecks and focus optimizations where they matter most.
+A lightweight Rust profiler for latency, memory, and data-flow insight. Instrument functions, channels, futures, and streams to find bottlenecks and focus optimizations where they matter most.
 
 In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain the motivation behind the project and its inner workings.
 
@@ -15,6 +15,7 @@ In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain th
 - **Static reports for one-off programs** - alternatively print profiling summaries without running the TUI.
 - **Memory allocation tracking** - track bytes allocated and allocation counts per function.
 - **Channel and stream monitoring** - instrument channels and streams to track message flow and throughput.
+- **Futures instrumentstion** - monitor any async piece of code to track poll counts, lifecycle and resolved values
 - **Detailed stats**: avg, total time, call count, % of total runtime, and configurable percentiles (p95, p99, etc.).
 - **Background processing** for minimal profiling impact.
 - **GitHub Actions integration** - configure CI to automatically benchmark your program against a base branch for each PR
@@ -24,7 +25,7 @@ In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain th
 - [x] latency, memory method calls tracking
 - [x] channels/streams profiling
 - [x] process threads monitoring
-- [ ] futures monitoring
+- [x] futures monitoring
 - [ ] runtime metrics 
 - [ ] improved docs on [hotpath.rs](https://hotpath.rs)
 - [ ] hosted backend integration
@@ -201,9 +202,9 @@ It ensures that tokio runs in a `current_thread` runtime mode if the allocation 
 
 **Why this limitation exists**: The allocation tracking uses thread-local storage to track memory usage. In multi-threaded runtimes, async tasks can migrate between threads, making it impossible to accurately attribute allocations to specific function calls.
 
-## Channel and Stream Monitoring
+## Channels, Futures, and Streams, Monitoring
 
-In addition to function profiling, `hotpath` can instrument async channels and streams to track message throughput, queue sizes, and data flow. This is particularly useful for debugging async applications and identifying bottlenecks in concurrent message-passing systems.
+In addition to function profiling, `hotpath` can instrument async channels, futures and streams to track message throughput, queue sizes, and data flow. This is particularly useful for debugging async applications and identifying bottlenecks in concurrent message-passing systems.
 
 ### Channel Monitoring
 
@@ -265,6 +266,37 @@ let (tx, rx) = hotpath::channel!((tx, rx), capacity = 10);
 
 Tokio and crossbeam channels don't require this parameter because their capacity is accessible from the channel handles.
 
+### Futures Monitoring
+
+The `future!` macro and `#[future_fn]` attribute instrument async futures to track poll counts and lifecycle:
+
+```rust
+#[tokio::main]
+#[cfg_attr(feature = "hotpath", hotpath::main)]
+async fn main() {
+    // Instrument a future expression
+    #[cfg(feature = "hotpath")]
+    let result = hotpath::future!(async { 42 }, log = true).await;
+
+    // Or use the attribute on async functions
+    instrumented_fetch().await;
+}
+
+#[cfg_attr(feature = "hotpath", hotpath::future_fn(log = true))]
+async fn instrumented_fetch() -> Vec<u8> {
+    vec![1, 2, 3]
+}
+```
+
+**Optional features:**
+
+```rust
+// Log the result value (requires Debug on return type)
+let result = hotpath::future!(async { 42 }, log = true).await;
+
+#[cfg_attr(feature = "hotpath", hotpath::future_fn(log = true))]
+async fn compute() -> i32 { 42 }
+```
 
 ### Stream Monitoring
 
