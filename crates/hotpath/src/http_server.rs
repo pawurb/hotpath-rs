@@ -1,103 +1,43 @@
 use crate::json::Route;
-use regex::Regex;
 use std::sync::LazyLock;
 
-static RE_CHANNEL_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/channels/(\d+)/logs$").unwrap());
-static RE_STREAM_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/streams/(\d+)/logs$").unwrap());
-static RE_FUTURE_CALLS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/futures/(\d+)/calls$").unwrap());
-static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
-static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/functions_alloc/([^/]+)/logs$").unwrap());
+pub(crate) static HTTP_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
+    std::env::var("HOTPATH_HTTP_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(6770)
+});
 
-fn base64_decode(encoded: &str) -> Result<String, String> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|e| e.to_string())?;
-    String::from_utf8(bytes).map_err(|e| e.to_string())
+use crate::channels::{get_channel_logs, get_channels_json};
+use crate::futures::{get_future_calls, get_futures_json};
+use crate::output::FunctionsJson;
+use crate::streams::{get_stream_logs, get_streams_json};
+use crate::{FunctionLogsJson, QueryRequest, HOTPATH_STATE};
+use crossbeam_channel::bounded;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::sync::OnceLock;
+use std::thread;
+use std::time::Duration;
+use tiny_http::{Header, Request, Response, Server};
+
+/// Tracks whether the HTTP server has been started to prevent duplicate instances
+static HTTP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
+
+/// Starts the HTTP metrics server if it hasn't been started yet.
+/// Uses OnceLock to ensure only one server instance is created.
+pub fn start_metrics_server_once(port: u16) {
+    HTTP_SERVER_STARTED.get_or_init(|| {
+        start_metrics_server(port);
+    });
 }
 
-/// Parses a URL path into a Route using regex patterns.
-/// Returns None if the path doesn't match any known route.
-pub fn route_from_path(path: &str) -> Option<Route> {
-    let path = path.split('?').next().unwrap_or(path);
+fn start_metrics_server(port: u16) {
+    #[cfg(feature = "threads")]
+    crate::threads::init_threads_monitoring();
 
-    match path {
-        "/functions_timing" => return Some(Route::FunctionsTiming),
-        "/functions_alloc" => return Some(Route::FunctionsAlloc),
-        "/channels" => return Some(Route::Channels),
-        "/streams" => return Some(Route::Streams),
-        "/futures" => return Some(Route::Futures),
-        "/threads" => return Some(Route::Threads),
-        _ => {}
-    }
-
-    if let Some(caps) = RE_FUNCTION_LOGS_TIMING.captures(path) {
-        let function_name = base64_decode(&caps[1]).ok()?;
-        return Some(Route::FunctionTimingLogs { function_name });
-    }
-
-    if let Some(caps) = RE_FUNCTION_LOGS_ALLOC.captures(path) {
-        let function_name = base64_decode(&caps[1]).ok()?;
-        return Some(Route::FunctionAllocLogs { function_name });
-    }
-
-    if let Some(caps) = RE_CHANNEL_LOGS.captures(path) {
-        let channel_id = caps[1].parse().ok()?;
-        return Some(Route::ChannelLogs { channel_id });
-    }
-
-    if let Some(caps) = RE_STREAM_LOGS.captures(path) {
-        let stream_id = caps[1].parse().ok()?;
-        return Some(Route::StreamLogs { stream_id });
-    }
-
-    if let Some(caps) = RE_FUTURE_CALLS.captures(path) {
-        let future_id = caps[1].parse().ok()?;
-        return Some(Route::FutureCalls { future_id });
-    }
-
-    None
-}
-
-// Server implementation is only compiled when hotpath feature is enabled
-#[cfg(feature = "hotpath")]
-mod server {
-    use super::{route_from_path, Route};
-    use crate::channels::{get_channel_logs, get_channels_json};
-    use crate::futures::{get_future_calls, get_futures_json};
-    use crate::output::FunctionsJson;
-    use crate::streams::{get_stream_logs, get_streams_json};
-    use crate::{FunctionLogsJson, QueryRequest, HOTPATH_STATE};
-    use crossbeam_channel::bounded;
-    use serde::Serialize;
-    use std::collections::HashMap;
-    use std::fmt::Display;
-    use std::sync::OnceLock;
-    use std::thread;
-    use std::time::Duration;
-    use tiny_http::{Header, Request, Response, Server};
-
-    /// Tracks whether the HTTP server has been started to prevent duplicate instances
-    static HTTP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
-
-    /// Starts the HTTP metrics server if it hasn't been started yet.
-    /// Uses OnceLock to ensure only one server instance is created.
-    pub fn start_metrics_server_once(port: u16) {
-        HTTP_SERVER_STARTED.get_or_init(|| {
-            start_metrics_server(port);
-        });
-    }
-
-    fn start_metrics_server(port: u16) {
-        #[cfg(feature = "threads")]
-        crate::threads::init_threads_monitoring();
-
-        thread::Builder::new()
+    thread::Builder::new()
             .name("hp-server".into())
             .spawn(move || {
                 let addr = format!("0.0.0.0:{}", port);
@@ -118,230 +58,222 @@ mod server {
                 }
             })
             .expect("Failed to spawn HTTP metrics server thread");
-    }
+}
 
-    fn handle_request(request: Request) {
-        let path = request.url();
+fn handle_request(request: Request) {
+    let path = request.url();
 
-        match route_from_path(path) {
-            Some(Route::FunctionsTiming) => {
-                let metrics = get_functions_timing_json();
-                respond_json(request, &metrics);
+    match path.parse::<Route>() {
+        Ok(Route::FunctionsTiming) => {
+            let metrics = get_functions_timing_json();
+            respond_json(request, &metrics);
+        }
+        Ok(Route::FunctionsAlloc) => match get_functions_alloc_json() {
+            Some(metrics) => respond_json(request, &metrics),
+            None => respond_error(
+                request,
+                404,
+                "Memory profiling not available - enable hotpath-alloc feature",
+            ),
+        },
+        Ok(Route::Channels) => {
+            let channels = get_channels_json();
+            respond_json(request, &channels);
+        }
+        Ok(Route::Streams) => {
+            let streams = get_streams_json();
+            respond_json(request, &streams);
+        }
+        Ok(Route::Futures) => {
+            let futures = get_futures_json();
+            respond_json(request, &futures);
+        }
+        Ok(Route::FunctionTimingLogs { function_name }) => {
+            match get_function_logs_timing(&function_name) {
+                Some(logs) => respond_json(request, &logs),
+                None => respond_error(
+                    request,
+                    404,
+                    &format!("Function '{}' not found", function_name),
+                ),
             }
-            Some(Route::FunctionsAlloc) => match get_functions_alloc_json() {
-                Some(metrics) => respond_json(request, &metrics),
+        }
+        Ok(Route::FunctionAllocLogs { function_name }) => {
+            match get_function_logs_alloc(&function_name) {
+                Some(logs) => respond_json(request, &logs),
                 None => respond_error(
                     request,
                     404,
                     "Memory profiling not available - enable hotpath-alloc feature",
                 ),
-            },
-            Some(Route::Channels) => {
-                let channels = get_channels_json();
-                respond_json(request, &channels);
             }
-            Some(Route::Streams) => {
-                let streams = get_streams_json();
-                respond_json(request, &streams);
-            }
-            Some(Route::Futures) => {
-                let futures = get_futures_json();
-                respond_json(request, &futures);
-            }
-            Some(Route::FunctionTimingLogs { function_name }) => {
-                match get_function_logs_timing(&function_name) {
-                    Some(logs) => respond_json(request, &logs),
-                    None => respond_error(
-                        request,
-                        404,
-                        &format!("Function '{}' not found", function_name),
-                    ),
-                }
-            }
-            Some(Route::FunctionAllocLogs { function_name }) => {
-                match get_function_logs_alloc(&function_name) {
-                    Some(logs) => respond_json(request, &logs),
-                    None => respond_error(
-                        request,
-                        404,
-                        "Memory profiling not available - enable hotpath-alloc feature",
-                    ),
-                }
-            }
-            Some(Route::ChannelLogs { channel_id }) => {
-                match get_channel_logs(&channel_id.to_string()) {
-                    Some(logs) => respond_json(request, &logs),
-                    None => respond_error(request, 404, "Channel not found"),
-                }
-            }
-            Some(Route::StreamLogs { stream_id }) => {
-                match get_stream_logs(&stream_id.to_string()) {
-                    Some(logs) => respond_json(request, &logs),
-                    None => respond_error(request, 404, "Stream not found"),
-                }
-            }
-            Some(Route::FutureCalls { future_id }) => match get_future_calls(future_id) {
-                Some(calls) => respond_json(request, &calls),
-                None => respond_error(request, 404, "Future not found"),
-            },
-            #[cfg(feature = "threads")]
-            Some(Route::Threads) => {
-                let threads = crate::threads::get_threads_json();
-                respond_json(request, &threads);
-            }
-            #[cfg(not(feature = "threads"))]
-            Some(Route::Threads) => {
-                respond_error(
-                    request,
-                    404,
-                    "Thread monitoring not available - enable threads feature",
-                );
-            }
-            None => respond_error(request, 404, "Not found"),
         }
-    }
-
-    fn respond_json<T: Serialize>(request: Request, value: &T) {
-        match serde_json::to_vec(value) {
-            Ok(body) => {
-                let mut response = Response::from_data(body);
-                response.add_header(
-                    Header::from_bytes(b"Content-Type".as_slice(), b"application/json".as_slice())
-                        .unwrap(),
-                );
-                let _ = request.respond(response);
-            }
-            Err(e) => respond_internal_error(request, e),
+        Ok(Route::ChannelLogs { channel_id }) => match get_channel_logs(&channel_id.to_string()) {
+            Some(logs) => respond_json(request, &logs),
+            None => respond_error(request, 404, "Channel not found"),
+        },
+        Ok(Route::StreamLogs { stream_id }) => match get_stream_logs(&stream_id.to_string()) {
+            Some(logs) => respond_json(request, &logs),
+            None => respond_error(request, 404, "Stream not found"),
+        },
+        Ok(Route::FutureCalls { future_id }) => match get_future_calls(future_id) {
+            Some(calls) => respond_json(request, &calls),
+            None => respond_error(request, 404, "Future not found"),
+        },
+        #[cfg(feature = "threads")]
+        Ok(Route::Threads) => {
+            let threads = crate::threads::get_threads_json();
+            respond_json(request, &threads);
         }
-    }
-
-    fn respond_error(request: Request, code: u16, msg: &str) {
-        let _ = request.respond(Response::from_string(msg).with_status_code(code));
-    }
-
-    fn respond_internal_error(request: Request, e: impl Display) {
-        eprintln!("Internal server error: {}", e);
-        let _ = request.respond(
-            Response::from_string(format!("Internal server error: {}", e)).with_status_code(500),
-        );
-    }
-
-    fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {
-        let arc_swap = HOTPATH_STATE.get()?;
-        let state_option = arc_swap.load();
-        let state_arc = (*state_option).as_ref()?.clone();
-
-        let state_guard = state_arc.read().ok()?;
-
-        let (response_tx, response_rx) = bounded::<Option<FunctionLogsJson>>(1);
-
-        if let Some(query_tx) = &state_guard.query_tx {
-            query_tx
-                .send(QueryRequest::GetFunctionLogsTiming {
-                    function_name: function_name.to_string(),
-                    response_tx,
-                })
-                .ok()?;
-            drop(state_guard);
-
-            response_rx
-                .recv_timeout(Duration::from_millis(250))
-                .ok()
-                .flatten()
-        } else {
-            None
+        #[cfg(not(feature = "threads"))]
+        Ok(Route::Threads) => {
+            respond_error(
+                request,
+                404,
+                "Thread monitoring not available - enable threads feature",
+            );
         }
-    }
-
-    fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLogsJson> {
-        let arc_swap = HOTPATH_STATE.get()?;
-        let state_option = arc_swap.load();
-        let state_arc = (*state_option).as_ref()?.clone();
-
-        let state_guard = state_arc.read().ok()?;
-
-        let (response_tx, response_rx) = bounded::<Option<FunctionLogsJson>>(1);
-
-        if let Some(query_tx) = &state_guard.query_tx {
-            query_tx
-                .send(QueryRequest::GetFunctionLogsAlloc {
-                    function_name: function_name.to_string(),
-                    response_tx,
-                })
-                .ok()?;
-            drop(state_guard);
-
-            response_rx
-                .recv_timeout(Duration::from_millis(250))
-                .ok()
-                .flatten()
-        } else {
-            None
-        }
-    }
-
-    fn get_functions_timing_json() -> FunctionsJson {
-        if let Some(metrics) = try_get_functions_timing_from_worker() {
-            return metrics;
-        }
-
-        // Fallback if query fails: return empty functions data
-        FunctionsJson {
-            hotpath_profiling_mode: crate::output::ProfilingMode::Timing,
-            total_elapsed: 0,
-            description: "No timing data available yet".to_string(),
-            caller_name: "hotpath".to_string(),
-            percentiles: vec![95],
-            data: crate::output::FunctionsDataJson(HashMap::new()),
-        }
-    }
-
-    fn get_functions_alloc_json() -> Option<FunctionsJson> {
-        let arc_swap = HOTPATH_STATE.get()?;
-        let state_option = arc_swap.load();
-        let state_arc = (*state_option).as_ref()?.clone();
-
-        let state_guard = state_arc.read().ok()?;
-
-        let (response_tx, response_rx) = bounded::<Option<FunctionsJson>>(1);
-
-        if let Some(query_tx) = &state_guard.query_tx {
-            query_tx
-                .send(QueryRequest::GetFunctions(response_tx))
-                .ok()?;
-            drop(state_guard);
-
-            // Flatten the Option<Option<FunctionsJson>> to Option<FunctionsJson>
-            response_rx
-                .recv_timeout(Duration::from_millis(250))
-                .ok()
-                .flatten()
-        } else {
-            None
-        }
-    }
-
-    fn try_get_functions_timing_from_worker() -> Option<FunctionsJson> {
-        let arc_swap = HOTPATH_STATE.get()?;
-        let state_option = arc_swap.load();
-        let state_arc = (*state_option).as_ref()?.clone();
-
-        let state_guard = state_arc.read().ok()?;
-
-        let (response_tx, response_rx) = bounded::<FunctionsJson>(1);
-
-        if let Some(query_tx) = &state_guard.query_tx {
-            query_tx
-                .send(QueryRequest::GetFunctionsTiming(response_tx))
-                .ok()?;
-            drop(state_guard);
-
-            response_rx.recv_timeout(Duration::from_millis(250)).ok()
-        } else {
-            None
-        }
+        Err(_) => respond_error(request, 404, "Not found"),
     }
 }
 
-#[cfg(feature = "hotpath")]
-pub use server::start_metrics_server_once;
+fn respond_json<T: Serialize>(request: Request, value: &T) {
+    match serde_json::to_vec(value) {
+        Ok(body) => {
+            let mut response = Response::from_data(body);
+            response.add_header(
+                Header::from_bytes(b"Content-Type".as_slice(), b"application/json".as_slice())
+                    .unwrap(),
+            );
+            let _ = request.respond(response);
+        }
+        Err(e) => respond_internal_error(request, e),
+    }
+}
+
+fn respond_error(request: Request, code: u16, msg: &str) {
+    let _ = request.respond(Response::from_string(msg).with_status_code(code));
+}
+
+fn respond_internal_error(request: Request, e: impl Display) {
+    eprintln!("Internal server error: {}", e);
+    let _ = request.respond(
+        Response::from_string(format!("Internal server error: {}", e)).with_status_code(500),
+    );
+}
+
+fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {
+    let arc_swap = HOTPATH_STATE.get()?;
+    let state_option = arc_swap.load();
+    let state_arc = (*state_option).as_ref()?.clone();
+
+    let state_guard = state_arc.read().ok()?;
+
+    let (response_tx, response_rx) = bounded::<Option<FunctionLogsJson>>(1);
+
+    if let Some(query_tx) = &state_guard.query_tx {
+        query_tx
+            .send(QueryRequest::GetFunctionLogsTiming {
+                function_name: function_name.to_string(),
+                response_tx,
+            })
+            .ok()?;
+        drop(state_guard);
+
+        response_rx
+            .recv_timeout(Duration::from_millis(250))
+            .ok()
+            .flatten()
+    } else {
+        None
+    }
+}
+
+fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLogsJson> {
+    let arc_swap = HOTPATH_STATE.get()?;
+    let state_option = arc_swap.load();
+    let state_arc = (*state_option).as_ref()?.clone();
+
+    let state_guard = state_arc.read().ok()?;
+
+    let (response_tx, response_rx) = bounded::<Option<FunctionLogsJson>>(1);
+
+    if let Some(query_tx) = &state_guard.query_tx {
+        query_tx
+            .send(QueryRequest::GetFunctionLogsAlloc {
+                function_name: function_name.to_string(),
+                response_tx,
+            })
+            .ok()?;
+        drop(state_guard);
+
+        response_rx
+            .recv_timeout(Duration::from_millis(250))
+            .ok()
+            .flatten()
+    } else {
+        None
+    }
+}
+
+fn get_functions_timing_json() -> FunctionsJson {
+    if let Some(metrics) = try_get_functions_timing_from_worker() {
+        return metrics;
+    }
+
+    // Fallback if query fails: return empty functions data
+    FunctionsJson {
+        hotpath_profiling_mode: crate::output::ProfilingMode::Timing,
+        total_elapsed: 0,
+        description: "No timing data available yet".to_string(),
+        caller_name: "hotpath".to_string(),
+        percentiles: vec![95],
+        data: crate::output::FunctionsDataJson(HashMap::new()),
+    }
+}
+
+fn get_functions_alloc_json() -> Option<FunctionsJson> {
+    let arc_swap = HOTPATH_STATE.get()?;
+    let state_option = arc_swap.load();
+    let state_arc = (*state_option).as_ref()?.clone();
+
+    let state_guard = state_arc.read().ok()?;
+
+    let (response_tx, response_rx) = bounded::<Option<FunctionsJson>>(1);
+
+    if let Some(query_tx) = &state_guard.query_tx {
+        query_tx
+            .send(QueryRequest::GetFunctions(response_tx))
+            .ok()?;
+        drop(state_guard);
+
+        // Flatten the Option<Option<FunctionsJson>> to Option<FunctionsJson>
+        response_rx
+            .recv_timeout(Duration::from_millis(250))
+            .ok()
+            .flatten()
+    } else {
+        None
+    }
+}
+
+fn try_get_functions_timing_from_worker() -> Option<FunctionsJson> {
+    let arc_swap = HOTPATH_STATE.get()?;
+    let state_option = arc_swap.load();
+    let state_arc = (*state_option).as_ref()?.clone();
+
+    let state_guard = state_arc.read().ok()?;
+
+    let (response_tx, response_rx) = bounded::<FunctionsJson>(1);
+
+    if let Some(query_tx) = &state_guard.query_tx {
+        query_tx
+            .send(QueryRequest::GetFunctionsTiming(response_tx))
+            .ok()?;
+        drop(state_guard);
+
+        response_rx.recv_timeout(Duration::from_millis(250)).ok()
+    } else {
+        None
+    }
+}

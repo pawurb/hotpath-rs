@@ -1,6 +1,7 @@
 //! Futures instrumentation module - tracks async Future lifecycle and poll statistics.
 
 use crate::channels::{get_log_limit, resolve_label, START_TIME};
+use crate::http_server::HTTP_SERVER_PORT;
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicU64;
@@ -159,13 +160,7 @@ pub fn init_futures_state() {
     FUTURES_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        // Start HTTP server if HOTPATH_HTTP_PORT is set
-        #[cfg(feature = "hotpath")]
-        if let Ok(port_str) = std::env::var("HOTPATH_HTTP_PORT") {
-            if let Ok(port) = port_str.parse::<u16>() {
-                crate::http_server::start_metrics_server_once(port);
-            }
-        }
+        crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<FutureEvent>();
         let (query_tx, query_rx) = unbounded::<FutureQuery>();

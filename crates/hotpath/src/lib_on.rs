@@ -1,3 +1,4 @@
+use crate::http_server::HTTP_SERVER_PORT;
 use crate::output;
 use crate::output::{FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricsProvider};
 
@@ -742,15 +743,7 @@ impl HotPath {
         #[cfg(not(target_os = "linux"))]
         crate::channels::START_TIME.get_or_init(std::time::Instant::now);
 
-        // Start HTTP metrics server (default port 6770, customizable via HOTPATH_HTTP_PORT)
-        #[cfg(feature = "hotpath")]
-        {
-            let port = std::env::var("HOTPATH_HTTP_PORT")
-                .ok()
-                .and_then(|p| p.parse::<u16>().ok())
-                .unwrap_or(6770);
-            crate::http_server::start_metrics_server_once(port);
-        }
+        crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
 
         // Override reporter with JsonReporter when HOTPATH_JSON env var is enabled
         let reporter: Box<dyn Reporter> = if std::env::var("HOTPATH_JSON")
