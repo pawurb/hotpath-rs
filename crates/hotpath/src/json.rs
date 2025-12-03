@@ -1,9 +1,12 @@
 //! JSON serializable types for TUI and CLI consumers.
 //!
 //! This module contains all JSON types used by the HTTP server and TUI console.
-//! It is gated behind `hotpath`, `tui`, or `cli` features.
+//! It is gated behind `hotpath`, `tui`, or `ci` features.
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use std::sync::LazyLock;
 
 pub use crate::output::{FunctionLogsJson, FunctionsJson};
 
@@ -377,5 +380,71 @@ impl Route {
     /// Returns the full URL for this route with the given port.
     pub fn to_url(&self, port: u16) -> String {
         format!("http://localhost:{}{}", port, self.to_path())
+    }
+}
+
+static RE_CHANNEL_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/channels/(\d+)/logs$").unwrap());
+static RE_STREAM_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/streams/(\d+)/logs$").unwrap());
+static RE_FUTURE_CALLS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/futures/(\d+)/calls$").unwrap());
+static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
+static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/functions_alloc/([^/]+)/logs$").unwrap());
+
+fn base64_decode(encoded: &str) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+
+impl FromStr for Route {
+    type Err = ();
+
+    /// Parses a URL path into a Route using regex patterns.
+    /// Returns Err(()) if the path doesn't match any known route.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let path = s.split('?').next().unwrap_or(s);
+
+        match path {
+            "/functions_timing" => return Ok(Route::FunctionsTiming),
+            "/functions_alloc" => return Ok(Route::FunctionsAlloc),
+            "/channels" => return Ok(Route::Channels),
+            "/streams" => return Ok(Route::Streams),
+            "/futures" => return Ok(Route::Futures),
+            "/threads" => return Ok(Route::Threads),
+            _ => {}
+        }
+
+        if let Some(caps) = RE_FUNCTION_LOGS_TIMING.captures(path) {
+            let function_name = base64_decode(&caps[1]).map_err(|_| ())?;
+            return Ok(Route::FunctionTimingLogs { function_name });
+        }
+
+        if let Some(caps) = RE_FUNCTION_LOGS_ALLOC.captures(path) {
+            let function_name = base64_decode(&caps[1]).map_err(|_| ())?;
+            return Ok(Route::FunctionAllocLogs { function_name });
+        }
+
+        if let Some(caps) = RE_CHANNEL_LOGS.captures(path) {
+            let channel_id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::ChannelLogs { channel_id });
+        }
+
+        if let Some(caps) = RE_STREAM_LOGS.captures(path) {
+            let stream_id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::StreamLogs { stream_id });
+        }
+
+        if let Some(caps) = RE_FUTURE_CALLS.captures(path) {
+            let future_id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::FutureCalls { future_id });
+        }
+
+        Err(())
     }
 }

@@ -16,6 +16,7 @@ pub use guard::{StreamsGuard, StreamsGuardBuilder};
 
 pub(crate) mod wrapper;
 
+use crate::http_server::HTTP_SERVER_PORT;
 pub use crate::json::{ChannelState, LogEntry, SerializableStreamStats, StreamLogs, StreamsJson};
 pub use crate::Format;
 
@@ -171,15 +172,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
             })
             .expect("Failed to spawn stream-stats-collector thread");
 
-        // Start HTTP metrics server (default port 6770, customizable via HOTPATH_HTTP_PORT)
-        #[cfg(feature = "hotpath")]
-        {
-            let port = std::env::var("HOTPATH_HTTP_PORT")
-                .ok()
-                .and_then(|p| p.parse::<u16>().ok())
-                .unwrap_or(6770);
-            crate::http_server::start_metrics_server_once(port);
-        }
+        crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
 
         (tx, stats_map)
     })

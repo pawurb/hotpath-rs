@@ -66,15 +66,15 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = { version = "0.7", optional = true }
+hotpath = "0.8"
 
 [features]
-hotpath = ["dep:hotpath", "hotpath/hotpath"]
+hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
 hotpath-off = ["hotpath/hotpath-off"]
 ```
 
-This config ensures that the lib has **zero** overhead unless explicitly enabled via a `hotpath` feature.
+This config ensures that the lib has no overhead unless explicitly enabled via a `hotpath` feature. All the lib dependencies are optional (i.e. not compiled) and all macros are noop unless profiling is enabled.
 
 To ensure compatibility with `--all-features` setting, the crate defines an additional `hotpath-off` flag. This is handled automatically - you should never need to enable it manually.
 
@@ -104,7 +104,6 @@ async fn main() {
         async_function(i * 2).await;
 
         // Measure code blocks with static labels
-        #[cfg(feature = "hotpath")]
         hotpath::measure_block!("custom_block", {
             std::thread::sleep(Duration::from_nanos(i * 3))
         });
@@ -642,7 +641,6 @@ mod tests {
 
     #[test]
     fn test_sync_function() {
-        #[cfg(feature = "hotpath")]
         let _hotpath = hotpath::GuardBuilder::new("test_sync_function")
             .percentiles(&[50, 90, 95])
             .format(hotpath::Format::Table)
@@ -652,7 +650,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_async_function() {
-        #[cfg(feature = "hotpath")]
         let _hotpath = hotpath::GuardBuilder::new("test_async_function")
             .percentiles(&[50, 90, 95])
             .format(hotpath::Format::Table)

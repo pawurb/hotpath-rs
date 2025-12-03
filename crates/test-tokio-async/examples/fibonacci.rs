@@ -26,7 +26,7 @@ fn fibonacci(n: u64) -> BigUint {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Fibonacci computation with hotpath profiling");
     println!("Run TUI in another terminal with:");
-    println!("  cargo run --bin hotpath --features tui -- console --metrics-port 6870");
+    println!("  cargo run --bin hotpath --features tui -- console");
     println!();
 
     // Compute increasingly larger fibonacci values
