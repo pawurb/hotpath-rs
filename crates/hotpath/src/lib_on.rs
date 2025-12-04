@@ -12,6 +12,9 @@ pub mod streams;
 #[cfg(feature = "threads")]
 pub mod threads;
 
+pub(crate) mod functions_alloc;
+pub(crate) mod functions_timing;
+
 pub use channels::{InstrumentChannel, InstrumentChannelLog};
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use streams::{InstrumentStream, InstrumentStreamLog};
@@ -21,18 +24,18 @@ use crossbeam_channel::Sender;
 pub(crate) const MAX_RESULT_LEN: usize = 1536;
 
 /// Query request sent from TUI HTTP server to profiler worker thread
-pub enum QueryRequest {
-    /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
-    GetFunctions(Sender<Option<FunctionsJson>>),
+pub(crate) enum QueryRequest {
     /// Request timing metrics snapshot
-    GetFunctionsTiming(Sender<FunctionsJson>),
+    FunctionsTiming(Sender<FunctionsJson>),
+    /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
+    FunctionsAlloc(Sender<Option<FunctionsJson>>),
     /// Request timing function logs for a specific function (returns None if function not found)
-    GetFunctionLogsTiming {
+    FunctionLogsTiming {
         function_name: String,
         response_tx: Sender<Option<FunctionLogsJson>>,
     },
     /// Request allocation function logs for a specific function (returns None if hotpath-alloc not enabled or function not found)
-    GetFunctionLogsAlloc {
+    FunctionLogsAlloc {
         function_name: String,
         response_tx: Sender<Option<FunctionLogsJson>>,
     },
@@ -601,7 +604,7 @@ impl HotPath {
                         recv(query_rx) -> result => {
                             if let Ok(query_request) = result {
                                 match query_request {
-                                    QueryRequest::GetFunctions(response_tx) => {
+                                    QueryRequest::FunctionsAlloc(response_tx) => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 // Create allocation metrics snapshot
@@ -622,7 +625,7 @@ impl HotPath {
                                             }
                                         }
                                     }
-                                    QueryRequest::GetFunctionsTiming(response_tx) => {
+                                    QueryRequest::FunctionsTiming(response_tx) => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 // Create timing metrics snapshot
@@ -638,7 +641,6 @@ impl HotPath {
                                                 let metrics_json = FunctionsJson::from(&metrics_provider as &dyn MetricsProvider);
                                                 let _ = response_tx.send(metrics_json);
                                             } else {
-                                                // For time-only mode, GetTimingFunctions returns the same as GetFunctions
                                                 use output::MetricsProvider;
                                                 let total_elapsed = worker_start_time.elapsed();
                                                 let metrics_provider = StatsData::new(
@@ -653,7 +655,7 @@ impl HotPath {
                                             }
                                         }
                                     }
-                                    QueryRequest::GetFunctionLogsTiming { function_name, response_tx } => {
+                                    QueryRequest::FunctionLogsTiming { function_name, response_tx } => {
                                         let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
                                             cfg_if::cfg_if! {
                                                 if #[cfg(feature = "hotpath-alloc")] {
@@ -693,7 +695,7 @@ impl HotPath {
                                         };
                                         let _ = response_tx.send(response);
                                     }
-                                    QueryRequest::GetFunctionLogsAlloc { function_name, response_tx } => {
+                                    QueryRequest::FunctionLogsAlloc { function_name, response_tx } => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
@@ -719,7 +721,7 @@ impl HotPath {
                                                 let _ = response_tx.send(response);
                                             } else {
                                                 // Return None if hotpath-alloc feature is not enabled
-                                                let _ = function_name; // Suppress unused variable warning
+                                                let _ = function_name;
                                                 let _ = response_tx.send(None);
                                             }
                                         }
