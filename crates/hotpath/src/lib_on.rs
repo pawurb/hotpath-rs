@@ -18,7 +18,7 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 use crossbeam_channel::Sender;
 
-pub(crate) const MAX_RESULT_LEN: usize = 1024;
+pub(crate) const MAX_RESULT_LEN: usize = 1536;
 
 /// Query request sent from TUI HTTP server to profiler worker thread
 pub enum QueryRequest {

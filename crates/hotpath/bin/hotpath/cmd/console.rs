@@ -26,6 +26,8 @@ pub struct ConsoleArgs {
 #[hotpath::measure_all]
 impl ConsoleArgs {
     pub fn run(&self) -> Result<()> {
+        // Demo auto-instrumenting streams, channels and futures
+        // is only available when the hotpath feature is enabled
         #[cfg(feature = "hotpath")]
         demo::init();
 
