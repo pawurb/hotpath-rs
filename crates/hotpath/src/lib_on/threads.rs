@@ -106,7 +106,7 @@ fn collector_loop(state: ThreadsStateRef, interval: Duration) {
                     // Merge per-thread allocation stats
                     #[cfg(feature = "hotpath-alloc")]
                     if let Some((alloc, dealloc)) =
-                        super::alloc::core::get_thread_alloc_stats(m_with_percent.os_tid)
+                        super::functions::alloc::core::get_thread_alloc_stats(m_with_percent.os_tid)
                     {
                         m_with_percent.alloc_bytes = Some(alloc);
                         m_with_percent.dealloc_bytes = Some(dealloc);

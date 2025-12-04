@@ -17,10 +17,6 @@ pub struct Measurement {
     pub result_log: Option<String>,
 }
 
-/// Log entry for function execution metrics.
-/// bytes/count are None if cross_thread or unsupported_async.
-/// tid is None if cross-thread.
-/// result_log contains the Debug representation of the return value when log = true.
 type LogEntry = (
     Option<u64>,
     Option<u64>,
@@ -41,14 +37,14 @@ pub struct FunctionStats {
     pub has_unsupported_async: bool,
     pub wrapper: bool,
     pub cross_thread: bool,
-    pub recent_logs: VecDeque<LogEntry>, // (bytes, count, duration_ns, elapsed, tid)
+    pub recent_logs: VecDeque<LogEntry>,
 }
 
 impl FunctionStats {
     const LOW_BYTES: u64 = 1;
     const HIGH_BYTES: u64 = 1_000_000_000; // 1GB
     const LOW_COUNT: u64 = 1;
-    const HIGH_COUNT: u64 = 1_000_000_000; // 1B allocations
+    const HIGH_COUNT: u64 = 1_000_000_000;
     const LOW_DURATION_NS: u64 = 1;
     const HIGH_DURATION_NS: u64 = 3_600_000_000_000; // 1 hour in nanoseconds
     const SIGFIGS: u8 = 3;
@@ -197,7 +193,6 @@ impl FunctionStats {
         if self.count == 0 || self.bytes_total_hist.is_none() {
             return 0;
         }
-        // For total bytes allocation, we sum up the mean * count to get total
         let hist = self.bytes_total_hist.as_ref().unwrap();
         let mean = hist.mean();
         (mean * self.count as f64) as u64
@@ -216,7 +211,6 @@ impl FunctionStats {
         if self.count == 0 || self.count_total_hist.is_none() {
             return 0;
         }
-        // For total allocation count, we sum up the mean * count to get total
         let hist = self.count_total_hist.as_ref().unwrap();
         let mean = hist.mean();
         (mean * self.count as f64) as u64
@@ -248,11 +242,11 @@ impl FunctionStats {
     }
 }
 
-pub(crate) struct HotPathState {
+pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
-    pub query_tx: Option<Sender<crate::lib_on::QueryRequest>>,
+    pub query_tx: Option<Sender<super::super::FunctionsQuery>>,
     pub start_time: Instant,
     pub caller_name: &'static str,
     pub percentiles: Vec<u8>,
@@ -294,7 +288,7 @@ pub(crate) fn process_measurement(
     }
 }
 
-use crate::lib_on::HOTPATH_STATE;
+use super::super::FUNCTIONS_STATE;
 
 #[allow(clippy::too_many_arguments)]
 pub fn send_alloc_measurement(
@@ -332,9 +326,9 @@ pub fn send_alloc_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    let Some(arc_swap) = HOTPATH_STATE.get() else {
+    let Some(arc_swap) = FUNCTIONS_STATE.get() else {
         panic!(
-            "GuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath-alloc is enabled"
+            "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath-alloc is enabled"
         );
     };
 

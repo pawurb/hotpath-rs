@@ -4,7 +4,7 @@ use std::time::Duration;
 #[allow(unused_mut)]
 fn main() {
     let _channels_guard =
-        hotpath::channels::ChannelsGuard::new().format(hotpath::channels::Format::JsonPretty);
+        hotpath::channels::ChannelsGuard::new().format(hotpath::Format::JsonPretty);
 
     let (txa, mut _rxa) = hotpath::channel!(std::sync::mpsc::channel::<i32>(), label = "unbounded");
 

@@ -4,7 +4,7 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-use crate::truncate_result;
+use super::super::truncate_result;
 
 #[doc(hidden)]
 pub struct MeasurementGuard {

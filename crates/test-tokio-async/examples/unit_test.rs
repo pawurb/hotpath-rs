@@ -56,7 +56,7 @@ mod tests {
 
     #[test]
     fn test_sync_function() {
-        let _hotpath = hotpath::GuardBuilder::new("test_sync_function")
+        let _hotpath = hotpath::FunctionsGuardBuilder::new("test_sync_function")
             .reporter(Box::new(UnitTestReporter))
             .build();
 

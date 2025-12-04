@@ -6,7 +6,7 @@ use std::time::Duration;
 fn main() {
     smol::block_on(async {
         let _channels_guard =
-            hotpath::channels::ChannelsGuard::new().format(hotpath::channels::Format::JsonPretty);
+            hotpath::channels::ChannelsGuard::new().format(hotpath::Format::JsonPretty);
 
         let (txa, mut _rxa) = hotpath::channel!(
             futures_channel::mpsc::unbounded::<i32>(),

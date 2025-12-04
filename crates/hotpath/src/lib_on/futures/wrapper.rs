@@ -1,6 +1,6 @@
 //! Instrumented Future wrapper that tracks lifecycle events.
 
-use crate::truncate_result;
+use crate::functions::truncate_result;
 
 use super::{
     get_or_create_future_id, send_future_event, FutureEvent, PollResult, FUTURE_CALL_ID_COUNTER,

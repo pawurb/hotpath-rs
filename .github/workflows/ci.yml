@@ -60,6 +60,12 @@ jobs:
       - name: Run lib tests
         run: |
           cargo test --lib --features hotpath
+      - name: Check TUI build
+        run: |
+          cargo check -p hotpath --bin hotpath --features=tui
+      - name: Check CI build
+        run: |
+          cargo check -p hotpath --bin hotpath-ci --features=ci
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui

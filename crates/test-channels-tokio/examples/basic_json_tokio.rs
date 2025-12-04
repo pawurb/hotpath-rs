@@ -2,7 +2,7 @@
 #[tokio::main]
 async fn main() {
     let _channels_guard = hotpath::channels::ChannelsGuardBuilder::new()
-        .format(hotpath::channels::Format::JsonPretty)
+        .format(hotpath::Format::JsonPretty)
         .build();
 
     let (txa, _rxa) = hotpath::channel!(tokio::sync::mpsc::unbounded_channel::<i32>());

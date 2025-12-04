@@ -100,26 +100,6 @@ pub fn format_duration(ns: u64) -> String {
     }
 }
 
-/// Formats a byte count into a human-readable string with appropriate units.
-pub fn format_bytes(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    const THRESHOLD: f64 = 1024.0;
-
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-
-    let bytes_f = bytes as f64;
-    let unit_index = (bytes_f.log(THRESHOLD).floor() as usize).min(UNITS.len() - 1);
-    let unit_value = bytes_f / THRESHOLD.powi(unit_index as i32);
-
-    if unit_index == 0 {
-        format!("{} {}", bytes, UNITS[unit_index])
-    } else {
-        format!("{:.1} {}", unit_value, UNITS[unit_index])
-    }
-}
-
 pub fn shorten_function_name(function_name: &str) -> String {
     let parts: Vec<&str> = function_name.split("::").collect();
     if parts.len() > 2 {
@@ -759,6 +739,25 @@ impl Reporter for JsonPrettyReporter {
         let json = FunctionsJson::from(metrics_provider);
         println!("{}", serde_json::to_string_pretty(&json)?);
         Ok(())
+    }
+}
+
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    const THRESHOLD: f64 = 1024.0;
+
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+
+    let bytes_f = bytes as f64;
+    let unit_index = (bytes_f.log(THRESHOLD).floor() as usize).min(UNITS.len() - 1);
+    let unit_value = bytes_f / THRESHOLD.powi(unit_index as i32);
+
+    if unit_index == 0 {
+        format!("{} {}", bytes, UNITS[unit_index])
+    } else {
+        format!("{:.1} {}", unit_value, UNITS[unit_index])
     }
 }
 

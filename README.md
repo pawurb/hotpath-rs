@@ -510,16 +510,16 @@ Macro that instruments streams to track items yielded. Wraps stream creation wit
 - `hotpath::stream!(stream::iter(1..=100), log = true)` - With item logging (requires Debug trait)
 - `hotpath::stream!(stream::iter(1..=100), label = "name", log = true)` - Both options combined
 
-### GuardBuilder API (Function Profiling)
+### FunctionsGuardBuilder API (Function Profiling)
 
-`hotpath::GuardBuilder::new(caller_name)` - Create a new builder with the specified caller name
+`hotpath::FunctionsGuardBuilder::new(caller_name)` - Create a new builder with the specified caller name
 
 **Configuration methods:**
 - `.percentiles(&[u8])` - Set custom percentiles to display (default: [95])
 - `.format(Format)` - Set output format (Table, Json, JsonPretty)
 - `.limit(usize)` - Set maximum number of functions to display (default: 15, 0 = show all)
 - `.reporter(Box<dyn Reporter>)` - Set custom reporter (overrides format)
-- `.build()` - Build and return the HotPath guard
+- `.build()` - Build and return the FunctionsGuard
 - `.build_with_timeout(Duration)` - Build guard that automatically drops after duration and exits the program (useful for profiling long-running programs like HTTP servers)
 
 ### ChannelsGuard API (Channel Monitoring)
@@ -560,7 +560,7 @@ let _guard = hotpath::StreamsGuardBuilder::new()
 
 **Example:**
 ```rust
-let _guard = hotpath::GuardBuilder::new("main")
+let _guard = hotpath::FunctionsGuardBuilder::new("main")
     .percentiles(&[50, 90, 95, 99])
     .limit(20)
     .format(hotpath::Format::JsonPretty)
@@ -580,7 +580,7 @@ fn work_function() {
 fn main() {
     // Profile for 1 second, then generate report and exit
     #[cfg(feature = "hotpath")]
-    hotpath::GuardBuilder::new("timed_benchmark")
+    hotpath::FunctionsGuardBuilder::new("timed_benchmark")
         .build_with_timeout(Duration::from_secs(1));
 
     loop {
@@ -591,18 +591,18 @@ fn main() {
 
 ## Usage Patterns
 
-### Using `hotpath::main` macro vs `GuardBuilder` API
+### Using `hotpath::main` macro vs `FunctionsGuardBuilder` API
 
-The `#[hotpath::main]` macro is convenient for most use cases, but the `GuardBuilder` API provides more control over when profiling starts and stops.
+The `#[hotpath::main]` macro is convenient for most use cases, but the `FunctionsGuardBuilder` API provides more control over when profiling starts and stops.
 
 Key differences:
 
 - **`#[hotpath::main]`** - Automatic initialization and cleanup, report printed at program exit
-- **`let _guard = GuardBuilder::new("name").build()`** - Manual control, report printed when guard is dropped, so you can fine-tune the measured scope.
+- **`let _guard = FunctionsGuardBuilder::new("name").build()`** - Manual control, report printed when guard is dropped, so you can fine-tune the measured scope.
 
 Only one hotpath guard may be alive at a time, regardless of whether it was created by the `main` macro or by the builder API. If a second guard is created, the library will panic.
 
-#### Using `GuardBuilder` for more control
+#### Using `FunctionsGuardBuilder` for more control
 
 ```rust
 use std::time::Duration;
@@ -614,7 +614,7 @@ fn example_function() {
 
 fn main() {
     #[cfg(feature = "hotpath")]
-    let _guard = hotpath::GuardBuilder::new("my_program")
+    let _guard = hotpath::FunctionsGuardBuilder::new("my_program")
         .percentiles(&[50, 95, 99])
         .format(hotpath::Format::Table)
         .build();
@@ -641,7 +641,7 @@ mod tests {
 
     #[test]
     fn test_sync_function() {
-        let _hotpath = hotpath::GuardBuilder::new("test_sync_function")
+        let _hotpath = hotpath::FunctionsGuardBuilder::new("test_sync_function")
             .percentiles(&[50, 90, 95])
             .format(hotpath::Format::Table)
             .build();
@@ -650,7 +650,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_async_function() {
-        let _hotpath = hotpath::GuardBuilder::new("test_async_function")
+        let _hotpath = hotpath::FunctionsGuardBuilder::new("test_async_function")
             .percentiles(&[50, 90, 95])
             .format(hotpath::Format::Table)
             .build();

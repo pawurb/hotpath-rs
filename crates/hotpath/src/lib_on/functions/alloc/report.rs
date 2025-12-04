@@ -2,8 +2,8 @@ use crate::ProfilingMode;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use super::super::output::{MetricType, MetricsProvider};
 use super::state::FunctionStats;
+use crate::output::{MetricType, MetricsProvider};
 
 pub struct StatsData<'a> {
     pub stats: &'a HashMap<&'static str, FunctionStats>,
@@ -91,14 +91,12 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                 self.stats.iter().any(|(_, s)| s.wrapper && s.cross_thread);
 
             if has_cross_thread_wrapper {
-                // If wrapper was moved across threads, use sum of all functions
                 filtered_stats
                     .iter()
                     .filter(|(_, s)| !s.wrapper)
                     .map(|(_, stats)| stats.total_bytes())
                     .sum()
             } else {
-                // Use wrapper total if available
                 let wrapper_total_bytes = self
                     .stats
                     .iter()
@@ -231,7 +229,6 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
             filtered_stats
         };
 
-        // Use wrapper total if available for reference
         let wrapper_total = self
             .stats
             .iter()

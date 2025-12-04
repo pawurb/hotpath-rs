@@ -16,6 +16,12 @@ pub struct ThreadAllocStats {
     pub dealloc_bytes: AtomicU64,
 }
 
+impl Default for ThreadAllocStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ThreadAllocStats {
     pub const fn new() -> Self {
         Self {
@@ -54,48 +60,38 @@ pub fn get_thread_alloc_stats(os_tid: u64) -> Option<(u64, u64)> {
             ));
         }
         if slot_tid == 0 {
-            // Empty slot, no more threads registered after this point
             break;
         }
     }
     None
 }
 
-/// Find or create a slot for the given thread ID (lock-free)
 #[inline]
 fn get_or_create_slot(tid: u64) -> Option<&'static ThreadAllocStats> {
     for slot in &THREAD_ALLOC_STATS {
         let slot_tid = slot.tid.load(Ordering::Acquire);
 
         if slot_tid == tid {
-            // Found existing slot
             return Some(slot);
         }
 
         if slot_tid == 0 {
-            // Empty slot - try to claim it with CAS
             match slot
                 .tid
                 .compare_exchange(0, tid, Ordering::AcqRel, Ordering::Acquire)
             {
-                Ok(_) => return Some(slot), // Successfully claimed
-                Err(current) if current == tid => return Some(slot), // Race: same tid won
-                Err(_) => continue,         // Slot was taken by another thread, try next
+                Ok(_) => return Some(slot),
+                Err(current) if current == tid => return Some(slot),
+                Err(_) => continue,
             }
         }
     }
-    // All slots full
     None
 }
 
-/// Allocation info tracking both total bytes and count
 pub struct AllocationInfo {
-    /// The total amount of bytes allocated during a [measure()] call.
     pub bytes_total: Cell<u64>,
-
-    /// The total number of allocations during a [measure()] call.
     pub count_total: Cell<u64>,
-
     pub unsupported_async: Cell<bool>,
 }
 
@@ -128,7 +124,6 @@ thread_local! {
     } };
 }
 
-/// Called by the shared global allocator to track allocations
 #[inline]
 pub fn track_alloc(size: usize) {
     ALLOCATIONS.with(|stack| {
@@ -141,7 +136,6 @@ pub fn track_alloc(size: usize) {
         info.count_total.set(info.count_total.get() + 1);
     });
 
-    // Track per-thread allocation (lock-free)
     if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) != 0 {
         let tid = current_tid();
         if let Some(slot) = get_or_create_slot(tid) {
@@ -150,7 +144,6 @@ pub fn track_alloc(size: usize) {
     }
 }
 
-/// Called by the shared global allocator to track deallocations
 #[inline]
 pub fn track_dealloc(size: usize) {
     if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) != 0 {
