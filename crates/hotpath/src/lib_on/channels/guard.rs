@@ -6,7 +6,8 @@ use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
 
-use crate::channels::{format_bytes, get_sorted_channel_stats, resolve_label};
+use crate::channels::{get_sorted_channel_stats, resolve_label};
+use crate::output::format_bytes;
 use crate::Format;
 
 /// Builder for creating a ChannelsGuard with custom configuration.
