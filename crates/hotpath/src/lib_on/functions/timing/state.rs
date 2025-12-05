@@ -135,7 +135,7 @@ pub(crate) fn process_measurement(
 
 use crate::QueryRequest;
 
-use super::super::super::HOTPATH_STATE;
+use super::super::super::FUNCTIONS_STATE;
 
 pub fn send_duration_measurement(
     name: &'static str,
@@ -153,9 +153,9 @@ pub fn send_duration_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    let Some(arc_swap) = HOTPATH_STATE.get() else {
+    let Some(arc_swap) = FUNCTIONS_STATE.get() else {
         panic!(
-            "GuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath is enabled"
+            "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath is enabled"
         );
     };
 

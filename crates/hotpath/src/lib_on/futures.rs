@@ -20,10 +20,8 @@ pub(crate) mod wrapper;
 pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
-// Re-export Format from crate root
-pub use crate::Format;
-// Re-export JSON types from json module
 pub use crate::json::{FutureCall, FutureCalls, FutureState, FuturesJson, SerializableFutureStats};
+pub use crate::Format;
 
 pub(crate) static FUTURE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub(crate) static FUTURE_CALL_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -39,7 +37,6 @@ static SOURCE_TO_FUTURE_ID: LazyLock<RwLock<HashMap<&'static str, u64>>> =
 pub(crate) fn get_or_create_future_id(source: &'static str) -> (u64, bool) {
     let map = &*SOURCE_TO_FUTURE_ID;
 
-    // First try read lock
     {
         let read_guard = map.read().unwrap();
         if let Some(&future_id) = read_guard.get(source) {
@@ -47,9 +44,8 @@ pub(crate) fn get_or_create_future_id(source: &'static str) -> (u64, bool) {
         }
     }
 
-    // Need write lock to insert
     let mut write_guard = map.write().unwrap();
-    // Double-check after acquiring write lock
+
     if let Some(&future_id) = write_guard.get(source) {
         return (future_id, false);
     }
@@ -143,8 +139,8 @@ pub(crate) enum FutureEvent {
 
 /// Query types for requesting data from the futures worker thread.
 pub(crate) enum FutureQuery {
-    GetAllStats(CbSender<FuturesJson>),
-    GetCalls {
+    AllStats(CbSender<FuturesJson>),
+    Calls {
         future_id: u64,
         response_tx: CbSender<Option<FutureCalls>>,
     },
@@ -180,11 +176,11 @@ pub fn init_futures_state() {
                         }
                         recv(query_rx) -> query => {
                             match query {
-                                Ok(FutureQuery::GetAllStats(response_tx)) => {
+                                Ok(FutureQuery::AllStats(response_tx)) => {
                                     let json = build_futures_json(&stats_map);
                                     let _ = response_tx.send(json);
                                 }
-                                Ok(FutureQuery::GetCalls { future_id, response_tx }) => {
+                                Ok(FutureQuery::Calls { future_id, response_tx }) => {
                                     let calls = stats_map.get(&future_id).map(|s| FutureCalls {
                                         id: future_id.to_string(),
                                         calls: s.calls.iter().rev().cloned().collect(),
@@ -350,7 +346,7 @@ fn build_futures_json(stats_map: &HashMap<u64, FutureStats>) -> FuturesJson {
 pub fn get_futures_json() -> FuturesJson {
     if let Some((_, query_tx)) = FUTURES_STATE.get() {
         let (tx, rx) = crossbeam_channel::bounded(1);
-        if query_tx.send(FutureQuery::GetAllStats(tx)).is_ok() {
+        if query_tx.send(FutureQuery::AllStats(tx)).is_ok() {
             if let Ok(json) = rx.recv_timeout(Duration::from_millis(250)) {
                 return json;
             }
@@ -367,7 +363,7 @@ pub fn get_future_calls(future_id: u64) -> Option<FutureCalls> {
     if let Some((_, query_tx)) = FUTURES_STATE.get() {
         let (tx, rx) = crossbeam_channel::bounded(1);
         if query_tx
-            .send(FutureQuery::GetCalls {
+            .send(FutureQuery::Calls {
                 future_id,
                 response_tx: tx,
             })

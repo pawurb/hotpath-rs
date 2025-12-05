@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use crossbeam_channel::bounded;
 
 use crate::{
-    http_server::RECV_TIMEOUT_MS, FunctionLogsJson, FunctionsJson, QueryRequest, HOTPATH_STATE,
+    http_server::RECV_TIMEOUT_MS, FunctionLogsJson, FunctionsJson, QueryRequest, FUNCTIONS_STATE,
 };
 
 cfg_if::cfg_if! {
@@ -15,7 +15,7 @@ cfg_if::cfg_if! {
 }
 
 pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
+    let arc_swap = FUNCTIONS_STATE.get()?;
     let state_option = arc_swap.load();
     let state_arc = (*state_option).as_ref()?.clone();
 
@@ -58,7 +58,7 @@ pub(crate) fn get_functions_timing_json() -> FunctionsJson {
 }
 
 fn try_get_functions_timing_from_worker() -> Option<FunctionsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
+    let arc_swap = FUNCTIONS_STATE.get()?;
     let state_option = arc_swap.load();
     let state_arc = (*state_option).as_ref()?.clone();
 
@@ -82,7 +82,7 @@ fn try_get_functions_timing_from_worker() -> Option<FunctionsJson> {
 
 // Will return None unless hotpath-alloc is enabled
 pub(crate) fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLogsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
+    let arc_swap = FUNCTIONS_STATE.get()?;
     let state_option = arc_swap.load();
     let state_arc = (*state_option).as_ref()?.clone();
 
@@ -109,7 +109,7 @@ pub(crate) fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLog
 }
 
 pub(crate) fn get_functions_alloc_json() -> Option<FunctionsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
+    let arc_swap = FUNCTIONS_STATE.get()?;
     let state_option = arc_swap.load();
     let state_arc = (*state_option).as_ref()?.clone();
 

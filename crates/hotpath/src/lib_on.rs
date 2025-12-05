@@ -213,11 +213,11 @@ use std::sync::RwLock;
 
 use crate::Reporter;
 
-pub(crate) static HOTPATH_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> = OnceLock::new();
+pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> = OnceLock::new();
 
 /// Builder for creating a hotpath profiling guard with custom configuration.
 ///
-/// `GuardBuilder` provides manual control over the profiling lifecycle, allowing you to
+/// `FunctionsGuardBuilder` provides manual control over the profiling lifecycle, allowing you to
 /// start and stop profiling at specific points in your code. The profiling report is
 /// generated when the guard is dropped.
 ///
@@ -228,9 +228,9 @@ pub(crate) static HOTPATH_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> =
 /// ```rust
 /// # #[cfg(feature = "hotpath")]
 /// # {
-/// use hotpath::GuardBuilder;
+/// use hotpath::FunctionsGuardBuilder;
 ///
-/// let _guard = GuardBuilder::new("my_program").build();
+/// let _guard = FunctionsGuardBuilder::new("my_program").build();
 /// // Your code here - measurements will be collected
 /// // Report is printed when _guard goes out of scope
 /// # }
@@ -241,9 +241,9 @@ pub(crate) static HOTPATH_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> =
 /// ```rust
 /// # #[cfg(feature = "hotpath")]
 /// # {
-/// use hotpath::{GuardBuilder, Format};
+/// use hotpath::{FunctionsGuardBuilder, Format};
 ///
-/// let _guard = GuardBuilder::new("benchmark")
+/// let _guard = FunctionsGuardBuilder::new("benchmark")
 ///     .percentiles(&[50, 90, 95, 99])
 ///     .format(Format::JsonPretty)
 ///     .build();
@@ -255,7 +255,7 @@ pub(crate) static HOTPATH_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> =
 /// ```rust
 /// # #[cfg(feature = "hotpath")]
 /// # {
-/// use hotpath::{GuardBuilder, Reporter, MetricsProvider};
+/// use hotpath::{FunctionsGuardBuilder, Reporter, MetricsProvider};
 ///
 /// struct MyReporter;
 /// impl Reporter for MyReporter {
@@ -265,7 +265,7 @@ pub(crate) static HOTPATH_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> =
 ///     }
 /// }
 ///
-/// let _guard = GuardBuilder::new("main")
+/// let _guard = FunctionsGuardBuilder::new("main")
 ///     .reporter(Box::new(MyReporter))
 ///     .build();
 /// # }
@@ -274,14 +274,14 @@ pub(crate) static HOTPATH_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> =
 /// # Limitations
 ///
 /// Only one hotpath guard can be active at a time. Creating a second guard (either via
-/// `GuardBuilder` or via the [`main`] macro) will cause a panic.
+/// `FunctionsGuardBuilder` or via the [`main`] macro) will cause a panic.
 ///
 /// # See Also
 ///
 /// * [`main`] - Attribute macro for automatic initialization
 /// * [`Format`] - Output format options
 /// * [`Reporter`] - Custom reporter trait
-pub struct GuardBuilder {
+pub struct FunctionsGuardBuilder {
     caller_name: &'static str,
     percentiles: Vec<u8>,
     reporter: ReporterConfig,
@@ -294,8 +294,8 @@ enum ReporterConfig {
     None, // Will default to Format::Table
 }
 
-impl GuardBuilder {
-    /// Creates a new `GuardBuilder` with the specified caller name.
+impl FunctionsGuardBuilder {
+    /// Creates a new `FunctionsGuardBuilder` with the specified caller name.
     ///
     /// The caller name is used to identify the profiling session in the report.
     ///
@@ -308,9 +308,9 @@ impl GuardBuilder {
     /// ```rust
     /// # #[cfg(feature = "hotpath")]
     /// # {
-    /// use hotpath::GuardBuilder;
+    /// use hotpath::FunctionsGuardBuilder;
     ///
-    /// let _guard = GuardBuilder::new("my_program").build();
+    /// let _guard = FunctionsGuardBuilder::new("my_program").build();
     /// # }
     /// ```
     pub fn new(caller_name: &'static str) -> Self {
@@ -339,9 +339,9 @@ impl GuardBuilder {
     /// ```rust
     /// # #[cfg(feature = "hotpath")]
     /// # {
-    /// use hotpath::GuardBuilder;
+    /// use hotpath::FunctionsGuardBuilder;
     ///
-    /// let _guard = GuardBuilder::new("main")
+    /// let _guard = FunctionsGuardBuilder::new("main")
     ///     .percentiles(&[50, 90, 95, 99])
     ///     .build();
     /// # }
@@ -367,9 +367,9 @@ impl GuardBuilder {
     /// ```rust
     /// # #[cfg(feature = "hotpath")]
     /// # {
-    /// use hotpath::GuardBuilder;
+    /// use hotpath::FunctionsGuardBuilder;
     ///
-    /// let _guard = GuardBuilder::new("main")
+    /// let _guard = FunctionsGuardBuilder::new("main")
     ///     .limit(20)
     ///     .build();
     /// # }
@@ -390,9 +390,9 @@ impl GuardBuilder {
     /// ```rust
     /// # #[cfg(feature = "hotpath")]
     /// # {
-    /// use hotpath::{GuardBuilder, Format};
+    /// use hotpath::{FunctionsGuardBuilder, Format};
     ///
-    /// let _guard = GuardBuilder::new("main")
+    /// let _guard = FunctionsGuardBuilder::new("main")
     ///     .format(Format::JsonPretty)
     ///     .build();
     /// # }
@@ -422,7 +422,7 @@ impl GuardBuilder {
     /// ```rust
     /// # #[cfg(feature = "hotpath")]
     /// # {
-    /// use hotpath::{GuardBuilder, Reporter, MetricsProvider};
+    /// use hotpath::{FunctionsGuardBuilder, Reporter, MetricsProvider};
     ///
     /// struct CsvReporter;
     /// impl Reporter for CsvReporter {
@@ -432,7 +432,7 @@ impl GuardBuilder {
     ///     }
     /// }
     ///
-    /// let _guard = GuardBuilder::new("main")
+    /// let _guard = FunctionsGuardBuilder::new("main")
     ///     .reporter(Box::new(CsvReporter))
     ///     .build();
     /// # }
@@ -461,13 +461,13 @@ impl GuardBuilder {
     /// ```rust
     /// # #[cfg(feature = "hotpath")]
     /// # {
-    /// use hotpath::GuardBuilder;
+    /// use hotpath::FunctionsGuardBuilder;
     ///
-    /// let _guard = GuardBuilder::new("main").build();
+    /// let _guard = FunctionsGuardBuilder::new("main").build();
     /// // Profiling is active until _guard is dropped
     /// # }
     /// ```
-    pub fn build(self) -> HotPath {
+    pub fn build(self) -> FunctionsGuard {
         let reporter: Box<dyn Reporter> = match self.reporter {
             ReporterConfig::Format(format) => match format {
                 Format::Table => Box::new(output::TableReporter),
@@ -483,7 +483,7 @@ impl GuardBuilder {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(50);
 
-        HotPath::new(
+        FunctionsGuard::new(
             self.caller_name,
             &self.percentiles,
             self.limit,
@@ -505,10 +505,10 @@ impl GuardBuilder {
     /// # #[cfg(feature = "hotpath")]
     /// # {
     /// use std::time::Duration;
-    /// use hotpath::GuardBuilder;
+    /// use hotpath::FunctionsGuardBuilder;
     ///
     /// // Profile for 1 second then exit
-    /// GuardBuilder::new("timed_benchmark")
+    /// FunctionsGuardBuilder::new("timed_benchmark")
     ///     .build_with_timeout(Duration::from_secs(1));
     ///
     /// // Your code here - will be profiled for 1 second
@@ -527,7 +527,7 @@ impl GuardBuilder {
     }
 }
 
-impl HotPath {
+impl FunctionsGuard {
     pub fn new(
         caller_name: &'static str,
         percentiles: &[u8],
@@ -547,7 +547,7 @@ impl HotPath {
 
         let percentiles = percentiles.to_vec();
 
-        let arc_swap = HOTPATH_STATE.get_or_init(|| ArcSwapOption::from(None));
+        let arc_swap = FUNCTIONS_STATE.get_or_init(|| ArcSwapOption::from(None));
 
         if arc_swap.load().is_some() {
             panic!("More than one _hotpath guard cannot be alive at the same time.");
@@ -770,13 +770,16 @@ impl HotPath {
     }
 }
 
-pub struct HotPath {
+pub struct FunctionsGuard {
     state: Arc<RwLock<HotPathState>>,
     reporter: Box<dyn Reporter>,
     wrapper_guard: Option<MeasurementGuard>,
 }
 
-impl Drop for HotPath {
+#[deprecated(since = "0.9.0", note = "Renamed to FunctionsGuardBuilder")]
+pub type GuardBuilder = FunctionsGuardBuilder;
+
+impl Drop for FunctionsGuard {
     fn drop(&mut self) {
         let wrapper_guard = self.wrapper_guard.take().unwrap();
         drop(wrapper_guard);
@@ -823,7 +826,7 @@ impl Drop for HotPath {
             }
         }
 
-        if let Some(arc_swap) = HOTPATH_STATE.get() {
+        if let Some(arc_swap) = FUNCTIONS_STATE.get() {
             arc_swap.store(None);
         }
     }
@@ -845,6 +848,6 @@ mod tests {
 
     #[test]
     fn test_hotpath_is_send_sync() {
-        is_send_sync::<HotPath>();
+        is_send_sync::<FunctionsGuard>();
     }
 }

@@ -97,13 +97,13 @@ impl Format {
 /// # Limitations
 ///
 /// Only one hotpath guard can be active at a time. Creating a second guard (either via this
-/// macro or via [`GuardBuilder`](../hotpath/struct.GuardBuilder.html)) will cause a panic.
+/// macro or via [`FunctionsGuardBuilder`](../hotpath/struct.FunctionsGuardBuilder.html)) will cause a panic.
 ///
 /// # See Also
 ///
 /// * [`measure`](macro@measure) - Attribute macro for instrumenting functions
 /// * [`measure_block!`](../hotpath/macro.measure_block.html) - Macro for measuring code blocks
-/// * [`GuardBuilder`](../hotpath/struct.GuardBuilder.html) - Manual control over profiling lifecycle
+/// * [`FunctionsGuardBuilder`](../hotpath/struct.FunctionsGuardBuilder.html) - Manual control over profiling lifecycle
 pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
     let vis = &input.vis;
@@ -194,7 +194,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         let caller_name: &'static str =
             concat!(module_path!(), "::", stringify!(#fn_name));
 
-        hotpath::GuardBuilder::new(caller_name)
+        hotpath::FunctionsGuardBuilder::new(caller_name)
             .percentiles(#percentiles_array)
             .limit(#limit)
             .format(#format_token)
