@@ -324,16 +324,16 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         let loc = quote! { concat!(module_path!(), "::", #name) };
         if asyncness {
             quote! {
-                hotpath::measure_with_log_async(#loc, || async #block).await
+                hotpath::functions::measure_with_log_async(#loc, || async #block).await
             }
         } else {
             quote! {
-                hotpath::measure_with_log(#loc, false, false, || #block)
+                hotpath::functions::measure_with_log(#loc, false, false, || #block)
             }
         }
     } else {
         let guard_init = quote! {
-            let _guard = hotpath::MeasurementGuard::build(
+            let _guard = hotpath::functions::MeasurementGuard::build(
                 concat!(module_path!(), "::", #name),
                 false,
                 #asyncness

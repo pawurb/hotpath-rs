@@ -25,8 +25,8 @@ cfg_if::cfg_if! {
     }
 }
 
+use super::MeasurementGuard;
 use crate::Format;
-use crate::MeasurementGuard;
 
 enum ReporterConfig {
     Format(Format),

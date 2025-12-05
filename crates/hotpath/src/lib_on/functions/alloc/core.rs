@@ -16,6 +16,12 @@ pub struct ThreadAllocStats {
     pub dealloc_bytes: AtomicU64,
 }
 
+impl Default for ThreadAllocStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ThreadAllocStats {
     pub const fn new() -> Self {
         Self {
