@@ -1,5 +1,7 @@
-use crate::functions_alloc::{get_function_logs_alloc, get_functions_alloc_json};
-use crate::functions_timing::{get_function_logs_timing, get_functions_timing_json};
+use crate::functions::{
+    get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
+    get_functions_timing_json,
+};
 use crate::json::Route;
 use std::sync::LazyLock;
 

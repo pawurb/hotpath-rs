@@ -12,8 +12,7 @@ pub mod streams;
 #[cfg(feature = "threads")]
 pub mod threads;
 
-pub(crate) mod functions_alloc;
-pub(crate) mod functions_timing;
+pub(crate) mod functions;
 
 pub use channels::{InstrumentChannel, InstrumentChannelLog};
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
@@ -43,26 +42,24 @@ pub(crate) enum QueryRequest {
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
-        mod alloc;
         #[doc(hidden)]
         pub use tokio::runtime::{Handle, RuntimeFlavor};
 
         // Memory allocations profiling using a custom global allocator
         #[global_allocator]
-        static GLOBAL: alloc::allocator::CountingAllocator = alloc::allocator::CountingAllocator {};
+        static GLOBAL: functions::alloc::allocator::CountingAllocator = functions::alloc::allocator::CountingAllocator {};
 
-        pub use alloc::guard::{MeasurementGuard, MeasurementGuardWithLog};
-        pub use alloc::state::FunctionStats;
-        use alloc::{
+        pub use functions::alloc::guard::{MeasurementGuard, MeasurementGuardWithLog};
+        pub use functions::alloc::state::FunctionStats;
+        use functions::alloc::{
             report::{StatsData, TimingStatsData},
             state::{HotPathState, Measurement, process_measurement},
         };
     } else {
         // Time-based profiling (when no allocation features are enabled)
-        mod time;
-        pub use time::guard::{MeasurementGuard, MeasurementGuardWithLog};
-        pub use time::state::FunctionStats;
-        use time::{
+        pub use functions::timing::guard::{MeasurementGuard, MeasurementGuardWithLog};
+        pub use functions::timing::state::FunctionStats;
+        use functions::timing::{
             report::StatsData,
             state::{HotPathState, Measurement, process_measurement},
         };
@@ -542,10 +539,10 @@ impl HotPath {
         // to prevent profiling overhead from being included in measurements
         #[cfg(feature = "hotpath-alloc")]
         {
-            alloc::core::ALLOCATIONS.with(|stack| {
+            functions::alloc::core::ALLOCATIONS.with(|stack| {
                 stack.tracking_enabled.set(false);
             });
-            alloc::core::init_thread_alloc_tracking();
+            functions::alloc::core::init_thread_alloc_tracking();
         }
 
         let percentiles = percentiles.to_vec();
@@ -761,7 +758,7 @@ impl HotPath {
 
         // Re-enable allocation tracking after infrastructure is initialized
         #[cfg(feature = "hotpath-alloc")]
-        alloc::core::ALLOCATIONS.with(|stack| {
+        functions::alloc::core::ALLOCATIONS.with(|stack| {
             stack.tracking_enabled.set(true);
         });
 

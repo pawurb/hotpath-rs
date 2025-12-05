@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::ProfilingMode;
 
-use super::super::output::{MetricType, MetricsProvider};
+use super::super::super::output::{MetricType, MetricsProvider};
 use super::state::FunctionStats;
 
 pub struct StatsData<'a> {

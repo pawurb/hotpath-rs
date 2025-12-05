@@ -104,8 +104,7 @@ pub(crate) struct HotPathState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
-    #[allow(dead_code)] // Used by HTTP server when hotpath feature is enabled
-    pub query_tx: Option<Sender<super::super::QueryRequest>>,
+    pub query_tx: Option<Sender<QueryRequest>>,
     pub start_time: Instant,
     pub caller_name: &'static str,
     pub percentiles: Vec<u8>,
@@ -134,7 +133,9 @@ pub(crate) fn process_measurement(
     }
 }
 
-use super::super::HOTPATH_STATE;
+use crate::QueryRequest;
+
+use super::super::super::HOTPATH_STATE;
 
 pub fn send_duration_measurement(
     name: &'static str,
