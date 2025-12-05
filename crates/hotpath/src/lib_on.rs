@@ -23,18 +23,18 @@ use crossbeam_channel::Sender;
 pub(crate) const MAX_RESULT_LEN: usize = 1536;
 
 /// Query request sent from TUI HTTP server to profiler worker thread
-pub(crate) enum QueryRequest {
+pub(crate) enum FunctionsQuery {
     /// Request timing metrics snapshot
-    FunctionsTiming(Sender<FunctionsJson>),
+    Timing(Sender<FunctionsJson>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
-    FunctionsAlloc(Sender<Option<FunctionsJson>>),
+    Alloc(Sender<Option<FunctionsJson>>),
     /// Request timing function logs for a specific function (returns None if function not found)
-    FunctionLogsTiming {
+    LogsTiming {
         function_name: String,
         response_tx: Sender<Option<FunctionLogsJson>>,
     },
     /// Request allocation function logs for a specific function (returns None if hotpath-alloc not enabled or function not found)
-    FunctionLogsAlloc {
+    LogsAlloc {
         function_name: String,
         response_tx: Sender<Option<FunctionLogsJson>>,
     },
@@ -557,7 +557,7 @@ impl FunctionsGuard {
         let (tx, rx) = unbounded::<Measurement>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<HashMap<&'static str, FunctionStats>>(1);
-        let (query_tx, query_rx) = unbounded::<QueryRequest>();
+        let (query_tx, query_rx) = unbounded::<FunctionsQuery>();
         let start_time = Instant::now();
 
         let state_arc = Arc::new(RwLock::new(FunctionsState {
@@ -602,7 +602,7 @@ impl FunctionsGuard {
                         recv(query_rx) -> result => {
                             if let Ok(query_request) = result {
                                 match query_request {
-                                    QueryRequest::FunctionsAlloc(response_tx) => {
+                                    FunctionsQuery::Alloc(response_tx) => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 // Create allocation metrics snapshot
@@ -623,7 +623,7 @@ impl FunctionsGuard {
                                             }
                                         }
                                     }
-                                    QueryRequest::FunctionsTiming(response_tx) => {
+                                    FunctionsQuery::Timing(response_tx) => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 // Create timing metrics snapshot
@@ -653,7 +653,7 @@ impl FunctionsGuard {
                                             }
                                         }
                                     }
-                                    QueryRequest::FunctionLogsTiming { function_name, response_tx } => {
+                                    FunctionsQuery::LogsTiming { function_name, response_tx } => {
                                         let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
                                             cfg_if::cfg_if! {
                                                 if #[cfg(feature = "hotpath-alloc")] {
@@ -693,7 +693,7 @@ impl FunctionsGuard {
                                         };
                                         let _ = response_tx.send(response);
                                     }
-                                    QueryRequest::FunctionLogsAlloc { function_name, response_tx } => {
+                                    FunctionsQuery::LogsAlloc { function_name, response_tx } => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 let response = if let Some(stats) = local_stats.get(function_name.as_str()) {

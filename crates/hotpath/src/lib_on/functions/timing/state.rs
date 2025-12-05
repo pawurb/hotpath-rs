@@ -104,7 +104,7 @@ pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
-    pub query_tx: Option<Sender<QueryRequest>>,
+    pub query_tx: Option<Sender<FunctionsQuery>>,
     pub start_time: Instant,
     pub caller_name: &'static str,
     pub percentiles: Vec<u8>,
@@ -133,7 +133,7 @@ pub(crate) fn process_measurement(
     }
 }
 
-use crate::QueryRequest;
+use crate::FunctionsQuery;
 
 use super::super::super::FUNCTIONS_STATE;
 

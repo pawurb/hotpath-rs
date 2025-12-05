@@ -138,7 +138,7 @@ pub(crate) enum FutureEvent {
 }
 
 /// Query types for requesting data from the futures worker thread.
-pub(crate) enum FutureQuery {
+pub(crate) enum FuturesQuery {
     AllStats(CbSender<FuturesJson>),
     Calls {
         future_id: u64,
@@ -146,7 +146,7 @@ pub(crate) enum FutureQuery {
     },
 }
 
-pub(crate) type FuturesStatsState = (CbSender<FutureEvent>, CbSender<FutureQuery>);
+pub(crate) type FuturesStatsState = (CbSender<FutureEvent>, CbSender<FuturesQuery>);
 
 static FUTURES_STATE: OnceLock<FuturesStatsState> = OnceLock::new();
 
@@ -159,7 +159,7 @@ pub fn init_futures_state() {
         crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<FutureEvent>();
-        let (query_tx, query_rx) = unbounded::<FutureQuery>();
+        let (query_tx, query_rx) = unbounded::<FuturesQuery>();
 
         std::thread::Builder::new()
             .name("hp-futures".into())
@@ -176,11 +176,11 @@ pub fn init_futures_state() {
                         }
                         recv(query_rx) -> query => {
                             match query {
-                                Ok(FutureQuery::AllStats(response_tx)) => {
+                                Ok(FuturesQuery::AllStats(response_tx)) => {
                                     let json = build_futures_json(&stats_map);
                                     let _ = response_tx.send(json);
                                 }
-                                Ok(FutureQuery::Calls { future_id, response_tx }) => {
+                                Ok(FuturesQuery::Calls { future_id, response_tx }) => {
                                     let calls = stats_map.get(&future_id).map(|s| FutureCalls {
                                         id: future_id.to_string(),
                                         calls: s.calls.iter().rev().cloned().collect(),
@@ -346,7 +346,7 @@ fn build_futures_json(stats_map: &HashMap<u64, FutureStats>) -> FuturesJson {
 pub fn get_futures_json() -> FuturesJson {
     if let Some((_, query_tx)) = FUTURES_STATE.get() {
         let (tx, rx) = crossbeam_channel::bounded(1);
-        if query_tx.send(FutureQuery::AllStats(tx)).is_ok() {
+        if query_tx.send(FuturesQuery::AllStats(tx)).is_ok() {
             if let Ok(json) = rx.recv_timeout(Duration::from_millis(250)) {
                 return json;
             }
@@ -363,7 +363,7 @@ pub fn get_future_calls(future_id: u64) -> Option<FutureCalls> {
     if let Some((_, query_tx)) = FUTURES_STATE.get() {
         let (tx, rx) = crossbeam_channel::bounded(1);
         if query_tx
-            .send(FutureQuery::Calls {
+            .send(FuturesQuery::Calls {
                 future_id,
                 response_tx: tx,
             })

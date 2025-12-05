@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use crossbeam_channel::bounded;
 
 use crate::{
-    http_server::RECV_TIMEOUT_MS, FunctionLogsJson, FunctionsJson, QueryRequest, FUNCTIONS_STATE,
+    http_server::RECV_TIMEOUT_MS, FunctionLogsJson, FunctionsJson, FunctionsQuery, FUNCTIONS_STATE,
 };
 
 cfg_if::cfg_if! {
@@ -27,7 +27,7 @@ pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLo
 
     if let Some(query_tx) = &state_guard.query_tx {
         query_tx
-            .send(QueryRequest::FunctionLogsTiming {
+            .send(FunctionsQuery::LogsTiming {
                 function_name: function_name.to_string(),
                 response_tx,
             })
@@ -69,9 +69,7 @@ fn try_get_functions_timing_from_worker() -> Option<FunctionsJson> {
     let (response_tx, response_rx) = bounded::<FunctionsJson>(1);
 
     if let Some(query_tx) = &state_guard.query_tx {
-        query_tx
-            .send(QueryRequest::FunctionsTiming(response_tx))
-            .ok()?;
+        query_tx.send(FunctionsQuery::Timing(response_tx)).ok()?;
         drop(state_guard);
 
         response_rx
@@ -94,7 +92,7 @@ pub(crate) fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLog
 
     if let Some(query_tx) = &state_guard.query_tx {
         query_tx
-            .send(QueryRequest::FunctionLogsAlloc {
+            .send(FunctionsQuery::LogsAlloc {
                 function_name: function_name.to_string(),
                 response_tx,
             })
@@ -120,9 +118,7 @@ pub(crate) fn get_functions_alloc_json() -> Option<FunctionsJson> {
     let (response_tx, response_rx) = bounded::<Option<FunctionsJson>>(1);
 
     if let Some(query_tx) = &state_guard.query_tx {
-        query_tx
-            .send(QueryRequest::FunctionsAlloc(response_tx))
-            .ok()?;
+        query_tx.send(FunctionsQuery::Alloc(response_tx)).ok()?;
         drop(state_guard);
 
         // Flatten the Option<Option<FunctionsJson>> to Option<FunctionsJson>
