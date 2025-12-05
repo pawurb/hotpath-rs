@@ -53,7 +53,7 @@ cfg_if::cfg_if! {
         pub use functions::alloc::state::FunctionStats;
         use functions::alloc::{
             report::{StatsData, TimingStatsData},
-            state::{HotPathState, Measurement, process_measurement},
+            state::{FunctionsState, Measurement, process_measurement},
         };
     } else {
         // Time-based profiling (when no allocation features are enabled)
@@ -61,7 +61,7 @@ cfg_if::cfg_if! {
         pub use functions::timing::state::FunctionStats;
         use functions::timing::{
             report::StatsData,
-            state::{HotPathState, Measurement, process_measurement},
+            state::{FunctionsState, Measurement, process_measurement},
         };
     }
 }
@@ -213,7 +213,8 @@ use std::sync::RwLock;
 
 use crate::Reporter;
 
-pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<HotPathState>>> = OnceLock::new();
+pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<FunctionsState>>> =
+    OnceLock::new();
 
 /// Builder for creating a hotpath profiling guard with custom configuration.
 ///
@@ -446,14 +447,14 @@ impl FunctionsGuardBuilder {
         self
     }
 
-    /// Builds and initializes the hotpath profiling guard.
+    /// Builds and initializes the functions profiling guard.
     ///
     /// This method initializes the background profiling thread and returns a guard
-    /// that will generate the profiling report when dropped.
+    /// that will generate the functions profiling report when dropped.
     ///
     /// # Panics
     ///
-    /// Panics if another hotpath guard is already active. Only one guard can be
+    /// Panics if another functions guard is already active. Only one guard can be
     /// active at a time.
     ///
     /// # Examples
@@ -492,7 +493,7 @@ impl FunctionsGuardBuilder {
         )
     }
 
-    /// Builds the hotpath profiling guard and automatically drops it after the specified duration and exits the program.
+    /// Builds the functions profiling guard and automatically drops it after the specified duration and exits the program.
     ///
     /// If used in memory profiling mode, it disables the top level measurement. To support timeout guard is moved between threads making accurate memory measurements impossible.
     /// # Arguments
@@ -559,7 +560,7 @@ impl FunctionsGuard {
         let (query_tx, query_rx) = unbounded::<QueryRequest>();
         let start_time = Instant::now();
 
-        let state_arc = Arc::new(RwLock::new(HotPathState {
+        let state_arc = Arc::new(RwLock::new(FunctionsState {
             sender: Some(tx),
             shutdown_tx: Some(shutdown_tx),
             completion_rx: Some(Mutex::new(completion_rx)),
@@ -771,7 +772,7 @@ impl FunctionsGuard {
 }
 
 pub struct FunctionsGuard {
-    state: Arc<RwLock<HotPathState>>,
+    state: Arc<RwLock<FunctionsState>>,
     reporter: Box<dyn Reporter>,
     wrapper_guard: Option<MeasurementGuard>,
 }
@@ -784,7 +785,7 @@ impl Drop for FunctionsGuard {
         let wrapper_guard = self.wrapper_guard.take().unwrap();
         drop(wrapper_guard);
 
-        let state: Arc<RwLock<HotPathState>> = Arc::clone(&self.state);
+        let state: Arc<RwLock<FunctionsState>> = Arc::clone(&self.state);
 
         // Signal shutdown and wait for processing thread to complete
         let (shutdown_tx, completion_rx, end_time) = {

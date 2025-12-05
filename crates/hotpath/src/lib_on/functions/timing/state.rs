@@ -100,7 +100,7 @@ impl FunctionStats {
     }
 }
 
-pub(crate) struct HotPathState {
+pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,

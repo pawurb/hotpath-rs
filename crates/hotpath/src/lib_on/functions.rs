@@ -14,6 +14,8 @@ cfg_if::cfg_if! {
     }
 }
 
+pub mod guard;
+
 pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {
     let arc_swap = FUNCTIONS_STATE.get()?;
     let state_option = arc_swap.load();

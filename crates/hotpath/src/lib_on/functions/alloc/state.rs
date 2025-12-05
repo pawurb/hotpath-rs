@@ -242,7 +242,7 @@ impl FunctionStats {
     }
 }
 
-pub(crate) struct HotPathState {
+pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
@@ -288,7 +288,7 @@ pub(crate) fn process_measurement(
     }
 }
 
-use crate::lib_on::HOTPATH_STATE;
+use crate::lib_on::FUNCTIONS_STATE;
 
 #[allow(clippy::too_many_arguments)]
 pub fn send_alloc_measurement(
@@ -326,7 +326,7 @@ pub fn send_alloc_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    let Some(arc_swap) = HOTPATH_STATE.get() else {
+    let Some(arc_swap) = FUNCTIONS_STATE.get() else {
         panic!(
             "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath-alloc is enabled"
         );
