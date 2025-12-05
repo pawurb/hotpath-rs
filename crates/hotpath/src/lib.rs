@@ -4,7 +4,15 @@
 //! For a complete setup guide, examples, and advanced configuration, see the
 //! [GitHub repository](https://github.com/pawurb/hotpath-rs).
 
-/// Output format for guard statistics on drop.
+/// Output format for profiling reports.
+///
+/// This enum specifies how profiling results should be displayed when the program exits.
+///
+/// # Variants
+///
+/// * `Table` - Human-readable table format (default)
+/// * `Json` - JSON format
+/// * `JsonPretty` - Pretty-printed JSON format
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Format {
     #[default]

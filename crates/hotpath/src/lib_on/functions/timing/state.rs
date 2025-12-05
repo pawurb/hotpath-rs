@@ -133,9 +133,8 @@ pub(crate) fn process_measurement(
     }
 }
 
-use crate::FunctionsQuery;
-
-use super::super::super::FUNCTIONS_STATE;
+use super::super::FunctionsQuery;
+use super::super::FUNCTIONS_STATE;
 
 pub fn send_duration_measurement(
     name: &'static str,
