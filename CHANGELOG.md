@@ -312,7 +312,7 @@ All notable changes to this project will be documented in this file.
 
 - Remove unused cfg_if
 - Change metrics data structure, add JSON serializer
-- Rename HotpathBuilder to GuardBuilder
+- Rename HotpathBuilder to GuardBuilder (later renamed to FunctionsGuardBuilder)
 - Rename MetricType
 
 ### ⚙️ Miscellaneous Tasks

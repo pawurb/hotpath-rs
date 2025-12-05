@@ -159,9 +159,9 @@ pub trait Reporter: Send + Sync {
 
 pub trait MetricsProvider<'a> {}
 
-pub struct GuardBuilder {}
+pub struct FunctionsGuardBuilder {}
 
-impl GuardBuilder {
+impl FunctionsGuardBuilder {
     pub fn new(_caller_name: impl Into<String>) -> Self {
         Self {}
     }
@@ -190,6 +190,9 @@ impl GuardBuilder {
         self
     }
 }
+
+#[deprecated(since = "0.9.0", note = "Renamed to FunctionsGuardBuilder")]
+pub type GuardBuilder = FunctionsGuardBuilder;
 
 #[derive(Debug, Clone)]
 pub struct FunctionStats {}

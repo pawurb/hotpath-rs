@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use crate::ProfilingMode;
 
-use super::super::output::{MetricType, MetricsProvider};
 use super::state::FunctionStats;
+use crate::output::{MetricType, MetricsProvider};
 
 pub struct StatsData<'a> {
     pub stats: &'a HashMap<&'static str, FunctionStats>,

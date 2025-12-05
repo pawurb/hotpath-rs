@@ -61,7 +61,7 @@ impl Reporter for TracingReporter {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let _hotpath = hotpath::GuardBuilder::new("main")
+    let _hotpath = hotpath::FunctionsGuardBuilder::new("main")
         .percentiles(&[50, 90, 95])
         .reporter(Box::new(TracingReporter))
         .build();

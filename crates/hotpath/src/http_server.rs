@@ -1,3 +1,7 @@
+use crate::functions::{
+    get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
+    get_functions_timing_json,
+};
 use crate::json::Route;
 use std::sync::LazyLock;
 
@@ -8,26 +12,20 @@ pub(crate) static HTTP_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
         .unwrap_or(6770)
 });
 
+pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
+
 use crate::channels::{get_channel_logs, get_channels_json};
 use crate::futures::{get_future_calls, get_futures_json};
-use crate::output::FunctionsJson;
 use crate::streams::{get_stream_logs, get_streams_json};
-use crate::{FunctionLogsJson, QueryRequest, HOTPATH_STATE};
-use crossbeam_channel::bounded;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::OnceLock;
 use std::thread;
-use std::time::Duration;
 use tiny_http::{Header, Request, Response, Server};
 
-/// Tracks whether the HTTP server has been started to prevent duplicate instances
 static HTTP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
 
-/// Starts the HTTP metrics server if it hasn't been started yet.
-/// Uses OnceLock to ensure only one server instance is created.
-pub fn start_metrics_server_once(port: u16) {
+pub(crate) fn start_metrics_server_once(port: u16) {
     HTTP_SERVER_STARTED.get_or_init(|| {
         start_metrics_server(port);
     });
@@ -160,120 +158,4 @@ fn respond_internal_error(request: Request, e: impl Display) {
     let _ = request.respond(
         Response::from_string(format!("Internal server error: {}", e)).with_status_code(500),
     );
-}
-
-fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
-    let state_option = arc_swap.load();
-    let state_arc = (*state_option).as_ref()?.clone();
-
-    let state_guard = state_arc.read().ok()?;
-
-    let (response_tx, response_rx) = bounded::<Option<FunctionLogsJson>>(1);
-
-    if let Some(query_tx) = &state_guard.query_tx {
-        query_tx
-            .send(QueryRequest::GetFunctionLogsTiming {
-                function_name: function_name.to_string(),
-                response_tx,
-            })
-            .ok()?;
-        drop(state_guard);
-
-        response_rx
-            .recv_timeout(Duration::from_millis(250))
-            .ok()
-            .flatten()
-    } else {
-        None
-    }
-}
-
-fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLogsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
-    let state_option = arc_swap.load();
-    let state_arc = (*state_option).as_ref()?.clone();
-
-    let state_guard = state_arc.read().ok()?;
-
-    let (response_tx, response_rx) = bounded::<Option<FunctionLogsJson>>(1);
-
-    if let Some(query_tx) = &state_guard.query_tx {
-        query_tx
-            .send(QueryRequest::GetFunctionLogsAlloc {
-                function_name: function_name.to_string(),
-                response_tx,
-            })
-            .ok()?;
-        drop(state_guard);
-
-        response_rx
-            .recv_timeout(Duration::from_millis(250))
-            .ok()
-            .flatten()
-    } else {
-        None
-    }
-}
-
-fn get_functions_timing_json() -> FunctionsJson {
-    if let Some(metrics) = try_get_functions_timing_from_worker() {
-        return metrics;
-    }
-
-    // Fallback if query fails: return empty functions data
-    FunctionsJson {
-        hotpath_profiling_mode: crate::output::ProfilingMode::Timing,
-        total_elapsed: 0,
-        description: "No timing data available yet".to_string(),
-        caller_name: "hotpath".to_string(),
-        percentiles: vec![95],
-        data: crate::output::FunctionsDataJson(HashMap::new()),
-    }
-}
-
-fn get_functions_alloc_json() -> Option<FunctionsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
-    let state_option = arc_swap.load();
-    let state_arc = (*state_option).as_ref()?.clone();
-
-    let state_guard = state_arc.read().ok()?;
-
-    let (response_tx, response_rx) = bounded::<Option<FunctionsJson>>(1);
-
-    if let Some(query_tx) = &state_guard.query_tx {
-        query_tx
-            .send(QueryRequest::GetFunctions(response_tx))
-            .ok()?;
-        drop(state_guard);
-
-        // Flatten the Option<Option<FunctionsJson>> to Option<FunctionsJson>
-        response_rx
-            .recv_timeout(Duration::from_millis(250))
-            .ok()
-            .flatten()
-    } else {
-        None
-    }
-}
-
-fn try_get_functions_timing_from_worker() -> Option<FunctionsJson> {
-    let arc_swap = HOTPATH_STATE.get()?;
-    let state_option = arc_swap.load();
-    let state_arc = (*state_option).as_ref()?.clone();
-
-    let state_guard = state_arc.read().ok()?;
-
-    let (response_tx, response_rx) = bounded::<FunctionsJson>(1);
-
-    if let Some(query_tx) = &state_guard.query_tx {
-        query_tx
-            .send(QueryRequest::GetFunctionsTiming(response_tx))
-            .ok()?;
-        drop(state_guard);
-
-        response_rx.recv_timeout(Duration::from_millis(250)).ok()
-    } else {
-        None
-    }
 }

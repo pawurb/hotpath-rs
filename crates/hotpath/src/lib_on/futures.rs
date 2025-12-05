@@ -5,8 +5,7 @@ use crate::http_server::HTTP_SERVER_PORT;
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicU64;
-use std::sync::{OnceLock, RwLock};
-use std::time::Duration;
+use std::sync::{Arc, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -20,10 +19,8 @@ pub(crate) mod wrapper;
 pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
-// Re-export Format from crate root
-pub use crate::Format;
-// Re-export JSON types from json module
 pub use crate::json::{FutureCall, FutureCalls, FutureState, FuturesJson, SerializableFutureStats};
+pub use crate::Format;
 
 pub(crate) static FUTURE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub(crate) static FUTURE_CALL_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -39,7 +36,6 @@ static SOURCE_TO_FUTURE_ID: LazyLock<RwLock<HashMap<&'static str, u64>>> =
 pub(crate) fn get_or_create_future_id(source: &'static str) -> (u64, bool) {
     let map = &*SOURCE_TO_FUTURE_ID;
 
-    // First try read lock
     {
         let read_guard = map.read().unwrap();
         if let Some(&future_id) = read_guard.get(source) {
@@ -47,9 +43,8 @@ pub(crate) fn get_or_create_future_id(source: &'static str) -> (u64, bool) {
         }
     }
 
-    // Need write lock to insert
     let mut write_guard = map.write().unwrap();
-    // Double-check after acquiring write lock
+
     if let Some(&future_id) = write_guard.get(source) {
         return (future_id, false);
     }
@@ -141,16 +136,11 @@ pub(crate) enum FutureEvent {
     },
 }
 
-/// Query types for requesting data from the futures worker thread.
-pub(crate) enum FutureQuery {
-    GetAllStats(CbSender<FuturesJson>),
-    GetCalls {
-        future_id: u64,
-        response_tx: CbSender<Option<FutureCalls>>,
-    },
-}
-
-pub(crate) type FuturesStatsState = (CbSender<FutureEvent>, CbSender<FutureQuery>);
+/// State type: event sender + shared stats map
+pub(crate) type FuturesStatsState = (
+    CbSender<FutureEvent>,
+    Arc<RwLock<HashMap<u64, FutureStats>>>,
+);
 
 static FUTURES_STATE: OnceLock<FuturesStatsState> = OnceLock::new();
 
@@ -163,43 +153,20 @@ pub fn init_futures_state() {
         crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<FutureEvent>();
-        let (query_tx, query_rx) = unbounded::<FutureQuery>();
+        let stats_map = Arc::new(RwLock::new(HashMap::<u64, FutureStats>::new()));
+        let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
             .name("hp-futures".into())
             .spawn(move || {
-                let mut stats_map = HashMap::<u64, FutureStats>::new();
-
-                loop {
-                    crossbeam_channel::select! {
-                        recv(event_rx) -> event => {
-                            match event {
-                                Ok(event) => process_future_event(&mut stats_map, event),
-                                Err(_) => break,
-                            }
-                        }
-                        recv(query_rx) -> query => {
-                            match query {
-                                Ok(FutureQuery::GetAllStats(response_tx)) => {
-                                    let json = build_futures_json(&stats_map);
-                                    let _ = response_tx.send(json);
-                                }
-                                Ok(FutureQuery::GetCalls { future_id, response_tx }) => {
-                                    let calls = stats_map.get(&future_id).map(|s| FutureCalls {
-                                        id: future_id.to_string(),
-                                        calls: s.calls.iter().rev().cloned().collect(),
-                                    });
-                                    let _ = response_tx.send(calls);
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                    }
+                while let Ok(event) = event_rx.recv() {
+                    let mut stats = stats_map_clone.write().unwrap();
+                    process_future_event(&mut stats, event);
                 }
             })
             .expect("Failed to spawn futures event collector thread");
 
-        (event_tx, query_tx)
+        (event_tx, stats_map)
     });
 }
 
@@ -314,27 +281,39 @@ where
     }
 }
 
-/// Compare two serializable future stats for sorting.
+/// Compare two future stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source).
-fn compare_serializable_stats(
-    a: &SerializableFutureStats,
-    b: &SerializableFutureStats,
-) -> std::cmp::Ordering {
-    match (a.has_custom_label, b.has_custom_label) {
+fn compare_future_stats(a: &FutureStats, b: &FutureStats) -> std::cmp::Ordering {
+    let a_has_label = a.label.is_some();
+    let b_has_label = b.label.is_some();
+
+    match (a_has_label, b_has_label) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
-        (true, true) => a.label.cmp(&b.label),
-        (false, false) => a.source.cmp(&b.source),
+        (true, true) => a.label.as_ref().unwrap().cmp(b.label.as_ref().unwrap()),
+        (false, false) => a.source.cmp(b.source),
     }
 }
 
-/// Build FuturesJson from the stats map (called on worker thread).
-fn build_futures_json(stats_map: &HashMap<u64, FutureStats>) -> FuturesJson {
-    let mut futures: Vec<SerializableFutureStats> = stats_map
-        .values()
+fn get_all_future_stats() -> HashMap<u64, FutureStats> {
+    if let Some((_, stats_map)) = FUTURES_STATE.get() {
+        stats_map.read().unwrap().clone()
+    } else {
+        HashMap::new()
+    }
+}
+
+pub(crate) fn get_sorted_future_stats() -> Vec<FutureStats> {
+    let mut stats: Vec<FutureStats> = get_all_future_stats().into_values().collect();
+    stats.sort_by(compare_future_stats);
+    stats
+}
+
+pub fn get_futures_json() -> FuturesJson {
+    let futures = get_sorted_future_stats()
+        .iter()
         .map(SerializableFutureStats::from)
         .collect();
-    futures.sort_by(compare_serializable_stats);
 
     let current_elapsed_ns = START_TIME
         .get()
@@ -347,36 +326,12 @@ fn build_futures_json(stats_map: &HashMap<u64, FutureStats>) -> FuturesJson {
     }
 }
 
-pub fn get_futures_json() -> FuturesJson {
-    if let Some((_, query_tx)) = FUTURES_STATE.get() {
-        let (tx, rx) = crossbeam_channel::bounded(1);
-        if query_tx.send(FutureQuery::GetAllStats(tx)).is_ok() {
-            if let Ok(json) = rx.recv_timeout(Duration::from_millis(250)) {
-                return json;
-            }
-        }
-    }
-    // Return empty on timeout/error
-    FuturesJson {
-        current_elapsed_ns: 0,
-        futures: vec![],
-    }
-}
-
 pub fn get_future_calls(future_id: u64) -> Option<FutureCalls> {
-    if let Some((_, query_tx)) = FUTURES_STATE.get() {
-        let (tx, rx) = crossbeam_channel::bounded(1);
-        if query_tx
-            .send(FutureQuery::GetCalls {
-                future_id,
-                response_tx: tx,
-            })
-            .is_ok()
-        {
-            return rx.recv_timeout(Duration::from_millis(250)).ok().flatten();
-        }
-    }
-    None
+    let stats = get_all_future_stats();
+    stats.get(&future_id).map(|s| FutureCalls {
+        id: future_id.to_string(),
+        calls: s.calls.iter().rev().cloned().collect(),
+    })
 }
 
 /// Instrument a future to inspect future's lifecycle events.

@@ -100,12 +100,11 @@ impl FunctionStats {
     }
 }
 
-pub(crate) struct HotPathState {
+pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
-    #[allow(dead_code)] // Used by HTTP server when hotpath feature is enabled
-    pub query_tx: Option<Sender<super::super::QueryRequest>>,
+    pub query_tx: Option<Sender<FunctionsQuery>>,
     pub start_time: Instant,
     pub caller_name: &'static str,
     pub percentiles: Vec<u8>,
@@ -134,7 +133,8 @@ pub(crate) fn process_measurement(
     }
 }
 
-use super::super::HOTPATH_STATE;
+use super::super::FunctionsQuery;
+use super::super::FUNCTIONS_STATE;
 
 pub fn send_duration_measurement(
     name: &'static str,
@@ -152,9 +152,9 @@ pub fn send_duration_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    let Some(arc_swap) = HOTPATH_STATE.get() else {
+    let Some(arc_swap) = FUNCTIONS_STATE.get() else {
         panic!(
-            "GuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath is enabled"
+            "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath is enabled"
         );
     };
 

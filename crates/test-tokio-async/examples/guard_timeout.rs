@@ -18,7 +18,8 @@ fn second_function(sleep: u64) {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    hotpath::GuardBuilder::new("guard_timeout::main").build_with_timeout(Duration::from_secs(1));
+    hotpath::FunctionsGuardBuilder::new("guard_timeout::main")
+        .build_with_timeout(Duration::from_secs(1));
 
     loop {
         first_function(100);

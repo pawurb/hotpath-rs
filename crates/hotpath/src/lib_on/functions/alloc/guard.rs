@@ -4,7 +4,7 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-use crate::truncate_result;
+use super::super::truncate_result;
 
 pub struct MeasurementGuard {
     name: &'static str,
@@ -57,7 +57,6 @@ impl Drop for MeasurementGuard {
 
                     stack.depth.set(stack.depth.get() - 1);
 
-                    // If not in exclusive mode, accumulate to parent (cumulative mode)
                     if !super::shared::is_alloc_self_enabled() {
                         let parent = stack.depth.get() as usize;
                         stack.elements[parent]
@@ -75,8 +74,6 @@ impl Drop for MeasurementGuard {
                 })
             };
 
-        // Temporarily disable allocation tracking to prevent measurement overhead
-        // from being attributed to the parent function
         super::core::ALLOCATIONS.with(|stack| {
             stack.tracking_enabled.set(false);
         });
@@ -93,7 +90,6 @@ impl Drop for MeasurementGuard {
             tid,
         );
 
-        // Re-enable allocation tracking
         super::core::ALLOCATIONS.with(|stack| {
             stack.tracking_enabled.set(true);
         });
