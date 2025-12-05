@@ -246,7 +246,7 @@ pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
-    pub query_tx: Option<Sender<crate::QueryRequest>>,
+    pub query_tx: Option<Sender<crate::FunctionsQuery>>,
     pub start_time: Instant,
     pub caller_name: &'static str,
     pub percentiles: Vec<u8>,
