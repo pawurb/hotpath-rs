@@ -251,7 +251,7 @@ where
     let type_name = std::any::type_name::<T>();
 
     let (outer_tx, outer_rx_proxy) = oneshot::channel::<T>();
-    let (inner_tx_proxy, outer_rx) = oneshot::channel::<T>();
+    let (mut inner_tx_proxy, outer_rx) = oneshot::channel::<T>();
 
     let (stats_tx, _) = init_channels_state();
 
@@ -294,15 +294,7 @@ where
                     }
                 }
             }
-            _ = async {
-                // Check if outer receiver is canceled
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-                    if inner_tx_proxy.is_canceled() {
-                        break;
-                    }
-                }
-            } => {
+            _ = inner_tx_proxy.cancellation() => {
                 // Outer receiver was dropped - drop inner_rx to make sends fail
                 drop(inner_rx);
                 let _ = close_signal_tx.send(());
