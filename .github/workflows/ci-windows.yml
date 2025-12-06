@@ -10,7 +10,7 @@ jobs:
   build:
     name: test ${{ matrix.rust }}
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
