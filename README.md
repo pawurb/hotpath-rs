@@ -3,7 +3,7 @@
 
 https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
-A lightweight Rust profiler for latency, memory, and data-flow insight. Instrument functions, channels, futures, and streams to find bottlenecks and focus optimizations where they matter most.
+A lightweight Rust performance, memory, and data-flow profiler. Instrument functions, channels, futures, and streams to find bottlenecks and focus optimizations where they matter most.
 
 In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain the motivation behind the project and its inner workings.
 
@@ -15,7 +15,7 @@ In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain th
 - **Static reports for one-off programs** - alternatively print profiling summaries without running the TUI.
 - **Memory allocation tracking** - track bytes allocated and allocation counts per function.
 - **Channel and stream monitoring** - instrument channels and streams to track message flow and throughput.
-- **Futures instrumentstion** - monitor any async piece of code to track poll counts, lifecycle and resolved values
+- **Futures instrumentation** - monitor any async piece of code to track poll counts, lifecycle and resolved values
 - **Detailed stats**: avg, total time, call count, % of total runtime, and configurable percentiles (p95, p99, etc.).
 - **Background processing** for minimal profiling impact.
 - **GitHub Actions integration** - configure CI to automatically benchmark your program against a base branch for each PR
@@ -71,12 +71,9 @@ hotpath = "0.8"
 [features]
 hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
-hotpath-off = ["hotpath/hotpath-off"]
 ```
 
 This config ensures that the lib has no overhead unless explicitly enabled via a `hotpath` feature. All the lib dependencies are optional (i.e. not compiled) and all macros are noop unless profiling is enabled.
-
-To ensure compatibility with `--all-features` setting, the crate defines an additional `hotpath-off` flag. This is handled automatically - you should never need to enable it manually.
 
 ## Usage
 
