@@ -6,7 +6,8 @@ use std::thread;
 use std::time::Instant;
 
 use crate::http_server::HTTP_SERVER_PORT;
-use crate::output::{self, FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricsProvider};
+use crate::output::{FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricsProvider};
+use crate::output_on::{JsonPrettyReporter, JsonReporter, TableReporter};
 use crate::Reporter;
 
 use super::{FunctionsQuery, FUNCTIONS_STATE};
@@ -284,12 +285,12 @@ impl FunctionsGuardBuilder {
     pub fn build(self) -> FunctionsGuard {
         let reporter: Box<dyn Reporter> = match self.reporter {
             ReporterConfig::Format(format) => match format {
-                Format::Table => Box::new(output::TableReporter),
-                Format::Json => Box::new(output::JsonReporter),
-                Format::JsonPretty => Box::new(output::JsonPrettyReporter),
+                Format::Table => Box::new(TableReporter),
+                Format::Json => Box::new(JsonReporter),
+                Format::JsonPretty => Box::new(JsonPrettyReporter),
             },
             ReporterConfig::Custom(reporter) => reporter,
-            ReporterConfig::None => Box::new(output::TableReporter),
+            ReporterConfig::None => Box::new(TableReporter),
         };
 
         let recent_logs_limit = std::env::var("HOTPATH_RECENT_LOGS")
@@ -426,7 +427,7 @@ impl FunctionsGuard {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 // Create allocation metrics snapshot
-                                                use output::MetricsProvider;
+                                                use crate::output::MetricsProvider;
                                                 let total_elapsed = worker_start_time.elapsed();
                                                 let metrics_provider = StatsData::new(
                                                     &local_stats,
@@ -447,7 +448,7 @@ impl FunctionsGuard {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 // Create timing metrics snapshot
-                                                use output::MetricsProvider;
+                                                use crate::output::MetricsProvider;
                                                 let total_elapsed = worker_start_time.elapsed();
                                                 let metrics_provider = TimingStatsData::new(
                                                     &local_stats,
@@ -459,7 +460,7 @@ impl FunctionsGuard {
                                                 let metrics_json = FunctionsJson::from(&metrics_provider as &dyn MetricsProvider);
                                                 let _ = response_tx.send(metrics_json);
                                             } else {
-                                                use output::MetricsProvider;
+                                                use crate::output::MetricsProvider;
                                                 let total_elapsed = worker_start_time.elapsed();
                                                 let metrics_provider = StatsData::new(
                                                     &local_stats,
@@ -570,7 +571,7 @@ impl FunctionsGuard {
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false)
         {
-            Box::new(output::JsonReporter)
+            Box::new(JsonReporter)
         } else {
             _reporter
         };

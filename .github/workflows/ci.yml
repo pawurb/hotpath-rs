@@ -49,6 +49,10 @@ jobs:
         if: matrix.rust == 'stable'
         run: |
           cargo clippy --all --features hotpath -- -D warnings
+      - name: Lint (--all-features)
+        if: matrix.rust == 'stable'
+        run: |
+          cargo clippy --all --all-features -- -D warnings
       - name: Lint (hotpath-alloc)
         if: matrix.rust == 'stable'
         run: |

@@ -236,6 +236,10 @@ pub mod channels {
             Self::new()
         }
     }
+
+    impl Drop for ChannelsGuard {
+        fn drop(&mut self) {}
+    }
 }
 
 pub mod streams {
@@ -277,6 +281,10 @@ pub mod streams {
             Self::new()
         }
     }
+
+    impl Drop for StreamsGuard {
+        fn drop(&mut self) {}
+    }
 }
 
 pub mod futures {
@@ -317,5 +325,9 @@ pub mod futures {
         fn default() -> Self {
             Self::new()
         }
+    }
+
+    impl Drop for FuturesGuard {
+        fn drop(&mut self) {}
     }
 }

@@ -45,6 +45,9 @@ pub use output::{
 };
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
+pub(crate) mod output_on;
+
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub(crate) mod http_server;
 
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
