@@ -1,7 +1,7 @@
 # <img src="hotpath-logo2.png" alt="hotpath-rs logo" width="80px" align="left"> hotpath - real-time Rust performance, memory and data flow profiler
 [![Latest Version](https://img.shields.io/crates/v/hotpath.svg)](https://crates.io/crates/hotpath) [![GH Actions](https://github.com/pawurb/hotpath/actions/workflows/ci.yml/badge.svg)](https://github.com/pawurb/hotpath/actions)
 
-hotpath-rs instruments functions, channels, futures, streams, and threads to quickly find bottlenecks and focus optimizations where they matter most. It provides actionable insights into time, memory, and data flow with minimal setup.
+hotpath-rs instruments functions, channels, futures, and streams to quickly find bottlenecks and focus optimizations where they matter most. It provides actionable insights into time, memory, and data flow with minimal setup.
 
 Explore the full documentation at [hotpath.rs](https://hotpath.rs).
 
@@ -34,15 +34,15 @@ In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain th
 - [x] channels/streams profiling
 - [x] process threads monitoring
 - [x] futures monitoring
+- [x] improved docs on [hotpath.rs](https://hotpath.rs)
 - [ ] runtime metrics 
-- [ ] improved docs on [hotpath.rs](https://hotpath.rs)
 - [ ] hosted backend integration
 - [ ] interactive SSH demo 
 - [ ] MCP/LLM interface
 
 ## Quick Demo
 
-The fastest way to try the TUI is to run it in **auto-instrumentation mode** - the TUI process profiles itself and displays its own performance metrics in a real time.
+An easy way to quickly try the TUI is to run it in **auto-instrumentation mode**. The TUI process profiles itself and displays its own performance metrics in real time.
 
 First, install `hotpath` CLI with auto-instrumentation enabled:
 
