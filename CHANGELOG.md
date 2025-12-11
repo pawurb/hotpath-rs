@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2025-12-11
+
+### 🚀 Features
+
+- Add must_use for guards
+
+### 🐛 Bug Fixes
+
+- Fix hotpath CI integration
+- Fix nested measure and improve auto-instrumentation
+- Fix build on windows target [#93]
+- Fix futures channel cancellation check
+- Fix build warnings
+
+### 🚜 Refactor
+
+- Unify naming and structure
+
+### ⚙️ Miscellaneous Tasks
+
+- Improve auto-instrumentation demo
+- Remove unneeded windows collector
+- Remove unneeded hotpath feature dependency
+- Release 0.9.0
+
 ## [0.8.0] - 2025-12-04
 
 ### 🚀 Features
@@ -312,7 +337,7 @@ All notable changes to this project will be documented in this file.
 
 - Remove unused cfg_if
 - Change metrics data structure, add JSON serializer
-- Rename HotpathBuilder to GuardBuilder (later renamed to FunctionsGuardBuilder)
+- Rename HotpathBuilder to GuardBuilder
 - Rename MetricType
 
 ### ⚙️ Miscellaneous Tasks
