@@ -81,7 +81,7 @@ hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
 ```
 
-This config ensures that the lib has no overhead unless explicitly enabled via a `hotpath` feature. All the lib dependencies are optional (i.e. not compiled) and all macros are noop unless profiling is enabled.
+This config ensures that the lib has no compile time or runtime overhead unless explicitly enabled via a `hotpath` feature. All the lib dependencies are optional (i.e. not compiled) and all macros are noop unless profiling is enabled.
 
 ## Usage
 
@@ -138,8 +138,6 @@ Output:
 ```
 
 ## Live Performance Metrics TUI
-
-![hotpath TUI Example](hotpath-tui3.gif)
 
 `hotpath` includes a live terminal-based dashboard for real-time monitoring of profiling metrics, including function performance, channel statistics, and stream throughput. This is particularly useful for long-running applications like web servers, where you want to observe performance characteristics while the application is running.
 
