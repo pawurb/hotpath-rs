@@ -20,3 +20,8 @@ hotpath = { path = "./crates/hotpath", version = "0.9.0" }
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
+
+[profile.profiling]
+inherits = "release"
+debug = true
+

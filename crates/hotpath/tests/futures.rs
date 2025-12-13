@@ -104,7 +104,7 @@ pub mod tests {
 
     #[test]
     fn test_data_endpoints() {
-        use hotpath::futures::FuturesJson;
+        use hotpath::json::FuturesJson;
         use std::{thread::sleep, time::Duration};
 
         // Spawn example process

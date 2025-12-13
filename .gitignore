@@ -3,4 +3,5 @@ Cargo.lock
 rust-project.json
 hotpath_report.csv
 hotpath_report.json
+profile.json*
 
