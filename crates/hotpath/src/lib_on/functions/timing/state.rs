@@ -44,14 +44,13 @@ impl MeasurementBatch {
             }
         }
 
-        let Some(start_time) = self.start_time else {
+        if self.start_time.is_none() {
             return;
         };
 
-        let elapsed = start_time.elapsed();
         let measurement = Measurement {
             duration_ns: duration.as_nanos() as u64,
-            elapsed,
+            measurement_time: Instant::now(),
             name,
             wrapper,
             tid,
@@ -73,12 +72,9 @@ impl MeasurementBatch {
             return;
         }
 
-        if let Some(ref sender) = self.sender {
-            for measurement in self.measurements.drain(..) {
-                let _ = sender.send(measurement);
-            }
-        } else {
-            self.measurements.clear();
+        let sender = self.sender.as_ref().expect("Sender must exist");
+        for measurement in self.measurements.drain(..) {
+            let _ = sender.send(measurement);
         }
 
         self.last_flush = Instant::now();
@@ -103,7 +99,7 @@ pub(crate) fn flush_batch() {
 
 pub struct Measurement {
     pub duration_ns: u64,
-    pub elapsed: Duration,
+    pub measurement_time: Instant,
     pub name: &'static str,
     pub wrapper: bool,
     pub tid: Option<u64>,
@@ -212,15 +208,17 @@ pub(crate) fn process_measurement(
     stats: &mut HashMap<&'static str, FunctionStats>,
     m: Measurement,
     recent_logs_limit: usize,
+    start_time: Instant,
 ) {
+    let elapsed = m.measurement_time.duration_since(start_time);
     if let Some(s) = stats.get_mut(m.name) {
-        s.update_duration(m.duration_ns, m.elapsed, m.tid, m.result_log);
+        s.update_duration(m.duration_ns, elapsed, m.tid, m.result_log);
     } else {
         stats.insert(
             m.name,
             FunctionStats::new_duration(
                 m.duration_ns,
-                m.elapsed,
+                elapsed,
                 m.wrapper,
                 recent_logs_limit,
                 m.tid,

@@ -49,17 +49,16 @@ impl MeasurementBatch {
             }
         }
 
-        let Some(start_time) = self.start_time else {
+        if self.start_time.is_none() {
             return;
         };
 
-        let elapsed = start_time.elapsed();
         let measurement = Measurement {
             name,
             bytes_total,
             count_total,
             duration,
-            elapsed_since_start: elapsed,
+            measurement_time: Instant::now(),
             unsupported_async,
             wrapper,
             cross_thread,
@@ -82,12 +81,9 @@ impl MeasurementBatch {
             return;
         }
 
-        if let Some(ref sender) = self.sender {
-            for measurement in self.measurements.drain(..) {
-                let _ = sender.send(measurement);
-            }
-        } else {
-            self.measurements.clear();
+        let sender = self.sender.as_ref().expect("Sender must exist");
+        for measurement in self.measurements.drain(..) {
+            let _ = sender.send(measurement);
         }
 
         self.last_flush = Instant::now();
@@ -115,7 +111,7 @@ pub struct Measurement {
     pub bytes_total: u64,
     pub count_total: u64,
     pub duration: Duration,
-    pub elapsed_since_start: Duration,
+    pub measurement_time: Instant,
     pub unsupported_async: bool,
     pub wrapper: bool,
     pub cross_thread: bool,
@@ -363,13 +359,15 @@ pub(crate) fn process_measurement(
     stats: &mut HashMap<&'static str, FunctionStats>,
     m: Measurement,
     recent_logs_limit: usize,
+    start_time: Instant,
 ) {
+    let elapsed = m.measurement_time.duration_since(start_time);
     if let Some(s) = stats.get_mut(m.name) {
         s.update_alloc(
             m.bytes_total,
             m.count_total,
             m.duration,
-            m.elapsed_since_start,
+            elapsed,
             m.unsupported_async,
             m.cross_thread,
             m.tid,
@@ -382,7 +380,7 @@ pub(crate) fn process_measurement(
                 m.bytes_total,
                 m.count_total,
                 m.duration,
-                m.elapsed_since_start,
+                elapsed,
                 m.unsupported_async,
                 m.wrapper,
                 m.cross_thread,

@@ -399,7 +399,7 @@ impl FunctionsGuard {
         let worker_recent_logs_limit = recent_logs_limit;
 
         thread::Builder::new()
-            .name("hp-worker".into())
+            .name("hp-functions".into())
             .spawn(move || {
                 let mut local_stats = HashMap::<&'static str, FunctionStats>::new();
 
@@ -408,7 +408,7 @@ impl FunctionsGuard {
                         recv(rx) -> result => {
                             match result {
                                 Ok(measurement) => {
-                                    process_measurement(&mut local_stats, measurement, worker_recent_logs_limit);
+                                    process_measurement(&mut local_stats, measurement, worker_recent_logs_limit, worker_start_time);
                                 }
                                 Err(_) => break, // Channel disconnected
                             }
@@ -416,7 +416,7 @@ impl FunctionsGuard {
                         recv(shutdown_rx) -> _ => {
                             // Process remaining messages after shutdown signal
                             while let Ok(measurement) = rx.try_recv() {
-                                process_measurement(&mut local_stats, measurement, worker_recent_logs_limit);
+                                process_measurement(&mut local_stats, measurement, worker_recent_logs_limit, worker_start_time);
                             }
                             break;
                         }
