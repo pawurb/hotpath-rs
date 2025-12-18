@@ -1,8 +1,105 @@
 use crossbeam_channel::{Receiver, Sender};
 use hdrhistogram::Histogram;
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+const BATCH_SIZE: usize = 64;
+const FLUSH_INTERVAL_MS: u64 = 50;
+
+struct MeasurementBatch {
+    measurements: Vec<Measurement>,
+    last_flush: Instant,
+    sender: Option<Sender<Measurement>>,
+    start_time: Option<Instant>,
+}
+
+impl MeasurementBatch {
+    fn new() -> Self {
+        Self {
+            measurements: Vec::with_capacity(BATCH_SIZE),
+            last_flush: Instant::now(),
+            sender: None,
+            start_time: None,
+        }
+    }
+
+    fn add(
+        &mut self,
+        name: &'static str,
+        duration: Duration,
+        wrapper: bool,
+        tid: Option<u64>,
+        result_log: Option<String>,
+    ) {
+        if self.sender.is_none() {
+            if let Some(arc_swap) = super::super::FUNCTIONS_STATE.get() {
+                if let Some(state) = arc_swap.load_full() {
+                    if let Ok(state_guard) = state.read() {
+                        self.sender = state_guard.sender.clone();
+                        self.start_time = Some(state_guard.start_time);
+                    }
+                }
+            }
+        }
+
+        let Some(start_time) = self.start_time else {
+            return;
+        };
+
+        let elapsed = start_time.elapsed();
+        let measurement = Measurement {
+            duration_ns: duration.as_nanos() as u64,
+            elapsed,
+            name,
+            wrapper,
+            tid,
+            result_log,
+        };
+
+        self.measurements.push(measurement);
+
+        let should_flush = self.measurements.len() >= BATCH_SIZE
+            || self.last_flush.elapsed() >= Duration::from_millis(FLUSH_INTERVAL_MS);
+
+        if should_flush {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if self.measurements.is_empty() {
+            return;
+        }
+
+        if let Some(ref sender) = self.sender {
+            for measurement in self.measurements.drain(..) {
+                let _ = sender.send(measurement);
+            }
+        } else {
+            self.measurements.clear();
+        }
+
+        self.last_flush = Instant::now();
+    }
+}
+
+impl Drop for MeasurementBatch {
+    fn drop(&mut self) {
+        self.flush();
+    }
+}
+
+thread_local! {
+    static MEASUREMENT_BATCH: RefCell<MeasurementBatch> = RefCell::new(MeasurementBatch::new());
+}
+
+pub(crate) fn flush_batch() {
+    MEASUREMENT_BATCH.with(|batch| {
+        batch.borrow_mut().flush();
+    });
+}
 
 pub struct Measurement {
     pub duration_ns: u64,
@@ -152,31 +249,15 @@ pub fn send_duration_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    let Some(arc_swap) = FUNCTIONS_STATE.get() else {
+    if FUNCTIONS_STATE.get().is_none() {
         panic!(
             "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath is enabled"
         );
-    };
+    }
 
-    let Some(state) = arc_swap.load_full() else {
-        return;
-    };
-
-    let Ok(state_guard) = state.read() else {
-        return;
-    };
-    let Some(sender) = state_guard.sender.as_ref() else {
-        return;
-    };
-
-    let elapsed = state_guard.start_time.elapsed();
-    let measurement = Measurement {
-        duration_ns: duration.as_nanos() as u64,
-        elapsed,
-        name,
-        wrapper,
-        tid,
-        result_log,
-    };
-    let _ = sender.try_send(measurement);
+    MEASUREMENT_BATCH.with(|batch| {
+        batch
+            .borrow_mut()
+            .add(name, duration, wrapper, tid, result_log);
+    });
 }

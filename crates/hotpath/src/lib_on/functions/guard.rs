@@ -16,12 +16,12 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
         use super::alloc::{
             report::{StatsData, TimingStatsData},
-            state::{FunctionStats, FunctionsState, Measurement, process_measurement},
+            state::{FunctionStats, FunctionsState, Measurement, process_measurement, flush_batch},
         };
     } else {
         use super::timing::{
             report::StatsData,
-            state::{FunctionStats, FunctionsState, Measurement, process_measurement},
+            state::{FunctionStats, FunctionsState, Measurement, process_measurement, flush_batch},
         };
     }
 }
@@ -596,6 +596,8 @@ impl Drop for FunctionsGuard {
     fn drop(&mut self) {
         let wrapper_guard = self.wrapper_guard.take().unwrap();
         drop(wrapper_guard);
+
+        flush_batch();
 
         let state: Arc<RwLock<FunctionsState>> = Arc::clone(&self.state);
 

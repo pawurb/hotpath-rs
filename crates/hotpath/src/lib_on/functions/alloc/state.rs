@@ -1,8 +1,114 @@
 use crossbeam_channel::{Receiver, Sender};
 use hdrhistogram::Histogram;
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+const BATCH_SIZE: usize = 64;
+const FLUSH_INTERVAL_MS: u64 = 50;
+
+struct MeasurementBatch {
+    measurements: Vec<Measurement>,
+    last_flush: Instant,
+    sender: Option<Sender<Measurement>>,
+    start_time: Option<Instant>,
+}
+
+impl MeasurementBatch {
+    fn new() -> Self {
+        Self {
+            measurements: Vec::with_capacity(BATCH_SIZE),
+            last_flush: Instant::now(),
+            sender: None,
+            start_time: None,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn add(
+        &mut self,
+        name: &'static str,
+        bytes_total: u64,
+        count_total: u64,
+        duration: Duration,
+        unsupported_async: bool,
+        wrapper: bool,
+        cross_thread: bool,
+        tid: Option<u64>,
+        result_log: Option<String>,
+    ) {
+        if self.sender.is_none() {
+            if let Some(arc_swap) = super::super::FUNCTIONS_STATE.get() {
+                if let Some(state) = arc_swap.load_full() {
+                    if let Ok(state_guard) = state.read() {
+                        self.sender = state_guard.sender.clone();
+                        self.start_time = Some(state_guard.start_time);
+                    }
+                }
+            }
+        }
+
+        let Some(start_time) = self.start_time else {
+            return;
+        };
+
+        let elapsed = start_time.elapsed();
+        let measurement = Measurement {
+            name,
+            bytes_total,
+            count_total,
+            duration,
+            elapsed_since_start: elapsed,
+            unsupported_async,
+            wrapper,
+            cross_thread,
+            tid,
+            result_log,
+        };
+
+        self.measurements.push(measurement);
+
+        let should_flush = self.measurements.len() >= BATCH_SIZE
+            || self.last_flush.elapsed() >= Duration::from_millis(FLUSH_INTERVAL_MS);
+
+        if should_flush {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if self.measurements.is_empty() {
+            return;
+        }
+
+        if let Some(ref sender) = self.sender {
+            for measurement in self.measurements.drain(..) {
+                let _ = sender.send(measurement);
+            }
+        } else {
+            self.measurements.clear();
+        }
+
+        self.last_flush = Instant::now();
+    }
+}
+
+impl Drop for MeasurementBatch {
+    fn drop(&mut self) {
+        self.flush();
+    }
+}
+
+thread_local! {
+    static MEASUREMENT_BATCH: RefCell<MeasurementBatch> = RefCell::new(MeasurementBatch::new());
+}
+
+pub(crate) fn flush_batch() {
+    MEASUREMENT_BATCH.with(|batch| {
+        batch.borrow_mut().flush();
+    });
+}
 
 pub struct Measurement {
     pub name: &'static str,
@@ -326,35 +432,23 @@ pub fn send_alloc_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    let Some(arc_swap) = FUNCTIONS_STATE.get() else {
+    if FUNCTIONS_STATE.get().is_none() {
         panic!(
             "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath-alloc is enabled"
         );
-    };
+    }
 
-    let Some(state) = arc_swap.load_full() else {
-        return;
-    };
-
-    let Ok(state_guard) = state.read() else {
-        return;
-    };
-    let Some(sender) = state_guard.sender.as_ref() else {
-        return;
-    };
-
-    let elapsed = state_guard.start_time.elapsed();
-    let measurement = Measurement {
-        name,
-        bytes_total,
-        count_total,
-        duration,
-        elapsed_since_start: elapsed,
-        unsupported_async,
-        wrapper,
-        cross_thread,
-        tid,
-        result_log,
-    };
-    let _ = sender.try_send(measurement);
+    MEASUREMENT_BATCH.with(|batch| {
+        batch.borrow_mut().add(
+            name,
+            bytes_total,
+            count_total,
+            duration,
+            unsupported_async,
+            wrapper,
+            cross_thread,
+            tid,
+            result_log,
+        );
+    });
 }
