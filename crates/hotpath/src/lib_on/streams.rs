@@ -1,4 +1,4 @@
-// Streams module - provides stream instrumentation and statistics
+//! Stream instrumentation module - tracks items yielded and stream lifecycle.
 
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};

@@ -1,3 +1,5 @@
+//! Function profiling module - measures execution time and memory allocations per function.
+
 use std::{collections::HashMap, sync::OnceLock, sync::RwLock, time::Duration};
 
 use arc_swap::ArcSwapOption;

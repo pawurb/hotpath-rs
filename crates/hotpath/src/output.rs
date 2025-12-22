@@ -163,7 +163,7 @@ pub fn shorten_function_name(function_name: &str) -> String {
 /// # See Also
 ///
 /// * [`MetricsProvider`] - Trait for accessing profiling metrics data
-/// * [`GuardBuilder::reporter`](crate::GuardBuilder::reporter) - Method to set custom reporter
+/// * `FunctionsGuardBuilder::reporter` - Method to set custom reporter
 pub trait Reporter: Send + Sync {
     fn report(
         &self,
@@ -556,6 +556,7 @@ pub trait MetricsProvider<'a> {
     fn caller_name(&self) -> &str;
 }
 
+/// Formats a byte count into a human-readable string (e.g., "1.5 MB").
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     const THRESHOLD: f64 = 1024.0;

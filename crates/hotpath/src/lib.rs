@@ -1,8 +1,8 @@
-//! A lightweight, easy-to-configure Rust profiler that shows exactly where your code spends time and allocates memory.
-//! Instrument any function or code block with to quickly spot bottlenecks, and focus your optimizations where they matter most.
+//! hotpath-rs is a simple async Rust profiler. It instruments functions, channels, futures, and streams to quickly find bottlenecks and focus optimizations where they matter most.
+//! It can provide actionable insights into time, memory, and data flow with minimal setup.
 //! ## Setup & Usage
-//! For a complete setup guide, examples, and advanced configuration, see the
-//! [GitHub repository](https://github.com/pawurb/hotpath-rs).
+//! For a complete setup guide, examples, and advanced configuration, visit
+//! [hotpath.rs](https://hotpath.rs).
 
 /// Output format for profiling reports.
 ///

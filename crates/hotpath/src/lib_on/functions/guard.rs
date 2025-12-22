@@ -94,11 +94,11 @@ enum ReporterConfig {
 /// # Limitations
 ///
 /// Only one hotpath guard can be active at a time. Creating a second guard (either via
-/// `FunctionsGuardBuilder` or via the [`main`] macro) will cause a panic.
+/// `FunctionsGuardBuilder` or via the `#[hotpath::main]` macro) will cause a panic.
 ///
 /// # See Also
 ///
-/// * [`main`] - Attribute macro for automatic initialization
+/// * `#[hotpath::main]` - Attribute macro for automatic initialization
 /// * [`Format`] - Output format options
 /// * [`Reporter`] - Custom reporter trait
 #[must_use = "builder is discarded without creating a guard"]
@@ -342,6 +342,10 @@ impl FunctionsGuardBuilder {
     }
 }
 
+/// RAII guard that manages the profiling lifecycle and generates a report on drop.
+///
+/// Created via [`FunctionsGuardBuilder::build`]. When dropped, it stops the background
+/// worker, aggregates statistics, and outputs the profiling report.
 #[must_use = "guard is dropped immediately without generating a report"]
 pub struct FunctionsGuard {
     state: Arc<RwLock<FunctionsState>>,

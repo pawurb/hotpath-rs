@@ -1,3 +1,5 @@
+//! Channel instrumentation module - tracks message flow, queue sizes, and channel state.
+
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicU64;
