@@ -23,8 +23,10 @@ where
     let (inner_tx, inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, to_inner_rx) = mpsc::sync_channel::<T>(capacity);
-    let (from_inner_tx, outer_rx) = mpsc::sync_channel::<T>(capacity);
+    // Proxy channels must be minimal to avoid inflating buffering.
+    // See: https://github.com/pawurb/hotpath-rs/issues/98
+    let (outer_tx, to_inner_rx) = mpsc::sync_channel::<T>(1);
+    let (from_inner_tx, outer_rx) = mpsc::sync_channel::<T>(1);
 
     let (stats_tx, _) = init_channels_state();
 

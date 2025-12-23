@@ -26,8 +26,10 @@ where
     let type_name = std::any::type_name::<T>();
 
     let capacity = inner_tx.capacity();
-    let (outer_tx, mut to_inner_rx) = mpsc::channel::<T>(capacity);
-    let (from_inner_tx, outer_rx) = mpsc::channel::<T>(capacity);
+    // Proxy channels must be minimal to avoid inflating buffering.
+    // See: https://github.com/pawurb/hotpath-rs/issues/98
+    let (outer_tx, mut to_inner_rx) = mpsc::channel::<T>(1);
+    let (from_inner_tx, outer_rx) = mpsc::channel::<T>(1);
 
     let (stats_tx, _) = init_channels_state();
 

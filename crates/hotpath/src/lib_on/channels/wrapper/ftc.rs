@@ -27,8 +27,8 @@ where
     let (mut inner_tx, mut inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, mut to_inner_rx) = mpsc::channel::<T>(capacity);
-    let (mut from_inner_tx, outer_rx) = mpsc::channel::<T>(capacity);
+    let (outer_tx, mut to_inner_rx) = mpsc::channel::<T>(1);
+    let (mut from_inner_tx, outer_rx) = mpsc::channel::<T>(1);
 
     let (stats_tx, _) = init_channels_state();
 
