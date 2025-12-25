@@ -23,8 +23,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, to_inner_rx) = crossbeam_channel::bounded::<T>(capacity);
-    let (from_inner_tx, outer_rx) = crossbeam_channel::bounded::<T>(capacity);
+    let (proxy_tx, proxy_rx) = crossbeam_channel::bounded::<T>(1);
 
     let (stats_tx, _) = init_channels_state();
 
@@ -39,64 +38,29 @@ where
         type_size: mem::size_of::<T>(),
     });
 
-    let stats_tx_send = stats_tx.clone();
-    let stats_tx_recv = stats_tx.clone();
-
-    // Create a signal channel to notify send-forwarder when outer_rx is closed
-    let (close_signal_tx, close_signal_rx) = crossbeam_channel::bounded::<()>(1);
-
-    // Forward outer -> inner (proxy the send path)
-    std::thread::spawn(move || {
-        loop {
-            crossbeam_channel::select! {
-                recv(close_signal_rx) -> _ => {
-                    // Outer receiver was closed/dropped (or close signal sender dropped)
-                    break;
-                }
-                recv(to_inner_rx) -> msg => {
-                    match msg {
-                        Ok(msg) => {
-                            let log = log_on_send(&msg);
-                            if inner_tx.send(msg).is_err() {
-                                // Inner receiver dropped
-                                break;
-                            }
-                            let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                                id,
-                                log,
-                                timestamp: Instant::now(),
-                            });
-                        }
-                        Err(_) => {
-                            // Outer sender dropped
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        // Channel is closed
-        let _ = stats_tx_send.send(ChannelEvent::Closed { id });
-    });
-
-    // Forward inner -> outer (proxy the recv path)
+    // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
         while let Ok(msg) = inner_rx.recv() {
-            if from_inner_tx.send(msg).is_err() {
-                // Outer receiver was closed
-                let _ = close_signal_tx.send(());
-                break;
-            }
-            let _ = stats_tx_recv.send(ChannelEvent::MessageReceived {
+            let log = log_on_send(&msg);
+            let _ = stats_tx.send(ChannelEvent::MessageSent {
                 id,
+                log,
                 timestamp: Instant::now(),
             });
+            if proxy_tx.send(msg).is_ok() {
+                let _ = stats_tx.send(ChannelEvent::MessageReceived {
+                    id,
+                    timestamp: Instant::now(),
+                });
+            } else {
+                // proxy_rx dropped
+                break;
+            }
         }
-        // Channel is closed (either inner sender dropped or outer receiver closed)
-        let _ = stats_tx_recv.send(ChannelEvent::Closed { id });
+        let _ = stats_tx.send(ChannelEvent::Closed { id });
     });
 
-    (outer_tx, outer_rx)
+    (inner_tx, proxy_rx)
 }
 
 /// Wrap a bounded crossbeam channel with proxy ends. Returns (outer_tx, outer_rx).
@@ -123,6 +87,7 @@ pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
 }
 
 /// Internal implementation for wrapping unbounded crossbeam channels with optional logging.
+/// Uses single proxy design: User -> [Original] -> Thread -> [Proxy unbounded] -> User
 fn wrap_unbounded_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -136,8 +101,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, to_inner_rx) = crossbeam_channel::unbounded::<T>();
-    let (from_inner_tx, outer_rx) = crossbeam_channel::unbounded::<T>();
+    let (proxy_tx, proxy_rx) = crossbeam_channel::unbounded::<T>();
 
     let (stats_tx, _) = init_channels_state();
 
@@ -152,64 +116,30 @@ where
         type_size: mem::size_of::<T>(),
     });
 
-    let stats_tx_send = stats_tx.clone();
-    let stats_tx_recv = stats_tx.clone();
-
-    // Create a signal channel to notify send-forwarder when outer_rx is closed
-    let (close_signal_tx, close_signal_rx) = crossbeam_channel::bounded::<()>(1);
-
-    // Forward outer -> inner (proxy the send path)
-    std::thread::spawn(move || {
-        loop {
-            crossbeam_channel::select! {
-                recv(close_signal_rx) -> _ => {
-                    // Outer receiver was closed/dropped (or close signal sender dropped)
-                    break;
-                }
-                recv(to_inner_rx) -> msg => {
-                    match msg {
-                        Ok(msg) => {
-                            let log = log_on_send(&msg);
-                            if inner_tx.send(msg).is_err() {
-                                // Inner receiver dropped
-                                break;
-                            }
-                            let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                                id,
-                                log,
-                                timestamp: Instant::now(),
-                            });
-                        }
-                        Err(_) => {
-                            // Outer sender dropped
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        // Channel is closed
-        let _ = stats_tx_send.send(ChannelEvent::Closed { id });
-    });
-
-    // Forward inner -> outer (proxy the recv path)
+    // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
         while let Ok(msg) = inner_rx.recv() {
-            if from_inner_tx.send(msg).is_err() {
-                // Outer receiver was closed
-                let _ = close_signal_tx.send(());
-                break;
-            }
-            let _ = stats_tx_recv.send(ChannelEvent::MessageReceived {
+            let log = log_on_send(&msg);
+            let _ = stats_tx.send(ChannelEvent::MessageSent {
                 id,
+                log,
                 timestamp: Instant::now(),
             });
+            // MessageReceived logged before user receives
+            if proxy_tx.send(msg).is_ok() {
+                let _ = stats_tx.send(ChannelEvent::MessageReceived {
+                    id,
+                    timestamp: Instant::now(),
+                });
+            } else {
+                // proxy_rx dropped
+                break;
+            }
         }
-        // Channel is closed (either inner sender dropped or outer receiver closed)
-        let _ = stats_tx_recv.send(ChannelEvent::Closed { id });
+        let _ = stats_tx.send(ChannelEvent::Closed { id });
     });
 
-    (outer_tx, outer_rx)
+    (inner_tx, proxy_rx)
 }
 
 /// Wrap an unbounded crossbeam channel with proxy ends. Returns (outer_tx, outer_rx).

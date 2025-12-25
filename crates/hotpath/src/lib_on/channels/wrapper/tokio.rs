@@ -26,8 +26,8 @@ where
     let type_name = std::any::type_name::<T>();
 
     let capacity = inner_tx.capacity();
-    let (outer_tx, mut to_inner_rx) = mpsc::channel::<T>(capacity);
-    let (from_inner_tx, outer_rx) = mpsc::channel::<T>(capacity);
+
+    let (proxy_tx, proxy_rx) = mpsc::channel::<T>(1);
 
     let (stats_tx, _) = init_channels_state();
 
@@ -42,76 +42,42 @@ where
         type_size: mem::size_of::<T>(),
     });
 
-    let stats_tx_send = stats_tx.clone();
-    let stats_tx_recv = stats_tx.clone();
-
-    // Create a signal channel to notify send-forwarder when outer_rx is closed
-    let (close_signal_tx, mut close_signal_rx) = oneshot::channel::<()>();
-
-    // Forward outer -> inner (proxy the send path)
-    RT.spawn(async move {
-        loop {
-            tokio::select! {
-                msg = to_inner_rx.recv() => {
-                    match msg {
-                        Some(msg) => {
-                            let log = log_on_send(&msg);
-                            if inner_tx.send(msg).await.is_err() {
-                                to_inner_rx.close();
-                                break;
-                            }
-                            let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                                id,
-                                log,
-                                timestamp: Instant::now(),
-                            });
-                        }
-                        None => break, // Outer sender dropped
-                    }
-                }
-                _ = &mut close_signal_rx => {
-                    // Outer receiver was closed/dropped, close our receiver to reject further sends
-                    to_inner_rx.close();
-                    break;
-                }
-            }
-        }
-        // Channel is closed
-        let _ = stats_tx_send.send(ChannelEvent::Closed { id });
-    });
-
-    // Forward inner -> outer (proxy the recv path)
+    // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
         loop {
             tokio::select! {
                 msg = inner_rx.recv() => {
                     match msg {
                         Some(msg) => {
-                            if from_inner_tx.send(msg).await.is_ok() {
-                                let _ = stats_tx_recv.send(ChannelEvent::MessageReceived {
+                            let log = log_on_send(&msg);
+                            let _ = stats_tx.send(ChannelEvent::MessageSent {
+                                id,
+                                log,
+                                timestamp: Instant::now(),
+                            });
+                            if proxy_tx.send(msg).await.is_ok() {
+                                let _ = stats_tx.send(ChannelEvent::MessageReceived {
                                     id,
                                     timestamp: Instant::now(),
                                 });
                             } else {
-                                let _ = close_signal_tx.send(());
+                                // proxy_rx dropped
                                 break;
                             }
                         }
-                        None => break, // Inner sender dropped
+                        None => break, // inner_tx dropped (all senders gone)
                     }
                 }
-                _ = from_inner_tx.closed() => {
-                    // Outer receiver was closed/dropped
-                    let _ = close_signal_tx.send(());
+                _ = proxy_tx.closed() => {
+                    // proxy_rx was dropped, close the channel
                     break;
                 }
             }
         }
-        // Channel is closed (either inner sender dropped or outer receiver closed)
-        let _ = stats_tx_recv.send(ChannelEvent::Closed { id });
+        let _ = stats_tx.send(ChannelEvent::Closed { id });
     });
 
-    (outer_tx, outer_rx)
+    (inner_tx, proxy_rx)
 }
 
 /// Wrap the inner channel with proxy ends. Returns (outer_tx, outer_rx).
@@ -134,6 +100,7 @@ pub(crate) fn wrap_channel_log<T: Send + std::fmt::Debug + 'static>(
 }
 
 /// Internal implementation for wrapping unbounded Tokio channels with optional logging.
+/// Uses single proxy design: User -> [Original] -> Thread -> [Proxy unbounded] -> User
 fn wrap_unbounded_impl<T, F>(
     inner: (UnboundedSender<T>, UnboundedReceiver<T>),
     source: &'static str,
@@ -147,8 +114,7 @@ where
     let (inner_tx, mut inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, mut to_inner_rx) = mpsc::unbounded_channel::<T>();
-    let (from_inner_tx, outer_rx) = mpsc::unbounded_channel::<T>();
+    let (proxy_tx, proxy_rx) = mpsc::unbounded_channel::<T>();
 
     let (stats_tx, _) = init_channels_state();
 
@@ -163,77 +129,42 @@ where
         type_size: mem::size_of::<T>(),
     });
 
-    let stats_tx_send = stats_tx.clone();
-    let stats_tx_recv = stats_tx.clone();
-
-    // Create a signal channel to notify send-forwarder when outer_rx is closed
-    let (close_signal_tx, mut close_signal_rx) = oneshot::channel::<()>();
-
-    // Forward outer -> inner (proxy the send path)
-    RT.spawn(async move {
-        loop {
-            tokio::select! {
-                msg = to_inner_rx.recv() => {
-                    match msg {
-                        Some(msg) => {
-                            let log = log_on_send(&msg);
-                            if inner_tx.send(msg).is_err() {
-                                to_inner_rx.close();
-                                break;
-                            }
-                            let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                                id,
-                                log,
-                                timestamp: Instant::now(),
-                            });
-                        }
-                        None => break, // Outer sender dropped
-                    }
-                }
-                _ = &mut close_signal_rx => {
-                    // Outer receiver was closed/dropped, close our receiver to reject further sends
-                    to_inner_rx.close();
-                    break;
-                }
-            }
-        }
-        // Channel is closed
-        let _ = stats_tx_send.send(ChannelEvent::Closed { id });
-    });
-
-    // Forward inner -> outer (proxy the recv path)
+    // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
         loop {
             tokio::select! {
                 msg = inner_rx.recv() => {
                     match msg {
                         Some(msg) => {
-                            if from_inner_tx.send(msg).is_ok() {
-                                let _ = stats_tx_recv.send(ChannelEvent::MessageReceived {
+                            let log = log_on_send(&msg);
+                            let _ = stats_tx.send(ChannelEvent::MessageSent {
+                                id,
+                                log,
+                                timestamp: Instant::now(),
+                            });
+                            if proxy_tx.send(msg).is_ok() {
+                                let _ = stats_tx.send(ChannelEvent::MessageReceived {
                                     id,
                                     timestamp: Instant::now(),
                                 });
                             } else {
-                                // Outer receiver was closed
-                                let _ = close_signal_tx.send(());
+                                // proxy_rx dropped
                                 break;
                             }
                         }
-                        None => break, // Inner sender dropped
+                        None => break, // inner_tx dropped (all senders gone)
                     }
                 }
-                _ = from_inner_tx.closed() => {
-                    // Outer receiver was closed/dropped
-                    let _ = close_signal_tx.send(());
+                _ = proxy_tx.closed() => {
+                    // proxy_rx was dropped, close the channel
                     break;
                 }
             }
         }
-        // Channel is closed (either inner sender dropped or outer receiver closed)
-        let _ = stats_tx_recv.send(ChannelEvent::Closed { id });
+        let _ = stats_tx.send(ChannelEvent::Closed { id });
     });
 
-    (outer_tx, outer_rx)
+    (inner_tx, proxy_rx)
 }
 
 /// Wrap an unbounded channel with proxy ends. Returns (outer_tx, outer_rx).
@@ -268,8 +199,8 @@ where
     let (inner_tx, inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, outer_rx_proxy) = oneshot::channel::<T>();
-    let (mut inner_tx_proxy, outer_rx) = oneshot::channel::<T>();
+    // Single proxy oneshot channel
+    let (proxy_tx, proxy_rx) = oneshot::channel::<T>();
 
     let (stats_tx, _) = init_channels_state();
 
@@ -284,80 +215,48 @@ where
         type_size: mem::size_of::<T>(),
     });
 
-    let stats_tx_send = stats_tx.clone();
-    let stats_tx_recv = stats_tx;
-
-    // Create a signal channel to notify send-forwarder when outer_rx is closed
-    let (close_signal_tx, mut close_signal_rx) = oneshot::channel::<()>();
-
-    // Monitor outer receiver and drop inner receiver when outer is dropped
+    // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
         let mut inner_rx = Some(inner_rx);
-        let mut message_received = false;
+        let mut proxy_tx = Some(proxy_tx);
+        let mut message_completed = false;
+
         tokio::select! {
             msg = async { inner_rx.take().unwrap().await }, if inner_rx.is_some() => {
-                // Message received from inner
-                match msg {
-                    Ok(msg) => {
-                        if inner_tx_proxy.send(msg).is_ok() {
-                            let _ = stats_tx_recv.send(ChannelEvent::MessageReceived {
-                                id,
-                                timestamp: Instant::now(),
-                            });
-                            message_received = true;
-                        }
-                    }
-                    Err(_) => {
-                        // Inner sender was dropped without sending
-                    }
-                }
-            }
-            _ = inner_tx_proxy.closed() => {
-                // Outer receiver was dropped - drop inner_rx to make sends fail
-                drop(inner_rx);
-                let _ = close_signal_tx.send(());
-            }
-        }
-        // Only send Closed if message was not successfully received
-        if !message_received {
-            let _ = stats_tx_recv.send(ChannelEvent::Closed { id });
-        }
-    });
-
-    // Forward outer -> inner (proxy the send path)
-    RT.spawn(async move {
-        let mut message_sent = false;
-        tokio::select! {
-            msg = outer_rx_proxy => {
                 match msg {
                     Ok(msg) => {
                         let log = log_on_send(&msg);
-                        if inner_tx.send(msg).is_ok() {
-                            let _ = stats_tx_send.send(ChannelEvent::MessageSent {
+                        let _ = stats_tx.send(ChannelEvent::MessageSent {
+                            id,
+                            log,
+                            timestamp: Instant::now(),
+                        });
+                        let _ = stats_tx.send(ChannelEvent::Notified { id });
+                        if proxy_tx.take().unwrap().send(msg).is_ok() {
+                            let _ = stats_tx.send(ChannelEvent::MessageReceived {
                                 id,
-                                log,
                                 timestamp: Instant::now(),
                             });
-                            let _ = stats_tx_send.send(ChannelEvent::Notified { id });
-                            message_sent = true;
+                            message_completed = true;
                         }
                     }
                     Err(_) => {
-                        // Outer sender was dropped without sending
+                        // inner_tx was dropped without sending
                     }
                 }
             }
-            _ = &mut close_signal_rx => {
-                // Outer receiver was closed/dropped before send
+            _ = async { proxy_tx.as_mut().unwrap().closed().await }, if proxy_tx.is_some() => {
+                // proxy_rx was dropped - drop inner_rx to make inner_tx.send() fail
+                drop(inner_rx);
             }
         }
-        // Only send Closed if message was not successfully sent
-        if !message_sent {
-            let _ = stats_tx_send.send(ChannelEvent::Closed { id });
+
+        if !message_completed {
+            let _ = stats_tx.send(ChannelEvent::Closed { id });
         }
     });
 
-    (outer_tx, outer_rx)
+    (inner_tx, proxy_rx)
 }
 
 /// Wrap a oneshot channel with proxy ends. Returns (outer_tx, outer_rx).

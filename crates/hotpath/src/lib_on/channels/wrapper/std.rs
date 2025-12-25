@@ -23,8 +23,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, to_inner_rx) = mpsc::sync_channel::<T>(capacity);
-    let (from_inner_tx, outer_rx) = mpsc::sync_channel::<T>(capacity);
+    let (proxy_tx, proxy_rx) = mpsc::sync_channel::<T>(1);
 
     let (stats_tx, _) = init_channels_state();
 
@@ -39,76 +38,29 @@ where
         type_size: mem::size_of::<T>(),
     });
 
-    let stats_tx_send = stats_tx.clone();
-    let stats_tx_recv = stats_tx.clone();
-
-    // Create a signal channel to notify send-forwarder when outer_rx is closed
-    let (close_signal_tx, close_signal_rx) = mpsc::channel::<()>();
-
-    // Forward outer -> inner (proxy the send path)
-    std::thread::spawn(move || {
-        loop {
-            // Check for close signal (non-blocking)
-            match close_signal_rx.try_recv() {
-                Ok(_) => {
-                    // Outer receiver was closed/dropped
-                    break;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    // Close signal sender dropped, which means recv forwarder ended
-                    break;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    // No close signal, continue
-                }
-            }
-
-            // Try to receive with timeout to periodically check close signal
-            match to_inner_rx.recv_timeout(std::time::Duration::from_millis(10)) {
-                Ok(msg) => {
-                    let log = log_on_send(&msg);
-                    if inner_tx.send(msg).is_err() {
-                        // Inner receiver dropped
-                        break;
-                    }
-                    let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                        id,
-                        log,
-                        timestamp: Instant::now(),
-                    });
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // No message, loop again to check close signal
-                    continue;
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    // Outer sender dropped
-                    break;
-                }
-            }
-        }
-        // Channel is closed
-        let _ = stats_tx_send.send(ChannelEvent::Closed { id });
-    });
-
-    // Forward inner -> outer (proxy the recv path)
+    // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
         while let Ok(msg) = inner_rx.recv() {
-            if from_inner_tx.send(msg).is_err() {
-                // Outer receiver was closed
-                let _ = close_signal_tx.send(());
-                break;
-            }
-            let _ = stats_tx_recv.send(ChannelEvent::MessageReceived {
+            let log = log_on_send(&msg);
+            let _ = stats_tx.send(ChannelEvent::MessageSent {
                 id,
+                log,
                 timestamp: Instant::now(),
             });
+            if proxy_tx.send(msg).is_ok() {
+                let _ = stats_tx.send(ChannelEvent::MessageReceived {
+                    id,
+                    timestamp: Instant::now(),
+                });
+            } else {
+                // proxy_rx dropped
+                break;
+            }
         }
-        // Channel is closed (either inner sender dropped or outer receiver closed)
-        let _ = stats_tx_recv.send(ChannelEvent::Closed { id });
+        let _ = stats_tx.send(ChannelEvent::Closed { id });
     });
 
-    (outer_tx, outer_rx)
+    (inner_tx, proxy_rx)
 }
 
 /// Wrap a bounded std channel with proxy ends. Returns (outer_tx, outer_rx).
@@ -135,6 +87,7 @@ pub(crate) fn wrap_sync_channel_log<T: Send + std::fmt::Debug + 'static>(
 }
 
 /// Internal implementation for wrapping unbounded std channels with optional logging.
+/// Uses single proxy design: User -> [Original] -> Thread -> [Proxy unbounded] -> User
 fn wrap_channel_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -148,8 +101,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let type_name = std::any::type_name::<T>();
 
-    let (outer_tx, to_inner_rx) = mpsc::channel::<T>();
-    let (from_inner_tx, outer_rx) = mpsc::channel::<T>();
+    let (proxy_tx, proxy_rx) = mpsc::channel::<T>();
 
     let (stats_tx, _) = init_channels_state();
 
@@ -164,76 +116,29 @@ where
         type_size: mem::size_of::<T>(),
     });
 
-    let stats_tx_send = stats_tx.clone();
-    let stats_tx_recv = stats_tx.clone();
-
-    // Create a signal channel to notify send-forwarder when outer_rx is closed
-    let (close_signal_tx, close_signal_rx) = mpsc::channel::<()>();
-
-    // Forward outer -> inner (proxy the send path)
-    std::thread::spawn(move || {
-        loop {
-            // Check for close signal (non-blocking)
-            match close_signal_rx.try_recv() {
-                Ok(_) => {
-                    // Outer receiver was closed/dropped
-                    break;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    // Close signal sender dropped, which means recv forwarder ended
-                    break;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    // No close signal, continue
-                }
-            }
-
-            // Try to receive with timeout to periodically check close signal
-            match to_inner_rx.recv_timeout(std::time::Duration::from_millis(10)) {
-                Ok(msg) => {
-                    let log = log_on_send(&msg);
-                    if inner_tx.send(msg).is_err() {
-                        // Inner receiver dropped
-                        break;
-                    }
-                    let _ = stats_tx_send.send(ChannelEvent::MessageSent {
-                        id,
-                        log,
-                        timestamp: Instant::now(),
-                    });
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // No message, loop again to check close signal
-                    continue;
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    // Outer sender dropped
-                    break;
-                }
-            }
-        }
-        // Channel is closed
-        let _ = stats_tx_send.send(ChannelEvent::Closed { id });
-    });
-
-    // Forward inner -> outer (proxy the recv path)
+    // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
         while let Ok(msg) = inner_rx.recv() {
-            if from_inner_tx.send(msg).is_err() {
-                // Outer receiver was closed
-                let _ = close_signal_tx.send(());
-                break;
-            }
-            let _ = stats_tx_recv.send(ChannelEvent::MessageReceived {
+            let log = log_on_send(&msg);
+            let _ = stats_tx.send(ChannelEvent::MessageSent {
                 id,
+                log,
                 timestamp: Instant::now(),
             });
+            if proxy_tx.send(msg).is_ok() {
+                let _ = stats_tx.send(ChannelEvent::MessageReceived {
+                    id,
+                    timestamp: Instant::now(),
+                });
+            } else {
+                // proxy_rx dropped
+                break;
+            }
         }
-        // Channel is closed (either inner sender dropped or outer receiver closed)
-        let _ = stats_tx_recv.send(ChannelEvent::Closed { id });
+        let _ = stats_tx.send(ChannelEvent::Closed { id });
     });
 
-    (outer_tx, outer_rx)
+    (inner_tx, proxy_rx)
 }
 
 /// Wrap an unbounded std channel with proxy ends. Returns (outer_tx, outer_rx).
