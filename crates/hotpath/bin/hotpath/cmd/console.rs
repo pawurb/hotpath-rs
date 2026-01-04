@@ -3,10 +3,10 @@ mod constants;
 #[cfg(feature = "hotpath")]
 pub mod demo;
 mod events;
+mod http_worker;
 mod input;
 mod views;
 mod widgets;
-mod worker;
 
 use app::App;
 use clap::Parser;

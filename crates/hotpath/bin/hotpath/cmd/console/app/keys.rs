@@ -11,27 +11,21 @@ impl App {
             KeyCode::Char('p') | KeyCode::Char('P') => self.toggle_pause(),
             KeyCode::Char('1') => {
                 self.switch_to_tab(SelectedTab::Timing);
-                self.request_refresh_for_current_tab();
             }
             KeyCode::Char('2') => {
                 self.switch_to_tab(SelectedTab::Memory);
-                self.request_refresh_for_current_tab();
             }
             KeyCode::Char('3') => {
                 self.switch_to_tab(SelectedTab::Futures);
-                self.request_refresh_for_current_tab();
             }
             KeyCode::Char('4') => {
                 self.switch_to_tab(SelectedTab::Channels);
-                self.request_refresh_for_current_tab();
             }
             KeyCode::Char('5') => {
                 self.switch_to_tab(SelectedTab::Streams);
-                self.request_refresh_for_current_tab();
             }
             KeyCode::Char('6') => {
                 self.switch_to_tab(SelectedTab::Threads);
-                self.request_refresh_for_current_tab();
             }
             KeyCode::Char('o') | KeyCode::Char('O') => {
                 if self.selected_tab == SelectedTab::Channels {

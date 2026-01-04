@@ -2,7 +2,7 @@
 
 use crossterm::event::KeyCode;
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson,
+    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson, Route,
     StreamLogs, StreamsJson, ThreadsJson,
 };
 
@@ -19,6 +19,28 @@ pub(crate) enum DataRequest {
     FetchChannelLogs(u64),
     FetchStreamLogs(u64),
     FetchFutureCalls(u64),
+}
+
+impl DataRequest {
+    pub(crate) fn to_route(&self) -> Route {
+        match self {
+            DataRequest::RefreshTiming => Route::FunctionsTiming,
+            DataRequest::RefreshMemory => Route::FunctionsAlloc,
+            DataRequest::RefreshChannels => Route::Channels,
+            DataRequest::RefreshStreams => Route::Streams,
+            DataRequest::RefreshThreads => Route::Threads,
+            DataRequest::RefreshFutures => Route::Futures,
+            DataRequest::FetchFunctionLogsTiming(name) => Route::FunctionTimingLogs {
+                function_name: name.clone(),
+            },
+            DataRequest::FetchFunctionLogsAlloc(name) => Route::FunctionAllocLogs {
+                function_name: name.clone(),
+            },
+            DataRequest::FetchChannelLogs(id) => Route::ChannelLogs { channel_id: *id },
+            DataRequest::FetchStreamLogs(id) => Route::StreamLogs { stream_id: *id },
+            DataRequest::FetchFutureCalls(id) => Route::FutureCalls { future_id: *id },
+        }
+    }
 }
 
 #[derive(Debug)]

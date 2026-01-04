@@ -41,6 +41,7 @@ impl App {
 
     pub(crate) fn switch_to_tab(&mut self, tab: SelectedTab) {
         self.selected_tab = tab;
+        self.request_refresh_for_current_tab();
     }
 
     pub(crate) fn select_previous_channel(&mut self) {

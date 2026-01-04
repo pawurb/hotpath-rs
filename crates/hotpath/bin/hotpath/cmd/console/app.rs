@@ -179,7 +179,7 @@ impl App {
         let (request_tx, request_rx) = crossbeam_channel::unbounded();
         let (event_tx, event_rx) = crossbeam_channel::unbounded();
 
-        super::worker::spawn_data_worker(request_rx, event_tx.clone(), metrics_port);
+        super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), metrics_port);
         super::input::spawn_input_reader(event_tx);
 
         let empty_functions = FunctionsJson {
