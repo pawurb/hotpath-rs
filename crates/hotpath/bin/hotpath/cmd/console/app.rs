@@ -1,11 +1,6 @@
 //! TUI application state and main run loop
-//!
-//! The App struct manages all TUI state including metrics, channels, UI state,
-//! and user interactions. Implementation is split across modules:
-//! - `state`: Navigation and selection logic
-//! - `data`: Data fetching and updates
-//! - `keys`: Keyboard input handling
 
+use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
     ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCall, FutureCalls,
     FuturesJson as FuturesJsonData, LogEntry, StreamLogs, StreamsJson, ThreadsJson,
@@ -14,7 +9,8 @@ use ratatui::widgets::TableState;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-// Helper modules containing App implementation
+use super::events::{AppEvent, DataRequest};
+
 mod data;
 mod keys;
 mod state;
@@ -117,125 +113,74 @@ pub(crate) struct CachedStreamLogs {
     pub(crate) logs: StreamLogs,
 }
 
-/// Main TUI application state
-///
-/// This struct manages all application state including:
-/// - Functions data and channels data from the profiled application
-/// - UI state (selected tab, table selections, focus)
-/// - HTTP client for fetching data from the metrics server
-/// - Error handling and connection status
-///
-/// The implementation is split across multiple modules to improve maintainability.
 pub(crate) struct App {
-    // Data from profiled application
-    /// Timing functions data (from /functions_timing endpoint)
     pub(crate) timing_functions: FunctionsJson,
-    /// Memory functions data (from /functions_alloc endpoint)
     pub(crate) memory_functions: FunctionsJson,
-    /// Whether memory profiling is available (hotpath-alloc feature enabled)
     pub(crate) memory_available: bool,
-    /// Current channels data
     pub(crate) channels: ChannelsJson,
-    /// Current streams data
     pub(crate) streams: StreamsJson,
 
-    // UI state - navigation and selection per tab
-    /// Selection state for timing tab table
     pub(crate) timing_table_state: TableState,
-    /// Selection state for memory tab table
     pub(crate) memory_table_state: TableState,
-    /// Selection state for channels tab table
     pub(crate) channels_table_state: TableState,
-    /// Selection state for streams tab table
     pub(crate) streams_table_state: TableState,
-    /// Currently selected tab
     pub(crate) selected_tab: SelectedTab,
-    /// Whether automatic refresh is paused
     pub(crate) paused: bool,
 
-    // Timing and status
-    /// Last time data was refreshed
     pub(crate) last_refresh: Instant,
-    /// Last successful data fetch (for connection status)
     pub(crate) last_successful_fetch: Option<Instant>,
-    /// Current error message to display, if any
     pub(crate) error_message: Option<String>,
 
-    // Function logs panel (Functions tab)
-    /// Selection state for function logs table
     pub(crate) function_logs_table_state: TableState,
-    /// Which component has focus in Functions tab
     pub(crate) functions_focus: FunctionsFocus,
-    /// Whether function logs panel is visible
     pub(crate) show_function_logs: bool,
-    /// Current function logs data for selected function
     pub(crate) current_function_logs: Option<FunctionLogsJson>,
-    /// Function pinned for logs display
     pub(crate) pinned_function: Option<String>,
-    /// Function log entry being inspected in popup
     pub(crate) inspected_function_log: Option<InspectedFunctionLog>,
 
-    // HTTP client and configuration
-    /// HTTP client for fetching data from metrics server
-    pub(crate) agent: ureq::Agent,
-    /// Port where metrics HTTP server is running
+    pub(crate) request_tx: Sender<DataRequest>,
+    pub(crate) event_rx: Receiver<AppEvent>,
+    pub(crate) refresh_interval: Duration,
     pub(crate) metrics_port: u16,
-    /// Whether the application should exit
     exit: bool,
 
-    // Channels tab specific state
-    /// Selection state for logs table
+    pub(crate) loading_functions: bool,
+    pub(crate) loading_channels: bool,
+    pub(crate) loading_streams: bool,
+    pub(crate) loading_threads: bool,
+    pub(crate) loading_futures: bool,
+
     pub(crate) channel_logs_table_state: TableState,
-    /// Which component has focus in Channels tab
     pub(crate) channels_focus: ChannelsFocus,
-    /// Whether logs panel is visible
     pub(crate) show_logs: bool,
-    /// Cached logs data for selected channel
     pub(crate) logs: Option<CachedLogs>,
-    /// Log entry being inspected in popup
     pub(crate) inspected_log: Option<LogEntry>,
 
-    // Streams tab specific state
-    /// Selection state for stream logs table
     pub(crate) stream_logs_table_state: TableState,
-    /// Which component has focus in Streams tab
     pub(crate) streams_focus: StreamsFocus,
-    /// Whether stream logs panel is visible
     pub(crate) show_stream_logs: bool,
-    /// Cached logs data for selected stream
     pub(crate) stream_logs: Option<CachedStreamLogs>,
-    /// Stream log entry being inspected in popup
     pub(crate) inspected_stream_log: Option<LogEntry>,
-    /// Current threads data
     pub(crate) threads: ThreadsJson,
-    /// Selection state for threads tab table
     pub(crate) threads_table_state: TableState,
 
-    // Futures tab specific state
-    /// Current futures data
     pub(crate) futures: FuturesJsonData,
-    /// Selection state for futures tab table
     pub(crate) futures_table_state: TableState,
-    /// Which component has focus in Futures tab
     pub(crate) futures_focus: FuturesFocus,
-    /// Whether calls panel is visible
     pub(crate) show_future_calls: bool,
-    /// Selection state for future calls table
     pub(crate) future_calls_table_state: TableState,
-    /// Cached calls data for selected future
     pub(crate) future_calls: Option<FutureCalls>,
-    /// Future call being inspected in popup
     pub(crate) inspected_future_call: Option<FutureCall>,
 }
 
 #[hotpath::measure_all]
 impl App {
-    /// Create a new App instance
-    pub(crate) fn new(metrics_port: u16) -> Self {
-        let config = ureq::Agent::config_builder()
-            .timeout_global(Some(super::constants::http_timeout()))
-            .build();
-        let agent: ureq::Agent = config.into();
+    pub(crate) fn new(metrics_port: u16, refresh_interval_ms: u64) -> Self {
+        let (request_tx, request_rx) = crossbeam_channel::unbounded();
+        let (event_tx, event_rx) = crossbeam_channel::unbounded();
+
+        super::worker::spawn_data_worker(request_rx, event_tx.clone(), metrics_port);
+        super::input::spawn_input_reader(event_tx);
 
         let empty_functions = FunctionsJson {
             hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
@@ -249,7 +194,7 @@ impl App {
         Self {
             timing_functions: empty_functions.clone(),
             memory_functions: empty_functions,
-            memory_available: true, // Assume available until we know otherwise
+            memory_available: true,
             channels: hotpath::json::ChannelsJson {
                 current_elapsed_ns: 0,
                 channels: vec![],
@@ -273,9 +218,16 @@ impl App {
             current_function_logs: None,
             pinned_function: None,
             inspected_function_log: None,
-            agent,
+            request_tx,
+            event_rx,
+            refresh_interval: Duration::from_millis(refresh_interval_ms),
             metrics_port,
             exit: false,
+            loading_functions: false,
+            loading_channels: false,
+            loading_streams: false,
+            loading_threads: false,
+            loading_futures: false,
             channel_logs_table_state: TableState::default(),
             channels_focus: ChannelsFocus::Channels,
             show_logs: false,
@@ -307,12 +259,10 @@ impl App {
         }
     }
 
-    /// Request application exit
     pub(crate) fn exit(&mut self) {
         self.exit = true;
     }
 
-    /// Get reference to active functions data based on selected tab
     pub(crate) fn active_functions(&self) -> &FunctionsJson {
         match self.selected_tab {
             SelectedTab::Timing => &self.timing_functions,
@@ -321,7 +271,6 @@ impl App {
         }
     }
 
-    /// Get mutable reference to active table state based on selected tab
     pub(crate) fn active_table_state_mut(&mut self) -> &mut TableState {
         match self.selected_tab {
             SelectedTab::Timing => &mut self.timing_table_state,
@@ -333,34 +282,29 @@ impl App {
         }
     }
 
-    /// Main TUI run loop
-    ///
-    /// This runs the event loop, handling:
-    /// - Periodic data refresh (unless paused)
-    /// - Rendering the UI
-    /// - Processing keyboard input
     pub(crate) fn run(
         &mut self,
         terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        refresh_interval_ms: u64,
     ) -> std::io::Result<()> {
-        use crossterm::event::{self, Event, KeyEventKind};
+        use crossbeam_channel::select;
 
-        let refresh_interval = Duration::from_millis(refresh_interval_ms);
-
-        self.refresh_data();
+        self.request_refresh_for_current_tab();
 
         while !self.exit {
-            if !self.paused && self.last_refresh.elapsed() >= refresh_interval {
-                self.refresh_data();
-            }
-
             terminal.draw(|frame| super::views::render_ui(frame, self))?;
 
-            if event::poll(super::constants::event_poll_interval())? {
-                if let Event::Key(key_event) = event::read()? {
-                    if key_event.kind == KeyEventKind::Press {
-                        self.handle_key_event(key_event.code);
+            select! {
+                recv(self.event_rx) -> event => {
+                    if let Ok(event) = event {
+                        match event {
+                            AppEvent::Key(key_code) => self.handle_key_event(key_code),
+                            AppEvent::Data(response) => self.handle_data_response(response),
+                        }
+                    }
+                }
+                default(self.refresh_interval) => {
+                    if !self.paused {
+                        self.request_refresh_for_current_tab();
                     }
                 }
             }
@@ -369,8 +313,3 @@ impl App {
         Ok(())
     }
 }
-
-// Note: Most App methods are implemented in submodules for better organization:
-// - app/state.rs: Navigation and selection methods (next_function, toggle_logs, etc.)
-// - app/data.rs: Data fetching and update methods (update_metrics, refresh_data, etc.)
-// - app/keys.rs: Keyboard input handling (handle_key_event)

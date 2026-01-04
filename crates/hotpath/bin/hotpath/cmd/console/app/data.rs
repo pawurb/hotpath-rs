@@ -1,8 +1,10 @@
 //! Data management - fetching, updating, and transforming functions/channels
 
 use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
+use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
-    FunctionLogsJson, FunctionsJson, FuturesJson as FuturesJsonData, StreamsJson, ThreadsJson,
+    ChannelLogs, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson as FuturesJsonData,
+    StreamLogs, StreamsJson, ThreadsJson,
 };
 use std::collections::HashMap;
 use std::time::Instant;
@@ -122,48 +124,45 @@ impl App {
         }
 
         if self.show_logs {
-            self.refresh_logs();
+            self.request_channel_logs();
         }
     }
 
-    pub(crate) fn refresh_logs(&mut self) {
+    pub(crate) fn request_channel_logs(&self) {
         if self.paused {
             return;
         }
 
-        self.logs = None;
-
         if let Some(selected) = self.channels_table_state.selected() {
             if !self.channels.channels.is_empty() && selected < self.channels.channels.len() {
                 let channel_id = self.channels.channels[selected].id;
-                if let Ok(logs) = super::super::http::fetch_channel_logs(
-                    &self.agent,
-                    self.metrics_port,
-                    channel_id,
-                ) {
-                    let received_map: HashMap<u64, hotpath::json::LogEntry> = logs
-                        .received_logs
-                        .iter()
-                        .map(|entry| (entry.index, entry.clone()))
-                        .collect();
+                let _ = self
+                    .request_tx
+                    .send(DataRequest::FetchChannelLogs(channel_id));
+            }
+        }
+    }
 
-                    self.logs = Some(CachedLogs { logs, received_map });
+    pub(crate) fn handle_channel_logs(&mut self, _channel_id: u64, logs: ChannelLogs) {
+        let received_map: HashMap<u64, hotpath::json::LogEntry> = logs
+            .received_logs
+            .iter()
+            .map(|entry| (entry.index, entry.clone()))
+            .collect();
 
-                    // Ensure logs table selection is valid
-                    if let Some(ref cached_logs) = self.logs {
-                        let log_count = cached_logs.logs.sent_logs.len();
-                        if let Some(selected) = self.channel_logs_table_state.selected() {
-                            if selected >= log_count && log_count > 0 {
-                                self.channel_logs_table_state.select(Some(log_count - 1));
-                            }
-                        }
-                    }
+        self.logs = Some(CachedLogs { logs, received_map });
+
+        // Ensure logs table selection is valid
+        if let Some(ref cached_logs) = self.logs {
+            let log_count = cached_logs.logs.sent_logs.len();
+            if let Some(selected) = self.channel_logs_table_state.selected() {
+                if selected >= log_count && log_count > 0 {
+                    self.channel_logs_table_state.select(Some(log_count - 1));
                 }
             }
         }
     }
 
-    /// Get sorted entries for specific functions data (sorted by percentage, highest first)
     #[hotpath::measure(log = true)]
     fn get_sorted_measurements_for(
         functions: &FunctionsJson,
@@ -206,20 +205,17 @@ impl App {
         entries
     }
 
-    /// Get sorted entries (sorted by percentage, highest first)
     #[hotpath::measure(log = true)]
     pub(crate) fn get_sorted_measurements(&self) -> Vec<(String, Vec<hotpath::MetricType>)> {
         let functions = self.active_functions();
         Self::get_sorted_measurements_for(functions)
     }
 
-    /// Get sorted timing measurements
     #[hotpath::measure(log = true)]
     pub(crate) fn get_timing_measurements(&self) -> Vec<(String, Vec<hotpath::MetricType>)> {
         Self::get_sorted_measurements_for(&self.timing_functions)
     }
 
-    /// Get sorted memory measurements
     #[hotpath::measure(log = true)]
     pub(crate) fn get_memory_measurements(&self) -> Vec<(String, Vec<hotpath::MetricType>)> {
         Self::get_sorted_measurements_for(&self.memory_functions)
@@ -256,52 +252,31 @@ impl App {
         self.pinned_function.as_deref()
     }
 
-    /// Fetch logs for pinned function if panel is open
-    pub(crate) fn fetch_function_logs_if_open(&mut self, port: u16) {
+    pub(crate) fn request_function_logs_if_open(&self) {
         if self.show_function_logs {
             if let Some(function_name) = self.logs_function_name() {
                 match self.selected_tab {
                     SelectedTab::Timing => {
-                        match super::super::http::fetch_function_logs_timing(
-                            &self.agent,
-                            port,
-                            function_name,
-                        ) {
-                            Ok(Some(function_logs)) => self.update_function_logs(function_logs),
-                            Ok(None) => {
-                                // Function not found, clear logs
-                                self.clear_function_logs();
-                            }
-                            Err(_) => self.clear_function_logs(),
-                        }
+                        let _ = self.request_tx.send(DataRequest::FetchFunctionLogsTiming(
+                            function_name.to_string(),
+                        ));
                     }
                     SelectedTab::Memory => {
-                        match super::super::http::fetch_function_logs_alloc(
-                            &self.agent,
-                            port,
-                            function_name,
-                        ) {
-                            Ok(Some(function_logs)) => self.update_function_logs(function_logs),
-                            Ok(None) => {
-                                // Feature not enabled, clear logs
-                                self.clear_function_logs();
-                            }
-                            Err(_) => self.clear_function_logs(),
-                        }
+                        let _ = self.request_tx.send(DataRequest::FetchFunctionLogsAlloc(
+                            function_name.to_string(),
+                        ));
                     }
                     _ => {
                         // Other tabs don't support function logs
-                        self.clear_function_logs();
                     }
                 }
             }
         }
     }
 
-    /// Update pinned function and fetch function logs if panel is open
-    pub(crate) fn update_and_fetch_function_logs(&mut self, port: u16) {
+    pub(crate) fn update_and_request_function_logs(&mut self) {
         self.update_pinned_function();
-        self.fetch_function_logs_if_open(port);
+        self.request_function_logs_if_open();
     }
 
     pub(crate) fn update_streams(&mut self, streams: StreamsJson) {
@@ -341,7 +316,7 @@ impl App {
         }
 
         if self.show_stream_logs {
-            self.refresh_stream_logs();
+            self.request_stream_logs();
         }
     }
 
@@ -382,109 +357,138 @@ impl App {
         }
     }
 
-    pub(crate) fn refresh_stream_logs(&mut self) {
+    pub(crate) fn request_stream_logs(&self) {
         if self.paused {
             return;
         }
 
-        self.stream_logs = None;
-
         if let Some(selected) = self.streams_table_state.selected() {
             if !self.streams.streams.is_empty() && selected < self.streams.streams.len() {
                 let stream_id = self.streams.streams[selected].id;
-                if let Ok(logs) =
-                    super::super::http::fetch_stream_logs(&self.agent, self.metrics_port, stream_id)
-                {
-                    self.stream_logs = Some(CachedStreamLogs { logs });
+                let _ = self
+                    .request_tx
+                    .send(DataRequest::FetchStreamLogs(stream_id));
+            }
+        }
+    }
 
-                    // Ensure logs table selection is valid
-                    if let Some(ref cached_logs) = self.stream_logs {
-                        let log_count = cached_logs.logs.logs.len();
-                        if let Some(selected) = self.stream_logs_table_state.selected() {
-                            if selected >= log_count && log_count > 0 {
-                                self.stream_logs_table_state.select(Some(log_count - 1));
-                            }
-                        }
-                    }
+    pub(crate) fn handle_stream_logs(&mut self, _stream_id: u64, logs: StreamLogs) {
+        self.stream_logs = Some(CachedStreamLogs { logs });
+
+        // Ensure logs table selection is valid
+        if let Some(ref cached_logs) = self.stream_logs {
+            let log_count = cached_logs.logs.logs.len();
+            if let Some(selected) = self.stream_logs_table_state.selected() {
+                if selected >= log_count && log_count > 0 {
+                    self.stream_logs_table_state.select(Some(log_count - 1));
                 }
             }
         }
     }
 
-    pub(crate) fn refresh_data(&mut self) {
-        match self.selected_tab {
+    pub(crate) fn request_refresh_for_current_tab(&mut self) {
+        let request = match self.selected_tab {
             SelectedTab::Timing => {
-                match super::super::http::fetch_functions_timing(&self.agent, self.metrics_port) {
-                    Ok(metrics) => {
-                        self.update_timing_metrics(metrics);
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
-                self.fetch_function_logs_if_open(self.metrics_port);
+                self.loading_functions = true;
+                DataRequest::RefreshTiming
             }
             SelectedTab::Memory => {
-                match super::super::http::fetch_functions_alloc(&self.agent, self.metrics_port) {
-                    Ok(Some(metrics)) => {
-                        self.memory_available = true;
-                        self.update_memory_metrics(metrics);
-                    }
-                    Ok(None) => {
-                        self.memory_available = false;
-                        self.set_error(
-                            "Memory profiling not available - enable hotpath-alloc feature"
-                                .to_string(),
-                        );
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
-                self.fetch_function_logs_if_open(self.metrics_port);
+                self.loading_functions = true;
+                DataRequest::RefreshMemory
             }
             SelectedTab::Channels => {
-                match super::super::http::fetch_channels(&self.agent, self.metrics_port) {
-                    Ok(channels) => {
-                        self.update_channels(channels);
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
+                self.loading_channels = true;
+                DataRequest::RefreshChannels
             }
             SelectedTab::Streams => {
-                match super::super::http::fetch_streams(&self.agent, self.metrics_port) {
-                    Ok(streams) => {
-                        self.update_streams(streams);
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
+                self.loading_streams = true;
+                DataRequest::RefreshStreams
             }
             SelectedTab::Threads => {
-                match super::super::http::fetch_threads(&self.agent, self.metrics_port) {
-                    Ok(threads) => {
-                        self.update_threads(threads);
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
+                self.loading_threads = true;
+                DataRequest::RefreshThreads
             }
             SelectedTab::Futures => {
-                match super::super::http::fetch_futures(&self.agent, self.metrics_port) {
-                    Ok(futures) => {
-                        self.update_futures(futures);
-                    }
-                    Err(e) => {
-                        self.set_error(format!("{}", e));
-                    }
-                }
+                self.loading_futures = true;
+                DataRequest::RefreshFutures
+            }
+        };
+        let _ = self.request_tx.send(request);
+        self.last_refresh = Instant::now();
+    }
+
+    pub(crate) fn handle_data_response(&mut self, response: DataResponse) {
+        match response {
+            DataResponse::FunctionsTiming(data) => {
+                self.loading_functions = false;
+                self.update_timing_metrics(data);
+                self.request_function_logs_if_open();
+            }
+            DataResponse::FunctionsAlloc(data) => {
+                self.loading_functions = false;
+                self.memory_available = true;
+                self.update_memory_metrics(data);
+                self.request_function_logs_if_open();
+            }
+            DataResponse::FunctionsAllocUnavailable => {
+                self.loading_functions = false;
+                self.memory_available = false;
+                self.set_error(
+                    "Memory profiling not available - enable hotpath-alloc feature".to_string(),
+                );
+            }
+            DataResponse::FunctionLogsTiming {
+                function_name: _,
+                logs,
+            } => {
+                self.update_function_logs(logs);
+            }
+            DataResponse::FunctionLogsTimingNotFound(_) => {
+                self.clear_function_logs();
+            }
+            DataResponse::FunctionLogsAlloc {
+                function_name: _,
+                logs,
+            } => {
+                self.update_function_logs(logs);
+            }
+            DataResponse::FunctionLogsAllocNotFound(_) => {
+                self.clear_function_logs();
+            }
+            DataResponse::Channels(data) => {
+                self.loading_channels = false;
+                self.update_channels(data);
+            }
+            DataResponse::ChannelLogs { channel_id, logs } => {
+                self.handle_channel_logs(channel_id, logs);
+            }
+            DataResponse::Streams(data) => {
+                self.loading_streams = false;
+                self.update_streams(data);
+            }
+            DataResponse::StreamLogs { stream_id, logs } => {
+                self.handle_stream_logs(stream_id, logs);
+            }
+            DataResponse::Threads(data) => {
+                self.loading_threads = false;
+                self.update_threads(data);
+            }
+            DataResponse::Futures(data) => {
+                self.loading_futures = false;
+                self.update_futures(data);
+            }
+            DataResponse::FutureCalls { future_id, calls } => {
+                self.handle_future_calls(future_id, calls);
+            }
+            DataResponse::Error(e) => {
+                self.loading_functions = false;
+                self.loading_channels = false;
+                self.loading_streams = false;
+                self.loading_threads = false;
+                self.loading_futures = false;
+                self.set_error(e);
             }
         }
-        self.last_refresh = Instant::now();
     }
 
     pub(crate) fn update_futures(&mut self, futures: FuturesJsonData) {
@@ -524,36 +528,34 @@ impl App {
         }
 
         if self.show_future_calls {
-            self.refresh_future_calls();
+            self.request_future_calls();
         }
     }
 
-    pub(crate) fn refresh_future_calls(&mut self) {
+    pub(crate) fn request_future_calls(&self) {
         if self.paused {
             return;
         }
 
-        self.future_calls = None;
-
         if let Some(selected) = self.futures_table_state.selected() {
             if !self.futures.futures.is_empty() && selected < self.futures.futures.len() {
                 let future_id = self.futures.futures[selected].id;
-                if let Ok(calls) = super::super::http::fetch_future_calls(
-                    &self.agent,
-                    self.metrics_port,
-                    future_id,
-                ) {
-                    self.future_calls = Some(calls);
+                let _ = self
+                    .request_tx
+                    .send(DataRequest::FetchFutureCalls(future_id));
+            }
+        }
+    }
 
-                    // Ensure calls table selection is valid
-                    if let Some(ref future_calls) = self.future_calls {
-                        let call_count = future_calls.calls.len();
-                        if let Some(selected) = self.future_calls_table_state.selected() {
-                            if selected >= call_count && call_count > 0 {
-                                self.future_calls_table_state.select(Some(call_count - 1));
-                            }
-                        }
-                    }
+    pub(crate) fn handle_future_calls(&mut self, _future_id: u64, calls: FutureCalls) {
+        self.future_calls = Some(calls);
+
+        // Ensure calls table selection is valid
+        if let Some(ref future_calls) = self.future_calls {
+            let call_count = future_calls.calls.len();
+            if let Some(selected) = self.future_calls_table_state.selected() {
+                if selected >= call_count && call_count > 0 {
+                    self.future_calls_table_state.select(Some(call_count - 1));
                 }
             }
         }

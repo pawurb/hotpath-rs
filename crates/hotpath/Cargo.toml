@@ -44,7 +44,7 @@ hotpath = [
 hotpath-alloc = ["dep:tokio"]
 hotpath-off = ["hotpath-macros/hotpath-off"]
 ci = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "dep:base64", "dep:regex"]
-tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "dep:crossterm", "dep:ratatui", "dep:chrono", "dep:base64", "dep:regex"]
+tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:chrono", "dep:base64", "dep:regex", "dep:crossbeam-channel", "dep:tokio", "tokio/rt"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
 crossbeam = []
@@ -69,6 +69,7 @@ serde_json = { version = "1.0", optional = true }
 tiny_http = { version = "0.12", optional = true }
 tokio = { version = "1", features = ["rt"], optional = true }
 ureq = { version = "3.1", features = ["json"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 futures-channel = { version = "0.3", features = ["sink"], optional = true }
 futures-util = { version = "0.3", features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2", optional = true }

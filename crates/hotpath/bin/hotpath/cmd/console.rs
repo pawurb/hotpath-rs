@@ -2,9 +2,11 @@ mod app;
 mod constants;
 #[cfg(feature = "hotpath")]
 pub mod demo;
-mod http;
+mod events;
+mod input;
 mod views;
 mod widgets;
+mod worker;
 
 use app::App;
 use clap::Parser;
@@ -31,12 +33,12 @@ impl ConsoleArgs {
         #[cfg(feature = "hotpath")]
         demo::init();
 
-        let mut app = App::new(self.metrics_port);
+        let mut app = App::new(self.metrics_port, self.refresh_interval);
 
         // Use modern ratatui initialization
         let mut terminal = ratatui::init();
 
-        let app_result = app.run(&mut terminal, self.refresh_interval);
+        let app_result = app.run(&mut terminal);
 
         // Use modern ratatui restoration
         ratatui::restore();

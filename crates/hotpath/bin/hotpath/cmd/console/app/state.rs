@@ -58,7 +58,7 @@ impl App {
         if self.paused && self.show_logs {
             self.logs = None;
         } else if self.show_logs {
-            self.refresh_logs();
+            self.request_channel_logs();
         }
     }
 
@@ -77,7 +77,7 @@ impl App {
         if self.paused && self.show_logs {
             self.logs = None;
         } else if self.show_logs {
-            self.refresh_logs();
+            self.request_channel_logs();
         }
     }
 
@@ -96,7 +96,7 @@ impl App {
                 if self.paused {
                     self.logs = None;
                 } else {
-                    self.refresh_logs();
+                    self.request_channel_logs();
                 }
             }
         }
@@ -329,7 +329,6 @@ impl App {
         self.function_logs_table_state.select(None);
     }
 
-    // Streams state management methods
     pub(crate) fn select_previous_stream(&mut self) {
         let count = self.streams.streams.len();
         if count == 0 {
@@ -345,7 +344,7 @@ impl App {
         if self.paused && self.show_stream_logs {
             self.stream_logs = None;
         } else if self.show_stream_logs {
-            self.refresh_stream_logs();
+            self.request_stream_logs();
         }
     }
 
@@ -364,7 +363,7 @@ impl App {
         if self.paused && self.show_stream_logs {
             self.stream_logs = None;
         } else if self.show_stream_logs {
-            self.refresh_stream_logs();
+            self.request_stream_logs();
         }
     }
 
@@ -383,7 +382,7 @@ impl App {
                 if self.paused {
                     self.stream_logs = None;
                 } else {
-                    self.refresh_stream_logs();
+                    self.request_stream_logs();
                 }
             }
         }
@@ -487,7 +486,6 @@ impl App {
         self.stream_logs_table_state.select(None);
     }
 
-    // Threads state management methods
     pub(crate) fn select_previous_thread(&mut self) {
         let count = self.threads.threads.len();
         if count == 0 {
@@ -514,7 +512,6 @@ impl App {
         self.threads_table_state.select(Some(i));
     }
 
-    // Futures state management methods
     pub(crate) fn select_previous_future(&mut self) {
         let count = self.futures.futures.len();
         if count == 0 {
@@ -530,7 +527,7 @@ impl App {
         if self.paused && self.show_future_calls {
             self.future_calls = None;
         } else if self.show_future_calls {
-            self.refresh_future_calls();
+            self.request_future_calls();
         }
     }
 
@@ -549,7 +546,7 @@ impl App {
         if self.paused && self.show_future_calls {
             self.future_calls = None;
         } else if self.show_future_calls {
-            self.refresh_future_calls();
+            self.request_future_calls();
         }
     }
 
@@ -568,7 +565,7 @@ impl App {
                 if self.paused {
                     self.future_calls = None;
                 } else {
-                    self.refresh_future_calls();
+                    self.request_future_calls();
                 }
             }
         }
