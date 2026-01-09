@@ -1,15 +1,9 @@
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-use std::mem;
-use std::sync::atomic::Ordering;
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 
-use crate::channels::RT;
-use crate::channels::{init_channels_state, ChannelEvent, ChannelType, CHANNEL_ID_COUNTER};
+use crate::channels::wrapper::common::{register_channel, Instant, RegisteredChannel};
+use crate::channels::{ChannelEvent, ChannelType, RT};
 
 /// Internal implementation for wrapping bounded Tokio channels with optional logging.
 fn wrap_channel_impl<T, F>(
@@ -23,24 +17,11 @@ where
     F: FnMut(&T) -> Option<String> + Send + 'static,
 {
     let (inner_tx, mut inner_rx) = inner;
-    let type_name = std::any::type_name::<T>();
-
     let capacity = inner_tx.capacity();
-
     let (proxy_tx, proxy_rx) = mpsc::channel::<T>(1);
 
-    let (stats_tx, _) = init_channels_state();
-
-    let id = CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-
-    let _ = stats_tx.send(ChannelEvent::Created {
-        id,
-        source,
-        display_label: label,
-        channel_type: ChannelType::Bounded(capacity),
-        type_name,
-        type_size: mem::size_of::<T>(),
-    });
+    let RegisteredChannel { id, stats_tx } =
+        register_channel::<T>(source, label, ChannelType::Bounded(capacity));
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -112,22 +93,10 @@ where
     F: FnMut(&T) -> Option<String> + Send + 'static,
 {
     let (inner_tx, mut inner_rx) = inner;
-    let type_name = std::any::type_name::<T>();
-
     let (proxy_tx, proxy_rx) = mpsc::unbounded_channel::<T>();
 
-    let (stats_tx, _) = init_channels_state();
-
-    let id = CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-
-    let _ = stats_tx.send(ChannelEvent::Created {
-        id,
-        source,
-        display_label: label,
-        channel_type: ChannelType::Unbounded,
-        type_name,
-        type_size: mem::size_of::<T>(),
-    });
+    let RegisteredChannel { id, stats_tx } =
+        register_channel::<T>(source, label, ChannelType::Unbounded);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -197,23 +166,10 @@ where
     F: FnMut(&T) -> Option<String> + Send + 'static,
 {
     let (inner_tx, inner_rx) = inner;
-    let type_name = std::any::type_name::<T>();
-
-    // Single proxy oneshot channel
     let (proxy_tx, proxy_rx) = oneshot::channel::<T>();
 
-    let (stats_tx, _) = init_channels_state();
-
-    let id = CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-
-    let _ = stats_tx.send(ChannelEvent::Created {
-        id,
-        source,
-        display_label: label,
-        channel_type: ChannelType::Oneshot,
-        type_name,
-        type_size: mem::size_of::<T>(),
-    });
+    let RegisteredChannel { id, stats_tx } =
+        register_channel::<T>(source, label, ChannelType::Oneshot);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {

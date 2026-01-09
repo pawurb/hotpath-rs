@@ -206,12 +206,6 @@ impl App {
     }
 
     #[hotpath::measure(log = true)]
-    pub(crate) fn get_sorted_measurements(&self) -> Vec<(String, Vec<hotpath::MetricType>)> {
-        let functions = self.active_functions();
-        Self::get_sorted_measurements_for(functions)
-    }
-
-    #[hotpath::measure(log = true)]
     pub(crate) fn get_timing_measurements(&self) -> Vec<(String, Vec<hotpath::MetricType>)> {
         Self::get_sorted_measurements_for(&self.timing_functions)
     }
@@ -223,10 +217,9 @@ impl App {
 
     #[hotpath::measure(log = true)]
     pub(crate) fn selected_function_name(&self) -> Option<String> {
-        let sorted_entries = self.get_sorted_measurements();
-        let table_state = match self.selected_tab {
-            SelectedTab::Timing => &self.timing_table_state,
-            SelectedTab::Memory => &self.memory_table_state,
+        let (sorted_entries, table_state) = match self.selected_tab {
+            SelectedTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
+            SelectedTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
             _ => return None,
         };
         table_state
