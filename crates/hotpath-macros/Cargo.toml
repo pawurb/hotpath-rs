@@ -1,6 +1,6 @@
 [package]
 name = "hotpath-macros"
-version = "0.9.2"
+version = "0.9.3"
 edition = "2021"
 repository = "https://github.com/pawurb/hotpath"
 description = "Simple async Rust profiler with memory and data-flow insights - quickly find and debug performance bottlenecks. Proc macros crate."
