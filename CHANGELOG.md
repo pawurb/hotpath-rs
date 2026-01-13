@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.3] - 2026-01-13
+
+### 🚀 Features
+
+- Add TUI logging
+
+### 🐛 Bug Fixes
+
+- Enable feature on docs.rs
+- Use single proxy channel with minimal capacity
+
+### 🚜 Refactor
+
+- Dry cleanup and fix crash
+
+### ⚡ Performance
+
+- Async http requests and custom runtime
+- Abort redundant http calls
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.9.3
+
 ## [0.9.2] - 2025-12-22
 
 ### 🚀 Features
