@@ -13,8 +13,6 @@ or use the live TUI dashboard to monitor real-time performance metrics with debu
 
 https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
-In [this post](https://pawelurbanek.com/rust-optimize-performance), I explain the motivation behind the project and its inner workings.
-
 ## Features
 
 - **Zero-cost when disabled** - fully gated by a feature flag.
