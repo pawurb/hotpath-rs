@@ -570,6 +570,9 @@ impl FunctionsGuard {
 
         crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
 
+        #[cfg(feature = "hotpath-mcp")]
+        crate::mcp_server::start_mcp_server_once();
+
         // Override reporter with JsonReporter when HOTPATH_JSON env var is enabled
         let reporter: Box<dyn Reporter> = if std::env::var("HOTPATH_JSON")
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")

@@ -49,6 +49,7 @@ tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-mult
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
 crossbeam = []
 threads = []
+hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:chrono"]
 
 [dependencies]
 arc-swap = { version = "1.7", optional = true }
@@ -79,6 +80,9 @@ libc = { version = "0.2", optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"], optional = true }
 time = { version = "0.3", features = ["formatting", "local-offset"], optional = true }
+rmcp = { version = "0.13", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
+axum = { version = "0.8", optional = true }
+tokio-util = { version = "0.7", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mach2 = { version = "0.6", optional = true }

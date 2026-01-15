@@ -51,6 +51,9 @@ pub(crate) mod output_on;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub(crate) mod http_server;
 
+#[cfg(all(feature = "hotpath-mcp", not(feature = "hotpath-off")))]
+pub(crate) mod mcp_server;
+
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
 pub mod json;
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
