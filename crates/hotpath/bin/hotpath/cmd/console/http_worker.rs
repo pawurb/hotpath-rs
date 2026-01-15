@@ -51,17 +51,17 @@ impl DataRequest {
 pub(crate) fn spawn_http_worker(
     request_rx: Receiver<DataRequest>,
     event_tx: Sender<AppEvent>,
-    metrics_port: u16,
+    base_url: String,
 ) {
     std::thread::spawn(move || {
-        info!("HTTP worker started, connecting to port {}", metrics_port);
+        info!("HTTP worker started, connecting to {}", base_url);
         let rt = Runtime::new().expect("Failed to create Tokio runtime");
         let client = reqwest::Client::builder()
             .timeout(Duration::from_millis(HTTP_TIMEOUT_MS))
             .build()
             .expect("Failed to create HTTP client");
 
-        let base_url = Arc::new(format!("http://127.0.0.1:{}", metrics_port));
+        let base_url = Arc::new(base_url);
         let mut active_tasks: HashMap<RequestKey, JoinHandle<()>> = HashMap::new();
 
         while let Ok(request) = request_rx.recv() {

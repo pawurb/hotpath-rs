@@ -13,6 +13,49 @@ use clap::Parser;
 use eyre::Result;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
+#[derive(Debug, Parser)]
+pub struct ConsoleArgs {
+    #[arg(
+        long,
+        default_value_t = default_metrics_port(),
+        help = "Port where the metrics HTTP server is running (env: HOTPATH_METRICS_PORT)"
+    )]
+    pub metrics_port: u16,
+
+    #[arg(
+        long,
+        default_value_t = default_metrics_host(),
+        value_parser = validate_metrics_host,
+        help = "Host URL where the metrics HTTP server is running (env: HOTPATH_METRICS_HOST)"
+    )]
+    pub metrics_host: String,
+
+    #[arg(long, default_value_t = 500, help = "Refresh interval in milliseconds")]
+    pub refresh_interval: u64,
+}
+
+#[hotpath::measure_all]
+impl ConsoleArgs {
+    pub fn run(&self) -> Result<()> {
+        init_logging();
+
+        #[cfg(feature = "hotpath")]
+        demo::init();
+
+        let mut app = App::new(&self.metrics_host, self.metrics_port, self.refresh_interval);
+
+        // Use modern ratatui initialization
+        let mut terminal = ratatui::init();
+
+        let app_result = app.run(&mut terminal);
+
+        // Use modern ratatui restoration
+        ratatui::restore();
+
+        app_result.map_err(|e| eyre::eyre!("TUI error: {}", e))
+    }
+}
+
 fn init_logging() {
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let time_format =
@@ -36,37 +79,96 @@ fn init_logging() {
         .init();
 }
 
-#[derive(Debug, Parser)]
-pub struct ConsoleArgs {
-    #[arg(
-        long,
-        default_value_t = 6770,
-        help = "Port where the metrics HTTP server is running"
-    )]
-    pub metrics_port: u16,
-
-    #[arg(long, default_value_t = 500, help = "Refresh interval in milliseconds")]
-    pub refresh_interval: u64,
+fn default_metrics_port() -> u16 {
+    std::env::var("HOTPATH_METRICS_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(6770)
 }
 
-#[hotpath::measure_all]
-impl ConsoleArgs {
-    pub fn run(&self) -> Result<()> {
-        init_logging();
+fn default_metrics_host() -> String {
+    std::env::var("HOTPATH_METRICS_HOST").unwrap_or_else(|_| "http://localhost".to_string())
+}
 
-        #[cfg(feature = "hotpath")]
-        demo::init();
+fn validate_metrics_host(s: &str) -> Result<String, String> {
+    let s = s.trim();
 
-        let mut app = App::new(self.metrics_port, self.refresh_interval);
+    if s.is_empty() {
+        return Err("metrics host cannot be empty".to_string());
+    }
 
-        // Use modern ratatui initialization
-        let mut terminal = ratatui::init();
+    let after_scheme = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .ok_or_else(|| {
+            format!(
+                "--metrics-host must start with 'http://' or 'https://', got: {}",
+                s
+            )
+        })?;
 
-        let app_result = app.run(&mut terminal);
+    if after_scheme.is_empty() {
+        return Err("metrics host must include a hostname after the scheme".to_string());
+    }
 
-        // Use modern ratatui restoration
-        ratatui::restore();
+    let host_part = after_scheme.split('/').next().unwrap_or("");
 
-        app_result.map_err(|e| eyre::eyre!("TUI error: {}", e))
+    if host_part.contains(':') {
+        return Err(format!(
+            "metrics host should not include a port (use --metrics-port instead), got: {}",
+            s
+        ));
+    }
+
+    if host_part.is_empty() {
+        return Err("metrics host must include a valid hostname".to_string());
+    }
+
+    Ok(s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_hosts() {
+        let cases = [
+            ("http://localhost", "http://localhost"),
+            ("https://localhost", "https://localhost"),
+            ("http://192.168.1.1", "http://192.168.1.1"),
+            ("https://example.com", "https://example.com"),
+            ("http://localhost/", "http://localhost/"),
+            ("  http://localhost  ", "http://localhost"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                validate_metrics_host(input),
+                Ok(expected.to_string()),
+                "failed for input: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_hosts() {
+        let cases = [
+            "",
+            "   ",
+            "localhost",
+            "ftp://localhost",
+            "http://",
+            "https://",
+            "http://localhost:8080",
+            "https://example.com:443",
+        ];
+
+        for input in cases {
+            assert!(
+                validate_metrics_host(input).is_err(),
+                "expected error for input: {input}"
+            );
+        }
     }
 }

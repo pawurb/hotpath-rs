@@ -141,7 +141,7 @@ pub(crate) struct App {
     pub(crate) request_tx: Sender<DataRequest>,
     pub(crate) event_rx: Receiver<AppEvent>,
     pub(crate) refresh_interval: Duration,
-    pub(crate) metrics_port: u16,
+    pub(crate) metrics_host: String,
     exit: bool,
 
     pub(crate) loading_functions: bool,
@@ -175,11 +175,12 @@ pub(crate) struct App {
 
 #[hotpath::measure_all]
 impl App {
-    pub(crate) fn new(metrics_port: u16, refresh_interval_ms: u64) -> Self {
+    pub(crate) fn new(metrics_host: &str, metrics_port: u16, refresh_interval_ms: u64) -> Self {
         let (request_tx, request_rx) = crossbeam_channel::unbounded();
         let (event_tx, event_rx) = crossbeam_channel::unbounded();
 
-        super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), metrics_port);
+        let base_url = format!("{}:{}", metrics_host.trim_end_matches('/'), metrics_port);
+        super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), base_url.clone());
         super::input::spawn_input_reader(event_tx);
 
         let empty_functions = FunctionsJson {
@@ -221,7 +222,7 @@ impl App {
             request_tx,
             event_rx,
             refresh_interval: Duration::from_millis(refresh_interval_ms),
-            metrics_port,
+            metrics_host: base_url,
             exit: false,
             loading_functions: false,
             loading_channels: false,
