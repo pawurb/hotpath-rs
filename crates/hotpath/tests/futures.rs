@@ -104,7 +104,7 @@ pub mod tests {
         );
     }
 
-    // HOTPATH_HTTP_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-futures --example basic_futures --features hotpath
+    // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-futures --example basic_futures --features hotpath
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::FuturesJson;
@@ -120,7 +120,7 @@ pub mod tests {
                 "--features",
                 "hotpath",
             ])
-            .env("HOTPATH_HTTP_PORT", "6775")
+            .env("HOTPATH_METRICS_PORT", "6775")
             .env("TEST_SLEEP_SECONDS", "10")
             .spawn()
             .expect("Failed to spawn command");

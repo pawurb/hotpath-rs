@@ -49,7 +49,7 @@ pub use output::{
 pub(crate) mod output_on;
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
-pub(crate) mod http_server;
+pub(crate) mod metrics_server;
 
 #[cfg(all(feature = "hotpath-mcp", not(feature = "hotpath-off")))]
 pub(crate) mod mcp_server;

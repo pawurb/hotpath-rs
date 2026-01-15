@@ -16,10 +16,10 @@ pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
 
 mod wrapper;
 
-use crate::http_server::HTTP_SERVER_PORT;
 pub use crate::json::{
     ChannelLogs, ChannelState, ChannelType, ChannelsJson, LogEntry, SerializableChannelStats,
 };
+use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::truncate_result;
 
 pub use crate::Format;
@@ -267,7 +267,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
             })
             .expect("Failed to spawn channel-stats-collector thread");
 
-        crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
+        crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         (tx, stats_map)
     })

@@ -5,15 +5,15 @@ use crate::functions::{
 use crate::json::Route;
 use std::sync::LazyLock;
 
-pub(crate) static HTTP_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
-    std::env::var("HOTPATH_HTTP_PORT")
+pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
+    std::env::var("HOTPATH_METRICS_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(6770)
 });
 
-pub(crate) static HTTP_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("HOTPATH_DISABLE_HTTP")
+pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("HOTPATH_METRICS_SERVER_OFF")
         .ok()
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false)
@@ -33,7 +33,7 @@ use tiny_http::{Header, Request, Response, Server};
 static HTTP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn start_metrics_server_once(port: u16) {
-    if *HTTP_SERVER_DISABLED {
+    if *METRICS_SERVER_DISABLED {
         return;
     }
     HTTP_SERVER_STARTED.get_or_init(|| {
@@ -53,7 +53,7 @@ fn start_metrics_server(port: u16) {
                     Ok(s) => s,
                     Err(e) => {
                         panic!(
-                            "Failed to bind metrics server to {}: {}. Customize the port using the HOTPATH_HTTP_PORT environment variable.",
+                            "Failed to bind metrics server to {}: {}. Customize the port using the HOTPATH_METRICS_PORT environment variable.",
                             addr, e
                         );
                     }

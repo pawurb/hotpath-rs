@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::OnceLock, sync::RwLock, time::Duration};
 use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
 
-use crate::{http_server::RECV_TIMEOUT_MS, FunctionLogsJson, FunctionsJson};
+use crate::{metrics_server::RECV_TIMEOUT_MS, FunctionLogsJson, FunctionsJson};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {

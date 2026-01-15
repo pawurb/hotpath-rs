@@ -342,7 +342,7 @@ The `stream!` macro wraps streams and tracks items as they are yielded, collecti
 
 **Background processing:** The first invocation of `channel!` or `stream!` automatically starts:
 - A background thread for metrics collection
-- An HTTP server (when `HOTPATH_HTTP_PORT` is set) exposing metrics in JSON format for the TUI
+- An HTTP server (when `HOTPATH_METRICS_PORT` is set) exposing metrics in JSON format for the TUI
 
 #### A note on accuracy
 

@@ -1,7 +1,7 @@
 //! Futures instrumentation module - tracks async Future lifecycle and poll statistics.
 
 use crate::channels::{get_log_limit, resolve_label, START_TIME};
-use crate::http_server::HTTP_SERVER_PORT;
+use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicU64;
@@ -150,7 +150,7 @@ pub fn init_futures_state() {
     FUTURES_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
+        crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<FutureEvent>();
         let stats_map = Arc::new(RwLock::new(HashMap::<u64, FutureStats>::new()));

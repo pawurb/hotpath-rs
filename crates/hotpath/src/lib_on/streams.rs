@@ -16,8 +16,8 @@ pub use guard::{StreamsGuard, StreamsGuardBuilder};
 
 pub(crate) mod wrapper;
 
-use crate::http_server::HTTP_SERVER_PORT;
 pub use crate::json::{ChannelState, LogEntry, SerializableStreamStats, StreamLogs, StreamsJson};
+use crate::metrics_server::METRICS_SERVER_PORT;
 pub use crate::Format;
 
 /// Statistics for a single instrumented stream.
@@ -172,7 +172,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
             })
             .expect("Failed to spawn stream-stats-collector thread");
 
-        crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
+        crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         (tx, stats_map)
     })

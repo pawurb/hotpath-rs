@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 
-use crate::http_server::HTTP_SERVER_PORT;
+use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricsProvider};
 use crate::output_on::{JsonPrettyReporter, JsonReporter, TableReporter};
 use crate::Reporter;
@@ -568,7 +568,7 @@ impl FunctionsGuard {
         #[cfg(not(target_os = "linux"))]
         crate::channels::START_TIME.get_or_init(std::time::Instant::now);
 
-        crate::http_server::start_metrics_server_once(*HTTP_SERVER_PORT);
+        crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         #[cfg(feature = "hotpath-mcp")]
         crate::mcp_server::start_mcp_server_once();

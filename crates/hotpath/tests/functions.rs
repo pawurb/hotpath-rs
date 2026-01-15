@@ -670,7 +670,7 @@ pub mod tests {
         }
     }
 
-    // HOTPATH_HTTP_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
+    // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::FunctionsJson;
@@ -686,7 +686,7 @@ pub mod tests {
                 "--features",
                 "hotpath,hotpath-alloc",
             ])
-            .env("HOTPATH_HTTP_PORT", "6775")
+            .env("HOTPATH_METRICS_PORT", "6775")
             .env("TEST_SLEEP_SECONDS", "10")
             .spawn()
             .expect("Failed to spawn command");
@@ -883,7 +883,7 @@ pub mod tests {
         }
     }
 
-    // HOTPATH_HTTP_PORT=6776 HOTPATH_DISABLE_HTTP=true TEST_SLEEP_SECONDS=5 cargo run -p test-tokio-async --example basic --features hotpath
+    // HOTPATH_METRICS_PORT=6776 HOTPATH_METRICS_SERVER_OFF=true TEST_SLEEP_SECONDS=5 cargo run -p test-tokio-async --example basic --features hotpath
     #[test]
     fn test_disable_http_server() {
         use std::{thread::sleep, time::Duration};
@@ -898,8 +898,8 @@ pub mod tests {
                 "--features",
                 "hotpath",
             ])
-            .env("HOTPATH_HTTP_PORT", "6776")
-            .env("HOTPATH_DISABLE_HTTP", "true")
+            .env("HOTPATH_METRICS_PORT", "6776")
+            .env("HOTPATH_METRICS_SERVER_OFF", "true")
             .env("TEST_SLEEP_SECONDS", "5")
             .spawn()
             .expect("Failed to spawn command");
@@ -910,7 +910,7 @@ pub mod tests {
 
         assert!(
             result.is_err(),
-            "HTTP request should have failed when HOTPATH_DISABLE_HTTP=true"
+            "HTTP request should have failed when HOTPATH_METRICS_SERVER_OFF=true"
         );
 
         let _ = child.kill();
