@@ -56,6 +56,7 @@ impl ConsoleArgs {
     }
 }
 
+#[cfg(feature = "dev")]
 fn init_logging() {
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let time_format =
@@ -82,6 +83,9 @@ fn init_logging() {
         .with(file_layer)
         .init();
 }
+
+#[cfg(not(feature = "dev"))]
+fn init_logging() {}
 
 fn default_metrics_port() -> u16 {
     std::env::var("HOTPATH_METRICS_PORT")
