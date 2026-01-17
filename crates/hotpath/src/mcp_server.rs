@@ -12,7 +12,11 @@ use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+use crate::channels::get_channels_json;
 use crate::functions::{get_functions_alloc_json, get_functions_timing_json};
+use crate::futures::get_futures_json;
+use crate::streams::get_streams_json;
+use crate::threads::get_threads_json;
 
 static MCP_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
     std::env::var("HOTPATH_MCP_PORT")
@@ -36,35 +40,66 @@ impl HotPathMcpServer {
 
     #[tool(description = "Get timing metrics for all profiled functions")]
     async fn hotpath_functions_timing(&self) -> Result<CallToolResult, McpError> {
-        #[cfg(debug_assertions)]
         log_debug("Tool called: hotpath_functions_timing");
 
         let metrics = get_functions_timing_json();
-        let json = serde_json::to_string(&metrics).map_err(|e| {
-            McpError::internal_error(format!("Failed to serialize timing metrics: {}", e), None)
-        })?;
-        Ok(CallToolResult::success(vec![Content::text(json)]))
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &metrics,
+        )?)]))
     }
 
     #[tool(description = "Get allocation metrics for all profiled functions")]
     async fn hotpath_functions_alloc(&self) -> Result<CallToolResult, McpError> {
-        #[cfg(debug_assertions)]
         log_debug("Tool called: hotpath_functions_alloc");
 
         match get_functions_alloc_json() {
-            Some(metrics) => {
-                let json = serde_json::to_string(&metrics).map_err(|e| {
-                    McpError::internal_error(
-                        format!("Failed to serialize alloc metrics: {}", e),
-                        None,
-                    )
-                })?;
-                Ok(CallToolResult::success(vec![Content::text(json)]))
-            }
+            Some(metrics) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &metrics,
+            )?)])),
             None => Ok(CallToolResult::error(vec![Content::text(
                 "Memory profiling not available - enable hotpath-alloc feature",
             )])),
         }
+    }
+
+    #[tool(description = "Get metrics for all monitored channels")]
+    async fn hotpath_channels(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: hotpath_channels");
+
+        let channels = get_channels_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &channels,
+        )?)]))
+    }
+
+    #[tool(description = "Get metrics for all monitored streams")]
+    async fn hotpath_streams(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: hotpath_streams");
+
+        let streams = get_streams_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &streams,
+        )?)]))
+    }
+
+    #[tool(description = "Get metrics for all monitored futures")]
+    async fn hotpath_futures(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: hotpath_futures");
+
+        let futures = get_futures_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &futures,
+        )?)]))
+    }
+
+    #[tool(description = "Get CPU usage metrics for all monitored threads")]
+    async fn hotpath_threads(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: hotpath_threads");
+
+        let threads = get_threads_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &threads,
+        )?)]))
     }
 }
 
@@ -82,10 +117,16 @@ impl ServerHandler for HotPathMcpServer {
                 icons: None,
             },
             instructions: Some(
-                "HotPath profiler metrics server. Provides tools to query profiling data.".into(),
+                "hothath profiler metrics MCP server. Provides tools to query profiling data."
+                    .into(),
             ),
         }
     }
+}
+
+fn to_json<T: serde::Serialize>(value: &T) -> Result<String, McpError> {
+    serde_json::to_string(value)
+        .map_err(|e| McpError::internal_error(format!("Failed to serialize metrics: {}", e), None))
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -132,18 +173,15 @@ pub(crate) fn start_mcp_server_once() {
     MCP_SERVER_STARTED.get_or_init(|| {
         let port = *MCP_SERVER_PORT;
 
-        #[cfg(debug_assertions)]
-        {
-            let auth_enabled = std::env::var("HOTPATH_MCP_AUTH_TOKEN")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .is_some();
-            log_debug(&format!(
-                "Starting MCP server on port {} (auth: {})",
-                port,
-                if auth_enabled { "enabled" } else { "disabled" }
-            ));
-        }
+        let auth_enabled = std::env::var("HOTPATH_MCP_AUTH_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .is_some();
+        log_debug(&format!(
+            "Starting MCP server on port {} (auth: {})",
+            port,
+            if auth_enabled { "enabled" } else { "disabled" }
+        ));
 
         std::thread::Builder::new()
             .name("hp-mcp".into())
@@ -177,13 +215,11 @@ pub(crate) fn start_mcp_server_once() {
                     let listener = match tokio::net::TcpListener::bind(&addr).await {
                         Ok(l) => l,
                         Err(e) => {
-                            #[cfg(debug_assertions)]
                             log_debug(&format!("Failed to bind to {}: {}", addr, e));
                             return;
                         }
                     };
 
-                    #[cfg(debug_assertions)]
                     log_debug(&format!("Listening on http://{}/mcp", addr));
 
                     let _ = axum::serve(listener, app)
@@ -197,7 +233,7 @@ pub(crate) fn start_mcp_server_once() {
     });
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev")]
 fn log_debug(msg: &str) {
     use std::io::Write;
     let _ = std::fs::create_dir_all("log");
@@ -215,6 +251,9 @@ fn log_debug(msg: &str) {
         );
     }
 }
+
+#[cfg(not(feature = "dev"))]
+fn log_debug(_msg: &str) {}
 
 #[cfg(test)]
 mod tests {

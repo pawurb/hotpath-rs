@@ -49,6 +49,7 @@ tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-mult
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
 crossbeam = []
 threads = []
+dev = ["dep:chrono"]
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:chrono"]
 
 [dependencies]
