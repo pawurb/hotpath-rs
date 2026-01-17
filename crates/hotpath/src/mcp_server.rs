@@ -41,9 +41,19 @@ impl HotPathMcpServer {
         }
     }
 
-    #[tool(description = "Get timing metrics for all profiled functions")]
-    async fn hotpath_functions_timing(&self) -> Result<CallToolResult, McpError> {
-        log_debug("Tool called: hotpath_functions_timing");
+    #[tool(
+        description = r#"Get execution timing metrics for all profiled functions.
+
+Returns JSON array of functions sorted by total time. Each entry contains:
+- name: fully qualified function name (e.g. "my_app::db::query")
+- call_count: number of invocations
+- total_ns: cumulative execution time in nanoseconds
+- mean_ns, p50_ns, p95_ns, p99_ns: latency percentiles
+
+Use this first to identify performance hotspots. Look for high p95/p99 values indicating tail latency issues."#
+    )]
+    async fn functions_timing(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: functions_timing");
 
         let metrics = get_functions_timing_json();
         let mcp_json = FunctionsMCPJson::from(&metrics);
@@ -52,9 +62,18 @@ impl HotPathMcpServer {
         )?)]))
     }
 
-    #[tool(description = "Get allocation metrics for all profiled functions")]
-    async fn hotpath_functions_alloc(&self) -> Result<CallToolResult, McpError> {
-        log_debug("Tool called: hotpath_functions_alloc");
+    #[tool(
+        description = r#"Get memory allocation metrics per function (requires hotpath-alloc feature).
+
+Returns JSON array with:
+- name: function name
+- alloc_bytes: total bytes allocated
+- alloc_count: number of allocations
+
+Returns error if hotpath-alloc feature is not enabled. Cross-reference with functions_timing to find functions that are both slow and allocation-heavy."#
+    )]
+    async fn functions_alloc(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: functions_alloc");
 
         match get_functions_alloc_json() {
             Some(metrics) => {
@@ -69,9 +88,21 @@ impl HotPathMcpServer {
         }
     }
 
-    #[tool(description = "Get metrics for all monitored channels")]
-    async fn hotpath_channels(&self) -> Result<CallToolResult, McpError> {
-        log_debug("Tool called: hotpath_channels");
+    #[tool(
+        description = r#"Get metrics for all monitored async channels (tokio, crossbeam, std, futures-channel).
+
+Returns JSON array with:
+- id: channel identifier
+- label: optional custom label
+- channel_type: "bounded", "unbounded", or "oneshot"
+- sent/received: message counts
+- queue_size: current pending messages (high values indicate backpressure)
+- state: "active", "closed", "full"
+
+Look for channels with growing queue_size or "full" state to identify bottlenecks."#
+    )]
+    async fn channels(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: channels");
 
         let channels = get_channels_json();
         Ok(CallToolResult::success(vec![Content::text(to_json(
@@ -79,9 +110,17 @@ impl HotPathMcpServer {
         )?)]))
     }
 
-    #[tool(description = "Get metrics for all monitored streams")]
-    async fn hotpath_streams(&self) -> Result<CallToolResult, McpError> {
-        log_debug("Tool called: hotpath_streams");
+    #[tool(description = r#"Get metrics for all monitored async streams.
+
+Returns JSON array with:
+- id: stream identifier
+- label: optional custom label
+- items_yielded: count of items produced
+- state: "active" or "closed"
+
+Use to track stream throughput and identify stalled streams."#)]
+    async fn streams(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: streams");
 
         let streams = get_streams_json();
         Ok(CallToolResult::success(vec![Content::text(to_json(
@@ -89,9 +128,17 @@ impl HotPathMcpServer {
         )?)]))
     }
 
-    #[tool(description = "Get metrics for all monitored futures")]
-    async fn hotpath_futures(&self) -> Result<CallToolResult, McpError> {
-        log_debug("Tool called: hotpath_futures");
+    #[tool(description = r#"Get lifecycle metrics for all monitored futures.
+
+Returns JSON array with:
+- id: future identifier
+- label: optional custom label
+- poll_count: number of times polled (high counts may indicate inefficient futures)
+- state: "active", "completed", or "cancelled"
+
+High poll counts with "active" state suggest futures that wake frequently without progress."#)]
+    async fn futures(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: futures");
 
         let futures = get_futures_json();
         Ok(CallToolResult::success(vec![Content::text(to_json(
@@ -99,9 +146,15 @@ impl HotPathMcpServer {
         )?)]))
     }
 
-    #[tool(description = "Get CPU usage metrics for all monitored threads")]
-    async fn hotpath_threads(&self) -> Result<CallToolResult, McpError> {
-        log_debug("Tool called: hotpath_threads");
+    #[tool(description = r#"Get CPU usage metrics for all monitored threads.
+
+Returns JSON array with:
+- name: thread name (e.g. "tokio-runtime-worker")
+- cpu_percent: CPU utilization (0-100 per core)
+
+Sampled at configurable interval (HOTPATH_THREADS_INTERVAL env var, default 1000ms). Useful for identifying CPU-bound threads."#)]
+    async fn threads(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: threads");
 
         let threads = get_threads_json();
         Ok(CallToolResult::success(vec![Content::text(to_json(
