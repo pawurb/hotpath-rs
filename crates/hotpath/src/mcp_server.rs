@@ -2,7 +2,7 @@ mod output;
 
 use axum::Router;
 use rmcp::{
-    handler::server::tool::ToolRouter,
+    handler::server::{tool::ToolRouter, wrapper::Parameters},
     model::*,
     tool, tool_handler, tool_router,
     transport::streamable_http_server::{
@@ -10,16 +10,45 @@ use rmcp::{
     },
     ErrorData as McpError, ServerHandler,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
 use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::channels::get_channels_json;
-use crate::functions::{get_functions_alloc_json, get_functions_timing_json};
-use crate::futures::get_futures_json;
+use crate::channels::{get_channel_logs, get_channels_json};
+use crate::functions::{
+    get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
+    get_functions_timing_json,
+};
+use crate::futures::{get_future_calls, get_futures_json};
 use crate::mcp_server::output::FunctionsMCPJson;
-use crate::streams::get_streams_json;
+use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct FunctionNameParam {
+    #[schemars(description = "Fully qualified function name (e.g. \"my_app::db::query\")")]
+    function_name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ChannelIdParam {
+    #[schemars(description = "Channel identifier from the channels list")]
+    channel_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct StreamIdParam {
+    #[schemars(description = "Stream identifier from the streams list")]
+    stream_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct FutureIdParam {
+    #[schemars(description = "Future identifier from the futures list")]
+    future_id: String,
+}
 
 static MCP_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
     std::env::var("HOTPATH_MCP_PORT")
@@ -160,6 +189,119 @@ Sampled at configurable interval (HOTPATH_THREADS_INTERVAL env var, default 1000
         Ok(CallToolResult::success(vec![Content::text(to_json(
             &threads,
         )?)]))
+    }
+
+    #[tool(description = r#"Get detailed timing logs for a specific function.
+
+Returns JSON array of recent execution logs with timestamps and duration. Use functions_timing first to get function names, then use this tool to get detailed logs."#)]
+    async fn function_timing_logs(
+        &self,
+        params: Parameters<FunctionNameParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let function_name = &params.0.function_name;
+        log_debug(&format!(
+            "Tool called: function_timing_logs({})",
+            function_name
+        ));
+
+        match get_function_logs_timing(function_name) {
+            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &logs,
+            )?)])),
+            None => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Function '{}' not found",
+                function_name
+            ))])),
+        }
+    }
+
+    #[tool(
+        description = r#"Get detailed allocation logs for a specific function (requires hotpath-alloc feature).
+
+Returns JSON array of recent allocation logs. Use functions_alloc first to get function names, then use this tool to get detailed logs."#
+    )]
+    async fn function_alloc_logs(
+        &self,
+        params: Parameters<FunctionNameParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let function_name = &params.0.function_name;
+        log_debug(&format!(
+            "Tool called: function_alloc_logs({})",
+            function_name
+        ));
+
+        match get_function_logs_alloc(function_name) {
+            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &logs,
+            )?)])),
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "Memory profiling not available - enable hotpath-alloc feature",
+            )])),
+        }
+    }
+
+    #[tool(description = r#"Get detailed message logs for a specific channel.
+
+Returns JSON array of recent send/receive events with timestamps. Use channels first to get channel IDs, then use this tool to get detailed logs."#)]
+    async fn channel_logs(
+        &self,
+        params: Parameters<ChannelIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let channel_id = &params.0.channel_id;
+        log_debug(&format!("Tool called: channel_logs({})", channel_id));
+
+        match get_channel_logs(channel_id) {
+            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &logs,
+            )?)])),
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "Channel not found",
+            )])),
+        }
+    }
+
+    #[tool(description = r#"Get detailed item logs for a specific stream.
+
+Returns JSON array of recent yield events with timestamps. Use streams first to get stream IDs, then use this tool to get detailed logs."#)]
+    async fn stream_logs(
+        &self,
+        params: Parameters<StreamIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let stream_id = &params.0.stream_id;
+        log_debug(&format!("Tool called: stream_logs({})", stream_id));
+
+        match get_stream_logs(stream_id) {
+            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &logs,
+            )?)])),
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "Stream not found",
+            )])),
+        }
+    }
+
+    #[tool(description = r#"Get detailed call/poll logs for a specific future.
+
+Returns JSON array of poll events and completion status. Use futures first to get future IDs, then use this tool to get detailed logs."#)]
+    async fn future_calls(
+        &self,
+        params: Parameters<FutureIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let future_id = &params.0.future_id;
+        log_debug(&format!("Tool called: future_calls({})", future_id));
+
+        let id: u64 = future_id.parse().map_err(|_| {
+            McpError::invalid_params(format!("Invalid future_id: {}", future_id), None)
+        })?;
+
+        match get_future_calls(id) {
+            Some(calls) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &calls,
+            )?)])),
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "Future not found",
+            )])),
+        }
     }
 }
 

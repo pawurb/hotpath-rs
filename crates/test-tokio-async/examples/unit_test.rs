@@ -29,11 +29,15 @@ impl Reporter for UnitTestReporter {
 
         let metric_data = metrics_provider.metric_data();
 
-        let sync_function_metrics = metric_data.get("unit_test::sync_function").unwrap();
+        let sync_function_metrics = metric_data
+            .iter()
+            .find(|(name, _)| name == "unit_test::sync_function")
+            .map(|(_, metrics)| metrics)
+            .unwrap();
 
         let alloc_count = &sync_function_metrics[1];
         if let hotpath::MetricType::Alloc(_bytes, count) = alloc_count {
-            assert!(*count < 3, "AllocCount is not less than 3: {}", count);
+            assert!(count < &3, "AllocCount is not less than 3: {}", count);
         } else {
             panic!("Expected AllocCount metric, got {:?}", alloc_count);
         }
