@@ -88,6 +88,44 @@ impl ServerHandler for HotPathMcpServer {
     }
 }
 
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
+
+fn check_auth(expected: Option<&str>, provided: Option<&str>) -> bool {
+    match expected {
+        None => true,
+        Some(expected) => provided
+            .map(|p| constant_time_eq(p.as_bytes(), expected.as_bytes()))
+            .unwrap_or(false),
+    }
+}
+
+async fn auth_middleware(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, axum::http::StatusCode> {
+    let expected = std::env::var("HOTPATH_MCP_AUTH_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let provided = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok());
+
+    if check_auth(expected.as_deref(), provided) {
+        Ok(next.run(request).await)
+    } else {
+        Err(axum::http::StatusCode::UNAUTHORIZED)
+    }
+}
+
 static MCP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn start_mcp_server_once() {
@@ -95,7 +133,17 @@ pub(crate) fn start_mcp_server_once() {
         let port = *MCP_SERVER_PORT;
 
         #[cfg(debug_assertions)]
-        log_debug(&format!("Starting MCP server on port {}", port));
+        {
+            let auth_enabled = std::env::var("HOTPATH_MCP_AUTH_TOKEN")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .is_some();
+            log_debug(&format!(
+                "Starting MCP server on port {} (auth: {})",
+                port,
+                if auth_enabled { "enabled" } else { "disabled" }
+            ));
+        }
 
         std::thread::Builder::new()
             .name("hp-mcp".into())
@@ -121,7 +169,9 @@ pub(crate) fn start_mcp_server_once() {
                         config,
                     );
 
-                    let app = Router::new().nest_service("/mcp", service);
+                    let app = Router::new()
+                        .nest_service("/mcp", service)
+                        .layer(axum::middleware::from_fn(auth_middleware));
 
                     let addr = format!("localhost:{}", port);
                     let listener = match tokio::net::TcpListener::bind(&addr).await {
@@ -163,5 +213,34 @@ fn log_debug(msg: &str) {
             now.format("%Y-%m-%dT%H:%M:%S"),
             msg
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_disabled_allows_all() {
+        assert!(check_auth(None, None));
+        assert!(check_auth(None, Some("anything")));
+    }
+
+    #[test]
+    fn auth_enabled_rejects_missing() {
+        assert!(!check_auth(Some("secret"), None));
+    }
+
+    #[test]
+    fn auth_enabled_rejects_wrong() {
+        assert!(!check_auth(Some("secret"), Some("wrong")));
+        assert!(!check_auth(Some("secret"), Some("Secret")));
+        assert!(!check_auth(Some("secret"), Some("")));
+    }
+
+    #[test]
+    fn auth_enabled_accepts_correct() {
+        assert!(check_auth(Some("secret"), Some("secret")));
+        assert!(check_auth(Some("Bearer token"), Some("Bearer token")));
     }
 }
