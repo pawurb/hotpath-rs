@@ -1,4 +1,4 @@
-use hotpath::json::FutureCall;
+use hotpath::formatted_output::FormattedFutureCall;
 use ratatui::{
     layout::Rect,
     symbols::border,
@@ -7,9 +7,7 @@ use ratatui::{
     Frame,
 };
 
-/// Renders a centered popup displaying the full result value
-pub(crate) fn render_inspect_popup(call: &FutureCall, area: Rect, frame: &mut Frame) {
-    // Center the popup at 80% of screen size
+pub(crate) fn render_inspect_popup(call: &FormattedFutureCall, area: Rect, frame: &mut Frame) {
     let popup_width = (area.width as f32 * 0.8) as u16;
     let popup_height = (area.height as f32 * 0.8) as u16;
     let x = (area.width.saturating_sub(popup_width)) / 2;
@@ -29,9 +27,7 @@ pub(crate) fn render_inspect_popup(call: &FutureCall, area: Rect, frame: &mut Fr
     let block = Block::bordered()
         .title(format!(
             " Result (Call ID: {}, State: {}, Polls: {}) ",
-            call.id,
-            call.state.as_str(),
-            call.poll_count
+            call.id, call.state, call.poll_count
         ))
         .border_set(border::DOUBLE);
 

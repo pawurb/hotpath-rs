@@ -1,5 +1,5 @@
-use super::super::super::widgets::formatters::{format_time_ago, truncate_right};
-use hotpath::{FunctionLogsJson, ProfilingMode};
+use crate::cmd::console::widgets::formatters::truncate_right;
+use hotpath::formatted_output::FormattedFunctionTimingLogsJson;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
@@ -9,12 +9,9 @@ use ratatui::{
     Frame,
 };
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_function_logs_panel(
-    current_function_logs: Option<&FunctionLogsJson>,
+    current_function_logs: Option<&FormattedFunctionTimingLogsJson>,
     selected_function_name: Option<&str>,
-    _profiling_mode: &ProfilingMode,
-    total_elapsed: u64,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -55,7 +52,6 @@ pub(crate) fn render_function_logs_panel(
     let result_width = (inner_width.saturating_sub(fixed_width) as usize).max(20);
 
     if let Some(function_logs_data) = current_function_logs {
-        // Timing tab always shows timing/latency data
         let headers = Row::new(vec![
             Cell::from("Index").style(
                 Style::default()
@@ -84,32 +80,18 @@ pub(crate) fn render_function_logs_panel(
             ),
         ]);
 
-        let total_invocations = function_logs_data.count;
-
         let rows: Vec<Row> = function_logs_data
             .logs
             .iter()
-            .enumerate()
-            .map(|(idx, entry)| {
-                let time_ago_str = if total_elapsed >= entry.elapsed_nanos {
-                    let nanos_ago = total_elapsed - entry.elapsed_nanos;
-                    format_time_ago(nanos_ago)
-                } else {
-                    "now".to_string()
-                };
-
-                let time_str = entry
-                    .value
-                    .map_or("N/A".to_string(), hotpath::format_duration);
-                let invocation_number = total_invocations - idx;
+            .map(|entry| {
                 let result_str = entry.result.as_deref().unwrap_or("N/A");
                 let result_truncated = truncate_right(result_str, result_width);
 
                 Row::new(vec![
-                    Cell::from(format!("{}", invocation_number)),
-                    Cell::from(time_str),
-                    Cell::from(time_ago_str),
-                    Cell::from(entry.tid.map_or("N/A".to_string(), |t| t.to_string())),
+                    Cell::from(entry.invocation.to_string()),
+                    Cell::from(entry.duration.clone()),
+                    Cell::from(entry.ago.clone()),
+                    Cell::from(entry.thread_id.map_or("N/A".to_string(), |t| t.to_string())),
                     Cell::from(result_truncated),
                 ])
             })

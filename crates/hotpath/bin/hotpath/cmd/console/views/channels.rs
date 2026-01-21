@@ -1,11 +1,10 @@
 pub(crate) mod inspect;
 pub(crate) mod logs;
 
-use super::common_styles;
 use crate::cmd::console::app::ChannelsFocus;
-use crate::cmd::console::widgets::formatters::{queue_status, truncate_left};
-use hotpath::format_bytes;
-use hotpath::json::{ChannelState, ChannelType, SerializableChannelStats};
+use crate::cmd::console::views::common_styles;
+use crate::cmd::console::widgets::formatters::truncate_left;
+use hotpath::formatted_output::FormattedChannelStats;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},
@@ -14,11 +13,29 @@ use ratatui::{
     Frame,
 };
 
-/// Renders the channels table with channel statistics
+fn state_color(state_level: &str) -> Color {
+    match state_level {
+        "green" => Color::Green,
+        "yellow" => Color::Yellow,
+        "red" => Color::Red,
+        "blue" => Color::Blue,
+        _ => Color::Gray,
+    }
+}
+
+fn queue_color(queue_level: &str) -> Color {
+    match queue_level {
+        "green" => Color::Green,
+        "yellow" => Color::Yellow,
+        "red" => Color::Red,
+        _ => Color::Gray,
+    }
+}
+
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_channels_panel(
-    stats: &[SerializableChannelStats],
+    stats: &[FormattedChannelStats],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -45,33 +62,23 @@ pub(crate) fn render_channels_panel(
     let rows: Vec<Row> = stats
         .iter()
         .map(|stat| {
-            let (state_text, state_style) = match stat.state {
-                ChannelState::Active => (stat.state.to_string(), Style::default().fg(Color::Green)),
-                ChannelState::Closed => {
-                    (stat.state.to_string(), Style::default().fg(Color::Yellow))
-                }
-                ChannelState::Full => {
-                    (format!("⚠ {}", stat.state), Style::default().fg(Color::Red))
-                }
-                ChannelState::Notified => {
-                    (stat.state.to_string(), Style::default().fg(Color::Blue))
-                }
+            let state_style = Style::default().fg(state_color(&stat.state_level));
+            let state_text = if stat.state_level == "red" {
+                format!("⚠ {}", stat.state)
+            } else {
+                stat.state.clone()
             };
 
-            let mem_cell = match &stat.channel_type {
-                ChannelType::Unbounded => Cell::from("N/A"),
-                _ => Cell::from(format_bytes(stat.queued_bytes)),
-            };
-            let queue_cell = queue_status(stat.queued, &stat.channel_type, 8);
+            let queue_style = Style::default().fg(queue_color(&stat.queue_level));
 
             Row::new(vec![
                 Cell::from(truncate_left(&stat.label, channel_width)),
-                Cell::from(stat.channel_type.to_string()),
+                Cell::from(stat.channel_type.clone()),
                 Cell::from(state_text).style(state_style),
                 Cell::from(stat.sent_count.to_string()),
                 Cell::from(stat.received_count.to_string()),
-                queue_cell,
-                mem_cell,
+                Cell::from(stat.queue_status.clone()).style(queue_style),
+                Cell::from(stat.queued_bytes.clone()),
             ])
         })
         .collect();

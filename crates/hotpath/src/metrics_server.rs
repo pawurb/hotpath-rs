@@ -1,9 +1,21 @@
+use crate::channels::{get_channel_logs, get_channels_json, get_current_elapsed_ns};
+use crate::formatted_output::{
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
+    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
+};
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
 };
+use crate::futures::{get_future_calls, get_futures_json};
 use crate::json::Route;
-use std::sync::LazyLock;
+use crate::streams::{get_stream_logs, get_streams_json};
+use serde::Serialize;
+use std::fmt::Display;
+use std::sync::{LazyLock, OnceLock};
+use std::thread;
+use tiny_http::{Header, Request, Response, Server};
 
 pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
     std::env::var("HOTPATH_METRICS_PORT")
@@ -21,15 +33,6 @@ pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
 
 pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
 
-use crate::channels::{get_channel_logs, get_channels_json};
-use crate::futures::{get_future_calls, get_futures_json};
-use crate::streams::{get_stream_logs, get_streams_json};
-use serde::Serialize;
-use std::fmt::Display;
-use std::sync::OnceLock;
-use std::thread;
-use tiny_http::{Header, Request, Response, Server};
-
 static HTTP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn start_metrics_server_once(port: u16) {
@@ -46,26 +49,26 @@ fn start_metrics_server(port: u16) {
     crate::threads::init_threads_monitoring();
 
     thread::Builder::new()
-            .name("hp-server".into())
-            .spawn(move || {
-                let addr = format!("127.0.0.1:{}", port);
-                let server = match Server::http(&addr) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        panic!(
-                            "Failed to bind metrics server to {}: {}. Customize the port using the HOTPATH_METRICS_PORT environment variable.",
-                            addr, e
-                        );
-                    }
-                };
-
-                eprintln!("[hotpath] Metrics server listening on http://{}", addr);
-
-                for request in server.incoming_requests() {
-                    handle_request(request);
+        .name("hp-server".into())
+        .spawn(move || {
+            let addr = format!("127.0.0.1:{}", port);
+            let server = match Server::http(&addr) {
+                Ok(s) => s,
+                Err(e) => {
+                    panic!(
+                        "Failed to bind metrics server to {}: {}. Customize the port using the HOTPATH_METRICS_PORT environment variable.",
+                        addr, e
+                    );
                 }
-            })
-            .expect("Failed to spawn HTTP metrics server thread");
+            };
+
+            eprintln!("[hotpath] Metrics server listening on http://{}", addr);
+
+            for request in server.incoming_requests() {
+                handle_request(request);
+            }
+        })
+        .expect("Failed to spawn HTTP metrics server thread");
 }
 
 fn handle_request(request: Request) {
@@ -74,10 +77,14 @@ fn handle_request(request: Request) {
     match path.parse::<Route>() {
         Ok(Route::FunctionsTiming) => {
             let metrics = get_functions_timing_json();
-            respond_json(request, &metrics);
+            let formatted = FormattedFunctionsJson::from(&metrics);
+            respond_json(request, &formatted);
         }
         Ok(Route::FunctionsAlloc) => match get_functions_alloc_json() {
-            Some(metrics) => respond_json(request, &metrics),
+            Some(metrics) => {
+                let formatted = FormattedFunctionsJson::from(&metrics);
+                respond_json(request, &formatted);
+            }
             None => respond_error(
                 request,
                 404,
@@ -86,19 +93,27 @@ fn handle_request(request: Request) {
         },
         Ok(Route::Channels) => {
             let channels = get_channels_json();
-            respond_json(request, &channels);
+            let formatted = FormattedChannelsJson::from(&channels);
+            respond_json(request, &formatted);
         }
         Ok(Route::Streams) => {
             let streams = get_streams_json();
-            respond_json(request, &streams);
+            let formatted = FormattedStreamsJson::from(&streams);
+            respond_json(request, &formatted);
         }
         Ok(Route::Futures) => {
             let futures = get_futures_json();
-            respond_json(request, &futures);
+            let formatted = FormattedFuturesJson::from(&futures);
+            respond_json(request, &formatted);
         }
         Ok(Route::FunctionTimingLogs { function_name }) => {
             match get_function_logs_timing(&function_name) {
-                Some(logs) => respond_json(request, &logs),
+                Some(logs) => {
+                    let current_elapsed_ns = get_current_elapsed_ns();
+                    let formatted =
+                        FormattedFunctionTimingLogsJson::from_logs(&logs, current_elapsed_ns);
+                    respond_json(request, &formatted);
+                }
                 None => respond_error(
                     request,
                     404,
@@ -108,7 +123,12 @@ fn handle_request(request: Request) {
         }
         Ok(Route::FunctionAllocLogs { function_name }) => {
             match get_function_logs_alloc(&function_name) {
-                Some(logs) => respond_json(request, &logs),
+                Some(logs) => {
+                    let current_elapsed_ns = get_current_elapsed_ns();
+                    let formatted =
+                        FormattedFunctionAllocLogsJson::from_logs(&logs, current_elapsed_ns);
+                    respond_json(request, &formatted);
+                }
                 None => respond_error(
                     request,
                     404,
@@ -117,21 +137,33 @@ fn handle_request(request: Request) {
             }
         }
         Ok(Route::ChannelLogs { channel_id }) => match get_channel_logs(&channel_id.to_string()) {
-            Some(logs) => respond_json(request, &logs),
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = FormattedChannelLogs::from_logs(&logs, current_elapsed_ns);
+                respond_json(request, &formatted);
+            }
             None => respond_error(request, 404, "Channel not found"),
         },
         Ok(Route::StreamLogs { stream_id }) => match get_stream_logs(&stream_id.to_string()) {
-            Some(logs) => respond_json(request, &logs),
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = FormattedStreamLogs::from_logs(&logs, current_elapsed_ns);
+                respond_json(request, &formatted);
+            }
             None => respond_error(request, 404, "Stream not found"),
         },
         Ok(Route::FutureCalls { future_id }) => match get_future_calls(future_id) {
-            Some(calls) => respond_json(request, &calls),
+            Some(calls) => {
+                let formatted = FormattedFutureCalls::from_calls(&calls);
+                respond_json(request, &formatted);
+            }
             None => respond_error(request, 404, "Future not found"),
         },
         #[cfg(feature = "threads")]
         Ok(Route::Threads) => {
             let threads = crate::threads::get_threads_json();
-            respond_json(request, &threads);
+            let formatted = FormattedThreadsJson::from(&threads);
+            respond_json(request, &formatted);
         }
         #[cfg(not(feature = "threads"))]
         Ok(Route::Threads) => {

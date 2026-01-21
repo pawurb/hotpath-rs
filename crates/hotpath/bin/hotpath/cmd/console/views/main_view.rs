@@ -1,12 +1,16 @@
-use super::super::app::{
+use crate::cmd::console::app::{
     App, ChannelsFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
 };
-use super::channels::{inspect, logs as channel_logs};
-use super::functions_memory::{inspect as memory_inspect, logs as memory_logs};
-use super::functions_timing::{inspect as timing_inspect, logs as timing_logs};
-use super::futures::{calls as future_calls, inspect as future_inspect};
-use super::streams::{inspect as stream_inspect, logs as stream_logs};
-use super::{
+use crate::cmd::console::views::channels::{inspect, logs as channel_logs};
+use crate::cmd::console::views::functions_memory::{
+    inspect as memory_inspect, logs as memory_logs,
+};
+use crate::cmd::console::views::functions_timing::{
+    inspect as timing_inspect, logs as timing_logs,
+};
+use crate::cmd::console::views::futures::{calls as future_calls, inspect as future_inspect};
+use crate::cmd::console::views::streams::{inspect as stream_inspect, logs as stream_logs};
+use crate::cmd::console::views::{
     bottom_bar, channels, functions_memory, functions_timing, futures, streams, threads, top_bar,
 };
 use ratatui::{
@@ -23,10 +27,10 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Tabs
-            Constraint::Length(3), // Status bar
-            Constraint::Min(0),    // Main content area
-            Constraint::Length(3), // Help bar
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(3),
         ])
         .split(frame.area());
 
@@ -50,7 +54,6 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
     render_tabs(frame, main_chunks[0], app.selected_tab);
 
-    // Render content based on selected tab
     match app.selected_tab {
         SelectedTab::Timing => {
             if app.show_function_logs {
@@ -61,10 +64,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
                 functions_timing::render_functions_table(frame, app, content_chunks[0]);
                 timing_logs::render_function_logs_panel(
-                    app.current_function_logs.as_ref(),
-                    app.selected_function_name().as_deref(),
-                    &app.timing_functions.hotpath_profiling_mode,
-                    app.timing_functions.total_elapsed,
+                    app.current_timing_logs.as_ref(),
+                    app.pinned_function.as_deref(),
                     content_chunks[1],
                     frame,
                     &mut app.function_logs_table_state,
@@ -73,12 +74,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
                 if app.functions_focus == FunctionsFocus::Inspect {
                     if let Some(ref inspected_log) = app.inspected_function_log {
-                        timing_inspect::render_inspect_popup(
-                            inspected_log,
-                            main_chunks[2],
-                            frame,
-                            app.timing_functions.total_elapsed,
-                        );
+                        timing_inspect::render_inspect_popup(inspected_log, main_chunks[2], frame);
                     }
                 }
             } else {
@@ -94,10 +90,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
                 functions_memory::render_functions_table(frame, app, content_chunks[0]);
                 memory_logs::render_function_logs_panel(
-                    app.current_function_logs.as_ref(),
-                    app.selected_function_name().as_deref(),
-                    &app.memory_functions.hotpath_profiling_mode,
-                    app.memory_functions.total_elapsed,
+                    app.current_alloc_logs.as_ref(),
+                    app.pinned_function.as_deref(),
                     content_chunks[1],
                     frame,
                     &mut app.function_logs_table_state,
@@ -106,12 +100,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
                 if app.functions_focus == FunctionsFocus::Inspect {
                     if let Some(ref inspected_log) = app.inspected_function_log {
-                        memory_inspect::render_inspect_popup(
-                            inspected_log,
-                            main_chunks[2],
-                            frame,
-                            app.memory_functions.total_elapsed,
-                        );
+                        memory_inspect::render_inspect_popup(inspected_log, main_chunks[2], frame);
                     }
                 }
             } else {
@@ -184,7 +173,6 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    // Split the area if logs are being shown
     let (table_area, logs_area) = if app.show_logs {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -196,7 +184,7 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let selected_index = app.channels_table_state.selected().unwrap_or(0);
-    let channel_position = selected_index + 1; // 1-indexed
+    let channel_position = selected_index + 1;
     let total_channels = stats.len();
 
     channels::render_channels_panel(
@@ -210,7 +198,6 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
         total_channels,
     );
 
-    // Render logs panel if visible
     if let Some(logs_area) = logs_area {
         let channel_label = app
             .channels_table_state
@@ -225,7 +212,7 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
             })
             .unwrap_or_else(|| "Unknown".to_string());
 
-        if let Some(ref cached_logs) = app.logs {
+        if let Some(ref cached_logs) = app.channel_logs {
             let has_missing_log = cached_logs
                 .logs
                 .sent_logs
@@ -243,7 +230,6 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 frame,
                 &mut app.channel_logs_table_state,
                 app.channels_focus == ChannelsFocus::Logs,
-                app.channels.current_elapsed_ns,
             );
         } else {
             let message = if app.paused {
@@ -258,7 +244,7 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     if app.channels_focus == ChannelsFocus::Inspect {
-        if let Some(ref inspected_log) = app.inspected_log {
+        if let Some(ref inspected_log) = app.inspected_channel_log {
             inspect::render_inspect_popup(inspected_log, area, frame);
         }
     }
@@ -303,7 +289,6 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    // Split the area if logs are being shown
     let (table_area, logs_area) = if app.show_stream_logs {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -315,7 +300,7 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let selected_index = app.streams_table_state.selected().unwrap_or(0);
-    let stream_position = selected_index + 1; // 1-indexed
+    let stream_position = selected_index + 1;
     let total_streams = stats.len();
 
     streams::render_streams_panel(
@@ -329,7 +314,6 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
         total_streams,
     );
 
-    // Render logs panel if visible
     if let Some(logs_area) = logs_area {
         let stream_label = app
             .streams_table_state
@@ -362,7 +346,6 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 frame,
                 &mut app.stream_logs_table_state,
                 app.streams_focus == StreamsFocus::Logs,
-                app.streams.current_elapsed_ns,
             );
         } else {
             let message = if app.paused {
@@ -424,7 +407,7 @@ fn render_threads_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let selected_index = app.threads_table_state.selected().unwrap_or(0);
-    let thread_position = selected_index + 1; // 1-indexed
+    let thread_position = selected_index + 1;
     let total_threads = thread_list.len();
 
     threads::render_threads_panel(
@@ -434,7 +417,7 @@ fn render_threads_view(frame: &mut Frame, app: &mut App, area: Rect) {
         &mut app.threads_table_state,
         thread_position,
         total_threads,
-        app.threads.rss_bytes,
+        app.threads.rss_bytes.as_deref(),
     );
 }
 
@@ -477,7 +460,6 @@ fn render_futures_view(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    // Split the area if calls are being shown
     let (table_area, calls_area) = if app.show_future_calls {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -489,7 +471,7 @@ fn render_futures_view(frame: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let selected_index = app.futures_table_state.selected().unwrap_or(0);
-    let future_position = selected_index + 1; // 1-indexed
+    let future_position = selected_index + 1;
     let total_futures = stats.len();
 
     futures::render_futures_panel(
@@ -503,7 +485,6 @@ fn render_futures_view(frame: &mut Frame, app: &mut App, area: Rect) {
         total_futures,
     );
 
-    // Render calls panel if visible
     if let Some(calls_area) = calls_area {
         let future_label = app
             .futures_table_state

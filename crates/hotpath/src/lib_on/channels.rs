@@ -572,3 +572,10 @@ pub fn get_channel_logs(channel_id: &str) -> Option<ChannelLogs> {
         received_logs: channel_stats.received_logs.iter().rev().cloned().collect(),
     })
 }
+
+pub fn get_current_elapsed_ns() -> u64 {
+    START_TIME
+        .get()
+        .map(|t| t.elapsed().as_nanos() as u64)
+        .unwrap_or(0)
+}

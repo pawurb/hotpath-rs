@@ -1,10 +1,12 @@
 //! Event types for async TUI communication
 
 use crossterm::event::KeyCode;
-use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson, Route,
-    StreamLogs, StreamsJson, ThreadsJson,
+use hotpath::formatted_output::{
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
+    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
+use hotpath::json::Route;
 
 #[derive(Debug)]
 pub(crate) enum DataRequest {
@@ -46,34 +48,34 @@ impl DataRequest {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub(crate) enum DataResponse {
-    FunctionsTiming(FunctionsJson),
-    FunctionsAlloc(FunctionsJson),
+    FunctionsTiming(FormattedFunctionsJson),
+    FunctionsAlloc(FormattedFunctionsJson),
     FunctionsAllocUnavailable,
     FunctionLogsTiming {
         function_name: String,
-        logs: FunctionLogsJson,
+        logs: FormattedFunctionTimingLogsJson,
     },
     FunctionLogsTimingNotFound(String),
     FunctionLogsAlloc {
         function_name: String,
-        logs: FunctionLogsJson,
+        logs: FormattedFunctionAllocLogsJson,
     },
     FunctionLogsAllocNotFound(String),
-    Channels(ChannelsJson),
+    Channels(FormattedChannelsJson),
     ChannelLogs {
         channel_id: u64,
-        logs: ChannelLogs,
+        logs: FormattedChannelLogs,
     },
-    Streams(StreamsJson),
+    Streams(FormattedStreamsJson),
     StreamLogs {
         stream_id: u64,
-        logs: StreamLogs,
+        logs: FormattedStreamLogs,
     },
-    Threads(ThreadsJson),
-    Futures(FuturesJson),
+    Threads(FormattedThreadsJson),
+    Futures(FormattedFuturesJson),
     FutureCalls {
         future_id: u64,
-        calls: FutureCalls,
+        calls: FormattedFutureCalls,
     },
     Error(String),
 }

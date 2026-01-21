@@ -1,19 +1,22 @@
 //! Data management - fetching, updating, and transforming functions/channels
 
-use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
-use crate::cmd::console::events::{DataRequest, DataResponse};
-use hotpath::json::{
-    ChannelLogs, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson as FuturesJsonData,
-    StreamLogs, StreamsJson, ThreadsJson,
+use crate::cmd::console::app::{
+    CachedChannelLogs, CachedStreamLogs, InspectedFunctionLog, SelectedTab,
 };
-use std::collections::HashMap;
+use crate::cmd::console::events::{DataRequest, DataResponse};
+use hotpath::formatted_output::{
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
+    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
+};
 use std::time::Instant;
 use tracing::{trace, warn};
 
+use super::App;
+
 #[hotpath::measure_all]
 impl App {
-    pub(crate) fn update_timing_metrics(&mut self, metrics: FunctionsJson) {
-        // Capture the currently selected function name (not index!)
+    pub(crate) fn update_timing_metrics(&mut self, metrics: FormattedFunctionsJson) {
         let selected_function_name = self.selected_function_name();
 
         self.timing_functions = metrics;
@@ -23,28 +26,21 @@ impl App {
         let entries = &self.timing_functions.data;
 
         if let Some(function_name) = selected_function_name {
-            // Find the new index of the previously selected function in sorted order
-            if let Some(new_idx) = entries.iter().position(|(name, _)| name == &function_name) {
+            if let Some(new_idx) = entries.iter().position(|f| f.name == function_name) {
                 self.timing_table_state.select(Some(new_idx));
-            } else {
-                // Function no longer exists, select the last one
-                if !entries.is_empty() {
-                    self.timing_table_state.select(Some(entries.len() - 1));
-                }
+            } else if !entries.is_empty() {
+                self.timing_table_state.select(Some(entries.len() - 1));
             }
         } else if let Some(selected) = self.timing_table_state.selected() {
-            // Bound check: if current selection is now out of bounds
             if selected >= entries.len() && !entries.is_empty() {
                 self.timing_table_state.select(Some(entries.len() - 1));
             }
         } else if !entries.is_empty() {
-            // No selection yet, select first item
             self.timing_table_state.select(Some(0));
         }
     }
 
-    pub(crate) fn update_memory_metrics(&mut self, metrics: FunctionsJson) {
-        // Capture the currently selected function name (not index!)
+    pub(crate) fn update_memory_metrics(&mut self, metrics: FormattedFunctionsJson) {
         let selected_function_name = self.selected_function_name();
 
         self.memory_functions = metrics;
@@ -54,22 +50,16 @@ impl App {
         let entries = &self.memory_functions.data;
 
         if let Some(function_name) = selected_function_name {
-            // Find the new index of the previously selected function in sorted order
-            if let Some(new_idx) = entries.iter().position(|(name, _)| name == &function_name) {
+            if let Some(new_idx) = entries.iter().position(|f| f.name == function_name) {
                 self.memory_table_state.select(Some(new_idx));
-            } else {
-                // Function no longer exists, select the last one
-                if !entries.is_empty() {
-                    self.memory_table_state.select(Some(entries.len() - 1));
-                }
+            } else if !entries.is_empty() {
+                self.memory_table_state.select(Some(entries.len() - 1));
             }
         } else if let Some(selected) = self.memory_table_state.selected() {
-            // Bound check: if current selection is now out of bounds
             if selected >= entries.len() && !entries.is_empty() {
                 self.memory_table_state.select(Some(entries.len() - 1));
             }
         } else if !entries.is_empty() {
-            // No selection yet, select first item
             self.memory_table_state.select(Some(0));
         }
     }
@@ -78,8 +68,7 @@ impl App {
         self.error_message = Some(error);
     }
 
-    pub(crate) fn update_channels(&mut self, channels: hotpath::json::ChannelsJson) {
-        // Capture the currently selected channel ID (not index!)
+    pub(crate) fn update_channels(&mut self, channels: FormattedChannelsJson) {
         let selected_channel_id = self
             .channels_table_state
             .selected()
@@ -90,9 +79,7 @@ impl App {
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
 
-        // Try to restore selection to the same channel ID
         if let Some(channel_id) = selected_channel_id {
-            // Find the new index of the previously selected channel
             if let Some(new_idx) = self
                 .channels
                 .channels
@@ -100,12 +87,9 @@ impl App {
                 .position(|stat| stat.id == channel_id)
             {
                 self.channels_table_state.select(Some(new_idx));
-            } else {
-                // Channel no longer exists, select the last one if available
-                if !self.channels.channels.is_empty() {
-                    self.channels_table_state
-                        .select(Some(self.channels.channels.len() - 1));
-                }
+            } else if !self.channels.channels.is_empty() {
+                self.channels_table_state
+                    .select(Some(self.channels.channels.len() - 1));
             }
         } else if let Some(selected) = self.channels_table_state.selected() {
             if selected >= self.channels.channels.len() && !self.channels.channels.is_empty() {
@@ -134,17 +118,10 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_channel_logs(&mut self, _channel_id: u64, logs: ChannelLogs) {
-        let received_map: HashMap<u64, hotpath::json::LogEntry> = logs
-            .received_logs
-            .iter()
-            .map(|entry| (entry.index, entry.clone()))
-            .collect();
+    pub(crate) fn handle_channel_logs(&mut self, _channel_id: u64, logs: FormattedChannelLogs) {
+        self.channel_logs = Some(CachedChannelLogs { logs });
 
-        self.logs = Some(CachedLogs { logs, received_map });
-
-        // Ensure logs table selection is valid
-        if let Some(ref cached_logs) = self.logs {
+        if let Some(ref cached_logs) = self.channel_logs {
             let log_count = cached_logs.logs.sent_logs.len();
             if let Some(selected) = self.channel_logs_table_state.selected() {
                 if selected >= log_count && log_count > 0 {
@@ -155,33 +132,28 @@ impl App {
     }
 
     #[hotpath::measure(log = true)]
-    pub(crate) fn get_timing_measurements(&self) -> &[(String, Vec<hotpath::MetricType>)] {
-        &self.timing_functions.data
-    }
-
-    #[hotpath::measure(log = true)]
-    pub(crate) fn get_memory_measurements(&self) -> &[(String, Vec<hotpath::MetricType>)] {
-        &self.memory_functions.data
-    }
-
-    #[hotpath::measure(log = true)]
     pub(crate) fn selected_function_name(&self) -> Option<String> {
         let (entries, table_state) = match self.selected_tab {
-            SelectedTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
-            SelectedTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
+            SelectedTab::Timing => (&self.timing_functions.data, &self.timing_table_state),
+            SelectedTab::Memory => (&self.memory_functions.data, &self.memory_table_state),
             _ => return None,
         };
         table_state
             .selected()
-            .and_then(|idx| entries.get(idx).map(|(name, _)| name.clone()))
+            .and_then(|idx| entries.get(idx).map(|f| f.name.clone()))
     }
 
-    pub(crate) fn update_function_logs(&mut self, function_logs: FunctionLogsJson) {
-        self.current_function_logs = Some(function_logs);
+    pub(crate) fn update_timing_logs(&mut self, function_logs: FormattedFunctionTimingLogsJson) {
+        self.current_timing_logs = Some(function_logs);
+    }
+
+    pub(crate) fn update_alloc_logs(&mut self, function_logs: FormattedFunctionAllocLogsJson) {
+        self.current_alloc_logs = Some(function_logs);
     }
 
     pub(crate) fn clear_function_logs(&mut self) {
-        self.current_function_logs = None;
+        self.current_timing_logs = None;
+        self.current_alloc_logs = None;
     }
 
     pub(crate) fn update_pinned_function(&mut self) {
@@ -208,9 +180,7 @@ impl App {
                             function_name.to_string(),
                         ));
                     }
-                    _ => {
-                        // Other tabs don't support function logs
-                    }
+                    _ => {}
                 }
             }
         }
@@ -221,8 +191,7 @@ impl App {
         self.request_function_logs_if_open();
     }
 
-    pub(crate) fn update_streams(&mut self, streams: StreamsJson) {
-        // Capture the currently selected stream ID (not index!)
+    pub(crate) fn update_streams(&mut self, streams: FormattedStreamsJson) {
         let selected_stream_id = self
             .streams_table_state
             .selected()
@@ -233,9 +202,7 @@ impl App {
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
 
-        // Try to restore selection to the same stream ID
         if let Some(stream_id) = selected_stream_id {
-            // Find the new index of the previously selected stream
             if let Some(new_idx) = self
                 .streams
                 .streams
@@ -243,12 +210,9 @@ impl App {
                 .position(|stat| stat.id == stream_id)
             {
                 self.streams_table_state.select(Some(new_idx));
-            } else {
-                // Stream no longer exists, select the last one if available
-                if !self.streams.streams.is_empty() {
-                    self.streams_table_state
-                        .select(Some(self.streams.streams.len() - 1));
-                }
+            } else if !self.streams.streams.is_empty() {
+                self.streams_table_state
+                    .select(Some(self.streams.streams.len() - 1));
             }
         } else if let Some(selected) = self.streams_table_state.selected() {
             if selected >= self.streams.streams.len() && !self.streams.streams.is_empty() {
@@ -262,8 +226,7 @@ impl App {
         }
     }
 
-    pub(crate) fn update_threads(&mut self, threads: ThreadsJson) {
-        // Capture the currently selected thread TID (not index!)
+    pub(crate) fn update_threads(&mut self, threads: FormattedThreadsJson) {
         let selected_thread_tid = self
             .threads_table_state
             .selected()
@@ -274,9 +237,7 @@ impl App {
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
 
-        // Try to restore selection to the same thread TID
         if let Some(thread_tid) = selected_thread_tid {
-            // Find the new index of the previously selected thread
             if let Some(new_idx) = self
                 .threads
                 .threads
@@ -284,12 +245,9 @@ impl App {
                 .position(|stat| stat.os_tid == thread_tid)
             {
                 self.threads_table_state.select(Some(new_idx));
-            } else {
-                // Thread no longer exists, select the last one if available
-                if !self.threads.threads.is_empty() {
-                    self.threads_table_state
-                        .select(Some(self.threads.threads.len() - 1));
-                }
+            } else if !self.threads.threads.is_empty() {
+                self.threads_table_state
+                    .select(Some(self.threads.threads.len() - 1));
             }
         } else if let Some(selected) = self.threads_table_state.selected() {
             if selected >= self.threads.threads.len() && !self.threads.threads.is_empty() {
@@ -314,10 +272,9 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_stream_logs(&mut self, _stream_id: u64, logs: StreamLogs) {
+    pub(crate) fn handle_stream_logs(&mut self, _stream_id: u64, logs: FormattedStreamLogs) {
         self.stream_logs = Some(CachedStreamLogs { logs });
 
-        // Ensure logs table selection is valid
         if let Some(ref cached_logs) = self.stream_logs {
             let log_count = cached_logs.logs.logs.len();
             if let Some(selected) = self.stream_logs_table_state.selected() {
@@ -388,7 +345,7 @@ impl App {
                 logs,
             } => {
                 trace!("Received function timing logs: {} entries", logs.logs.len());
-                self.update_function_logs(logs);
+                self.update_timing_logs(logs);
             }
             DataResponse::FunctionLogsTimingNotFound(_) => {
                 self.clear_function_logs();
@@ -398,7 +355,7 @@ impl App {
                 logs,
             } => {
                 trace!("Received function alloc logs: {} entries", logs.logs.len());
-                self.update_function_logs(logs);
+                self.update_alloc_logs(logs);
             }
             DataResponse::FunctionLogsAllocNotFound(_) => {
                 self.clear_function_logs();
@@ -460,8 +417,7 @@ impl App {
         }
     }
 
-    pub(crate) fn update_futures(&mut self, futures: FuturesJsonData) {
-        // Capture the currently selected future ID (not index!)
+    pub(crate) fn update_futures(&mut self, futures: FormattedFuturesJson) {
         let selected_future_id = self
             .futures_table_state
             .selected()
@@ -472,9 +428,7 @@ impl App {
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
 
-        // Try to restore selection to the same future ID
         if let Some(future_id) = selected_future_id {
-            // Find the new index of the previously selected future
             if let Some(new_idx) = self
                 .futures
                 .futures
@@ -482,12 +436,9 @@ impl App {
                 .position(|stat| stat.id == future_id)
             {
                 self.futures_table_state.select(Some(new_idx));
-            } else {
-                // Future no longer exists, select the last one if available
-                if !self.futures.futures.is_empty() {
-                    self.futures_table_state
-                        .select(Some(self.futures.futures.len() - 1));
-                }
+            } else if !self.futures.futures.is_empty() {
+                self.futures_table_state
+                    .select(Some(self.futures.futures.len() - 1));
             }
         } else if let Some(selected) = self.futures_table_state.selected() {
             if selected >= self.futures.futures.len() && !self.futures.futures.is_empty() {
@@ -516,10 +467,9 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_future_calls(&mut self, _future_id: u64, calls: FutureCalls) {
+    pub(crate) fn handle_future_calls(&mut self, _future_id: u64, calls: FormattedFutureCalls) {
         self.future_calls = Some(calls);
 
-        // Ensure calls table selection is valid
         if let Some(ref future_calls) = self.future_calls {
             let call_count = future_calls.calls.len();
             if let Some(selected) = self.future_calls_table_state.selected() {
@@ -527,6 +477,36 @@ impl App {
                     self.future_calls_table_state.select(Some(call_count - 1));
                 }
             }
+        }
+    }
+
+    pub(crate) fn get_inspected_function_log(&self) -> Option<InspectedFunctionLog> {
+        let selected_idx = self.function_logs_table_state.selected()?;
+
+        match self.selected_tab {
+            SelectedTab::Timing => {
+                let logs = self.current_timing_logs.as_ref()?;
+                let entry = logs.logs.get(selected_idx)?;
+                Some(InspectedFunctionLog {
+                    invocation_index: entry.invocation,
+                    value: entry.duration.clone(),
+                    ago: entry.ago.clone(),
+                    thread_id: entry.thread_id,
+                    result: entry.result.clone(),
+                })
+            }
+            SelectedTab::Memory => {
+                let logs = self.current_alloc_logs.as_ref()?;
+                let entry = logs.logs.get(selected_idx)?;
+                Some(InspectedFunctionLog {
+                    invocation_index: entry.invocation,
+                    value: entry.bytes.clone(),
+                    ago: entry.ago.clone(),
+                    thread_id: entry.thread_id,
+                    result: entry.result.clone(),
+                })
+            }
+            _ => None,
         }
     }
 }

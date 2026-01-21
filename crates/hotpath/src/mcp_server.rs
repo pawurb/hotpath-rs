@@ -16,7 +16,11 @@ use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::channels::{get_channel_logs, get_channels_json};
+use crate::channels::{get_channel_logs, get_channels_json, get_current_elapsed_ns};
+use crate::formatted_output::{
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFutureCalls, FormattedFuturesJson,
+    FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
+};
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
@@ -136,8 +140,9 @@ Look for channels with growing queue_size or "full" state to identify bottleneck
         log_debug("Tool called: channels");
 
         let channels = get_channels_json();
+        let formatted = FormattedChannelsJson::from(&channels);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &channels,
+            &formatted,
         )?)]))
     }
 
@@ -154,8 +159,9 @@ Use to track stream throughput and identify stalled streams."#)]
         log_debug("Tool called: streams");
 
         let streams = get_streams_json();
+        let formatted = FormattedStreamsJson::from(&streams);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &streams,
+            &formatted,
         )?)]))
     }
 
@@ -172,8 +178,9 @@ High poll counts with "active" state suggest futures that wake frequently withou
         log_debug("Tool called: futures");
 
         let futures = get_futures_json();
+        let formatted = FormattedFuturesJson::from(&futures);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &futures,
+            &formatted,
         )?)]))
     }
 
@@ -188,8 +195,9 @@ Sampled at configurable interval (HOTPATH_THREADS_INTERVAL env var, default 1000
         log_debug("Tool called: threads");
 
         let threads = get_threads_json();
+        let formatted = FormattedThreadsJson::from(&threads);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &threads,
+            &formatted,
         )?)]))
     }
 
@@ -208,7 +216,8 @@ Returns JSON array of recent execution logs with timestamps and duration. Use fu
 
         match get_function_logs_timing(function_name) {
             Some(logs) => {
-                let mcp_json = FunctionTimingLogsMCPJson::from(&logs);
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let mcp_json = FunctionTimingLogsMCPJson::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &mcp_json,
                 )?)]))
@@ -237,7 +246,8 @@ Returns JSON array of recent allocation logs. Use functions_alloc first to get f
 
         match get_function_logs_alloc(function_name) {
             Some(logs) => {
-                let mcp_json = FunctionAllocLogsMCPJson::from(&logs);
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let mcp_json = FunctionAllocLogsMCPJson::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &mcp_json,
                 )?)]))
@@ -259,9 +269,13 @@ Returns JSON array of recent send/receive events with timestamps. Use channels f
         log_debug(&format!("Tool called: channel_logs({})", channel_id));
 
         match get_channel_logs(channel_id) {
-            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
-                &logs,
-            )?)])),
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = FormattedChannelLogs::from_logs(&logs, current_elapsed_ns);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &formatted,
+                )?)]))
+            }
             None => Ok(CallToolResult::error(vec![Content::text(
                 "Channel not found",
             )])),
@@ -279,9 +293,13 @@ Returns JSON array of recent yield events with timestamps. Use streams first to 
         log_debug(&format!("Tool called: stream_logs({})", stream_id));
 
         match get_stream_logs(stream_id) {
-            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
-                &logs,
-            )?)])),
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = FormattedStreamLogs::from_logs(&logs, current_elapsed_ns);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &formatted,
+                )?)]))
+            }
             None => Ok(CallToolResult::error(vec![Content::text(
                 "Stream not found",
             )])),
@@ -303,9 +321,12 @@ Returns JSON array of poll events and completion status. Use futures first to ge
         })?;
 
         match get_future_calls(id) {
-            Some(calls) => Ok(CallToolResult::success(vec![Content::text(to_json(
-                &calls,
-            )?)])),
+            Some(calls) => {
+                let formatted = FormattedFutureCalls::from_calls(&calls);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &formatted,
+                )?)]))
+            }
             None => Ok(CallToolResult::error(vec![Content::text(
                 "Future not found",
             )])),

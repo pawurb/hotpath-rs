@@ -1,10 +1,12 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
 use crossbeam_channel::{Receiver, Sender};
-use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson, Route,
-    StreamLogs, StreamsJson, ThreadsJson,
+use hotpath::formatted_output::{
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
+    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
+use hotpath::json::Route;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -155,39 +157,45 @@ impl RouteExt for Route {
     fn parse_bytes(&self, bytes: &[u8]) -> DataResponse {
         match self {
             Route::FunctionsTiming => {
-                parse_json::<FunctionsJson>(bytes).map(DataResponse::FunctionsTiming)
+                parse_json::<FormattedFunctionsJson>(bytes).map(DataResponse::FunctionsTiming)
             }
             Route::FunctionsAlloc => {
-                parse_json::<FunctionsJson>(bytes).map(DataResponse::FunctionsAlloc)
+                parse_json::<FormattedFunctionsJson>(bytes).map(DataResponse::FunctionsAlloc)
             }
-            Route::Channels => parse_json::<ChannelsJson>(bytes).map(DataResponse::Channels),
-            Route::Streams => parse_json::<StreamsJson>(bytes).map(DataResponse::Streams),
-            Route::Threads => parse_json::<ThreadsJson>(bytes).map(DataResponse::Threads),
-            Route::Futures => parse_json::<FuturesJson>(bytes).map(DataResponse::Futures),
-            Route::FunctionTimingLogs { function_name } => parse_json::<FunctionLogsJson>(bytes)
-                .map(|logs| DataResponse::FunctionLogsTiming {
-                    function_name: function_name.clone(),
-                    logs,
-                }),
-            Route::FunctionAllocLogs { function_name } => parse_json::<FunctionLogsJson>(bytes)
-                .map(|logs| DataResponse::FunctionLogsAlloc {
-                    function_name: function_name.clone(),
-                    logs,
-                }),
+            Route::Channels => {
+                parse_json::<FormattedChannelsJson>(bytes).map(DataResponse::Channels)
+            }
+            Route::Streams => parse_json::<FormattedStreamsJson>(bytes).map(DataResponse::Streams),
+            Route::Threads => parse_json::<FormattedThreadsJson>(bytes).map(DataResponse::Threads),
+            Route::Futures => parse_json::<FormattedFuturesJson>(bytes).map(DataResponse::Futures),
+            Route::FunctionTimingLogs { function_name } => parse_json::<
+                FormattedFunctionTimingLogsJson,
+            >(bytes)
+            .map(|logs| DataResponse::FunctionLogsTiming {
+                function_name: function_name.clone(),
+                logs,
+            }),
+            Route::FunctionAllocLogs { function_name } => parse_json::<
+                FormattedFunctionAllocLogsJson,
+            >(bytes)
+            .map(|logs| DataResponse::FunctionLogsAlloc {
+                function_name: function_name.clone(),
+                logs,
+            }),
             Route::ChannelLogs { channel_id } => {
-                parse_json::<ChannelLogs>(bytes).map(|logs| DataResponse::ChannelLogs {
+                parse_json::<FormattedChannelLogs>(bytes).map(|logs| DataResponse::ChannelLogs {
                     channel_id: *channel_id,
                     logs,
                 })
             }
             Route::StreamLogs { stream_id } => {
-                parse_json::<StreamLogs>(bytes).map(|logs| DataResponse::StreamLogs {
+                parse_json::<FormattedStreamLogs>(bytes).map(|logs| DataResponse::StreamLogs {
                     stream_id: *stream_id,
                     logs,
                 })
             }
             Route::FutureCalls { future_id } => {
-                parse_json::<FutureCalls>(bytes).map(|calls| DataResponse::FutureCalls {
+                parse_json::<FormattedFutureCalls>(bytes).map(|calls| DataResponse::FutureCalls {
                     future_id: *future_id,
                     calls,
                 })

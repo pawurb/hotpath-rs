@@ -1,9 +1,6 @@
 //! UI state management - navigation, selection, and focus handling
 
-use super::{
-    App, ChannelsFocus, FunctionsFocus, FuturesFocus, InspectedFunctionLog, SelectedTab,
-    StreamsFocus,
-};
+use super::{App, ChannelsFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus};
 use tracing::{debug, info};
 
 #[hotpath::measure_all]
@@ -16,7 +13,7 @@ impl App {
 
         let table_state = self.active_table_state_mut();
         let i = match table_state.selected() {
-            Some(i) => (i + 1).min(function_count - 1), // Bounded, stop at last
+            Some(i) => (i + 1).min(function_count - 1),
             None => 0,
         };
         table_state.select(Some(i));
@@ -30,7 +27,7 @@ impl App {
 
         let table_state = self.active_table_state_mut();
         let i = match table_state.selected() {
-            Some(i) => i.saturating_sub(1), // Bounded, stop at 0
+            Some(i) => i.saturating_sub(1),
             None => 0,
         };
         table_state.select(Some(i));
@@ -60,7 +57,7 @@ impl App {
         self.channels_table_state.select(Some(i));
 
         if self.paused && self.show_logs {
-            self.logs = None;
+            self.channel_logs = None;
         } else if self.show_logs {
             self.request_channel_logs();
         }
@@ -79,7 +76,7 @@ impl App {
         self.channels_table_state.select(Some(i));
 
         if self.paused && self.show_logs {
-            self.logs = None;
+            self.channel_logs = None;
         } else if self.show_logs {
             self.request_channel_logs();
         }
@@ -98,7 +95,7 @@ impl App {
             } else {
                 self.show_logs = true;
                 if self.paused {
-                    self.logs = None;
+                    self.channel_logs = None;
                 } else {
                     self.request_channel_logs();
                 }
@@ -108,7 +105,7 @@ impl App {
 
     pub(crate) fn hide_logs(&mut self) {
         self.show_logs = false;
-        self.logs = None;
+        self.channel_logs = None;
         self.channel_logs_table_state.select(None);
         self.channels_focus = ChannelsFocus::Channels;
     }
@@ -122,7 +119,7 @@ impl App {
         if !self.show_logs {
             self.toggle_logs();
         } else if !self.channels.channels.is_empty() {
-            if let Some(ref cached_logs) = self.logs {
+            if let Some(ref cached_logs) = self.channel_logs {
                 if !cached_logs.logs.sent_logs.is_empty() {
                     self.channels_focus = ChannelsFocus::Logs;
                     if self.channel_logs_table_state.selected().is_none() {
@@ -134,7 +131,7 @@ impl App {
     }
 
     pub(crate) fn select_previous_log(&mut self) {
-        if let Some(ref cached_logs) = self.logs {
+        if let Some(ref cached_logs) = self.channel_logs {
             let log_count = cached_logs.logs.sent_logs.len();
             if log_count > 0 {
                 let i = match self.channel_logs_table_state.selected() {
@@ -143,10 +140,9 @@ impl App {
                 };
                 self.channel_logs_table_state.select(Some(i));
 
-                // Update inspected log if inspect popup is open
                 if self.channels_focus == ChannelsFocus::Inspect {
                     if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
-                        self.inspected_log = Some(entry.clone());
+                        self.inspected_channel_log = Some(entry.clone());
                     }
                 }
             }
@@ -154,7 +150,7 @@ impl App {
     }
 
     pub(crate) fn select_next_log(&mut self) {
-        if let Some(ref cached_logs) = self.logs {
+        if let Some(ref cached_logs) = self.channel_logs {
             let log_count = cached_logs.logs.sent_logs.len();
             if log_count > 0 {
                 let i = match self.channel_logs_table_state.selected() {
@@ -163,10 +159,9 @@ impl App {
                 };
                 self.channel_logs_table_state.select(Some(i));
 
-                // Update inspected log if inspect popup is open
                 if self.channels_focus == ChannelsFocus::Inspect {
                     if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
-                        self.inspected_log = Some(entry.clone());
+                        self.inspected_channel_log = Some(entry.clone());
                     }
                 }
             }
@@ -175,17 +170,15 @@ impl App {
 
     pub(crate) fn toggle_inspect(&mut self) {
         if self.channels_focus == ChannelsFocus::Inspect {
-            // Closing inspect popup
             self.channels_focus = ChannelsFocus::Logs;
-            self.inspected_log = None;
+            self.inspected_channel_log = None;
         } else if self.channels_focus == ChannelsFocus::Logs
             && self.channel_logs_table_state.selected().is_some()
         {
-            // Opening inspect popup - capture the current log entry
             if let Some(selected) = self.channel_logs_table_state.selected() {
-                if let Some(ref cached_logs) = self.logs {
+                if let Some(ref cached_logs) = self.channel_logs {
                     if let Some(entry) = cached_logs.logs.sent_logs.get(selected) {
-                        self.inspected_log = Some(entry.clone());
+                        self.inspected_channel_log = Some(entry.clone());
                         self.channels_focus = ChannelsFocus::Inspect;
                     }
                 }
@@ -194,12 +187,12 @@ impl App {
     }
 
     pub(crate) fn close_inspect_and_refocus_channels(&mut self) {
-        self.inspected_log = None;
+        self.inspected_channel_log = None;
         self.hide_logs();
     }
 
     pub(crate) fn close_inspect_only(&mut self) {
-        self.inspected_log = None;
+        self.inspected_channel_log = None;
         self.channels_focus = ChannelsFocus::Channels;
         self.channel_logs_table_state.select(None);
     }
@@ -207,10 +200,8 @@ impl App {
     pub(crate) fn toggle_function_logs(&mut self) {
         self.show_function_logs = !self.show_function_logs;
         if self.show_function_logs {
-            // Pin the currently selected function when opening function logs panel
             self.pinned_function = self.selected_function_name();
         } else {
-            // Clear pinned function when closing function logs panel
             self.pinned_function = None;
             self.function_logs_table_state.select(None);
             self.functions_focus = FunctionsFocus::Functions;
@@ -225,8 +216,21 @@ impl App {
     pub(crate) fn focus_function_logs(&mut self) {
         if !self.show_function_logs {
             self.toggle_function_logs();
-        } else if let Some(ref function_logs) = self.current_function_logs {
-            if !function_logs.logs.is_empty() {
+        } else {
+            let has_logs = match self.selected_tab {
+                SelectedTab::Timing => self
+                    .current_timing_logs
+                    .as_ref()
+                    .map(|l| !l.logs.is_empty())
+                    .unwrap_or(false),
+                SelectedTab::Memory => self
+                    .current_alloc_logs
+                    .as_ref()
+                    .map(|l| !l.logs.is_empty())
+                    .unwrap_or(false),
+                _ => false,
+            };
+            if has_logs {
                 self.functions_focus = FunctionsFocus::Logs;
                 if self.function_logs_table_state.selected().is_none() {
                     self.function_logs_table_state.select(Some(0));
@@ -236,88 +240,71 @@ impl App {
     }
 
     pub(crate) fn select_previous_function_log(&mut self) {
-        if let Some(ref function_logs) = self.current_function_logs {
-            let log_count = function_logs.logs.len();
-            if log_count > 0 {
-                let i = match self.function_logs_table_state.selected() {
-                    Some(i) => i.saturating_sub(1),
-                    None => 0,
-                };
-                self.function_logs_table_state.select(Some(i));
+        let log_count = match self.selected_tab {
+            SelectedTab::Timing => self
+                .current_timing_logs
+                .as_ref()
+                .map(|l| l.logs.len())
+                .unwrap_or(0),
+            SelectedTab::Memory => self
+                .current_alloc_logs
+                .as_ref()
+                .map(|l| l.logs.len())
+                .unwrap_or(0),
+            _ => 0,
+        };
 
-                // Update inspected log if inspect popup is open
-                if self.functions_focus == FunctionsFocus::Inspect {
-                    let total_invocations = function_logs.count;
-                    let invocation_number = total_invocations - i;
-                    if let Some(entry) = function_logs.logs.get(i) {
-                        self.inspected_function_log = Some(InspectedFunctionLog {
-                            invocation_index: invocation_number,
-                            value: entry.value,
-                            elapsed_nanos: entry.elapsed_nanos,
-                            alloc_count: entry.alloc_count,
-                            tid: entry.tid,
-                            result: entry.result.clone(),
-                        });
-                    }
-                }
+        if log_count > 0 {
+            let i = match self.function_logs_table_state.selected() {
+                Some(i) => i.saturating_sub(1),
+                None => 0,
+            };
+            self.function_logs_table_state.select(Some(i));
+
+            if self.functions_focus == FunctionsFocus::Inspect {
+                self.inspected_function_log = self.get_inspected_function_log();
             }
         }
     }
 
     pub(crate) fn select_next_function_log(&mut self) {
-        if let Some(ref function_logs) = self.current_function_logs {
-            let log_count = function_logs.logs.len();
-            if log_count > 0 {
-                let i = match self.function_logs_table_state.selected() {
-                    Some(i) => (i + 1).min(log_count - 1),
-                    None => 0,
-                };
-                self.function_logs_table_state.select(Some(i));
+        let log_count = match self.selected_tab {
+            SelectedTab::Timing => self
+                .current_timing_logs
+                .as_ref()
+                .map(|l| l.logs.len())
+                .unwrap_or(0),
+            SelectedTab::Memory => self
+                .current_alloc_logs
+                .as_ref()
+                .map(|l| l.logs.len())
+                .unwrap_or(0),
+            _ => 0,
+        };
 
-                // Update inspected log if inspect popup is open
-                if self.functions_focus == FunctionsFocus::Inspect {
-                    let total_invocations = function_logs.count;
-                    let invocation_number = total_invocations - i;
-                    if let Some(entry) = function_logs.logs.get(i) {
-                        self.inspected_function_log = Some(InspectedFunctionLog {
-                            invocation_index: invocation_number,
-                            value: entry.value,
-                            elapsed_nanos: entry.elapsed_nanos,
-                            alloc_count: entry.alloc_count,
-                            tid: entry.tid,
-                            result: entry.result.clone(),
-                        });
-                    }
-                }
+        if log_count > 0 {
+            let i = match self.function_logs_table_state.selected() {
+                Some(i) => (i + 1).min(log_count - 1),
+                None => 0,
+            };
+            self.function_logs_table_state.select(Some(i));
+
+            if self.functions_focus == FunctionsFocus::Inspect {
+                self.inspected_function_log = self.get_inspected_function_log();
             }
         }
     }
 
     pub(crate) fn toggle_function_inspect(&mut self) {
         if self.functions_focus == FunctionsFocus::Inspect {
-            // Closing inspect popup
             self.functions_focus = FunctionsFocus::Logs;
             self.inspected_function_log = None;
         } else if self.functions_focus == FunctionsFocus::Logs
             && self.function_logs_table_state.selected().is_some()
         {
-            // Opening inspect popup - capture the current log entry
-            if let Some(selected) = self.function_logs_table_state.selected() {
-                if let Some(ref function_logs) = self.current_function_logs {
-                    if let Some(entry) = function_logs.logs.get(selected) {
-                        let total_invocations = function_logs.count;
-                        let invocation_number = total_invocations - selected;
-                        self.inspected_function_log = Some(InspectedFunctionLog {
-                            invocation_index: invocation_number,
-                            value: entry.value,
-                            elapsed_nanos: entry.elapsed_nanos,
-                            alloc_count: entry.alloc_count,
-                            tid: entry.tid,
-                            result: entry.result.clone(),
-                        });
-                        self.functions_focus = FunctionsFocus::Inspect;
-                    }
-                }
+            self.inspected_function_log = self.get_inspected_function_log();
+            if self.inspected_function_log.is_some() {
+                self.functions_focus = FunctionsFocus::Inspect;
             }
         }
     }
@@ -429,7 +416,6 @@ impl App {
                 };
                 self.stream_logs_table_state.select(Some(i));
 
-                // Update inspected log if inspect popup is open
                 if self.streams_focus == StreamsFocus::Inspect {
                     if let Some(entry) = cached_logs.logs.logs.get(i) {
                         self.inspected_stream_log = Some(entry.clone());
@@ -449,7 +435,6 @@ impl App {
                 };
                 self.stream_logs_table_state.select(Some(i));
 
-                // Update inspected log if inspect popup is open
                 if self.streams_focus == StreamsFocus::Inspect {
                     if let Some(entry) = cached_logs.logs.logs.get(i) {
                         self.inspected_stream_log = Some(entry.clone());
@@ -461,13 +446,11 @@ impl App {
 
     pub(crate) fn toggle_stream_inspect(&mut self) {
         if self.streams_focus == StreamsFocus::Inspect {
-            // Closing inspect popup
             self.streams_focus = StreamsFocus::Logs;
             self.inspected_stream_log = None;
         } else if self.streams_focus == StreamsFocus::Logs
             && self.stream_logs_table_state.selected().is_some()
         {
-            // Opening inspect popup - capture the current log entry
             if let Some(selected) = self.stream_logs_table_state.selected() {
                 if let Some(ref cached_logs) = self.stream_logs {
                     if let Some(entry) = cached_logs.logs.logs.get(selected) {
@@ -612,7 +595,6 @@ impl App {
                 };
                 self.future_calls_table_state.select(Some(i));
 
-                // Update inspected call if inspect popup is open
                 if self.futures_focus == FuturesFocus::Inspect {
                     if let Some(call) = future_calls.calls.get(i) {
                         self.inspected_future_call = Some(call.clone());
@@ -632,7 +614,6 @@ impl App {
                 };
                 self.future_calls_table_state.select(Some(i));
 
-                // Update inspected call if inspect popup is open
                 if self.futures_focus == FuturesFocus::Inspect {
                     if let Some(call) = future_calls.calls.get(i) {
                         self.inspected_future_call = Some(call.clone());
@@ -644,13 +625,11 @@ impl App {
 
     pub(crate) fn toggle_future_inspect(&mut self) {
         if self.futures_focus == FuturesFocus::Inspect {
-            // Closing inspect popup
             self.futures_focus = FuturesFocus::Calls;
             self.inspected_future_call = None;
         } else if self.futures_focus == FuturesFocus::Calls
             && self.future_calls_table_state.selected().is_some()
         {
-            // Opening inspect popup - capture the current call
             if let Some(selected) = self.future_calls_table_state.selected() {
                 if let Some(ref future_calls) = self.future_calls {
                     if let Some(call) = future_calls.calls.get(selected) {

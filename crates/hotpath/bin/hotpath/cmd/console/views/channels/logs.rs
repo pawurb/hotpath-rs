@@ -1,6 +1,6 @@
-use super::super::common_styles;
-use crate::cmd::console::app::CachedLogs;
-use crate::cmd::console::widgets::formatters::{format_delay, format_time_ago, truncate_message};
+use crate::cmd::console::app::CachedChannelLogs;
+use crate::cmd::console::views::common_styles;
+use crate::cmd::console::widgets::formatters::truncate_message;
 use ratatui::{
     layout::Rect,
     style::Style,
@@ -9,7 +9,6 @@ use ratatui::{
     Frame,
 };
 
-/// Renders a placeholder when no logs are available
 pub(crate) fn render_logs_placeholder(
     channel_label: &str,
     message: &str,
@@ -34,15 +33,13 @@ pub(crate) fn render_logs_placeholder(
     }
 }
 
-/// Renders the logs panel with sent and received log entries
 pub(crate) fn render_logs_panel(
-    cached_logs: &CachedLogs,
+    cached_logs: &CachedChannelLogs,
     channel_label: &str,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
     is_focused: bool,
-    current_elapsed_ns: u64,
 ) {
     let border_set = if is_focused {
         border::THICK
@@ -62,8 +59,6 @@ pub(crate) fn render_logs_panel(
     let inner_area = block.inner(area);
     frame.render_widget(block, area);
 
-    let received_map = &cached_logs.received_map;
-
     let available_width = inner_area.width.saturating_sub(2);
     let msg_width = (available_width.saturating_sub(30) as usize).max(20);
 
@@ -76,36 +71,23 @@ pub(crate) fn render_logs_panel(
         .sent_logs
         .iter()
         .map(|entry| {
-            let time_ago = format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp));
-
             let msg = entry.message.as_deref().unwrap_or("");
             let truncated_msg = truncate_message(msg, msg_width);
-
-            let delay_str = if let Some(received_entry) = received_map.get(&entry.index) {
-                if received_entry.timestamp >= entry.timestamp {
-                    let delay_ns = received_entry.timestamp - entry.timestamp;
-                    format_delay(delay_ns)
-                } else {
-                    "⚠".to_string()
-                }
-            } else {
-                "queued".to_string()
-            };
 
             Row::new(vec![
                 entry.index.to_string(),
                 truncated_msg,
-                delay_str,
-                time_ago,
+                entry.delay.clone(),
+                entry.ago.clone(),
             ])
         })
         .collect();
 
     let widths = [
-        ratatui::layout::Constraint::Length(6),  // Index
-        ratatui::layout::Constraint::Min(20),    // Message
-        ratatui::layout::Constraint::Length(12), // Delay
-        ratatui::layout::Constraint::Length(13), // Ago
+        ratatui::layout::Constraint::Length(6),
+        ratatui::layout::Constraint::Min(20),
+        ratatui::layout::Constraint::Length(12),
+        ratatui::layout::Constraint::Length(13),
     ];
 
     let table = Table::new(rows, widths)

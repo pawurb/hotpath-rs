@@ -1,15 +1,16 @@
 //! TUI application state and main run loop
 
 use crossbeam_channel::{Receiver, Sender};
-use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCall, FutureCalls,
-    FuturesJson as FuturesJsonData, LogEntry, StreamLogs, StreamsJson, ThreadsJson,
+use hotpath::formatted_output::{
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
+    FormattedFuturesJson, FormattedLogEntry, FormattedSentLogEntry, FormattedStreamLogs,
+    FormattedStreamsJson, FormattedThreadsJson,
 };
 use ratatui::widgets::TableState;
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use super::events::{AppEvent, DataRequest};
+use crate::cmd::console::events::{AppEvent, DataRequest};
 
 mod data;
 mod keys;
@@ -54,7 +55,6 @@ impl SelectedTab {
     }
 }
 
-/// Represents which UI component has focus in the Channels tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChannelsFocus {
     Channels,
@@ -62,7 +62,6 @@ pub(crate) enum ChannelsFocus {
     Inspect,
 }
 
-/// Represents which UI component has focus in the Streams tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StreamsFocus {
     Streams,
@@ -70,7 +69,6 @@ pub(crate) enum StreamsFocus {
     Inspect,
 }
 
-/// Represents which UI component has focus in the Functions tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FunctionsFocus {
     Functions,
@@ -78,7 +76,6 @@ pub(crate) enum FunctionsFocus {
     Inspect,
 }
 
-/// Represents which UI component has focus in the Futures tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FuturesFocus {
     Futures,
@@ -86,39 +83,29 @@ pub(crate) enum FuturesFocus {
     Inspect,
 }
 
-/// Cached logs with a lookup map for received entries
-pub(crate) struct CachedLogs {
-    pub(crate) logs: ChannelLogs,
-    pub(crate) received_map: HashMap<u64, LogEntry>,
+pub(crate) struct CachedChannelLogs {
+    pub(crate) logs: FormattedChannelLogs,
 }
 
-/// Inspected function log entry for the inspect popup
 #[derive(Debug, Clone)]
 pub(crate) struct InspectedFunctionLog {
-    /// Invocation index (1-indexed, most recent first)
     pub(crate) invocation_index: usize,
-    /// Measured value (duration in ns for timing, bytes for memory)
-    pub(crate) value: Option<u64>,
-    /// Timestamp when the measurement was taken (nanoseconds since start)
-    pub(crate) elapsed_nanos: u64,
-    /// Allocation count (only for memory mode)
-    pub(crate) alloc_count: Option<u64>,
-    /// Thread ID where the function was executed
-    pub(crate) tid: Option<u64>,
-    /// Debug representation of the return value (when log = true)
+    pub(crate) value: String,
+    pub(crate) ago: String,
+    pub(crate) thread_id: Option<u64>,
     pub(crate) result: Option<String>,
 }
 
 pub(crate) struct CachedStreamLogs {
-    pub(crate) logs: StreamLogs,
+    pub(crate) logs: FormattedStreamLogs,
 }
 
 pub(crate) struct App {
-    pub(crate) timing_functions: FunctionsJson,
-    pub(crate) memory_functions: FunctionsJson,
+    pub(crate) timing_functions: FormattedFunctionsJson,
+    pub(crate) memory_functions: FormattedFunctionsJson,
     pub(crate) memory_available: bool,
-    pub(crate) channels: ChannelsJson,
-    pub(crate) streams: StreamsJson,
+    pub(crate) channels: FormattedChannelsJson,
+    pub(crate) streams: FormattedStreamsJson,
 
     pub(crate) timing_table_state: TableState,
     pub(crate) memory_table_state: TableState,
@@ -134,7 +121,8 @@ pub(crate) struct App {
     pub(crate) function_logs_table_state: TableState,
     pub(crate) functions_focus: FunctionsFocus,
     pub(crate) show_function_logs: bool,
-    pub(crate) current_function_logs: Option<FunctionLogsJson>,
+    pub(crate) current_timing_logs: Option<FormattedFunctionTimingLogsJson>,
+    pub(crate) current_alloc_logs: Option<FormattedFunctionAllocLogsJson>,
     pub(crate) pinned_function: Option<String>,
     pub(crate) inspected_function_log: Option<InspectedFunctionLog>,
 
@@ -153,24 +141,35 @@ pub(crate) struct App {
     pub(crate) channel_logs_table_state: TableState,
     pub(crate) channels_focus: ChannelsFocus,
     pub(crate) show_logs: bool,
-    pub(crate) logs: Option<CachedLogs>,
-    pub(crate) inspected_log: Option<LogEntry>,
+    pub(crate) channel_logs: Option<CachedChannelLogs>,
+    pub(crate) inspected_channel_log: Option<FormattedSentLogEntry>,
 
     pub(crate) stream_logs_table_state: TableState,
     pub(crate) streams_focus: StreamsFocus,
     pub(crate) show_stream_logs: bool,
     pub(crate) stream_logs: Option<CachedStreamLogs>,
-    pub(crate) inspected_stream_log: Option<LogEntry>,
-    pub(crate) threads: ThreadsJson,
+    pub(crate) inspected_stream_log: Option<FormattedLogEntry>,
+    pub(crate) threads: FormattedThreadsJson,
     pub(crate) threads_table_state: TableState,
 
-    pub(crate) futures: FuturesJsonData,
+    pub(crate) futures: FormattedFuturesJson,
     pub(crate) futures_table_state: TableState,
     pub(crate) futures_focus: FuturesFocus,
     pub(crate) show_future_calls: bool,
     pub(crate) future_calls_table_state: TableState,
-    pub(crate) future_calls: Option<FutureCalls>,
-    pub(crate) inspected_future_call: Option<FutureCall>,
+    pub(crate) future_calls: Option<FormattedFutureCalls>,
+    pub(crate) inspected_future_call: Option<hotpath::formatted_output::FormattedFutureCall>,
+}
+
+fn empty_functions() -> FormattedFunctionsJson {
+    FormattedFunctionsJson {
+        profiling_mode: "timing".to_string(),
+        total_elapsed: "0ns".to_string(),
+        description: "Waiting for data...".to_string(),
+        caller_name: "unknown".to_string(),
+        percentiles: vec![95],
+        data: Vec::new(),
+    }
 }
 
 #[hotpath::measure_all]
@@ -180,27 +179,24 @@ impl App {
         let (event_tx, event_rx) = crossbeam_channel::unbounded();
 
         let base_url = format!("{}:{}", metrics_host.trim_end_matches('/'), metrics_port);
-        super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), base_url.clone());
-        super::input::spawn_input_reader(event_tx);
-
-        let empty_functions = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 0,
-            description: "Waiting for data...".to_string(),
-            caller_name: "unknown".to_string(),
-            percentiles: vec![95],
-            data: Vec::new(),
-        };
+        crate::cmd::console::http_worker::spawn_http_worker(
+            request_rx,
+            event_tx.clone(),
+            base_url.clone(),
+        );
+        crate::cmd::console::input::spawn_input_reader(event_tx);
 
         Self {
-            timing_functions: empty_functions.clone(),
-            memory_functions: empty_functions,
+            timing_functions: empty_functions(),
+            memory_functions: empty_functions(),
             memory_available: true,
-            channels: hotpath::json::ChannelsJson {
+            channels: FormattedChannelsJson {
+                current_elapsed: "0ns".to_string(),
                 current_elapsed_ns: 0,
                 channels: vec![],
             },
-            streams: StreamsJson {
+            streams: FormattedStreamsJson {
+                current_elapsed: "0ns".to_string(),
                 current_elapsed_ns: 0,
                 streams: vec![],
             },
@@ -216,7 +212,8 @@ impl App {
             function_logs_table_state: TableState::default(),
             functions_focus: FunctionsFocus::Functions,
             show_function_logs: false,
-            current_function_logs: None,
+            current_timing_logs: None,
+            current_alloc_logs: None,
             pinned_function: None,
             inspected_function_log: None,
             request_tx,
@@ -232,22 +229,25 @@ impl App {
             channel_logs_table_state: TableState::default(),
             channels_focus: ChannelsFocus::Channels,
             show_logs: false,
-            logs: None,
-            inspected_log: None,
+            channel_logs: None,
+            inspected_channel_log: None,
             stream_logs_table_state: TableState::default(),
             streams_focus: StreamsFocus::Streams,
             show_stream_logs: false,
             stream_logs: None,
             inspected_stream_log: None,
-            threads: ThreadsJson {
+            threads: FormattedThreadsJson {
+                current_elapsed: "0ns".to_string(),
                 current_elapsed_ns: 0,
                 sample_interval_ms: 1000,
                 threads: vec![],
                 thread_count: 0,
                 rss_bytes: None,
+                rss_bytes_raw: None,
             },
             threads_table_state: TableState::default().with_selected(0),
-            futures: FuturesJsonData {
+            futures: FormattedFuturesJson {
+                current_elapsed: "0ns".to_string(),
                 current_elapsed_ns: 0,
                 futures: vec![],
             },
@@ -264,7 +264,7 @@ impl App {
         self.exit = true;
     }
 
-    pub(crate) fn active_functions(&self) -> &FunctionsJson {
+    pub(crate) fn active_functions(&self) -> &FormattedFunctionsJson {
         match self.selected_tab {
             SelectedTab::Timing => &self.timing_functions,
             SelectedTab::Memory => &self.memory_functions,
@@ -292,7 +292,7 @@ impl App {
         self.request_refresh_for_current_tab();
 
         while !self.exit {
-            terminal.draw(|frame| super::views::render_ui(frame, self))?;
+            terminal.draw(|frame| crate::cmd::console::views::render_ui(frame, self))?;
 
             select! {
                 recv(self.event_rx) -> event => {

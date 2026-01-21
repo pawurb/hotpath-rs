@@ -1,5 +1,4 @@
-use crate::cmd::console::widgets::formatters::format_timestamp;
-use hotpath::json::LogEntry;
+use hotpath::formatted_output::FormattedLogEntry;
 use ratatui::{
     layout::Rect,
     symbols::border,
@@ -8,9 +7,7 @@ use ratatui::{
     Frame,
 };
 
-/// Renders a centered popup displaying the full log message
-pub(crate) fn render_inspect_popup(entry: &LogEntry, area: Rect, frame: &mut Frame) {
-    // Center the popup at 80% of screen size
+pub(crate) fn render_inspect_popup(entry: &FormattedLogEntry, area: Rect, frame: &mut Frame) {
     let popup_width = (area.width as f32 * 0.8) as u16;
     let popup_height = (area.height as f32 * 0.8) as u16;
     let x = (area.width.saturating_sub(popup_width)) / 2;
@@ -33,8 +30,7 @@ pub(crate) fn render_inspect_popup(entry: &LogEntry, area: Rect, frame: &mut Fra
     let block = Block::bordered()
         .title(format!(
             " Message (Index: {}) - {} ",
-            entry.index,
-            format_timestamp(entry.timestamp)
+            entry.index, entry.timestamp
         ))
         .border_set(border::DOUBLE);
 
