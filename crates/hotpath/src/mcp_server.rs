@@ -22,7 +22,9 @@ use crate::functions::{
     get_functions_timing_json,
 };
 use crate::futures::{get_future_calls, get_futures_json};
-use crate::mcp_server::output::FunctionsMCPJson;
+use crate::mcp_server::output::{
+    FunctionAllocLogsMCPJson, FunctionTimingLogsMCPJson, FunctionsMCPJson,
+};
 use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
 
@@ -205,9 +207,12 @@ Returns JSON array of recent execution logs with timestamps and duration. Use fu
         ));
 
         match get_function_logs_timing(function_name) {
-            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
-                &logs,
-            )?)])),
+            Some(logs) => {
+                let mcp_json = FunctionTimingLogsMCPJson::from(&logs);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &mcp_json,
+                )?)]))
+            }
             None => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Function '{}' not found",
                 function_name
@@ -231,9 +236,12 @@ Returns JSON array of recent allocation logs. Use functions_alloc first to get f
         ));
 
         match get_function_logs_alloc(function_name) {
-            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
-                &logs,
-            )?)])),
+            Some(logs) => {
+                let mcp_json = FunctionAllocLogsMCPJson::from(&logs);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &mcp_json,
+                )?)]))
+            }
             None => Ok(CallToolResult::error(vec![Content::text(
                 "Memory profiling not available - enable hotpath-alloc feature",
             )])),

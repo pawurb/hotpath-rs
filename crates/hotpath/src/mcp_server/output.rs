@@ -1,7 +1,9 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
-use crate::output::{format_bytes, format_duration, FunctionsJson, MetricType, ProfilingMode};
+use crate::output::{
+    format_bytes, format_duration, FunctionLogsJson, FunctionsJson, MetricType, ProfilingMode,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct FunctionMCPData {
@@ -85,6 +87,96 @@ impl From<&FunctionsJson> for FunctionsMCPJson {
             description: json.description.clone(),
             caller_name: json.caller_name.clone(),
             data,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct FunctionTimingLogEntry {
+    pub duration: String,
+    pub timestamp: String,
+    pub thread_id: Option<u64>,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct FunctionTimingLogsMCPJson {
+    pub function_name: String,
+    pub total_invocations: usize,
+    pub logs: Vec<FunctionTimingLogEntry>,
+}
+
+impl From<&FunctionLogsJson> for FunctionTimingLogsMCPJson {
+    fn from(json: &FunctionLogsJson) -> Self {
+        let logs = json
+            .logs
+            .iter()
+            .map(|entry| {
+                let duration = entry
+                    .value
+                    .map(format_duration)
+                    .unwrap_or_else(|| "N/A".to_string());
+
+                let timestamp = format_duration(entry.elapsed_nanos);
+
+                FunctionTimingLogEntry {
+                    duration,
+                    timestamp,
+                    thread_id: entry.tid,
+                    result: entry.result.clone(),
+                }
+            })
+            .collect();
+
+        FunctionTimingLogsMCPJson {
+            function_name: json.function_name.clone(),
+            total_invocations: json.count,
+            logs,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct FunctionAllocLogEntry {
+    pub bytes: String,
+    pub timestamp: String,
+    pub thread_id: Option<u64>,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct FunctionAllocLogsMCPJson {
+    pub function_name: String,
+    pub total_invocations: usize,
+    pub logs: Vec<FunctionAllocLogEntry>,
+}
+
+impl From<&FunctionLogsJson> for FunctionAllocLogsMCPJson {
+    fn from(json: &FunctionLogsJson) -> Self {
+        let logs = json
+            .logs
+            .iter()
+            .map(|entry| {
+                let bytes = entry
+                    .value
+                    .map(format_bytes)
+                    .unwrap_or_else(|| "N/A".to_string());
+
+                let timestamp = format_duration(entry.elapsed_nanos);
+
+                FunctionAllocLogEntry {
+                    bytes,
+                    timestamp,
+                    thread_id: entry.tid,
+                    result: entry.result.clone(),
+                }
+            })
+            .collect();
+
+        FunctionAllocLogsMCPJson {
+            function_name: json.function_name.clone(),
+            total_invocations: json.count,
+            logs,
         }
     }
 }
