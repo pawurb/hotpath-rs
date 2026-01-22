@@ -61,10 +61,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
                 functions_timing::render_functions_table(frame, app, content_chunks[0]);
                 timing_logs::render_function_logs_panel(
-                    app.current_function_logs.as_ref(),
+                    app.current_timing_logs.as_ref(),
                     app.selected_function_name().as_deref(),
-                    &app.timing_functions.profiling_mode,
-                    app.timing_functions.total_elapsed_ns,
                     content_chunks[1],
                     frame,
                     &mut app.function_logs_table_state,
@@ -94,10 +92,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
                 functions_memory::render_functions_table(frame, app, content_chunks[0]);
                 memory_logs::render_function_logs_panel(
-                    app.current_function_logs.as_ref(),
+                    app.current_alloc_logs.as_ref(),
                     app.selected_function_name().as_deref(),
-                    &app.memory_functions.profiling_mode,
-                    app.memory_functions.total_elapsed_ns,
                     content_chunks[1],
                     frame,
                     &mut app.function_logs_table_state,

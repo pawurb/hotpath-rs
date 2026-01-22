@@ -1,5 +1,5 @@
-use super::super::super::widgets::formatters::{format_time_ago, truncate_right};
-use hotpath::{FunctionLogsJson, ProfilingMode};
+use super::super::super::widgets::formatters::truncate_right;
+use hotpath::formatted::FormattedFunctionTimingLogsJson;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
@@ -11,10 +11,8 @@ use ratatui::{
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_function_logs_panel(
-    current_function_logs: Option<&FunctionLogsJson>,
+    current_function_logs: Option<&FormattedFunctionTimingLogsJson>,
     selected_function_name: Option<&str>,
-    _profiling_mode: &ProfilingMode,
-    total_elapsed: u64,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -48,14 +46,12 @@ pub(crate) fn render_function_logs_panel(
                 .add_modifier(Modifier::BOLD),
         ));
 
-    // Calculate available width for Result column
     // Fixed columns: Index(7) + Timing(12) + Ago(12) + TID(10) + spacing(8) + borders(2) + highlight(3) = 54
-    let inner_width = area.width.saturating_sub(2); // borders
-    let fixed_width: u16 = 7 + 12 + 12 + 10 + 8 + 3; // columns + spacing + highlight
+    let inner_width = area.width.saturating_sub(2);
+    let fixed_width: u16 = 7 + 12 + 12 + 10 + 8 + 3;
     let result_width = (inner_width.saturating_sub(fixed_width) as usize).max(20);
 
     if let Some(function_logs_data) = current_function_logs {
-        // Timing tab always shows timing/latency data
         let headers = Row::new(vec![
             Cell::from("Index").style(
                 Style::default()
@@ -84,43 +80,29 @@ pub(crate) fn render_function_logs_panel(
             ),
         ]);
 
-        let total_invocations = function_logs_data.count;
-
         let rows: Vec<Row> = function_logs_data
             .logs
             .iter()
-            .enumerate()
-            .map(|(idx, entry)| {
-                let time_ago_str = if total_elapsed >= entry.elapsed_nanos {
-                    let nanos_ago = total_elapsed - entry.elapsed_nanos;
-                    format_time_ago(nanos_ago)
-                } else {
-                    "now".to_string()
-                };
-
-                let time_str = entry
-                    .value
-                    .map_or("N/A".to_string(), hotpath::format_duration);
-                let invocation_number = total_invocations - idx;
+            .map(|entry| {
                 let result_str = entry.result.as_deref().unwrap_or("N/A");
                 let result_truncated = truncate_right(result_str, result_width);
 
                 Row::new(vec![
-                    Cell::from(format!("{}", invocation_number)),
-                    Cell::from(time_str),
-                    Cell::from(time_ago_str),
-                    Cell::from(entry.tid.map_or("N/A".to_string(), |t| t.to_string())),
+                    Cell::from(format!("{}", entry.invocation)),
+                    Cell::from(entry.duration.clone()),
+                    Cell::from(entry.ago.clone()),
+                    Cell::from(entry.thread_id.map_or("N/A".to_string(), |t| t.to_string())),
                     Cell::from(result_truncated),
                 ])
             })
             .collect();
 
         let widths = [
-            Constraint::Length(7),  // Index column
-            Constraint::Length(12), // Timing column
-            Constraint::Length(12), // Ago column
-            Constraint::Length(10), // TID column
-            Constraint::Min(20),    // Result column (flexible)
+            Constraint::Length(7),
+            Constraint::Length(12),
+            Constraint::Length(12),
+            Constraint::Length(10),
+            Constraint::Min(20),
         ]
         .as_slice();
 
@@ -138,7 +120,6 @@ pub(crate) fn render_function_logs_panel(
 
         frame.render_stateful_widget(table, area, table_state);
     } else if selected_function_name.is_some() {
-        // No logs yet
         let items = vec![
             ListItem::new(Line::from("")),
             ListItem::new(Line::from(Span::styled(
@@ -149,7 +130,6 @@ pub(crate) fn render_function_logs_panel(
         let list = List::new(items).block(block);
         frame.render_widget(list, area);
     } else {
-        // No function selected
         let items = vec![
             ListItem::new(Line::from("")),
             ListItem::new(Line::from(Span::styled(

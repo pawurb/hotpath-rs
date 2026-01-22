@@ -1,10 +1,12 @@
 //! TUI application state and main run loop
 
 use crossbeam_channel::{Receiver, Sender};
-use hotpath::formatted::FormattedFunctionsJson;
+use hotpath::formatted::{
+    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+};
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FutureCall, FutureCalls,
-    FuturesJson as FuturesJsonData, LogEntry, StreamLogs, StreamsJson, ThreadsJson,
+    ChannelLogs, ChannelsJson, FutureCall, FutureCalls, FuturesJson as FuturesJsonData, LogEntry,
+    StreamLogs, StreamsJson, ThreadsJson,
 };
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
@@ -96,12 +98,12 @@ pub(crate) struct CachedLogs {
 /// Inspected function log entry for the inspect popup
 #[derive(Debug, Clone)]
 pub(crate) struct InspectedFunctionLog {
-    /// Invocation index (1-indexed, most recent first)
-    pub(crate) invocation_index: usize,
-    /// Measured value (duration in ns for timing, bytes for memory)
-    pub(crate) value: Option<u64>,
-    /// Timestamp when the measurement was taken (nanoseconds since start)
-    pub(crate) elapsed_nanos: u64,
+    /// Invocation index
+    pub(crate) invocation: u64,
+    /// Formatted value (duration or bytes)
+    pub(crate) value: String,
+    /// Formatted "ago" string
+    pub(crate) ago: String,
     /// Allocation count (only for memory mode)
     pub(crate) alloc_count: Option<u64>,
     /// Thread ID where the function was executed
@@ -135,7 +137,8 @@ pub(crate) struct App {
     pub(crate) function_logs_table_state: TableState,
     pub(crate) functions_focus: FunctionsFocus,
     pub(crate) show_function_logs: bool,
-    pub(crate) current_function_logs: Option<FunctionLogsJson>,
+    pub(crate) current_timing_logs: Option<FormattedFunctionTimingLogsJson>,
+    pub(crate) current_alloc_logs: Option<FormattedFunctionAllocLogsJson>,
     pub(crate) pinned_function: Option<String>,
     pub(crate) inspected_function_log: Option<InspectedFunctionLog>,
 
@@ -219,7 +222,8 @@ impl App {
             function_logs_table_state: TableState::default(),
             functions_focus: FunctionsFocus::Functions,
             show_function_logs: false,
-            current_function_logs: None,
+            current_timing_logs: None,
+            current_alloc_logs: None,
             pinned_function: None,
             inspected_function_log: None,
             request_tx,

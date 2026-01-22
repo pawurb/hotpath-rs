@@ -1,10 +1,12 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
 use crossbeam_channel::{Receiver, Sender};
-use hotpath::formatted::FormattedFunctionsJson;
+use hotpath::formatted::{
+    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+};
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FutureCalls, FuturesJson, Route, StreamLogs,
-    StreamsJson, ThreadsJson,
+    ChannelLogs, ChannelsJson, FutureCalls, FuturesJson, Route, StreamLogs, StreamsJson,
+    ThreadsJson,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -165,16 +167,20 @@ impl RouteExt for Route {
             Route::Streams => parse_json::<StreamsJson>(bytes).map(DataResponse::Streams),
             Route::Threads => parse_json::<ThreadsJson>(bytes).map(DataResponse::Threads),
             Route::Futures => parse_json::<FuturesJson>(bytes).map(DataResponse::Futures),
-            Route::FunctionTimingLogs { function_name } => parse_json::<FunctionLogsJson>(bytes)
-                .map(|logs| DataResponse::FunctionLogsTiming {
-                    function_name: function_name.clone(),
-                    logs,
-                }),
-            Route::FunctionAllocLogs { function_name } => parse_json::<FunctionLogsJson>(bytes)
-                .map(|logs| DataResponse::FunctionLogsAlloc {
-                    function_name: function_name.clone(),
-                    logs,
-                }),
+            Route::FunctionTimingLogs { function_name } => parse_json::<
+                FormattedFunctionTimingLogsJson,
+            >(bytes)
+            .map(|logs| DataResponse::FunctionLogsTiming {
+                function_name: function_name.clone(),
+                logs,
+            }),
+            Route::FunctionAllocLogs { function_name } => parse_json::<
+                FormattedFunctionAllocLogsJson,
+            >(bytes)
+            .map(|logs| DataResponse::FunctionLogsAlloc {
+                function_name: function_name.clone(),
+                logs,
+            }),
             Route::ChannelLogs { channel_id } => {
                 parse_json::<ChannelLogs>(bytes).map(|logs| DataResponse::ChannelLogs {
                     channel_id: *channel_id,

@@ -2,10 +2,12 @@
 
 use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
-use hotpath::formatted::{FormattedFunctionData, FormattedFunctionsJson};
+use hotpath::formatted::{
+    FormattedFunctionAllocLogsJson, FormattedFunctionData, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson,
+};
 use hotpath::json::{
-    ChannelLogs, FunctionLogsJson, FutureCalls, FuturesJson as FuturesJsonData, StreamLogs,
-    StreamsJson, ThreadsJson,
+    ChannelLogs, FutureCalls, FuturesJson as FuturesJsonData, StreamLogs, StreamsJson, ThreadsJson,
 };
 use std::collections::HashMap;
 use std::time::Instant;
@@ -177,12 +179,12 @@ impl App {
             .and_then(|idx| entries.get(idx).map(|f| f.name.clone()))
     }
 
-    pub(crate) fn update_function_logs(&mut self, function_logs: FunctionLogsJson) {
-        self.current_function_logs = Some(function_logs);
+    pub(crate) fn update_timing_logs(&mut self, logs: FormattedFunctionTimingLogsJson) {
+        self.current_timing_logs = Some(logs);
     }
 
-    pub(crate) fn clear_function_logs(&mut self) {
-        self.current_function_logs = None;
+    pub(crate) fn update_alloc_logs(&mut self, logs: FormattedFunctionAllocLogsJson) {
+        self.current_alloc_logs = Some(logs);
     }
 
     pub(crate) fn update_pinned_function(&mut self) {
@@ -389,20 +391,20 @@ impl App {
                 logs,
             } => {
                 trace!("Received function timing logs: {} entries", logs.logs.len());
-                self.update_function_logs(logs);
+                self.update_timing_logs(logs);
             }
             DataResponse::FunctionLogsTimingNotFound(_) => {
-                self.clear_function_logs();
+                self.current_timing_logs = None;
             }
             DataResponse::FunctionLogsAlloc {
                 function_name: _,
                 logs,
             } => {
                 trace!("Received function alloc logs: {} entries", logs.logs.len());
-                self.update_function_logs(logs);
+                self.update_alloc_logs(logs);
             }
             DataResponse::FunctionLogsAllocNotFound(_) => {
-                self.clear_function_logs();
+                self.current_alloc_logs = None;
             }
             DataResponse::Channels(data) => {
                 trace!("Received channels data: {} channels", data.channels.len());
