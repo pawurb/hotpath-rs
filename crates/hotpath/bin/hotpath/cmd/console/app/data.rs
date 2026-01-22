@@ -4,11 +4,10 @@ use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::formatted::{
     FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionData,
-    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedStreamsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFuturesJson,
+    FormattedStreamsJson, FormattedThreadsJson,
 };
-use hotpath::json::{
-    ChannelLogs, FutureCalls, FuturesJson as FuturesJsonData, StreamLogs, ThreadsJson,
-};
+use hotpath::json::{ChannelLogs, FutureCalls, StreamLogs};
 use std::collections::HashMap;
 use std::time::Instant;
 use tracing::{trace, warn};
@@ -265,7 +264,7 @@ impl App {
         }
     }
 
-    pub(crate) fn update_threads(&mut self, threads: ThreadsJson) {
+    pub(crate) fn update_threads(&mut self, threads: FormattedThreadsJson) {
         // Capture the currently selected thread TID (not index!)
         let selected_thread_tid = self
             .threads_table_state
@@ -463,7 +462,7 @@ impl App {
         }
     }
 
-    pub(crate) fn update_futures(&mut self, futures: FuturesJsonData) {
+    pub(crate) fn update_futures(&mut self, futures: FormattedFuturesJson) {
         // Capture the currently selected future ID (not index!)
         let selected_future_id = self
             .futures_table_state

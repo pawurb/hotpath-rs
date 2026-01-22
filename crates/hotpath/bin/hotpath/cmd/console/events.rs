@@ -3,9 +3,9 @@
 use crossterm::event::KeyCode;
 use hotpath::formatted::{
     FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedStreamsJson,
+    FormattedFunctionsJson, FormattedFuturesJson, FormattedStreamsJson, FormattedThreadsJson,
 };
-use hotpath::json::{ChannelLogs, FutureCalls, FuturesJson, Route, StreamLogs, ThreadsJson};
+use hotpath::json::{ChannelLogs, FutureCalls, Route, StreamLogs};
 
 #[derive(Debug)]
 pub(crate) enum DataRequest {
@@ -70,8 +70,8 @@ pub(crate) enum DataResponse {
         stream_id: u64,
         logs: StreamLogs,
     },
-    Threads(ThreadsJson),
-    Futures(FuturesJson),
+    Threads(FormattedThreadsJson),
+    Futures(FormattedFuturesJson),
     FutureCalls {
         future_id: u64,
         calls: FutureCalls,

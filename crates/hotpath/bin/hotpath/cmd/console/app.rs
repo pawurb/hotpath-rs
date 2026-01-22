@@ -3,12 +3,9 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::formatted::{
     FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedStreamsJson,
+    FormattedFunctionsJson, FormattedFuturesJson, FormattedStreamsJson, FormattedThreadsJson,
 };
-use hotpath::json::{
-    ChannelLogs, FutureCall, FutureCalls, FuturesJson as FuturesJsonData, LogEntry, StreamLogs,
-    ThreadsJson,
-};
+use hotpath::json::{ChannelLogs, FutureCall, FutureCalls, LogEntry, StreamLogs};
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -166,10 +163,10 @@ pub(crate) struct App {
     pub(crate) show_stream_logs: bool,
     pub(crate) stream_logs: Option<CachedStreamLogs>,
     pub(crate) inspected_stream_log: Option<LogEntry>,
-    pub(crate) threads: ThreadsJson,
+    pub(crate) threads: FormattedThreadsJson,
     pub(crate) threads_table_state: TableState,
 
-    pub(crate) futures: FuturesJsonData,
+    pub(crate) futures: FormattedFuturesJson,
     pub(crate) futures_table_state: TableState,
     pub(crate) futures_focus: FuturesFocus,
     pub(crate) show_future_calls: bool,
@@ -247,7 +244,7 @@ impl App {
             show_stream_logs: false,
             stream_logs: None,
             inspected_stream_log: None,
-            threads: ThreadsJson {
+            threads: FormattedThreadsJson {
                 current_elapsed_ns: 0,
                 sample_interval_ms: 1000,
                 threads: vec![],
@@ -255,7 +252,7 @@ impl App {
                 rss_bytes: None,
             },
             threads_table_state: TableState::default().with_selected(0),
-            futures: FuturesJsonData {
+            futures: FormattedFuturesJson {
                 current_elapsed_ns: 0,
                 futures: vec![],
             },
