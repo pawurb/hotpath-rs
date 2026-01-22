@@ -285,7 +285,7 @@ fn format_alloc_log_entry(
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedChannelStats {
     pub id: u64,
     pub source: String,
@@ -329,14 +329,16 @@ impl From<&SerializableChannelStats> for FormattedChannelStats {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedChannelsJson {
+    pub current_elapsed_ns: u64,
     pub channels: Vec<FormattedChannelStats>,
 }
 
 impl From<&ChannelsJson> for FormattedChannelsJson {
     fn from(json: &ChannelsJson) -> Self {
         FormattedChannelsJson {
+            current_elapsed_ns: json.current_elapsed_ns,
             channels: json
                 .channels
                 .iter()

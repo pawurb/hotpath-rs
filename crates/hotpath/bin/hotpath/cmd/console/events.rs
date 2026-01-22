@@ -2,11 +2,11 @@
 
 use crossterm::event::KeyCode;
 use hotpath::formatted::{
-    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson,
 };
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FutureCalls, FuturesJson, Route, StreamLogs, StreamsJson,
-    ThreadsJson,
+    ChannelLogs, FutureCalls, FuturesJson, Route, StreamLogs, StreamsJson, ThreadsJson,
 };
 
 #[derive(Debug)]
@@ -62,7 +62,7 @@ pub(crate) enum DataResponse {
         logs: FormattedFunctionAllocLogsJson,
     },
     FunctionLogsAllocNotFound(String),
-    Channels(ChannelsJson),
+    Channels(FormattedChannelsJson),
     ChannelLogs {
         channel_id: u64,
         logs: ChannelLogs,

@@ -1,9 +1,4 @@
-use hotpath::json::ChannelType;
 use hotpath::{ceil_char_boundary, floor_char_boundary};
-use ratatui::{
-    style::{Color, Style},
-    widgets::Cell,
-};
 
 pub(crate) fn truncate_left(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
@@ -21,37 +16,6 @@ pub(crate) fn truncate_right(s: &str, max_len: usize) -> String {
     } else {
         let end = floor_char_boundary(s, max_len.saturating_sub(3));
         format!("{}...", &s[..end])
-    }
-}
-
-pub(crate) fn queue_status(
-    queued: u64,
-    channel_type: &ChannelType,
-    _width: usize,
-) -> Cell<'static> {
-    let capacity = match channel_type {
-        ChannelType::Bounded(cap) => Some(*cap),
-        ChannelType::Oneshot => Some(1),
-        ChannelType::Unbounded => None,
-    };
-
-    match capacity {
-        Some(cap) if cap > 0 => {
-            let percentage = (queued as f64 / cap as f64 * 100.0).min(100.0);
-
-            let text = format!("[{}/{}]", queued, cap);
-
-            let color = if percentage >= 100.0 {
-                Color::Red
-            } else if percentage >= 50.0 {
-                Color::Yellow
-            } else {
-                Color::Green
-            };
-
-            Cell::from(text).style(Style::default().fg(color))
-        }
-        _ => Cell::from("N/A"),
     }
 }
 
