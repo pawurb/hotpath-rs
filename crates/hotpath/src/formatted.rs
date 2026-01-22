@@ -157,7 +157,7 @@ impl From<&FunctionsJson> for FormattedFunctionsJson {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionTimingLogEntry {
     pub invocation: u64,
     pub duration: String,
@@ -167,7 +167,7 @@ pub struct FormattedFunctionTimingLogEntry {
     pub result: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionTimingLogsJson {
     pub function_name: String,
     pub total_invocations: usize,
@@ -220,7 +220,7 @@ fn format_timing_log_entry(
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionAllocLogEntry {
     pub invocation: u64,
     pub bytes: String,
@@ -231,7 +231,7 @@ pub struct FormattedFunctionAllocLogEntry {
     pub result: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionAllocLogsJson {
     pub function_name: String,
     pub total_invocations: usize,

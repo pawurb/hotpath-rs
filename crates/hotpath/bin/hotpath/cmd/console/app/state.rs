@@ -222,11 +222,54 @@ impl App {
         self.function_logs_table_state.select(None);
     }
 
+    fn function_logs_len(&self) -> usize {
+        match self.selected_tab {
+            SelectedTab::Timing => self
+                .current_timing_logs
+                .as_ref()
+                .map(|l| l.logs.len())
+                .unwrap_or(0),
+            SelectedTab::Memory => self
+                .current_alloc_logs
+                .as_ref()
+                .map(|l| l.logs.len())
+                .unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    fn create_inspected_log_for_index(&self, i: usize) -> Option<InspectedFunctionLog> {
+        match self.selected_tab {
+            SelectedTab::Timing => self.current_timing_logs.as_ref().and_then(|logs| {
+                logs.logs.get(i).map(|entry| InspectedFunctionLog {
+                    invocation: entry.invocation,
+                    value: entry.duration.clone(),
+                    ago: entry.ago.clone(),
+                    alloc_count: None,
+                    tid: entry.thread_id,
+                    result: entry.result.clone(),
+                })
+            }),
+            SelectedTab::Memory => self.current_alloc_logs.as_ref().and_then(|logs| {
+                logs.logs.get(i).map(|entry| InspectedFunctionLog {
+                    invocation: entry.invocation,
+                    value: entry.bytes.clone(),
+                    ago: entry.ago.clone(),
+                    alloc_count: entry.alloc_count,
+                    tid: entry.thread_id,
+                    result: entry.result.clone(),
+                })
+            }),
+            _ => None,
+        }
+    }
+
     pub(crate) fn focus_function_logs(&mut self) {
         if !self.show_function_logs {
             self.toggle_function_logs();
-        } else if let Some(ref function_logs) = self.current_function_logs {
-            if !function_logs.logs.is_empty() {
+        } else {
+            let has_logs = self.function_logs_len() > 0;
+            if has_logs {
                 self.functions_focus = FunctionsFocus::Logs;
                 if self.function_logs_table_state.selected().is_none() {
                     self.function_logs_table_state.select(Some(0));
@@ -236,87 +279,46 @@ impl App {
     }
 
     pub(crate) fn select_previous_function_log(&mut self) {
-        if let Some(ref function_logs) = self.current_function_logs {
-            let log_count = function_logs.logs.len();
-            if log_count > 0 {
-                let i = match self.function_logs_table_state.selected() {
-                    Some(i) => i.saturating_sub(1),
-                    None => 0,
-                };
-                self.function_logs_table_state.select(Some(i));
+        let log_count = self.function_logs_len();
+        if log_count > 0 {
+            let i = match self.function_logs_table_state.selected() {
+                Some(i) => i.saturating_sub(1),
+                None => 0,
+            };
+            self.function_logs_table_state.select(Some(i));
 
-                // Update inspected log if inspect popup is open
-                if self.functions_focus == FunctionsFocus::Inspect {
-                    let total_invocations = function_logs.count;
-                    let invocation_number = total_invocations - i;
-                    if let Some(entry) = function_logs.logs.get(i) {
-                        self.inspected_function_log = Some(InspectedFunctionLog {
-                            invocation_index: invocation_number,
-                            value: entry.value,
-                            elapsed_nanos: entry.elapsed_nanos,
-                            alloc_count: entry.alloc_count,
-                            tid: entry.tid,
-                            result: entry.result.clone(),
-                        });
-                    }
-                }
+            if self.functions_focus == FunctionsFocus::Inspect {
+                self.inspected_function_log = self.create_inspected_log_for_index(i);
             }
         }
     }
 
     pub(crate) fn select_next_function_log(&mut self) {
-        if let Some(ref function_logs) = self.current_function_logs {
-            let log_count = function_logs.logs.len();
-            if log_count > 0 {
-                let i = match self.function_logs_table_state.selected() {
-                    Some(i) => (i + 1).min(log_count - 1),
-                    None => 0,
-                };
-                self.function_logs_table_state.select(Some(i));
+        let log_count = self.function_logs_len();
+        if log_count > 0 {
+            let i = match self.function_logs_table_state.selected() {
+                Some(i) => (i + 1).min(log_count - 1),
+                None => 0,
+            };
+            self.function_logs_table_state.select(Some(i));
 
-                // Update inspected log if inspect popup is open
-                if self.functions_focus == FunctionsFocus::Inspect {
-                    let total_invocations = function_logs.count;
-                    let invocation_number = total_invocations - i;
-                    if let Some(entry) = function_logs.logs.get(i) {
-                        self.inspected_function_log = Some(InspectedFunctionLog {
-                            invocation_index: invocation_number,
-                            value: entry.value,
-                            elapsed_nanos: entry.elapsed_nanos,
-                            alloc_count: entry.alloc_count,
-                            tid: entry.tid,
-                            result: entry.result.clone(),
-                        });
-                    }
-                }
+            if self.functions_focus == FunctionsFocus::Inspect {
+                self.inspected_function_log = self.create_inspected_log_for_index(i);
             }
         }
     }
 
     pub(crate) fn toggle_function_inspect(&mut self) {
         if self.functions_focus == FunctionsFocus::Inspect {
-            // Closing inspect popup
             self.functions_focus = FunctionsFocus::Logs;
             self.inspected_function_log = None;
         } else if self.functions_focus == FunctionsFocus::Logs
             && self.function_logs_table_state.selected().is_some()
         {
-            // Opening inspect popup - capture the current log entry
             if let Some(selected) = self.function_logs_table_state.selected() {
-                if let Some(ref function_logs) = self.current_function_logs {
-                    if let Some(entry) = function_logs.logs.get(selected) {
-                        let total_invocations = function_logs.count;
-                        let invocation_number = total_invocations - selected;
-                        self.inspected_function_log = Some(InspectedFunctionLog {
-                            invocation_index: invocation_number,
-                            value: entry.value,
-                            elapsed_nanos: entry.elapsed_nanos,
-                            alloc_count: entry.alloc_count,
-                            tid: entry.tid,
-                            result: entry.result.clone(),
-                        });
-                        self.functions_focus = FunctionsFocus::Inspect;
-                    }
+                if let Some(inspected) = self.create_inspected_log_for_index(selected) {
+                    self.inspected_function_log = Some(inspected);
+                    self.functions_focus = FunctionsFocus::Inspect;
                 }
             }
         }

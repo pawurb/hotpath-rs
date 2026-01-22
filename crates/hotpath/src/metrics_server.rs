@@ -1,4 +1,7 @@
-use crate::formatted::FormattedFunctionsJson;
+use crate::channels::START_TIME;
+use crate::formatted::{
+    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+};
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
@@ -103,7 +106,11 @@ fn handle_request(request: Request) {
         }
         Ok(Route::FunctionTimingLogs { function_name }) => {
             match get_function_logs_timing(&function_name) {
-                Some(logs) => respond_json(request, &logs),
+                Some(logs) => {
+                    let formatted =
+                        FormattedFunctionTimingLogsJson::from_logs(&logs, get_current_elapsed_ns());
+                    respond_json(request, &formatted);
+                }
                 None => respond_error(
                     request,
                     404,
@@ -113,7 +120,11 @@ fn handle_request(request: Request) {
         }
         Ok(Route::FunctionAllocLogs { function_name }) => {
             match get_function_logs_alloc(&function_name) {
-                Some(logs) => respond_json(request, &logs),
+                Some(logs) => {
+                    let formatted =
+                        FormattedFunctionAllocLogsJson::from_logs(&logs, get_current_elapsed_ns());
+                    respond_json(request, &formatted);
+                }
                 None => respond_error(
                     request,
                     404,
@@ -148,6 +159,13 @@ fn handle_request(request: Request) {
         }
         Err(_) => respond_error(request, 404, "Not found"),
     }
+}
+
+fn get_current_elapsed_ns() -> u64 {
+    START_TIME
+        .get()
+        .map(|start| start.elapsed().as_nanos() as u64)
+        .unwrap_or(0)
 }
 
 fn respond_json<T: Serialize>(request: Request, value: &T) {

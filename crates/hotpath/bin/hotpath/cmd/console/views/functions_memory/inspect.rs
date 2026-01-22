@@ -1,4 +1,4 @@
-use super::super::super::app::InspectedFunctionLog;
+use crate::cmd::console::app::InspectedFunctionLog;
 use ratatui::{
     layout::Rect,
     symbols::border,
@@ -7,14 +7,12 @@ use ratatui::{
     Frame,
 };
 
-/// Renders a centered popup displaying the full result value for a function log entry (memory mode)
 pub(crate) fn render_inspect_popup(
     entry: &InspectedFunctionLog,
     area: Rect,
     frame: &mut Frame,
-    total_elapsed: u64,
+    _total_elapsed: u64,
 ) {
-    // Center the popup at 80% of screen size
     let popup_width = (area.width as f32 * 0.8) as u16;
     let popup_height = (area.height as f32 * 0.8) as u16;
     let x = (area.width.saturating_sub(popup_width)) / 2;
@@ -34,22 +32,15 @@ pub(crate) fn render_inspect_popup(
 
     frame.render_widget(Clear, popup_area);
 
-    let mem_str = entry.value.map_or("N/A".to_string(), hotpath::format_bytes);
     let obj_str = entry
         .alloc_count
         .map_or("N/A".to_string(), |c| c.to_string());
-    let time_ago_str = if total_elapsed >= entry.elapsed_nanos {
-        let nanos_ago = total_elapsed - entry.elapsed_nanos;
-        super::super::super::widgets::formatters::format_time_ago(nanos_ago)
-    } else {
-        "now".to_string()
-    };
     let tid_str = entry.tid.map_or("N/A".to_string(), |t| t.to_string());
 
     let block = Block::bordered()
         .title(format!(
             " Result (Call #{}, Mem: {}, Objects: {}, Ago: {}, TID: {}) ",
-            entry.invocation_index, mem_str, obj_str, time_ago_str, tid_str
+            entry.invocation, entry.value, obj_str, entry.ago, tid_str
         ))
         .border_set(border::DOUBLE);
 
