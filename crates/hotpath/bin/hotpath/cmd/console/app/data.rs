@@ -3,12 +3,11 @@
 use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::formatted::{
-    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionData,
-    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFuturesJson,
-    FormattedStreamsJson, FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionData, FormattedFunctionTimingLogsJson, FormattedFutureCalls,
+    FormattedFunctionsJson, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
+    FormattedThreadsJson,
 };
-use hotpath::json::{ChannelLogs, FutureCalls, StreamLogs};
-use std::collections::HashMap;
 use std::time::Instant;
 use tracing::{trace, warn};
 
@@ -136,14 +135,8 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_channel_logs(&mut self, _channel_id: u64, logs: ChannelLogs) {
-        let received_map: HashMap<u64, hotpath::json::LogEntry> = logs
-            .received_logs
-            .iter()
-            .map(|entry| (entry.index, entry.clone()))
-            .collect();
-
-        self.logs = Some(CachedLogs { logs, received_map });
+    pub(crate) fn handle_channel_logs(&mut self, _channel_id: u64, logs: FormattedChannelLogs) {
+        self.logs = Some(CachedLogs { logs });
 
         // Ensure logs table selection is valid
         if let Some(ref cached_logs) = self.logs {
@@ -316,7 +309,7 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_stream_logs(&mut self, _stream_id: u64, logs: StreamLogs) {
+    pub(crate) fn handle_stream_logs(&mut self, _stream_id: u64, logs: FormattedStreamLogs) {
         self.stream_logs = Some(CachedStreamLogs { logs });
 
         // Ensure logs table selection is valid
@@ -518,7 +511,7 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_future_calls(&mut self, _future_id: u64, calls: FutureCalls) {
+    pub(crate) fn handle_future_calls(&mut self, _future_id: u64, calls: FormattedFutureCalls) {
         self.future_calls = Some(calls);
 
         // Ensure calls table selection is valid

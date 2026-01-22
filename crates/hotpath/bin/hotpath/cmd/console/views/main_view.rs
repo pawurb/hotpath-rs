@@ -239,7 +239,6 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 frame,
                 &mut app.channel_logs_table_state,
                 app.channels_focus == ChannelsFocus::Logs,
-                app.channels.current_elapsed_ns,
             );
         } else {
             let message = if app.paused {
@@ -358,7 +357,6 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 frame,
                 &mut app.stream_logs_table_state,
                 app.streams_focus == StreamsFocus::Logs,
-                app.streams.current_elapsed_ns,
             );
         } else {
             let message = if app.paused {

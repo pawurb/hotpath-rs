@@ -1,7 +1,8 @@
 use crate::channels::START_TIME;
 use crate::formatted::{
-    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedFuturesJson, FormattedStreamsJson, FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
+    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
@@ -137,15 +138,24 @@ fn handle_request(request: Request) {
             }
         }
         Ok(Route::ChannelLogs { channel_id }) => match get_channel_logs(&channel_id.to_string()) {
-            Some(logs) => respond_json(request, &logs),
+            Some(logs) => {
+                let formatted = FormattedChannelLogs::from_logs(&logs, get_current_elapsed_ns());
+                respond_json(request, &formatted);
+            }
             None => respond_error(request, 404, "Channel not found"),
         },
         Ok(Route::StreamLogs { stream_id }) => match get_stream_logs(&stream_id.to_string()) {
-            Some(logs) => respond_json(request, &logs),
+            Some(logs) => {
+                let formatted = FormattedStreamLogs::from_logs(&logs, get_current_elapsed_ns());
+                respond_json(request, &formatted);
+            }
             None => respond_error(request, 404, "Stream not found"),
         },
         Ok(Route::FutureCalls { future_id }) => match get_future_calls(future_id) {
-            Some(calls) => respond_json(request, &calls),
+            Some(calls) => {
+                let formatted = FormattedFutureCalls::from(&calls);
+                respond_json(request, &formatted);
+            }
             None => respond_error(request, 404, "Future not found"),
         },
         #[cfg(feature = "threads")]

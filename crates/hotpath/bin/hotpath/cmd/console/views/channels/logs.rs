@@ -1,6 +1,6 @@
 use super::super::common_styles;
 use crate::cmd::console::app::CachedLogs;
-use crate::cmd::console::widgets::formatters::{format_delay, format_time_ago, truncate_message};
+use crate::cmd::console::widgets::formatters::truncate_message;
 use ratatui::{
     layout::Rect,
     style::Style,
@@ -42,7 +42,6 @@ pub(crate) fn render_logs_panel(
     frame: &mut Frame,
     table_state: &mut TableState,
     is_focused: bool,
-    current_elapsed_ns: u64,
 ) {
     let border_set = if is_focused {
         border::THICK
@@ -62,8 +61,6 @@ pub(crate) fn render_logs_panel(
     let inner_area = block.inner(area);
     frame.render_widget(block, area);
 
-    let received_map = &cached_logs.received_map;
-
     let available_width = inner_area.width.saturating_sub(2);
     let msg_width = (available_width.saturating_sub(30) as usize).max(20);
 
@@ -76,27 +73,15 @@ pub(crate) fn render_logs_panel(
         .sent_logs
         .iter()
         .map(|entry| {
-            let time_ago = format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp));
-
             let msg = entry.message.as_deref().unwrap_or("");
             let truncated_msg = truncate_message(msg, msg_width);
-
-            let delay_str = if let Some(received_entry) = received_map.get(&entry.index) {
-                if received_entry.timestamp >= entry.timestamp {
-                    let delay_ns = received_entry.timestamp - entry.timestamp;
-                    format_delay(delay_ns)
-                } else {
-                    "⚠".to_string()
-                }
-            } else {
-                "queued".to_string()
-            };
+            let delay_str = entry.delay.as_deref().unwrap_or("queued");
 
             Row::new(vec![
                 entry.index.to_string(),
                 truncated_msg,
-                delay_str,
-                time_ago,
+                delay_str.to_string(),
+                entry.ago.clone(),
             ])
         })
         .collect();
