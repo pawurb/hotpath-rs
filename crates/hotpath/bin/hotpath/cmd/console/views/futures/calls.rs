@@ -1,6 +1,6 @@
 use super::super::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_message;
-use hotpath::json::{FutureCall, FutureCalls, FutureState};
+use hotpath::formatted::{FormattedFutureCall, FormattedFutureCalls};
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
@@ -33,31 +33,31 @@ pub(crate) fn render_calls_placeholder(
     }
 }
 
-fn state_style(state: &FutureState) -> Style {
+fn state_style(state: &str) -> Style {
     match state {
-        FutureState::Ready => Style::default().fg(Color::Green),
-        FutureState::Cancelled => Style::default().fg(Color::Red),
-        FutureState::Suspended => Style::default().fg(Color::Yellow),
-        FutureState::Running => Style::default().fg(Color::Blue),
-        FutureState::Pending => Style::default().fg(Color::DarkGray),
+        "Ready" => Style::default().fg(Color::Green),
+        "Cancelled" => Style::default().fg(Color::Red),
+        "Suspended" => Style::default().fg(Color::Yellow),
+        "Running" => Style::default().fg(Color::Blue),
+        "Pending" => Style::default().fg(Color::DarkGray),
+        _ => Style::default(),
     }
 }
 
-fn render_call_row(call: &FutureCall, result_width: usize) -> Row<'static> {
-    let state_text = call.state.as_str().to_string();
+fn render_call_row(call: &FormattedFutureCall, result_width: usize) -> Row<'static> {
     let result = call.result.as_deref().unwrap_or("-");
     let result_text = truncate_message(result, result_width);
 
     Row::new(vec![
         Cell::from(call.id.to_string()),
-        Cell::from(state_text).style(state_style(&call.state)),
+        Cell::from(call.state.clone()).style(state_style(&call.state)),
         Cell::from(result_text),
         Cell::from(call.poll_count.to_string()),
     ])
 }
 
 pub(crate) fn render_calls_panel(
-    future_calls: &FutureCalls,
+    future_calls: &FormattedFutureCalls,
     future_label: &str,
     area: Rect,
     frame: &mut Frame,

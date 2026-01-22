@@ -2,12 +2,12 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::formatted::{
-    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedFuturesJson, FormattedStreamsJson, FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFutureCall, FormattedFutureCalls,
+    FormattedFunctionsJson, FormattedFuturesJson, FormattedLogEntry, FormattedSentLogEntry,
+    FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
-use hotpath::json::{ChannelLogs, FutureCall, FutureCalls, LogEntry, StreamLogs};
 use ratatui::widgets::TableState;
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use super::events::{AppEvent, DataRequest};
@@ -87,10 +87,9 @@ pub(crate) enum FuturesFocus {
     Inspect,
 }
 
-/// Cached logs with a lookup map for received entries
+/// Cached channel logs
 pub(crate) struct CachedLogs {
-    pub(crate) logs: ChannelLogs,
-    pub(crate) received_map: HashMap<u64, LogEntry>,
+    pub(crate) logs: FormattedChannelLogs,
 }
 
 /// Inspected function log entry for the inspect popup
@@ -111,7 +110,7 @@ pub(crate) struct InspectedFunctionLog {
 }
 
 pub(crate) struct CachedStreamLogs {
-    pub(crate) logs: StreamLogs,
+    pub(crate) logs: FormattedStreamLogs,
 }
 
 pub(crate) struct App {
@@ -156,13 +155,13 @@ pub(crate) struct App {
     pub(crate) channels_focus: ChannelsFocus,
     pub(crate) show_logs: bool,
     pub(crate) logs: Option<CachedLogs>,
-    pub(crate) inspected_log: Option<LogEntry>,
+    pub(crate) inspected_log: Option<FormattedSentLogEntry>,
 
     pub(crate) stream_logs_table_state: TableState,
     pub(crate) streams_focus: StreamsFocus,
     pub(crate) show_stream_logs: bool,
     pub(crate) stream_logs: Option<CachedStreamLogs>,
-    pub(crate) inspected_stream_log: Option<LogEntry>,
+    pub(crate) inspected_stream_log: Option<FormattedLogEntry>,
     pub(crate) threads: FormattedThreadsJson,
     pub(crate) threads_table_state: TableState,
 
@@ -171,8 +170,8 @@ pub(crate) struct App {
     pub(crate) futures_focus: FuturesFocus,
     pub(crate) show_future_calls: bool,
     pub(crate) future_calls_table_state: TableState,
-    pub(crate) future_calls: Option<FutureCalls>,
-    pub(crate) inspected_future_call: Option<FutureCall>,
+    pub(crate) future_calls: Option<FormattedFutureCalls>,
+    pub(crate) inspected_future_call: Option<FormattedFutureCall>,
 }
 
 #[hotpath::measure_all]

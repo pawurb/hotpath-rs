@@ -348,7 +348,7 @@ impl From<&ChannelsJson> for FormattedChannelsJson {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedSentLogEntry {
     pub index: u64,
     pub timestamp: String,
@@ -358,7 +358,7 @@ pub struct FormattedSentLogEntry {
     pub thread_id: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedLogEntry {
     pub index: u64,
     pub timestamp: String,
@@ -367,7 +367,7 @@ pub struct FormattedLogEntry {
     pub thread_id: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedChannelLogs {
     pub id: String,
     pub sent_logs: Vec<FormattedSentLogEntry>,
@@ -474,7 +474,7 @@ impl From<&StreamsJson> for FormattedStreamsJson {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedStreamLogs {
     pub id: String,
     pub logs: Vec<FormattedLogEntry>,
@@ -535,7 +535,7 @@ impl From<&FuturesJson> for FormattedFuturesJson {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFutureCall {
     pub id: u64,
     pub future_id: u64,
@@ -556,7 +556,7 @@ impl From<&FutureCall> for FormattedFutureCall {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFutureCalls {
     pub id: String,
     pub calls: Vec<FormattedFutureCall>,

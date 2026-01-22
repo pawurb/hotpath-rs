@@ -1,6 +1,6 @@
 use super::super::common_styles;
 use crate::cmd::console::app::CachedStreamLogs;
-use crate::cmd::console::widgets::formatters::{format_time_ago, truncate_message};
+use crate::cmd::console::widgets::formatters::truncate_message;
 use ratatui::{
     layout::Rect,
     style::Style,
@@ -42,7 +42,6 @@ pub(crate) fn render_logs_panel(
     frame: &mut Frame,
     table_state: &mut TableState,
     is_focused: bool,
-    current_elapsed_ns: u64,
 ) {
     let border_set = if is_focused {
         border::THICK
@@ -74,12 +73,14 @@ pub(crate) fn render_logs_panel(
         .logs
         .iter()
         .map(|entry| {
-            let time_ago = format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp));
-
             let msg = entry.message.as_deref().unwrap_or("");
             let truncated_msg = truncate_message(msg, msg_width);
 
-            Row::new(vec![entry.index.to_string(), truncated_msg, time_ago])
+            Row::new(vec![
+                entry.index.to_string(),
+                truncated_msg,
+                entry.ago.clone(),
+            ])
         })
         .collect();
 

@@ -2,10 +2,11 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::formatted::{
-    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedFuturesJson, FormattedStreamsJson, FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
+    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
-use hotpath::json::{ChannelLogs, FutureCalls, Route, StreamLogs};
+use hotpath::json::Route;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -182,19 +183,19 @@ impl RouteExt for Route {
                 logs,
             }),
             Route::ChannelLogs { channel_id } => {
-                parse_json::<ChannelLogs>(bytes).map(|logs| DataResponse::ChannelLogs {
+                parse_json::<FormattedChannelLogs>(bytes).map(|logs| DataResponse::ChannelLogs {
                     channel_id: *channel_id,
                     logs,
                 })
             }
             Route::StreamLogs { stream_id } => {
-                parse_json::<StreamLogs>(bytes).map(|logs| DataResponse::StreamLogs {
+                parse_json::<FormattedStreamLogs>(bytes).map(|logs| DataResponse::StreamLogs {
                     stream_id: *stream_id,
                     logs,
                 })
             }
             Route::FutureCalls { future_id } => {
-                parse_json::<FutureCalls>(bytes).map(|calls| DataResponse::FutureCalls {
+                parse_json::<FormattedFutureCalls>(bytes).map(|calls| DataResponse::FutureCalls {
                     future_id: *future_id,
                     calls,
                 })
