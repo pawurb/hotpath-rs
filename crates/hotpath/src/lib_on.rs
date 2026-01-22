@@ -3,6 +3,7 @@ pub use cfg_if::cfg_if;
 pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 
 pub mod channels;
+pub mod formatted;
 pub mod futures;
 pub mod streams;
 #[cfg(feature = "threads")]

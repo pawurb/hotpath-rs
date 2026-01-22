@@ -2,6 +2,7 @@ use serde::{
     ser::{SerializeMap, SerializeSeq, Serializer},
     Deserialize, Serialize,
 };
+#[cfg(feature = "hotpath")]
 use std::collections::HashMap;
 use std::fmt;
 #[cfg(feature = "hotpath")]
