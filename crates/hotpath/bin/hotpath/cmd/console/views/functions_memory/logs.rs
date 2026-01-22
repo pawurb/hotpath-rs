@@ -1,5 +1,5 @@
 use super::super::super::widgets::formatters::{format_time_ago, truncate_right};
-use hotpath::FunctionLogsJson;
+use hotpath::{FunctionLogsJson, ProfilingMode};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
@@ -13,7 +13,7 @@ use ratatui::{
 pub(crate) fn render_function_logs_panel(
     current_function_logs: Option<&FunctionLogsJson>,
     selected_function_name: Option<&str>,
-    _profiling_mode: &str,
+    _profiling_mode: &ProfilingMode,
     total_elapsed: u64,
     area: Rect,
     frame: &mut Frame,

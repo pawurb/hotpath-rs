@@ -66,7 +66,7 @@ pub struct FormattedFunctionData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionsJson {
-    pub profiling_mode: String,
+    pub profiling_mode: ProfilingMode,
     pub time_elapsed: String,
     pub total_elapsed_ns: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -139,7 +139,7 @@ impl FormattedFunctionsJson {
         };
 
         FormattedFunctionsJson {
-            profiling_mode: json.hotpath_profiling_mode.to_string(),
+            profiling_mode: json.hotpath_profiling_mode.clone(),
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
             total_allocated,
