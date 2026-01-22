@@ -4,10 +4,10 @@ use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::formatted::{
     FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionData,
-    FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedStreamsJson,
 };
 use hotpath::json::{
-    ChannelLogs, FutureCalls, FuturesJson as FuturesJsonData, StreamLogs, StreamsJson, ThreadsJson,
+    ChannelLogs, FutureCalls, FuturesJson as FuturesJsonData, StreamLogs, ThreadsJson,
 };
 use std::collections::HashMap;
 use std::time::Instant;
@@ -224,7 +224,7 @@ impl App {
         self.request_function_logs_if_open();
     }
 
-    pub(crate) fn update_streams(&mut self, streams: StreamsJson) {
+    pub(crate) fn update_streams(&mut self, streams: FormattedStreamsJson) {
         // Capture the currently selected stream ID (not index!)
         let selected_stream_id = self
             .streams_table_state

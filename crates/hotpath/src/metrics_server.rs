@@ -1,7 +1,7 @@
 use crate::channels::START_TIME;
 use crate::formatted::{
     FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson,
+    FormattedFunctionsJson, FormattedStreamsJson,
 };
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
@@ -100,7 +100,8 @@ fn handle_request(request: Request) {
         }
         Ok(Route::Streams) => {
             let streams = get_streams_json();
-            respond_json(request, &streams);
+            let formatted = FormattedStreamsJson::from(&streams);
+            respond_json(request, &formatted);
         }
         Ok(Route::Futures) => {
             let futures = get_futures_json();

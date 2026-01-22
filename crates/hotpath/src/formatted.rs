@@ -426,7 +426,7 @@ fn format_log_entry(entry: &LogEntry, current_elapsed_ns: u64) -> FormattedLogEn
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedStreamStats {
     pub id: u64,
     pub source: String,
@@ -455,14 +455,16 @@ impl From<&SerializableStreamStats> for FormattedStreamStats {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedStreamsJson {
+    pub current_elapsed_ns: u64,
     pub streams: Vec<FormattedStreamStats>,
 }
 
 impl From<&StreamsJson> for FormattedStreamsJson {
     fn from(json: &StreamsJson) -> Self {
         FormattedStreamsJson {
+            current_elapsed_ns: json.current_elapsed_ns,
             streams: json
                 .streams
                 .iter()
