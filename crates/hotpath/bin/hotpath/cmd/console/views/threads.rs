@@ -1,7 +1,6 @@
 use super::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_right;
-use hotpath::format_bytes;
-use hotpath::json::ThreadMetrics;
+use hotpath::formatted::FormattedThreadMetrics;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     symbols::border,
@@ -10,27 +9,16 @@ use ratatui::{
     Frame,
 };
 
-fn format_bytes_signed(bytes: i64) -> String {
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-
-    let prefix = if bytes < 0 { "-" } else { "+" };
-    let abs_bytes = bytes.unsigned_abs();
-    format!("{}{}", prefix, format_bytes(abs_bytes))
-}
-
-/// Renders the threads table with thread metrics
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_threads_panel(
-    threads: &[ThreadMetrics],
+    threads: &[FormattedThreadMetrics],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
     thread_position: usize,
     total_threads: usize,
-    rss_bytes: Option<u64>,
+    rss_bytes: Option<&str>,
 ) {
     let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
     let info_area = chunks[0];
@@ -39,9 +27,7 @@ pub(crate) fn render_threads_panel(
     let alloc_enabled = threads.iter().any(|t| t.alloc_bytes.is_some());
 
     let pid = std::process::id();
-    let rss_str = rss_bytes
-        .map(format_bytes)
-        .unwrap_or_else(|| "-".to_string());
+    let rss_str = rss_bytes.unwrap_or("-");
 
     let mut spans = vec![
         Span::raw(" PID: "),
@@ -51,15 +37,7 @@ pub(crate) fn render_threads_panel(
         ),
     ];
 
-    if alloc_enabled {
-        let total_mem: i64 = threads.iter().filter_map(|t| t.mem_diff).sum();
-        let tracked_str = format_bytes(total_mem.unsigned_abs());
-        spans.push(Span::raw("  Alloc - Dealloc: "));
-        spans.push(Span::styled(
-            tracked_str,
-            ratatui::style::Style::default().fg(ratatui::style::Color::Green),
-        ));
-    } else {
+    if !alloc_enabled {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             "Enable 'hotpath-alloc' to track memory usage",
@@ -97,28 +75,16 @@ pub(crate) fn render_threads_panel(
     let rows: Vec<Row> = threads
         .iter()
         .map(|thread| {
-            let cpu_percent_str = match thread.cpu_percent {
-                Some(pct) => format!("{:.1}%", pct),
-                None => "-".to_string(),
-            };
+            let cpu_percent_str = thread.cpu_percent.as_deref().unwrap_or("-");
 
             let (alloc_str, dealloc_str, diff_str) = if alloc_enabled {
                 (
-                    thread
-                        .alloc_bytes
-                        .map(format_bytes)
-                        .unwrap_or_else(|| "-".to_string()),
-                    thread
-                        .dealloc_bytes
-                        .map(format_bytes)
-                        .unwrap_or_else(|| "-".to_string()),
-                    thread
-                        .mem_diff
-                        .map(format_bytes_signed)
-                        .unwrap_or_else(|| "-".to_string()),
+                    thread.alloc_bytes.as_deref().unwrap_or("-"),
+                    thread.dealloc_bytes.as_deref().unwrap_or("-"),
+                    thread.mem_diff.as_deref().unwrap_or("-"),
                 )
             } else {
-                ("N/A".to_string(), "N/A".to_string(), "N/A".to_string())
+                ("N/A", "N/A", "N/A")
             };
 
             let status_str = format!("{} ({})", thread.status, thread.status_code);
@@ -128,8 +94,8 @@ pub(crate) fn render_threads_panel(
                 Cell::from(thread.os_tid.to_string()),
                 Cell::from(status_str),
                 Cell::from(cpu_percent_str),
-                Cell::from(format!("{:.2}s", thread.cpu_user)),
-                Cell::from(format!("{:.2}s", thread.cpu_sys)),
+                Cell::from(thread.cpu_user.as_str()),
+                Cell::from(thread.cpu_sys.as_str()),
                 Cell::from(alloc_str),
                 Cell::from(dealloc_str),
                 Cell::from(diff_str),

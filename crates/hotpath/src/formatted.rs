@@ -493,7 +493,7 @@ impl FormattedStreamLogs {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFutureStats {
     pub id: u64,
     pub source: String,
@@ -516,14 +516,16 @@ impl From<&SerializableFutureStats> for FormattedFutureStats {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFuturesJson {
+    pub current_elapsed_ns: u64,
     pub futures: Vec<FormattedFutureStats>,
 }
 
 impl From<&FuturesJson> for FormattedFuturesJson {
     fn from(json: &FuturesJson) -> Self {
         FormattedFuturesJson {
+            current_elapsed_ns: json.current_elapsed_ns,
             futures: json
                 .futures
                 .iter()
@@ -569,7 +571,7 @@ impl From<&FutureCalls> for FormattedFutureCalls {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedThreadMetrics {
     pub os_tid: u64,
     pub name: String,
@@ -579,11 +581,11 @@ pub struct FormattedThreadMetrics {
     pub cpu_sys: String,
     pub cpu_total: String,
     pub cpu_percent: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alloc_bytes: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub dealloc_bytes: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub mem_diff: Option<String>,
 }
 
@@ -605,18 +607,20 @@ impl From<&ThreadMetrics> for FormattedThreadMetrics {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedThreadsJson {
+    pub current_elapsed_ns: u64,
     pub sample_interval_ms: u64,
     pub threads: Vec<FormattedThreadMetrics>,
     pub thread_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rss_bytes: Option<String>,
 }
 
 impl From<&ThreadsJson> for FormattedThreadsJson {
     fn from(json: &ThreadsJson) -> Self {
         FormattedThreadsJson {
+            current_elapsed_ns: json.current_elapsed_ns,
             sample_interval_ms: json.sample_interval_ms,
             threads: json
                 .threads

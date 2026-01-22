@@ -4,7 +4,7 @@ pub(crate) mod inspect;
 use super::common_styles;
 use crate::cmd::console::app::FuturesFocus;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::SerializableFutureStats;
+use hotpath::formatted::FormattedFutureStats;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
@@ -17,7 +17,7 @@ use ratatui::{
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_futures_panel(
-    stats: &[SerializableFutureStats],
+    stats: &[FormattedFutureStats],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
