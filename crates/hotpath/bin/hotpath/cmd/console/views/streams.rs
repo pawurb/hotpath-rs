@@ -4,7 +4,7 @@ pub(crate) mod logs;
 use super::common_styles;
 use crate::cmd::console::app::StreamsFocus;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::{ChannelState, SerializableStreamStats};
+use hotpath::formatted::FormattedStreamStats;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},
@@ -17,7 +17,7 @@ use ratatui::{
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_streams_panel(
-    stats: &[SerializableStreamStats],
+    stats: &[FormattedStreamStats],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -40,17 +40,15 @@ pub(crate) fn render_streams_panel(
     let rows: Vec<Row> = stats
         .iter()
         .map(|stat| {
-            let (state_text, state_style) = match stat.state {
-                ChannelState::Active => (stat.state.to_string(), Style::default().fg(Color::Green)),
-                ChannelState::Closed => {
-                    (stat.state.to_string(), Style::default().fg(Color::Yellow))
-                }
-                _ => (stat.state.to_string(), Style::default().fg(Color::Gray)),
+            let state_style = match stat.state.as_str() {
+                "Active" => Style::default().fg(Color::Green),
+                "Closed" => Style::default().fg(Color::Yellow),
+                _ => Style::default().fg(Color::Gray),
             };
 
             Row::new(vec![
                 Cell::from(truncate_left(&stat.label, stream_width)),
-                Cell::from(state_text).style(state_style),
+                Cell::from(stat.state.clone()).style(state_style),
                 Cell::from(stat.items_yielded.to_string()),
             ])
         })
