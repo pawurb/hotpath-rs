@@ -1,9 +1,10 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
 use crossbeam_channel::{Receiver, Sender};
+use hotpath::formatted::FormattedFunctionsJson;
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson, Route,
-    StreamLogs, StreamsJson, ThreadsJson,
+    ChannelLogs, ChannelsJson, FunctionLogsJson, FutureCalls, FuturesJson, Route, StreamLogs,
+    StreamsJson, ThreadsJson,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -155,10 +156,10 @@ impl RouteExt for Route {
     fn parse_bytes(&self, bytes: &[u8]) -> DataResponse {
         match self {
             Route::FunctionsTiming => {
-                parse_json::<FunctionsJson>(bytes).map(DataResponse::FunctionsTiming)
+                parse_json::<FormattedFunctionsJson>(bytes).map(DataResponse::FunctionsTiming)
             }
             Route::FunctionsAlloc => {
-                parse_json::<FunctionsJson>(bytes).map(DataResponse::FunctionsAlloc)
+                parse_json::<FormattedFunctionsJson>(bytes).map(DataResponse::FunctionsAlloc)
             }
             Route::Channels => parse_json::<ChannelsJson>(bytes).map(DataResponse::Channels),
             Route::Streams => parse_json::<StreamsJson>(bytes).map(DataResponse::Streams),

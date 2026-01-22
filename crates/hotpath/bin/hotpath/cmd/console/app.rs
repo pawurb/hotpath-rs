@@ -1,8 +1,9 @@
 //! TUI application state and main run loop
 
 use crossbeam_channel::{Receiver, Sender};
+use hotpath::formatted::FormattedFunctionsJson;
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCall, FutureCalls,
+    ChannelLogs, ChannelsJson, FunctionLogsJson, FutureCall, FutureCalls,
     FuturesJson as FuturesJsonData, LogEntry, StreamLogs, StreamsJson, ThreadsJson,
 };
 use ratatui::widgets::TableState;
@@ -114,8 +115,8 @@ pub(crate) struct CachedStreamLogs {
 }
 
 pub(crate) struct App {
-    pub(crate) timing_functions: FunctionsJson,
-    pub(crate) memory_functions: FunctionsJson,
+    pub(crate) timing_functions: FormattedFunctionsJson,
+    pub(crate) memory_functions: FormattedFunctionsJson,
     pub(crate) memory_available: bool,
     pub(crate) channels: ChannelsJson,
     pub(crate) streams: StreamsJson,
@@ -183,9 +184,11 @@ impl App {
         super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), base_url.clone());
         super::input::spawn_input_reader(event_tx);
 
-        let empty_functions = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 0,
+        let empty_functions = FormattedFunctionsJson {
+            profiling_mode: "timing".to_string(),
+            time_elapsed: "0 ns".to_string(),
+            total_elapsed_ns: 0,
+            total_allocated: None,
             description: "Waiting for data...".to_string(),
             caller_name: "unknown".to_string(),
             percentiles: vec![95],
@@ -264,7 +267,7 @@ impl App {
         self.exit = true;
     }
 
-    pub(crate) fn active_functions(&self) -> &FunctionsJson {
+    pub(crate) fn active_functions(&self) -> &FormattedFunctionsJson {
         match self.selected_tab {
             SelectedTab::Timing => &self.timing_functions,
             SelectedTab::Memory => &self.memory_functions,
