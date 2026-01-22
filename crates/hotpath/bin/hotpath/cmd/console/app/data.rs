@@ -3,8 +3,8 @@
 use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::formatted::{
-    FormattedFunctionAllocLogsJson, FormattedFunctionData, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson,
+    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionData,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
 };
 use hotpath::json::{
     ChannelLogs, FutureCalls, FuturesJson as FuturesJsonData, StreamLogs, StreamsJson, ThreadsJson,
@@ -81,7 +81,7 @@ impl App {
         self.error_message = Some(error);
     }
 
-    pub(crate) fn update_channels(&mut self, channels: hotpath::json::ChannelsJson) {
+    pub(crate) fn update_channels(&mut self, channels: FormattedChannelsJson) {
         // Capture the currently selected channel ID (not index!)
         let selected_channel_id = self
             .channels_table_state

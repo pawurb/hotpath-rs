@@ -3,9 +3,8 @@ pub(crate) mod logs;
 
 use super::common_styles;
 use crate::cmd::console::app::ChannelsFocus;
-use crate::cmd::console::widgets::formatters::{queue_status, truncate_left};
-use hotpath::format_bytes;
-use hotpath::json::{ChannelState, ChannelType, SerializableChannelStats};
+use crate::cmd::console::widgets::formatters::truncate_left;
+use hotpath::formatted::FormattedChannelStats;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},
@@ -14,11 +13,42 @@ use ratatui::{
     Frame,
 };
 
+fn queue_status_cell(queue_status: &str, queued: u64) -> Cell<'static> {
+    if queue_status.contains('∞') {
+        return Cell::from("N/A");
+    }
+
+    let parts: Vec<&str> = queue_status.split('/').collect();
+    if parts.len() != 2 {
+        return Cell::from(format!("[{}]", queue_status));
+    }
+
+    let capacity: u64 = match parts[1].parse() {
+        Ok(c) => c,
+        Err(_) => return Cell::from(format!("[{}]", queue_status)),
+    };
+
+    if capacity == 0 {
+        return Cell::from(format!("[{}]", queue_status));
+    }
+
+    let percentage = (queued as f64 / capacity as f64 * 100.0).min(100.0);
+    let color = if percentage >= 100.0 {
+        Color::Red
+    } else if percentage >= 50.0 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
+
+    Cell::from(format!("[{}]", queue_status)).style(Style::default().fg(color))
+}
+
 /// Renders the channels table with channel statistics
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_channels_panel(
-    stats: &[SerializableChannelStats],
+    stats: &[FormattedChannelStats],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -45,28 +75,31 @@ pub(crate) fn render_channels_panel(
     let rows: Vec<Row> = stats
         .iter()
         .map(|stat| {
-            let (state_text, state_style) = match stat.state {
-                ChannelState::Active => (stat.state.to_string(), Style::default().fg(Color::Green)),
-                ChannelState::Closed => {
-                    (stat.state.to_string(), Style::default().fg(Color::Yellow))
-                }
-                ChannelState::Full => {
-                    (format!("⚠ {}", stat.state), Style::default().fg(Color::Red))
-                }
-                ChannelState::Notified => {
-                    (stat.state.to_string(), Style::default().fg(Color::Blue))
-                }
+            let state_style = match stat.state.as_str() {
+                "active" => Style::default().fg(Color::Green),
+                "closed" => Style::default().fg(Color::Yellow),
+                "full" => Style::default().fg(Color::Red),
+                "notified" => Style::default().fg(Color::Blue),
+                _ => Style::default(),
             };
 
-            let mem_cell = match &stat.channel_type {
-                ChannelType::Unbounded => Cell::from("N/A"),
-                _ => Cell::from(format_bytes(stat.queued_bytes)),
+            let state_text = if stat.state == "full" {
+                format!("⚠ {}", stat.state)
+            } else {
+                stat.state.clone()
             };
-            let queue_cell = queue_status(stat.queued, &stat.channel_type, 8);
+
+            let mem_cell = if stat.channel_type == "unbounded" {
+                Cell::from("N/A")
+            } else {
+                Cell::from(stat.queued_bytes.clone())
+            };
+
+            let queue_cell = queue_status_cell(&stat.queue_status, stat.queued);
 
             Row::new(vec![
                 Cell::from(truncate_left(&stat.label, channel_width)),
-                Cell::from(stat.channel_type.to_string()),
+                Cell::from(stat.channel_type.clone()),
                 Cell::from(state_text).style(state_style),
                 Cell::from(stat.sent_count.to_string()),
                 Cell::from(stat.received_count.to_string()),

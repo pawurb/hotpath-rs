@@ -2,11 +2,11 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::formatted::{
-    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson,
 };
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FutureCalls, FuturesJson, Route, StreamLogs, StreamsJson,
-    ThreadsJson,
+    ChannelLogs, FutureCalls, FuturesJson, Route, StreamLogs, StreamsJson, ThreadsJson,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -163,7 +163,9 @@ impl RouteExt for Route {
             Route::FunctionsAlloc => {
                 parse_json::<FormattedFunctionsJson>(bytes).map(DataResponse::FunctionsAlloc)
             }
-            Route::Channels => parse_json::<ChannelsJson>(bytes).map(DataResponse::Channels),
+            Route::Channels => {
+                parse_json::<FormattedChannelsJson>(bytes).map(DataResponse::Channels)
+            }
             Route::Streams => parse_json::<StreamsJson>(bytes).map(DataResponse::Streams),
             Route::Threads => parse_json::<ThreadsJson>(bytes).map(DataResponse::Threads),
             Route::Futures => parse_json::<FuturesJson>(bytes).map(DataResponse::Futures),

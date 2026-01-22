@@ -2,11 +2,12 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::formatted::{
-    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+    FormattedChannelsJson, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson,
 };
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FutureCall, FutureCalls, FuturesJson as FuturesJsonData, LogEntry,
-    StreamLogs, StreamsJson, ThreadsJson,
+    ChannelLogs, FutureCall, FutureCalls, FuturesJson as FuturesJsonData, LogEntry, StreamLogs,
+    StreamsJson, ThreadsJson,
 };
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
@@ -120,7 +121,7 @@ pub(crate) struct App {
     pub(crate) timing_functions: FormattedFunctionsJson,
     pub(crate) memory_functions: FormattedFunctionsJson,
     pub(crate) memory_available: bool,
-    pub(crate) channels: ChannelsJson,
+    pub(crate) channels: FormattedChannelsJson,
     pub(crate) streams: StreamsJson,
 
     pub(crate) timing_table_state: TableState,
@@ -202,7 +203,7 @@ impl App {
             timing_functions: empty_functions.clone(),
             memory_functions: empty_functions,
             memory_available: true,
-            channels: hotpath::json::ChannelsJson {
+            channels: FormattedChannelsJson {
                 current_elapsed_ns: 0,
                 channels: vec![],
             },
