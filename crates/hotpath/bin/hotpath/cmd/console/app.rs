@@ -185,7 +185,7 @@ impl App {
         super::input::spawn_input_reader(event_tx);
 
         let empty_functions = FormattedFunctionsJson {
-            profiling_mode: "timing".to_string(),
+            profiling_mode: hotpath::ProfilingMode::Timing,
             time_elapsed: "0 ns".to_string(),
             total_elapsed_ns: 0,
             total_allocated: None,
