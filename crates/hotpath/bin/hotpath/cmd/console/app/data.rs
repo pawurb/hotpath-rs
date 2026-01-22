@@ -2,9 +2,10 @@
 
 use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
+use hotpath::formatted::{FormattedFunctionData, FormattedFunctionsJson};
 use hotpath::json::{
-    ChannelLogs, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson as FuturesJsonData,
-    StreamLogs, StreamsJson, ThreadsJson,
+    ChannelLogs, FunctionLogsJson, FutureCalls, FuturesJson as FuturesJsonData, StreamLogs,
+    StreamsJson, ThreadsJson,
 };
 use std::collections::HashMap;
 use std::time::Instant;
@@ -12,7 +13,7 @@ use tracing::{trace, warn};
 
 #[hotpath::measure_all]
 impl App {
-    pub(crate) fn update_timing_metrics(&mut self, metrics: FunctionsJson) {
+    pub(crate) fn update_timing_metrics(&mut self, metrics: FormattedFunctionsJson) {
         // Capture the currently selected function name (not index!)
         let selected_function_name = self.selected_function_name();
 
@@ -24,7 +25,7 @@ impl App {
 
         if let Some(function_name) = selected_function_name {
             // Find the new index of the previously selected function in sorted order
-            if let Some(new_idx) = entries.iter().position(|(name, _)| name == &function_name) {
+            if let Some(new_idx) = entries.iter().position(|f| f.name == function_name) {
                 self.timing_table_state.select(Some(new_idx));
             } else {
                 // Function no longer exists, select the last one
@@ -43,7 +44,7 @@ impl App {
         }
     }
 
-    pub(crate) fn update_memory_metrics(&mut self, metrics: FunctionsJson) {
+    pub(crate) fn update_memory_metrics(&mut self, metrics: FormattedFunctionsJson) {
         // Capture the currently selected function name (not index!)
         let selected_function_name = self.selected_function_name();
 
@@ -55,7 +56,7 @@ impl App {
 
         if let Some(function_name) = selected_function_name {
             // Find the new index of the previously selected function in sorted order
-            if let Some(new_idx) = entries.iter().position(|(name, _)| name == &function_name) {
+            if let Some(new_idx) = entries.iter().position(|f| f.name == function_name) {
                 self.memory_table_state.select(Some(new_idx));
             } else {
                 // Function no longer exists, select the last one
@@ -155,12 +156,12 @@ impl App {
     }
 
     #[hotpath::measure(log = true)]
-    pub(crate) fn get_timing_measurements(&self) -> &[(String, Vec<hotpath::MetricType>)] {
+    pub(crate) fn get_timing_measurements(&self) -> &[FormattedFunctionData] {
         &self.timing_functions.data
     }
 
     #[hotpath::measure(log = true)]
-    pub(crate) fn get_memory_measurements(&self) -> &[(String, Vec<hotpath::MetricType>)] {
+    pub(crate) fn get_memory_measurements(&self) -> &[FormattedFunctionData] {
         &self.memory_functions.data
     }
 
@@ -173,7 +174,7 @@ impl App {
         };
         table_state
             .selected()
-            .and_then(|idx| entries.get(idx).map(|(name, _)| name.clone()))
+            .and_then(|idx| entries.get(idx).map(|f| f.name.clone()))
     }
 
     pub(crate) fn update_function_logs(&mut self, function_logs: FunctionLogsJson) {

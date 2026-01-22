@@ -1,3 +1,4 @@
+use crate::formatted::FormattedFunctionsJson;
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
@@ -73,11 +74,15 @@ fn handle_request(request: Request) {
 
     match path.parse::<Route>() {
         Ok(Route::FunctionsTiming) => {
-            let metrics = get_functions_timing_json();
-            respond_json(request, &metrics);
+            let json = get_functions_timing_json();
+            let formatted = FormattedFunctionsJson::from(&json);
+            respond_json(request, &formatted);
         }
         Ok(Route::FunctionsAlloc) => match get_functions_alloc_json() {
-            Some(metrics) => respond_json(request, &metrics),
+            Some(json) => {
+                let formatted = FormattedFunctionsJson::from(&json);
+                respond_json(request, &formatted);
+            }
             None => respond_error(
                 request,
                 404,

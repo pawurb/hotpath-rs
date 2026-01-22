@@ -83,12 +83,29 @@ pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rec
         .map(|s| s + 1)
         .unwrap_or(0);
 
-    let rows = entries.iter().map(|(function_name, metrics)| {
-        let short_name = hotpath::shorten_function_name(function_name);
+    let percentile_keys: Vec<String> = app
+        .memory_functions
+        .percentiles
+        .iter()
+        .map(|p| format!("p{}", p))
+        .collect();
 
-        let cells = std::iter::once(Cell::from(short_name))
-            .chain(metrics.iter().map(|m| Cell::from(format!("{}", m))))
-            .collect::<Vec<_>>();
+    let rows = entries.iter().map(|func| {
+        let short_name = hotpath::shorten_function_name(&func.name);
+
+        let mut cells = vec![
+            Cell::from(short_name),
+            Cell::from(func.calls.to_string()),
+            Cell::from(func.avg.clone()),
+        ];
+
+        for key in &percentile_keys {
+            let value = func.percentiles.get(key).cloned().unwrap_or_default();
+            cells.push(Cell::from(value));
+        }
+
+        cells.push(Cell::from(func.total.clone()));
+        cells.push(Cell::from(func.percent_total.clone()));
 
         Row::new(cells)
     });

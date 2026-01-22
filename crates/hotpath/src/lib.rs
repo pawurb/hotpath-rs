@@ -30,8 +30,6 @@ mod lib_on;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub use lib_on::channels;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
-pub use lib_on::formatted;
-#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub use lib_on::futures;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub use lib_on::streams;
@@ -60,6 +58,9 @@ pub(crate) mod mcp_server;
 pub mod json;
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
 pub use json::Route;
+
+#[cfg(any(feature = "hotpath", feature = "tui"))]
+pub mod formatted;
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub(crate) mod tid;

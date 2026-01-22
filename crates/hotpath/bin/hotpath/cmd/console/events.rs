@@ -1,9 +1,10 @@
 //! Event types for async TUI communication
 
 use crossterm::event::KeyCode;
+use hotpath::formatted::FormattedFunctionsJson;
 use hotpath::json::{
-    ChannelLogs, ChannelsJson, FunctionLogsJson, FunctionsJson, FutureCalls, FuturesJson, Route,
-    StreamLogs, StreamsJson, ThreadsJson,
+    ChannelLogs, ChannelsJson, FunctionLogsJson, FutureCalls, FuturesJson, Route, StreamLogs,
+    StreamsJson, ThreadsJson,
 };
 
 #[derive(Debug)]
@@ -46,8 +47,8 @@ impl DataRequest {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub(crate) enum DataResponse {
-    FunctionsTiming(FunctionsJson),
-    FunctionsAlloc(FunctionsJson),
+    FunctionsTiming(FormattedFunctionsJson),
+    FunctionsAlloc(FormattedFunctionsJson),
     FunctionsAllocUnavailable,
     FunctionLogsTiming {
         function_name: String,

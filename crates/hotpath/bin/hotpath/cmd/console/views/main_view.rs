@@ -63,8 +63,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                 timing_logs::render_function_logs_panel(
                     app.current_function_logs.as_ref(),
                     app.selected_function_name().as_deref(),
-                    &app.timing_functions.hotpath_profiling_mode,
-                    app.timing_functions.total_elapsed,
+                    &app.timing_functions.profiling_mode,
+                    app.timing_functions.total_elapsed_ns,
                     content_chunks[1],
                     frame,
                     &mut app.function_logs_table_state,
@@ -77,7 +77,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                             inspected_log,
                             main_chunks[2],
                             frame,
-                            app.timing_functions.total_elapsed,
+                            app.timing_functions.total_elapsed_ns,
                         );
                     }
                 }
@@ -96,8 +96,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                 memory_logs::render_function_logs_panel(
                     app.current_function_logs.as_ref(),
                     app.selected_function_name().as_deref(),
-                    &app.memory_functions.hotpath_profiling_mode,
-                    app.memory_functions.total_elapsed,
+                    &app.memory_functions.profiling_mode,
+                    app.memory_functions.total_elapsed_ns,
                     content_chunks[1],
                     frame,
                     &mut app.function_logs_table_state,
@@ -110,7 +110,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                             inspected_log,
                             main_chunks[2],
                             frame,
-                            app.memory_functions.total_elapsed,
+                            app.memory_functions.total_elapsed_ns,
                         );
                     }
                 }

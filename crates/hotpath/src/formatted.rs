@@ -3,7 +3,7 @@
 //! These types provide human-readable formatting for profiling data,
 //! suitable for both LLM-based tools (MCP) and terminal UI display.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::json::{
@@ -53,7 +53,7 @@ pub fn format_bytes_signed(bytes: i64) -> String {
     format!("{}{}", sign, format_bytes(abs_bytes))
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionData {
     pub name: String,
     pub calls: u64,
@@ -64,10 +64,11 @@ pub struct FormattedFunctionData {
     pub percent_total: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionsJson {
     pub profiling_mode: String,
     pub time_elapsed: String,
+    pub total_elapsed_ns: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_allocated: Option<String>,
     pub description: String,
@@ -140,6 +141,7 @@ impl FormattedFunctionsJson {
         FormattedFunctionsJson {
             profiling_mode: json.hotpath_profiling_mode.to_string(),
             time_elapsed,
+            total_elapsed_ns: current_elapsed_ns,
             total_allocated,
             description: json.description.clone(),
             caller_name: json.caller_name.clone(),
