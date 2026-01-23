@@ -19,7 +19,8 @@ pub(crate) mod wrapper;
 pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
-pub use crate::json::{FutureCall, FutureCalls, FutureState, FuturesJson, SerializableFutureStats};
+use crate::formatted::{FormattedFutureStats, FormattedFuturesJson};
+pub use crate::json::{FutureCall, FutureCalls, FutureState, SerializableFutureStats};
 pub use crate::Format;
 
 pub(crate) static FUTURE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -309,10 +310,10 @@ pub(crate) fn get_sorted_future_stats() -> Vec<FutureStats> {
     stats
 }
 
-pub fn get_futures_json() -> FuturesJson {
+pub fn get_futures_json() -> FormattedFuturesJson {
     let futures = get_sorted_future_stats()
         .iter()
-        .map(SerializableFutureStats::from)
+        .map(|stats| FormattedFutureStats::from(&SerializableFutureStats::from(stats)))
         .collect();
 
     let current_elapsed_ns = START_TIME
@@ -320,7 +321,7 @@ pub fn get_futures_json() -> FuturesJson {
         .map(|t| t.elapsed().as_nanos() as u64)
         .unwrap_or(0);
 
-    FuturesJson {
+    FormattedFuturesJson {
         current_elapsed_ns,
         futures,
     }

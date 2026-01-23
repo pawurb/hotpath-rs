@@ -13,7 +13,9 @@ mod collector;
 #[path = "threads/collector_linux.rs"]
 mod collector;
 
-pub use crate::json::{ThreadMetrics, ThreadsJson};
+use crate::formatted::{FormattedThreadMetrics, FormattedThreadsJson};
+pub use crate::json::ThreadMetrics;
+use crate::output::format_bytes;
 
 pub fn thread_metrics_with_percentage(
     mut metrics: ThreadMetrics,
@@ -149,28 +151,32 @@ fn get_rss_bytes() -> Option<u64> {
 }
 
 /// Get current thread metrics as JSON
-pub fn get_threads_json() -> ThreadsJson {
+pub fn get_threads_json() -> FormattedThreadsJson {
     let rss_bytes = get_rss_bytes();
 
     if let Some(state) = THREADS_STATE.get() {
         if let Ok(state_guard) = state.read() {
             let current_elapsed_ns = state_guard.start_time.elapsed().as_nanos() as u64;
 
-            return ThreadsJson {
+            return FormattedThreadsJson {
                 current_elapsed_ns,
                 sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
-                threads: state_guard.current_metrics.clone(),
+                threads: state_guard
+                    .current_metrics
+                    .iter()
+                    .map(FormattedThreadMetrics::from)
+                    .collect(),
                 thread_count: state_guard.current_metrics.len(),
-                rss_bytes,
+                rss_bytes: rss_bytes.map(format_bytes),
             };
         }
     }
 
-    ThreadsJson {
+    FormattedThreadsJson {
         current_elapsed_ns: 0,
         sample_interval_ms: DEFAULT_SAMPLE_INTERVAL_MS,
         threads: Vec::new(),
         thread_count: 0,
-        rss_bytes,
+        rss_bytes: rss_bytes.map(format_bytes),
     }
 }
