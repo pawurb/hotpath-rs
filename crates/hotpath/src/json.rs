@@ -109,44 +109,12 @@ impl LogEntry {
     }
 }
 
-/// Serializable version of channel statistics for JSON responses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableChannelStats {
-    pub id: u64,
-    pub source: String,
-    pub label: String,
-    pub has_custom_label: bool,
-    pub channel_type: ChannelType,
-    pub state: ChannelState,
-    pub sent_count: u64,
-    pub received_count: u64,
-    pub queued: u64,
-    pub type_name: String,
-    pub type_size: usize,
-    pub queued_bytes: u64,
-    pub iter: u32,
-}
-
 /// Serializable log response containing sent and received logs for channels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelLogs {
     pub id: String,
     pub sent_logs: Vec<LogEntry>,
     pub received_logs: Vec<LogEntry>,
-}
-
-/// Serializable version of stream statistics for JSON responses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableStreamStats {
-    pub id: u64,
-    pub source: String,
-    pub label: String,
-    pub has_custom_label: bool,
-    pub state: ChannelState,
-    pub items_yielded: u64,
-    pub type_name: String,
-    pub type_size: usize,
-    pub iter: u32,
 }
 
 /// Serializable log response containing yielded logs for streams.
@@ -206,17 +174,6 @@ impl FutureCall {
             result: None,
         }
     }
-}
-
-/// Serializable version of future statistics for JSON responses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableFutureStats {
-    pub id: u64,
-    pub source: String,
-    pub label: String,
-    pub has_custom_label: bool,
-    pub call_count: u64,
-    pub total_polls: u64,
 }
 
 /// Serializable response for future calls.

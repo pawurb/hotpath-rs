@@ -8,7 +8,7 @@ use prettytable::{Cell, Row, Table};
 
 use crate::channels::resolve_label;
 use crate::formatted::{FormattedStreamStats, FormattedStreamsJson};
-use crate::streams::{get_sorted_stream_stats, SerializableStreamStats};
+use crate::streams::get_sorted_stream_stats;
 use crate::Format;
 
 /// Builder for creating a StreamsGuard with custom configuration.
@@ -166,10 +166,7 @@ impl Drop for StreamsGuard {
             Format::Json => {
                 let streams_json = FormattedStreamsJson {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
-                    streams: streams
-                        .iter()
-                        .map(|s| FormattedStreamStats::from(&SerializableStreamStats::from(s)))
-                        .collect(),
+                    streams: streams.iter().map(FormattedStreamStats::from).collect(),
                 };
                 match serde_json::to_string(&streams_json) {
                     Ok(json) => println!("{}", json),
@@ -179,10 +176,7 @@ impl Drop for StreamsGuard {
             Format::JsonPretty => {
                 let streams_json = FormattedStreamsJson {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
-                    streams: streams
-                        .iter()
-                        .map(|s| FormattedStreamStats::from(&SerializableStreamStats::from(s)))
-                        .collect(),
+                    streams: streams.iter().map(FormattedStreamStats::from).collect(),
                 };
                 match serde_json::to_string_pretty(&streams_json) {
                     Ok(json) => println!("{}", json),
