@@ -8,7 +8,7 @@ use crossbeam_channel::{bounded, Sender};
 use crate::channels::START_TIME;
 use crate::formatted::FormattedFunctionsJson;
 use crate::metrics_server::RECV_TIMEOUT_MS;
-use crate::{FunctionLogsJson, FunctionsJson};
+use crate::FunctionLogsJson;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
@@ -167,16 +167,7 @@ pub(crate) fn get_functions_timing_json() -> FormattedFunctionsJson {
         return formatted;
     }
 
-    let current_elapsed_ns = get_current_elapsed_ns();
-    let fallback = FunctionsJson {
-        hotpath_profiling_mode: crate::output::ProfilingMode::Timing,
-        total_elapsed: 0,
-        description: "No timing data available yet".to_string(),
-        caller_name: "hotpath".to_string(),
-        percentiles: vec![95],
-        data: Vec::new(),
-    };
-    FormattedFunctionsJson::new(&fallback, current_elapsed_ns)
+    FormattedFunctionsJson::empty_fallback(get_current_elapsed_ns())
 }
 
 pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {

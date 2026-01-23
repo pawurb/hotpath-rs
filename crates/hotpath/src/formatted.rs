@@ -11,8 +11,8 @@ use crate::json::{
     SerializableFutureStats, SerializableStreamStats, StreamLogs, ThreadMetrics,
 };
 use crate::output::{
-    format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricType,
-    MetricsProvider, ProfilingMode,
+    format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, MetricType, MetricsProvider,
+    ProfilingMode,
 };
 
 pub fn format_time_ago(nanos_ago: u64) -> String {
@@ -77,32 +77,6 @@ pub struct FormattedFunctionsJson {
 }
 
 impl FormattedFunctionsJson {
-    pub fn new(json: &FunctionsJson, current_elapsed_ns: u64) -> Self {
-        let is_alloc = matches!(json.hotpath_profiling_mode, ProfilingMode::Alloc);
-        let percentiles_config = &json.percentiles;
-        let data = format_metric_data(&json.data, percentiles_config);
-
-        let (time_elapsed, total_allocated) = if is_alloc {
-            (
-                format_duration(current_elapsed_ns),
-                Some(format_bytes(json.total_elapsed)),
-            )
-        } else {
-            (format_duration(json.total_elapsed), None)
-        };
-
-        FormattedFunctionsJson {
-            profiling_mode: json.hotpath_profiling_mode.clone(),
-            time_elapsed,
-            total_elapsed_ns: current_elapsed_ns,
-            total_allocated,
-            description: json.description.clone(),
-            caller_name: json.caller_name.clone(),
-            percentiles: json.percentiles.clone(),
-            data,
-        }
-    }
-
     pub fn from_provider(provider: &dyn MetricsProvider<'_>, current_elapsed_ns: u64) -> Self {
         let profiling_mode = provider.profiling_mode();
         let is_alloc = matches!(profiling_mode, ProfilingMode::Alloc);
@@ -129,6 +103,19 @@ impl FormattedFunctionsJson {
             caller_name: provider.caller_name().to_string(),
             percentiles: percentiles_config,
             data,
+        }
+    }
+
+    pub fn empty_fallback(current_elapsed_ns: u64) -> Self {
+        FormattedFunctionsJson {
+            profiling_mode: ProfilingMode::Timing,
+            time_elapsed: format_duration(0),
+            total_elapsed_ns: current_elapsed_ns,
+            total_allocated: None,
+            description: "No timing data available yet".to_string(),
+            caller_name: "hotpath".to_string(),
+            percentiles: vec![95],
+            data: Vec::new(),
         }
     }
 }
@@ -182,12 +169,6 @@ fn format_metric_data(
             }
         })
         .collect()
-}
-
-impl From<&FunctionsJson> for FormattedFunctionsJson {
-    fn from(json: &FunctionsJson) -> Self {
-        Self::new(json, json.total_elapsed)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
