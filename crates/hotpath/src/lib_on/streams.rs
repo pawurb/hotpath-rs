@@ -16,7 +16,8 @@ pub use guard::{StreamsGuard, StreamsGuardBuilder};
 
 pub(crate) mod wrapper;
 
-pub use crate::json::{ChannelState, LogEntry, SerializableStreamStats, StreamLogs, StreamsJson};
+use crate::formatted::{FormattedStreamStats, FormattedStreamsJson};
+pub use crate::json::{ChannelState, LogEntry, SerializableStreamStats, StreamLogs};
 use crate::metrics_server::METRICS_SERVER_PORT;
 pub use crate::Format;
 
@@ -312,10 +313,10 @@ pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
     stats
 }
 
-pub fn get_streams_json() -> StreamsJson {
+pub fn get_streams_json() -> FormattedStreamsJson {
     let streams = get_sorted_stream_stats()
         .iter()
-        .map(SerializableStreamStats::from)
+        .map(|stats| FormattedStreamStats::from(&SerializableStreamStats::from(stats)))
         .collect();
 
     let current_elapsed_ns = crate::channels::START_TIME
@@ -324,7 +325,7 @@ pub fn get_streams_json() -> StreamsJson {
         .elapsed()
         .as_nanos() as u64;
 
-    StreamsJson {
+    FormattedStreamsJson {
         current_elapsed_ns,
         streams,
     }
