@@ -673,7 +673,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::FunctionsJson;
+        use hotpath::formatted::FormattedFunctionsJson;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -736,7 +736,7 @@ pub mod tests {
         }
 
         // Parse JSON to verify structure
-        let timing_response: FunctionsJson =
+        let timing_response: FormattedFunctionsJson =
             serde_json::from_str(&timing_json).expect("Failed to parse timing JSON");
 
         // Test /functions_alloc endpoint
@@ -764,13 +764,13 @@ pub mod tests {
         }
 
         // Parse alloc JSON to verify structure
-        let _alloc_response: FunctionsJson =
+        let _alloc_response: FormattedFunctionsJson =
             serde_json::from_str(&alloc_json).expect("Failed to parse alloc JSON");
 
-        if let Some((first_function_name, _)) = timing_response.data.first() {
+        if let Some(first) = timing_response.data.first() {
             use base64::Engine;
             let encoded_name =
-                base64::engine::general_purpose::STANDARD.encode(first_function_name.as_bytes());
+                base64::engine::general_purpose::STANDARD.encode(first.name.as_bytes());
 
             // Test timing logs endpoint
             let timing_logs_url = format!(
