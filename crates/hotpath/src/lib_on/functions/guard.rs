@@ -5,8 +5,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 
+use crate::formatted::FormattedFunctionsJson;
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crate::output::{FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricsProvider};
+use crate::output::{FunctionLogEntry, FunctionLogsJson, MetricsProvider};
 use crate::output_on::{JsonPrettyReporter, JsonReporter, TableReporter};
 use crate::Reporter;
 
@@ -430,20 +431,18 @@ impl FunctionsGuard {
                                     FunctionsQuery::Alloc(response_tx) => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
-                                                // Create allocation metrics snapshot
-                                                use crate::output::MetricsProvider;
                                                 let total_elapsed = worker_start_time.elapsed();
-                                                let metrics_provider = StatsData::new(
+                                                let current_elapsed_ns = total_elapsed.as_nanos() as u64;
+                                                let provider = StatsData::new(
                                                     &local_stats,
                                                     total_elapsed,
                                                     worker_percentiles.clone(),
                                                     worker_caller_name,
                                                     worker_limit,
                                                 );
-                                                let metrics_json = FunctionsJson::from(&metrics_provider as &dyn MetricsProvider);
-                                                let _ = response_tx.send(Some(metrics_json));
+                                                let formatted = FormattedFunctionsJson::from_provider(&provider, current_elapsed_ns);
+                                                let _ = response_tx.send(Some(formatted));
                                             } else {
-                                                // Allocation profiling not available without hotpath-alloc feature
                                                 let _ = response_tx.send(None);
                                             }
                                         }
@@ -451,30 +450,29 @@ impl FunctionsGuard {
                                     FunctionsQuery::Timing(response_tx) => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
-                                                // Create timing metrics snapshot
-                                                use crate::output::MetricsProvider;
                                                 let total_elapsed = worker_start_time.elapsed();
-                                                let metrics_provider = TimingStatsData::new(
+                                                let current_elapsed_ns = total_elapsed.as_nanos() as u64;
+                                                let provider = TimingStatsData::new(
                                                     &local_stats,
                                                     total_elapsed,
                                                     worker_percentiles.clone(),
                                                     worker_caller_name,
                                                     worker_limit,
                                                 );
-                                                let metrics_json = FunctionsJson::from(&metrics_provider as &dyn MetricsProvider);
-                                                let _ = response_tx.send(metrics_json);
+                                                let formatted = FormattedFunctionsJson::from_provider(&provider, current_elapsed_ns);
+                                                let _ = response_tx.send(formatted);
                                             } else {
-                                                use crate::output::MetricsProvider;
                                                 let total_elapsed = worker_start_time.elapsed();
-                                                let metrics_provider = StatsData::new(
+                                                let current_elapsed_ns = total_elapsed.as_nanos() as u64;
+                                                let provider = StatsData::new(
                                                     &local_stats,
                                                     total_elapsed,
                                                     worker_percentiles.clone(),
                                                     worker_caller_name,
                                                     worker_limit,
                                                 );
-                                                let metrics_json = FunctionsJson::from(&metrics_provider as &dyn MetricsProvider);
-                                                let _ = response_tx.send(metrics_json);
+                                                let formatted = FormattedFunctionsJson::from_provider(&provider, current_elapsed_ns);
+                                                let _ = response_tx.send(formatted);
                                             }
                                         }
                                     }

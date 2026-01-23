@@ -5,7 +5,10 @@ use std::{sync::OnceLock, sync::RwLock, time::Duration};
 use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
 
-use crate::{metrics_server::RECV_TIMEOUT_MS, FunctionLogsJson, FunctionsJson};
+use crate::channels::START_TIME;
+use crate::formatted::FormattedFunctionsJson;
+use crate::metrics_server::RECV_TIMEOUT_MS;
+use crate::{FunctionLogsJson, FunctionsJson};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
@@ -115,9 +118,9 @@ pub mod guard;
 /// Query request sent from TUI HTTP server to profiler worker thread
 pub(crate) enum FunctionsQuery {
     /// Request timing metrics snapshot
-    Timing(Sender<FunctionsJson>),
+    Timing(Sender<FormattedFunctionsJson>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
-    Alloc(Sender<Option<FunctionsJson>>),
+    Alloc(Sender<Option<FormattedFunctionsJson>>),
     /// Request timing function logs for a specific function (returns None if function not found)
     LogsTiming {
         function_name: String,
@@ -130,7 +133,13 @@ pub(crate) enum FunctionsQuery {
     },
 }
 
-/// Helper to send a query to the functions worker and receive the response.
+fn get_current_elapsed_ns() -> u64 {
+    START_TIME
+        .get()
+        .map(|start| start.elapsed().as_nanos() as u64)
+        .unwrap_or(0)
+}
+
 fn query_functions_state<T, F>(make_query: F) -> Option<T>
 where
     F: FnOnce(Sender<T>) -> FunctionsQuery,
@@ -153,24 +162,23 @@ where
     }
 }
 
-// Get instrumented functions profiling information
-pub(crate) fn get_functions_timing_json() -> FunctionsJson {
-    if let Some(metrics) = try_get_functions_timing_from_worker() {
-        return metrics;
+pub(crate) fn get_functions_timing_json() -> FormattedFunctionsJson {
+    if let Some(formatted) = query_functions_state(FunctionsQuery::Timing) {
+        return formatted;
     }
 
-    // Fallback if query fails: return empty functions data
-    FunctionsJson {
+    let current_elapsed_ns = get_current_elapsed_ns();
+    let fallback = FunctionsJson {
         hotpath_profiling_mode: crate::output::ProfilingMode::Timing,
         total_elapsed: 0,
         description: "No timing data available yet".to_string(),
         caller_name: "hotpath".to_string(),
         percentiles: vec![95],
         data: Vec::new(),
-    }
+    };
+    FormattedFunctionsJson::new(&fallback, current_elapsed_ns)
 }
 
-// Get instrumented functions calls information
 pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {
     let name = function_name.to_string();
     query_functions_state(|response_tx| FunctionsQuery::LogsTiming {
@@ -180,13 +188,7 @@ pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLo
     .flatten()
 }
 
-fn try_get_functions_timing_from_worker() -> Option<FunctionsJson> {
-    query_functions_state(FunctionsQuery::Timing)
-}
-
-// Get a JSON representation of all functions and their allocations
-// Will return None unless hotpath-alloc is enabled
-pub(crate) fn get_functions_alloc_json() -> Option<FunctionsJson> {
+pub(crate) fn get_functions_alloc_json() -> Option<FormattedFunctionsJson> {
     query_functions_state(FunctionsQuery::Alloc).flatten()
 }
 
