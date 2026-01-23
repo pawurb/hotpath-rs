@@ -77,7 +77,7 @@ fn is_zero(v: &u64) -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFunctionsJson {
-    pub profiling_mode: ProfilingMode,
+    pub hotpath_profiling_mode: ProfilingMode,
     pub time_elapsed: String,
     pub total_elapsed_ns: u64,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -94,8 +94,8 @@ pub struct FormattedFunctionsJson {
 
 impl FormattedFunctionsJson {
     pub fn from_provider(provider: &dyn MetricsProvider<'_>, current_elapsed_ns: u64) -> Self {
-        let profiling_mode = provider.profiling_mode();
-        let is_alloc = matches!(profiling_mode, ProfilingMode::Alloc);
+        let hotpath_profiling_mode = provider.profiling_mode();
+        let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
         let data = format_metric_data(&metric_data, &percentiles_config, false);
@@ -111,7 +111,7 @@ impl FormattedFunctionsJson {
         };
 
         FormattedFunctionsJson {
-            profiling_mode,
+            hotpath_profiling_mode,
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
             total_elapsed_raw: 0,
@@ -128,8 +128,8 @@ impl FormattedFunctionsJson {
         provider: &dyn MetricsProvider<'_>,
         current_elapsed_ns: u64,
     ) -> Self {
-        let profiling_mode = provider.profiling_mode();
-        let is_alloc = matches!(profiling_mode, ProfilingMode::Alloc);
+        let hotpath_profiling_mode = provider.profiling_mode();
+        let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
         let data = format_metric_data(&metric_data, &percentiles_config, true);
@@ -146,7 +146,7 @@ impl FormattedFunctionsJson {
         };
 
         FormattedFunctionsJson {
-            profiling_mode,
+            hotpath_profiling_mode,
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
             total_elapsed_raw: total_elapsed,
@@ -161,7 +161,7 @@ impl FormattedFunctionsJson {
 
     pub fn empty_fallback(current_elapsed_ns: u64) -> Self {
         FormattedFunctionsJson {
-            profiling_mode: ProfilingMode::Timing,
+            hotpath_profiling_mode: ProfilingMode::Timing,
             time_elapsed: format_duration(0),
             total_elapsed_ns: current_elapsed_ns,
             total_elapsed_raw: 0,

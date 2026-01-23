@@ -80,7 +80,7 @@ impl ProfilePrArgs {
             &self.pr_number,
             &self.github_token,
             &body,
-            &head_metrics_data.profiling_mode,
+            &head_metrics_data.hotpath_profiling_mode,
             self.benchmark_id.as_deref(),
         ) {
             Ok(_) => {}
@@ -262,7 +262,7 @@ fn compare_metrics(
 ) -> MetricsComparison {
     use hotpath::ProfilingMode;
 
-    let is_alloc = matches!(before_metrics.profiling_mode, ProfilingMode::Alloc);
+    let is_alloc = matches!(before_metrics.hotpath_profiling_mode, ProfilingMode::Alloc);
 
     let total_elapsed_diff = MetricDiff::DurationNs(
         before_metrics.total_elapsed_raw,
@@ -408,7 +408,7 @@ fn format_comparison_markdown(
     ));
     markdown.push_str(&format!(
         "**Profiling Mode:** {} - {}\n",
-        metrics.profiling_mode, metrics.description
+        metrics.hotpath_profiling_mode, metrics.description
     ));
     if let Some(id) = benchmark_id {
         markdown.push_str(&format!("**Benchmark ID:** {}\n", id));
@@ -492,7 +492,7 @@ mod test {
         total_elapsed_raw: u64,
     ) -> FormattedFunctionsJson {
         FormattedFunctionsJson {
-            profiling_mode: hotpath::ProfilingMode::Timing,
+            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
             time_elapsed: "formatted".to_string(),
             total_elapsed_ns: total_elapsed_raw,
             total_elapsed_raw,
