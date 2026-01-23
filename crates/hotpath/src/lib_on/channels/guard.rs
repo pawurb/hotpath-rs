@@ -6,7 +6,8 @@ use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
 
-use crate::channels::{get_sorted_channel_stats, resolve_label};
+use crate::channels::{get_sorted_channel_stats, resolve_label, SerializableChannelStats};
+use crate::formatted::{FormattedChannelStats, FormattedChannelsJson};
 use crate::output::format_bytes;
 use crate::Format;
 
@@ -171,11 +172,11 @@ impl Drop for ChannelsGuard {
                 table.printstd();
             }
             Format::Json => {
-                let channels_json = crate::channels::ChannelsJson {
+                let channels_json = FormattedChannelsJson {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
                     channels: channels
                         .iter()
-                        .map(crate::channels::SerializableChannelStats::from)
+                        .map(|s| FormattedChannelStats::from(&SerializableChannelStats::from(s)))
                         .collect(),
                 };
                 match serde_json::to_string(&channels_json) {
@@ -184,11 +185,11 @@ impl Drop for ChannelsGuard {
                 }
             }
             Format::JsonPretty => {
-                let channels_json = crate::channels::ChannelsJson {
+                let channels_json = FormattedChannelsJson {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
                     channels: channels
                         .iter()
-                        .map(crate::channels::SerializableChannelStats::from)
+                        .map(|s| FormattedChannelStats::from(&SerializableChannelStats::from(s)))
                         .collect(),
                 };
                 match serde_json::to_string_pretty(&channels_json) {

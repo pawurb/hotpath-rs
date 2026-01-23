@@ -3,8 +3,8 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::formatted::{
     FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
-    FormattedFunctionTimingLogsJson, FormattedFutureCall, FormattedFutureCalls,
-    FormattedFunctionsJson, FormattedFuturesJson, FormattedLogEntry, FormattedSentLogEntry,
+    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCall,
+    FormattedFutureCalls, FormattedFuturesJson, FormattedLogEntry, FormattedSentLogEntry,
     FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
 use ratatui::widgets::TableState;

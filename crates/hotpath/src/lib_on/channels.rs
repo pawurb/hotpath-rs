@@ -16,9 +16,8 @@ pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
 
 mod wrapper;
 
-pub use crate::json::{
-    ChannelLogs, ChannelState, ChannelType, ChannelsJson, LogEntry, SerializableChannelStats,
-};
+use crate::formatted::{FormattedChannelStats, FormattedChannelsJson};
+pub use crate::json::{ChannelLogs, ChannelState, ChannelType, LogEntry, SerializableChannelStats};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::truncate_result;
 
@@ -545,10 +544,10 @@ pub(crate) fn get_sorted_channel_stats() -> Vec<ChannelStats> {
     stats
 }
 
-pub fn get_channels_json() -> ChannelsJson {
+pub fn get_channels_json() -> FormattedChannelsJson {
     let channels = get_sorted_channel_stats()
         .iter()
-        .map(SerializableChannelStats::from)
+        .map(|stats| FormattedChannelStats::from(&SerializableChannelStats::from(stats)))
         .collect();
 
     let current_elapsed_ns = START_TIME
@@ -557,7 +556,7 @@ pub fn get_channels_json() -> ChannelsJson {
         .elapsed()
         .as_nanos() as u64;
 
-    ChannelsJson {
+    FormattedChannelsJson {
         current_elapsed_ns,
         channels,
     }

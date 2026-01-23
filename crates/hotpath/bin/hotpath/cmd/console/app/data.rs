@@ -4,8 +4,8 @@ use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::formatted::{
     FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
-    FormattedFunctionData, FormattedFunctionTimingLogsJson, FormattedFutureCalls,
-    FormattedFunctionsJson, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
+    FormattedFunctionData, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+    FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
     FormattedThreadsJson,
 };
 use std::time::Instant;

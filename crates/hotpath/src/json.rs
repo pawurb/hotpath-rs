@@ -109,15 +109,6 @@ impl LogEntry {
     }
 }
 
-/// Wrapper for channels-only JSON response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelsJson {
-    /// Current elapsed time since program start in nanoseconds
-    pub current_elapsed_ns: u64,
-    /// Channel statistics
-    pub channels: Vec<SerializableChannelStats>,
-}
-
 /// Serializable version of channel statistics for JSON responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableChannelStats {
