@@ -1,4 +1,5 @@
-use crate::output::{shorten_function_name, FunctionsJson, MetricType, MetricsProvider, Reporter};
+use crate::formatted::FormattedFunctionsJson;
+use crate::output::{shorten_function_name, MetricType, MetricsProvider, Reporter};
 use colored::*;
 use prettytable::{color, Attr, Cell, Row, Table};
 use std::time::Duration;
@@ -164,7 +165,8 @@ impl Reporter for JsonReporter {
             return Ok(());
         }
 
-        let json = FunctionsJson::from(metrics_provider);
+        let elapsed_ns = metrics_provider.total_elapsed();
+        let json = FormattedFunctionsJson::from_provider_with_raw(metrics_provider, elapsed_ns);
         println!("{}", serde_json::to_string(&json).unwrap());
         Ok(())
     }
@@ -182,25 +184,9 @@ impl Reporter for JsonPrettyReporter {
             return Ok(());
         }
 
-        let json = FunctionsJson::from(metrics_provider);
+        let elapsed_ns = metrics_provider.total_elapsed();
+        let json = FormattedFunctionsJson::from_provider_with_raw(metrics_provider, elapsed_ns);
         println!("{}", serde_json::to_string_pretty(&json)?);
         Ok(())
-    }
-}
-
-impl From<&dyn MetricsProvider<'_>> for FunctionsJson {
-    fn from(metrics: &dyn MetricsProvider<'_>) -> Self {
-        let hotpath_profiling_mode = metrics.profiling_mode();
-        let percentiles = metrics.percentiles();
-        let data = get_sorted_measurements(metrics);
-
-        Self {
-            hotpath_profiling_mode,
-            total_elapsed: metrics.total_elapsed(),
-            description: metrics.description(),
-            caller_name: metrics.caller_name().to_string(),
-            percentiles,
-            data,
-        }
     }
 }
