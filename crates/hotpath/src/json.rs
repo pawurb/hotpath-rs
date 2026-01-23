@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::LazyLock;
 
-pub use crate::output::{FunctionLogsJson, FunctionsJson};
+pub use crate::output::FunctionLogsJson;
 
 /// State of a channel or stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

@@ -3,7 +3,8 @@ mod comment;
 use clap::Parser;
 use comment::upsert_pr_comment;
 use eyre::Result;
-use hotpath::{format_bytes, FunctionsJson};
+use hotpath::format_bytes;
+use hotpath::formatted::{FormattedFunctionData, FormattedFunctionsJson};
 use prettytable::{Cell, Row, Table};
 use std::env;
 use std::fmt;
@@ -52,9 +53,9 @@ impl ProfilePrArgs {
             Some(self.emoji_threshold.unwrap_or(20))
         };
 
-        let head_metrics_data: FunctionsJson = serde_json::from_str(&self.head_metrics)
+        let head_metrics_data: FormattedFunctionsJson = serde_json::from_str(&self.head_metrics)
             .map_err(|e| eyre::eyre!("Failed to deserialize head metrics: {}", e))?;
-        let base_metrics_data: FunctionsJson = serde_json::from_str(&self.base_metrics)
+        let base_metrics_data: FormattedFunctionsJson = serde_json::from_str(&self.base_metrics)
             .map_err(|e| eyre::eyre!("Failed to deserialize base metrics: {}", e))?;
 
         let comparison = compare_metrics(&base_metrics_data, &head_metrics_data);
@@ -79,7 +80,7 @@ impl ProfilePrArgs {
             &self.pr_number,
             &self.github_token,
             &body,
-            &head_metrics_data.hotpath_profiling_mode,
+            &head_metrics_data.profiling_mode,
             self.benchmark_id.as_deref(),
         ) {
             Ok(_) => {}
@@ -189,71 +190,128 @@ fn calculate_percentage_diff(before: u64, after: u64) -> f64 {
 }
 
 fn find_function<'a>(
-    data: &'a [(String, Vec<hotpath::MetricType>)],
+    data: &'a [FormattedFunctionData],
     name: &str,
-) -> Option<&'a Vec<hotpath::MetricType>> {
-    data.iter().find(|(n, _)| n == name).map(|(_, row)| row)
+) -> Option<&'a FormattedFunctionData> {
+    data.iter().find(|f| f.name == name)
+}
+
+fn build_metrics_from_function(
+    func: &FormattedFunctionData,
+    percentiles: &[u8],
+    is_alloc: bool,
+) -> Vec<(MetricKind, u64)> {
+    let mut metrics = Vec::new();
+
+    metrics.push((MetricKind::Calls, func.calls));
+
+    if let Some(avg) = func.avg_raw {
+        metrics.push((
+            if is_alloc {
+                MetricKind::Alloc
+            } else {
+                MetricKind::Duration
+            },
+            avg,
+        ));
+    }
+
+    for p in percentiles {
+        let key = format!("p{}", p);
+        if let Some(&val) = func.percentiles_raw.get(&key) {
+            metrics.push((
+                if is_alloc {
+                    MetricKind::Alloc
+                } else {
+                    MetricKind::Duration
+                },
+                val,
+            ));
+        }
+    }
+
+    if let Some(total) = func.total_raw {
+        metrics.push((
+            if is_alloc {
+                MetricKind::Alloc
+            } else {
+                MetricKind::Duration
+            },
+            total,
+        ));
+    }
+
+    if let Some(percent) = func.percent_total_raw {
+        metrics.push((MetricKind::Percentage, percent));
+    }
+
+    metrics
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MetricKind {
+    Calls,
+    Duration,
+    Alloc,
+    Percentage,
 }
 
 fn compare_metrics(
-    before_metrics: &FunctionsJson,
-    after_metrics: &FunctionsJson,
+    before_metrics: &FormattedFunctionsJson,
+    after_metrics: &FormattedFunctionsJson,
 ) -> MetricsComparison {
-    use hotpath::MetricType;
+    use hotpath::ProfilingMode;
 
-    let total_elapsed_diff =
-        MetricDiff::DurationNs(before_metrics.total_elapsed, after_metrics.total_elapsed);
+    let is_alloc = matches!(before_metrics.profiling_mode, ProfilingMode::Alloc);
+
+    let total_elapsed_diff = MetricDiff::DurationNs(
+        before_metrics.total_elapsed_raw,
+        after_metrics.total_elapsed_raw,
+    );
 
     let mut function_diffs = Vec::new();
     let mut new_functions = Vec::new();
 
-    for (function_name, after_row) in &after_metrics.data {
-        if let Some(before_row) = find_function(&before_metrics.data, function_name) {
-            let mut metrics = Vec::new();
+    for after_func in &after_metrics.data {
+        if let Some(before_func) = find_function(&before_metrics.data, &after_func.name) {
+            let before_vals =
+                build_metrics_from_function(before_func, &before_metrics.percentiles, is_alloc);
+            let after_vals =
+                build_metrics_from_function(after_func, &after_metrics.percentiles, is_alloc);
 
-            for (metric_idx, after_metric) in after_row.iter().enumerate() {
-                if let Some(before_metric) = before_row.get(metric_idx) {
-                    let diff = match (before_metric, after_metric) {
-                        (MetricType::CallsCount(before_val), MetricType::CallsCount(after_val)) => {
-                            MetricDiff::CallsCount(*before_val, *after_val)
-                        }
-                        (MetricType::DurationNs(before_val), MetricType::DurationNs(after_val)) => {
-                            MetricDiff::DurationNs(*before_val, *after_val)
-                        }
-                        (MetricType::Alloc(before_val, _), MetricType::Alloc(after_val, _)) => {
-                            MetricDiff::Alloc(*before_val, *after_val)
-                        }
-                        (MetricType::Percentage(before_val), MetricType::Percentage(after_val)) => {
-                            MetricDiff::Percentage(*before_val, *after_val)
-                        }
-                        _ => continue,
-                    };
-                    metrics.push(diff);
-                }
+            let mut metrics = Vec::new();
+            for ((kind, before_val), (_, after_val)) in before_vals.iter().zip(after_vals.iter()) {
+                let diff = match kind {
+                    MetricKind::Calls => MetricDiff::CallsCount(*before_val, *after_val),
+                    MetricKind::Duration => MetricDiff::DurationNs(*before_val, *after_val),
+                    MetricKind::Alloc => MetricDiff::Alloc(*before_val, *after_val),
+                    MetricKind::Percentage => MetricDiff::Percentage(*before_val, *after_val),
+                };
+                metrics.push(diff);
             }
 
             function_diffs.push(FunctionMetricsDiff {
-                function_name: function_name.clone(),
+                function_name: after_func.name.clone(),
                 metrics,
                 is_removed: false,
                 is_new: false,
             });
         } else {
-            let mut metrics = Vec::new();
+            let after_vals =
+                build_metrics_from_function(after_func, &after_metrics.percentiles, is_alloc);
 
-            for after_metric in after_row.iter() {
-                let diff = match after_metric {
-                    MetricType::CallsCount(after_val) => MetricDiff::CallsCount(0, *after_val),
-                    MetricType::DurationNs(after_val) => MetricDiff::DurationNs(0, *after_val),
-                    MetricType::Alloc(after_val, _) => MetricDiff::Alloc(0, *after_val),
-                    MetricType::Percentage(after_val) => MetricDiff::Percentage(0, *after_val),
-                    MetricType::Unsupported => continue,
-                };
-                metrics.push(diff);
-            }
+            let metrics = after_vals
+                .iter()
+                .map(|(kind, after_val)| match kind {
+                    MetricKind::Calls => MetricDiff::CallsCount(0, *after_val),
+                    MetricKind::Duration => MetricDiff::DurationNs(0, *after_val),
+                    MetricKind::Alloc => MetricDiff::Alloc(0, *after_val),
+                    MetricKind::Percentage => MetricDiff::Percentage(0, *after_val),
+                })
+                .collect();
 
             new_functions.push(FunctionMetricsDiff {
-                function_name: function_name.clone(),
+                function_name: after_func.name.clone(),
                 metrics,
                 is_removed: false,
                 is_new: true,
@@ -261,23 +319,23 @@ fn compare_metrics(
         }
     }
 
-    for (function_name, before_row) in &before_metrics.data {
-        if find_function(&after_metrics.data, function_name).is_none() {
-            let mut metrics = Vec::new();
+    for before_func in &before_metrics.data {
+        if find_function(&after_metrics.data, &before_func.name).is_none() {
+            let before_vals =
+                build_metrics_from_function(before_func, &before_metrics.percentiles, is_alloc);
 
-            for before_metric in before_row.iter() {
-                let diff = match before_metric {
-                    MetricType::CallsCount(before_val) => MetricDiff::CallsCount(*before_val, 0),
-                    MetricType::DurationNs(before_val) => MetricDiff::DurationNs(*before_val, 0),
-                    MetricType::Alloc(before_val, _) => MetricDiff::Alloc(*before_val, 0),
-                    MetricType::Percentage(before_val) => MetricDiff::Percentage(*before_val, 0),
-                    MetricType::Unsupported => continue,
-                };
-                metrics.push(diff);
-            }
+            let metrics = before_vals
+                .iter()
+                .map(|(kind, before_val)| match kind {
+                    MetricKind::Calls => MetricDiff::CallsCount(*before_val, 0),
+                    MetricKind::Duration => MetricDiff::DurationNs(*before_val, 0),
+                    MetricKind::Alloc => MetricDiff::Alloc(*before_val, 0),
+                    MetricKind::Percentage => MetricDiff::Percentage(*before_val, 0),
+                })
+                .collect();
 
             function_diffs.push(FunctionMetricsDiff {
-                function_name: function_name.clone(),
+                function_name: before_func.name.clone(),
                 metrics,
                 is_removed: true,
                 is_new: false,
@@ -287,7 +345,6 @@ fn compare_metrics(
 
     function_diffs.extend(new_functions);
 
-    // Sort by percent_total in head branch (after value), descending order
     function_diffs.sort_by(|a, b| {
         let a_percent = a
             .metrics
@@ -324,7 +381,7 @@ fn compare_metrics(
 
 fn format_comparison_markdown(
     comparison: &MetricsComparison,
-    metrics: &FunctionsJson,
+    metrics: &FormattedFunctionsJson,
     emoji_threshold: Option<u32>,
     benchmark_id: Option<&str>,
 ) -> String {
@@ -351,7 +408,7 @@ fn format_comparison_markdown(
     ));
     markdown.push_str(&format!(
         "**Profiling Mode:** {} - {}\n",
-        metrics.hotpath_profiling_mode, metrics.description
+        metrics.profiling_mode, metrics.description
     ));
     if let Some(id) = benchmark_id {
         markdown.push_str(&format!("**Benchmark ID:** {}\n", id));
@@ -401,93 +458,82 @@ fn format_comparison_markdown(
 #[cfg(test)]
 mod test {
     use super::*;
-    use hotpath::MetricType::{CallsCount, DurationNs, Percentage};
+    use std::collections::HashMap;
+
+    fn make_function_data(
+        name: &str,
+        calls: u64,
+        avg: u64,
+        p95: u64,
+        total: u64,
+        percent: u64,
+    ) -> FormattedFunctionData {
+        let mut percentiles = HashMap::new();
+        percentiles.insert("p95".to_string(), "formatted".to_string());
+        let mut percentiles_raw = HashMap::new();
+        percentiles_raw.insert("p95".to_string(), p95);
+
+        FormattedFunctionData {
+            name: name.to_string(),
+            calls,
+            avg: "formatted".to_string(),
+            avg_raw: Some(avg),
+            percentiles,
+            percentiles_raw,
+            total: "formatted".to_string(),
+            total_raw: Some(total),
+            percent_total: "formatted".to_string(),
+            percent_total_raw: Some(percent),
+        }
+    }
+
+    fn make_metrics(
+        data: Vec<FormattedFunctionData>,
+        total_elapsed_raw: u64,
+    ) -> FormattedFunctionsJson {
+        FormattedFunctionsJson {
+            profiling_mode: hotpath::ProfilingMode::Timing,
+            time_elapsed: "formatted".to_string(),
+            total_elapsed_ns: total_elapsed_raw,
+            total_elapsed_raw,
+            total_allocated: None,
+            total_allocated_raw: None,
+            description: "Time metrics".to_string(),
+            caller_name: "test::main".to_string(),
+            percentiles: vec![95],
+            data,
+        }
+    }
 
     #[test]
     fn test_format_comparison_markdown() {
         let pr_data = vec![
-            (
-                "basic::async_function".to_string(),
-                vec![
-                    CallsCount(100),
-                    DurationNs(1256314),
-                    DurationNs(1276927),
-                    DurationNs(125631441),
-                    Percentage(8940),
-                ],
+            make_function_data(
+                "basic::async_function",
+                100,
+                1256314,
+                1276927,
+                125631441,
+                8940,
             ),
-            (
-                "basic::sync_function".to_string(),
-                vec![
-                    CallsCount(100),
-                    DurationNs(61184),
-                    DurationNs(62847),
-                    DurationNs(6118443),
-                    Percentage(435),
-                ],
-            ),
-            (
-                "custom_block".to_string(),
-                vec![
-                    CallsCount(100),
-                    DurationNs(62036),
-                    DurationNs(64031),
-                    DurationNs(6203646),
-                    Percentage(441),
-                ],
-            ),
+            make_function_data("basic::sync_function", 100, 61184, 62847, 6118443, 435),
+            make_function_data("custom_block", 100, 62036, 64031, 6203646, 441),
         ];
-
-        let pr_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 140515884,
-            caller_name: "basic::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: pr_data,
-        };
+        let pr_metrics = make_metrics(pr_data, 140515884);
 
         let main_data = vec![
-            (
-                "basic::async_function".to_string(),
-                vec![
-                    CallsCount(90),
-                    DurationNs(1130683),
-                    DurationNs(1149234),
-                    DurationNs(113068297),
-                    Percentage(8046),
-                ],
+            make_function_data(
+                "basic::async_function",
+                90,
+                1130683,
+                1149234,
+                113068297,
+                8046,
             ),
-            (
-                "basic::sync_function".to_string(),
-                vec![
-                    CallsCount(90),
-                    DurationNs(55066),
-                    DurationNs(56562),
-                    DurationNs(5506599),
-                    Percentage(392),
-                ],
-            ),
-            (
-                "custom_block".to_string(),
-                vec![
-                    CallsCount(90),
-                    DurationNs(55832),
-                    DurationNs(57628),
-                    DurationNs(5583281),
-                    Percentage(397),
-                ],
-            ),
+            make_function_data("basic::sync_function", 90, 55066, 56562, 5506599, 392),
+            make_function_data("custom_block", 90, 55832, 57628, 5583281, 397),
         ];
-
-        let main_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 126464296,
-            caller_name: "basic::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: main_data,
-        };
+        let main_metrics = make_metrics(main_data, 126464296);
 
         let comparison = compare_metrics(&main_metrics, &pr_metrics);
 
@@ -500,64 +546,27 @@ mod test {
             }
         }
 
-        // Test markdown formatting
         let markdown = format_comparison_markdown(&comparison, &main_metrics, Some(20), None);
         println!("\n=== Generated Markdown ===\n{}", markdown);
     }
 
     #[test]
     fn test_removed_function() {
-        let pr_data = vec![(
-            "test::function_a".to_string(),
-            vec![
-                CallsCount(100),
-                DurationNs(1000000),
-                DurationNs(1100000),
-                DurationNs(100000000),
-                Percentage(10000),
-            ],
+        let pr_data = vec![make_function_data(
+            "test::function_a",
+            100,
+            1000000,
+            1100000,
+            100000000,
+            10000,
         )];
-
-        let pr_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 100000000,
-            caller_name: "test::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: pr_data,
-        };
+        let pr_metrics = make_metrics(pr_data, 100000000);
 
         let main_data = vec![
-            (
-                "test::function_a".to_string(),
-                vec![
-                    CallsCount(90),
-                    DurationNs(900000),
-                    DurationNs(1000000),
-                    DurationNs(81000000),
-                    Percentage(9000),
-                ],
-            ),
-            (
-                "test::function_b".to_string(),
-                vec![
-                    CallsCount(50),
-                    DurationNs(500000),
-                    DurationNs(550000),
-                    DurationNs(25000000),
-                    Percentage(2500),
-                ],
-            ),
+            make_function_data("test::function_a", 90, 900000, 1000000, 81000000, 9000),
+            make_function_data("test::function_b", 50, 500000, 550000, 25000000, 2500),
         ];
-
-        let main_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 120000000,
-            caller_name: "test::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: main_data,
-        };
+        let main_metrics = make_metrics(main_data, 120000000);
 
         let comparison = compare_metrics(&main_metrics, &pr_metrics);
 
@@ -586,56 +595,20 @@ mod test {
     #[test]
     fn test_new_function() {
         let pr_data = vec![
-            (
-                "test::function_a".to_string(),
-                vec![
-                    CallsCount(100),
-                    DurationNs(1000000),
-                    DurationNs(1100000),
-                    DurationNs(100000000),
-                    Percentage(8000),
-                ],
-            ),
-            (
-                "test::function_c".to_string(),
-                vec![
-                    CallsCount(60),
-                    DurationNs(600000),
-                    DurationNs(650000),
-                    DurationNs(36000000),
-                    Percentage(2400),
-                ],
-            ),
+            make_function_data("test::function_a", 100, 1000000, 1100000, 100000000, 8000),
+            make_function_data("test::function_c", 60, 600000, 650000, 36000000, 2400),
         ];
+        let pr_metrics = make_metrics(pr_data, 150000000);
 
-        let pr_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 150000000,
-            caller_name: "test::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: pr_data,
-        };
-
-        let main_data = vec![(
-            "test::function_a".to_string(),
-            vec![
-                CallsCount(90),
-                DurationNs(900000),
-                DurationNs(1000000),
-                DurationNs(81000000),
-                Percentage(9000),
-            ],
+        let main_data = vec![make_function_data(
+            "test::function_a",
+            90,
+            900000,
+            1000000,
+            81000000,
+            9000,
         )];
-
-        let main_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 120000000,
-            caller_name: "test::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: main_data,
-        };
+        let main_metrics = make_metrics(main_data, 120000000);
 
         let comparison = compare_metrics(&main_metrics, &pr_metrics);
 
@@ -664,68 +637,16 @@ mod test {
     #[test]
     fn test_new_and_removed_functions() {
         let pr_data = vec![
-            (
-                "test::function_a".to_string(),
-                vec![
-                    CallsCount(100),
-                    DurationNs(1000000),
-                    DurationNs(1100000),
-                    DurationNs(100000000),
-                    Percentage(7000),
-                ],
-            ),
-            (
-                "test::function_c".to_string(),
-                vec![
-                    CallsCount(40),
-                    DurationNs(400000),
-                    DurationNs(450000),
-                    DurationNs(16000000),
-                    Percentage(1500),
-                ],
-            ),
+            make_function_data("test::function_a", 100, 1000000, 1100000, 100000000, 7000),
+            make_function_data("test::function_c", 40, 400000, 450000, 16000000, 1500),
         ];
-
-        let pr_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 140000000,
-            caller_name: "test::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: pr_data,
-        };
+        let pr_metrics = make_metrics(pr_data, 140000000);
 
         let main_data = vec![
-            (
-                "test::function_a".to_string(),
-                vec![
-                    CallsCount(90),
-                    DurationNs(900000),
-                    DurationNs(1000000),
-                    DurationNs(81000000),
-                    Percentage(8000),
-                ],
-            ),
-            (
-                "test::function_b".to_string(),
-                vec![
-                    CallsCount(30),
-                    DurationNs(300000),
-                    DurationNs(350000),
-                    DurationNs(9000000),
-                    Percentage(1200),
-                ],
-            ),
+            make_function_data("test::function_a", 90, 900000, 1000000, 81000000, 8000),
+            make_function_data("test::function_b", 30, 300000, 350000, 9000000, 1200),
         ];
-
-        let main_metrics = FunctionsJson {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            total_elapsed: 120000000,
-            caller_name: "test::main".to_string(),
-            percentiles: vec![95],
-            description: "Time metrics".to_string(),
-            data: main_data,
-        };
+        let main_metrics = make_metrics(main_data, 120000000);
 
         let comparison = compare_metrics(&main_metrics, &pr_metrics);
 
@@ -739,12 +660,10 @@ mod test {
             );
         }
 
-        // Test markdown formatting
         let markdown = format_comparison_markdown(&comparison, &main_metrics, Some(20), None);
         println!("\n=== Generated Markdown ===\n{}", markdown);
 
-        // Verify we have both new and removed functions
-        assert_eq!(comparison.function_diffs.len(), 3); // a (updated), b (removed), c (new)
+        assert_eq!(comparison.function_diffs.len(), 3);
         assert!(comparison
             .function_diffs
             .iter()

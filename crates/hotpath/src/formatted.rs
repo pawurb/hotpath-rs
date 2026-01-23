@@ -57,10 +57,22 @@ pub struct FormattedFunctionData {
     pub name: String,
     pub calls: u64,
     pub avg: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avg_raw: Option<u64>,
     #[serde(flatten)]
     pub percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub percentiles_raw: HashMap<String, u64>,
     pub total: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_raw: Option<u64>,
     pub percent_total: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub percent_total_raw: Option<u64>,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,8 +80,12 @@ pub struct FormattedFunctionsJson {
     pub profiling_mode: ProfilingMode,
     pub time_elapsed: String,
     pub total_elapsed_ns: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub total_elapsed_raw: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_allocated: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_allocated_raw: Option<u64>,
     pub description: String,
     pub caller_name: String,
     pub percentiles: Vec<u8>,
@@ -82,7 +98,7 @@ impl FormattedFunctionsJson {
         let is_alloc = matches!(profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
-        let data = format_metric_data(&metric_data, &percentiles_config);
+        let data = format_metric_data(&metric_data, &percentiles_config, false);
         let total_elapsed = provider.total_elapsed();
 
         let (time_elapsed, total_allocated) = if is_alloc {
@@ -98,7 +114,44 @@ impl FormattedFunctionsJson {
             profiling_mode,
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
+            total_elapsed_raw: 0,
             total_allocated,
+            total_allocated_raw: None,
+            description: provider.description(),
+            caller_name: provider.caller_name().to_string(),
+            percentiles: percentiles_config,
+            data,
+        }
+    }
+
+    pub fn from_provider_with_raw(
+        provider: &dyn MetricsProvider<'_>,
+        current_elapsed_ns: u64,
+    ) -> Self {
+        let profiling_mode = provider.profiling_mode();
+        let is_alloc = matches!(profiling_mode, ProfilingMode::Alloc);
+        let percentiles_config = provider.percentiles();
+        let metric_data = provider.metric_data();
+        let data = format_metric_data(&metric_data, &percentiles_config, true);
+        let total_elapsed = provider.total_elapsed();
+
+        let (time_elapsed, total_allocated, total_allocated_raw) = if is_alloc {
+            (
+                format_duration(current_elapsed_ns),
+                Some(format_bytes(total_elapsed)),
+                Some(total_elapsed),
+            )
+        } else {
+            (format_duration(total_elapsed), None, None)
+        };
+
+        FormattedFunctionsJson {
+            profiling_mode,
+            time_elapsed,
+            total_elapsed_ns: current_elapsed_ns,
+            total_elapsed_raw: total_elapsed,
+            total_allocated,
+            total_allocated_raw,
             description: provider.description(),
             caller_name: provider.caller_name().to_string(),
             percentiles: percentiles_config,
@@ -111,7 +164,9 @@ impl FormattedFunctionsJson {
             profiling_mode: ProfilingMode::Timing,
             time_elapsed: format_duration(0),
             total_elapsed_ns: current_elapsed_ns,
+            total_elapsed_raw: 0,
             total_allocated: None,
+            total_allocated_raw: None,
             description: "No timing data available yet".to_string(),
             caller_name: "hotpath".to_string(),
             percentiles: vec![95],
@@ -120,9 +175,20 @@ impl FormattedFunctionsJson {
     }
 }
 
+fn extract_raw_value(metric: &MetricType) -> Option<u64> {
+    match metric {
+        MetricType::DurationNs(ns) => Some(*ns),
+        MetricType::Alloc(bytes, _) => Some(*bytes),
+        MetricType::Percentage(bp) => Some(*bp),
+        MetricType::Unsupported => None,
+        MetricType::CallsCount(_) => None,
+    }
+}
+
 fn format_metric_data(
     data: &[(String, Vec<MetricType>)],
     percentiles_config: &[u8],
+    include_raw: bool,
 ) -> Vec<FormattedFunctionData> {
     let format_value = |metric: &MetricType| -> String {
         match metric {
@@ -140,12 +206,24 @@ fn format_metric_data(
                 _ => 0,
             };
             let avg = format_value(&metrics[1]);
+            let avg_raw = if include_raw {
+                extract_raw_value(&metrics[1])
+            } else {
+                None
+            };
 
             let mut percentiles = HashMap::new();
+            let mut percentiles_raw = HashMap::new();
             for (i, &p) in percentiles_config.iter().enumerate() {
                 let metric_idx = 2 + i;
                 if metric_idx < metrics.len() - 2 {
-                    percentiles.insert(format!("p{}", p), format_value(&metrics[metric_idx]));
+                    let key = format!("p{}", p);
+                    percentiles.insert(key.clone(), format_value(&metrics[metric_idx]));
+                    if include_raw {
+                        if let Some(raw) = extract_raw_value(&metrics[metric_idx]) {
+                            percentiles_raw.insert(key, raw);
+                        }
+                    }
                 }
             }
 
@@ -153,19 +231,34 @@ fn format_metric_data(
             let percent_idx = metrics.len() - 1;
 
             let total = format_value(&metrics[total_idx]);
+            let total_raw = if include_raw {
+                extract_raw_value(&metrics[total_idx])
+            } else {
+                None
+            };
+
             let percent_total = match &metrics[percent_idx] {
                 MetricType::Percentage(bp) => format!("{:.2}%", *bp as f64 / 100.0),
                 MetricType::Unsupported => "N/A".to_string(),
                 _ => "0%".to_string(),
+            };
+            let percent_total_raw = if include_raw {
+                extract_raw_value(&metrics[percent_idx])
+            } else {
+                None
             };
 
             FormattedFunctionData {
                 name: name.clone(),
                 calls,
                 avg,
+                avg_raw,
                 percentiles,
+                percentiles_raw,
                 total,
+                total_raw,
                 percent_total,
+                percent_total_raw,
             }
         })
         .collect()
