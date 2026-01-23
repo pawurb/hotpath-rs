@@ -1,4 +1,4 @@
-use crate::formatted::FormattedFunctionsJson;
+use crate::json::FormattedFunctionsJson;
 use crate::output::{shorten_function_name, MetricType, MetricsProvider, Reporter};
 use colored::*;
 use prettytable::{color, Attr, Cell, Row, Table};

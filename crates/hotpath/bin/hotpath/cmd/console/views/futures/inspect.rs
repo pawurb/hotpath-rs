@@ -1,4 +1,4 @@
-use hotpath::formatted::FormattedFutureCall;
+use hotpath::json::FormattedFutureCall;
 use ratatui::{
     layout::Rect,
     symbols::border,

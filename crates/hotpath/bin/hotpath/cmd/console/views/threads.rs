@@ -1,6 +1,6 @@
 use super::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_right;
-use hotpath::formatted::FormattedThreadMetrics;
+use hotpath::json::FormattedThreadMetrics;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     symbols::border,

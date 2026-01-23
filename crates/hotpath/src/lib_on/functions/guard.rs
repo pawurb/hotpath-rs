@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 
-use crate::formatted::FormattedFunctionsJson;
+use crate::json::FormattedFunctionsJson;
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{FunctionLogEntry, FunctionLogsJson, MetricsProvider};
 use crate::output_on::{JsonPrettyReporter, JsonReporter, TableReporter};

@@ -1,6 +1,6 @@
 use super::super::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_message;
-use hotpath::formatted::{FormattedFutureCall, FormattedFutureCalls};
+use hotpath::json::{FormattedFutureCall, FormattedFutureCalls};
 use ratatui::{
     layout::Rect,
     style::{Color, Style},

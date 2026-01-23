@@ -15,15 +15,15 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use crate::channels::{get_channel_logs, get_channels_json, START_TIME};
-use crate::formatted::{
-    FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFutureCalls, FormattedStreamLogs,
-};
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
 };
 use crate::futures::{get_future_calls, get_futures_json};
+use crate::json::{
+    FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
+    FormattedFutureCalls, FormattedStreamLogs,
+};
 use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
 

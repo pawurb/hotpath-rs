@@ -4,7 +4,7 @@ pub(crate) mod inspect;
 use super::common_styles;
 use crate::cmd::console::app::FuturesFocus;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::formatted::FormattedFutureStats;
+use hotpath::json::FormattedFutureStats;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,

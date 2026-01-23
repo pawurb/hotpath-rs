@@ -13,8 +13,8 @@ mod collector;
 #[path = "threads/collector_linux.rs"]
 mod collector;
 
-use crate::formatted::{FormattedThreadMetrics, FormattedThreadsJson};
 pub use crate::json::ThreadMetrics;
+use crate::json::{FormattedThreadMetrics, FormattedThreadsJson};
 use crate::output::format_bytes;
 
 pub fn thread_metrics_with_percentage(

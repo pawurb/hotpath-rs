@@ -19,7 +19,7 @@ pub(crate) mod wrapper;
 pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
-use crate::formatted::{FormattedFutureStats, FormattedFuturesJson};
+use crate::json::{FormattedFutureStats, FormattedFuturesJson};
 pub use crate::json::{FutureCall, FutureCalls, FutureState};
 pub use crate::Format;
 

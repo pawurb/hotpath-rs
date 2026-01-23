@@ -16,8 +16,8 @@ pub use guard::{StreamsGuard, StreamsGuardBuilder};
 
 pub(crate) mod wrapper;
 
-use crate::formatted::{FormattedStreamStats, FormattedStreamsJson};
 pub use crate::json::{ChannelState, LogEntry, StreamLogs};
+use crate::json::{FormattedStreamStats, FormattedStreamsJson};
 use crate::metrics_server::METRICS_SERVER_PORT;
 pub use crate::Format;
 

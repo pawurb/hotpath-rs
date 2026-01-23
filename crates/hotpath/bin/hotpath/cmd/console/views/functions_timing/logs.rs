@@ -1,5 +1,5 @@
 use super::super::super::widgets::formatters::truncate_right;
-use hotpath::formatted::FormattedFunctionTimingLogsJson;
+use hotpath::json::FormattedFunctionTimingLogsJson;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},

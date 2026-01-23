@@ -6,8 +6,8 @@ use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
 
-use crate::formatted::FormattedFuturesJson;
 use crate::futures::{get_futures_json, init_futures_state};
+use crate::json::FormattedFuturesJson;
 use crate::Format;
 
 /// Builder for creating a FuturesGuard with custom configuration.

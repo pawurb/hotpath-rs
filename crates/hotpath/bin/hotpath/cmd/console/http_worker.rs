@@ -1,12 +1,12 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
 use crossbeam_channel::{Receiver, Sender};
-use hotpath::formatted::{
+use hotpath::json::Route;
+use hotpath::json::{
     FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
     FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
     FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
-use hotpath::json::Route;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use std::{collections::HashMap, sync::Arc, time::Duration};

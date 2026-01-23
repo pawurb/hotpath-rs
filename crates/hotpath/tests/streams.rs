@@ -83,7 +83,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6774 TEST_SLEEP_SECONDS=10 cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::formatted::FormattedStreamsJson;
+        use hotpath::json::FormattedStreamsJson;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")

@@ -673,7 +673,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
     #[test]
     fn test_data_endpoints() {
-        use hotpath::formatted::FormattedFunctionsJson;
+        use hotpath::json::FormattedFunctionsJson;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")

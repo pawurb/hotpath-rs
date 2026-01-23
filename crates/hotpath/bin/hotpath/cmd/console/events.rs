@@ -1,12 +1,12 @@
 //! Event types for async TUI communication
 
 use crossterm::event::KeyCode;
-use hotpath::formatted::{
+use hotpath::json::Route;
+use hotpath::json::{
     FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
     FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
     FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
-use hotpath::json::Route;
 
 #[derive(Debug)]
 pub(crate) enum DataRequest {

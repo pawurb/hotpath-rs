@@ -59,9 +59,6 @@ pub mod json;
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
 pub use json::Route;
 
-#[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
-pub mod formatted;
-
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub(crate) mod tid;
 

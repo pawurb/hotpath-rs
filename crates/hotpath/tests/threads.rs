@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod tests {
-    use hotpath::formatted::FormattedThreadsJson;
+    use hotpath::json::FormattedThreadsJson;
     use std::process::Command;
     use std::thread::sleep;
     use std::time::Duration;

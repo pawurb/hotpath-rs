@@ -2,7 +2,7 @@
 
 use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
-use hotpath::formatted::{
+use hotpath::json::{
     FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
     FormattedFunctionData, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
     FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,

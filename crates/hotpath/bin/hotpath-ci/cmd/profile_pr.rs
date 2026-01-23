@@ -4,7 +4,7 @@ use clap::Parser;
 use comment::upsert_pr_comment;
 use eyre::Result;
 use hotpath::format_bytes;
-use hotpath::formatted::{FormattedFunctionData, FormattedFunctionsJson};
+use hotpath::json::{FormattedFunctionData, FormattedFunctionsJson};
 use prettytable::{Cell, Row, Table};
 use std::env;
 use std::fmt;

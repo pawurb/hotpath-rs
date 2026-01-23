@@ -1,4 +1,4 @@
-use hotpath::formatted::FormattedSentLogEntry;
+use hotpath::json::FormattedSentLogEntry;
 use ratatui::{
     layout::Rect,
     symbols::border,

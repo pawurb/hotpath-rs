@@ -3,6 +3,9 @@
 //! This module contains all JSON types used by the HTTP server and TUI console.
 //! It is gated behind `hotpath`, `tui`, or `ci` features.
 
+mod formatted;
+pub use formatted::*;
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;

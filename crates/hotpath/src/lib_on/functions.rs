@@ -6,7 +6,7 @@ use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
 
 use crate::channels::START_TIME;
-use crate::formatted::FormattedFunctionsJson;
+use crate::json::FormattedFunctionsJson;
 use crate::metrics_server::RECV_TIMEOUT_MS;
 use crate::FunctionLogsJson;
 

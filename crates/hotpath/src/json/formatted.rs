@@ -6,10 +6,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::json::{ChannelLogs, FutureCall, FutureCalls, LogEntry, StreamLogs, ThreadMetrics};
+use super::{ChannelLogs, FutureCall, FutureCalls, LogEntry, StreamLogs, ThreadMetrics};
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
-use crate::json::ChannelType;
+use super::ChannelType;
 use crate::output::{
     format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, MetricType, MetricsProvider,
     ProfilingMode,

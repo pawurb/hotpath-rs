@@ -16,8 +16,8 @@ pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
 
 mod wrapper;
 
-use crate::formatted::{FormattedChannelStats, FormattedChannelsJson};
 pub use crate::json::{ChannelLogs, ChannelState, ChannelType, LogEntry};
+use crate::json::{FormattedChannelStats, FormattedChannelsJson};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::truncate_result;
 

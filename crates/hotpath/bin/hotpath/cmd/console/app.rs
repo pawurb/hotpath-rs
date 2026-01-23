@@ -1,7 +1,7 @@
 //! TUI application state and main run loop
 
 use crossbeam_channel::{Receiver, Sender};
-use hotpath::formatted::{
+use hotpath::json::{
     FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
     FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCall,
     FormattedFutureCalls, FormattedFuturesJson, FormattedLogEntry, FormattedSentLogEntry,

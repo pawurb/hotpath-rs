@@ -4,7 +4,7 @@ pub(crate) mod logs;
 use super::common_styles;
 use crate::cmd::console::app::ChannelsFocus;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::formatted::FormattedChannelStats;
+use hotpath::json::FormattedChannelStats;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},

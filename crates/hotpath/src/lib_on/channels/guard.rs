@@ -7,7 +7,7 @@ use std::time::Instant;
 use prettytable::{Cell, Row, Table};
 
 use crate::channels::{get_sorted_channel_stats, resolve_label};
-use crate::formatted::{FormattedChannelStats, FormattedChannelsJson};
+use crate::json::{FormattedChannelStats, FormattedChannelsJson};
 use crate::output::format_bytes;
 use crate::Format;
 
