@@ -107,7 +107,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-futures --example basic_futures --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::FuturesJson;
+        use hotpath::formatted::FormattedFuturesJson;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -162,7 +162,7 @@ pub mod tests {
         }
 
         // Test /futures/{id}/calls endpoint
-        let futures_response: FuturesJson =
+        let futures_response: FormattedFuturesJson =
             serde_json::from_str(&json_text).expect("Failed to parse futures JSON");
 
         if let Some(first_future) = futures_response.futures.first() {

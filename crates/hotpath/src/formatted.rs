@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::json::{
-    ChannelLogs, FutureCall, FutureCalls, FuturesJson, LogEntry, SerializableChannelStats,
-    SerializableFutureStats, SerializableStreamStats, StreamLogs, ThreadMetrics, ThreadsJson,
+    ChannelLogs, FutureCall, FutureCalls, LogEntry, SerializableChannelStats,
+    SerializableFutureStats, SerializableStreamStats, StreamLogs, ThreadMetrics,
 };
 use crate::output::{
     format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricType,
@@ -495,19 +495,6 @@ pub struct FormattedFuturesJson {
     pub futures: Vec<FormattedFutureStats>,
 }
 
-impl From<&FuturesJson> for FormattedFuturesJson {
-    fn from(json: &FuturesJson) -> Self {
-        FormattedFuturesJson {
-            current_elapsed_ns: json.current_elapsed_ns,
-            futures: json
-                .futures
-                .iter()
-                .map(FormattedFutureStats::from)
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedFutureCall {
     pub id: u64,
@@ -588,20 +575,4 @@ pub struct FormattedThreadsJson {
     pub thread_count: usize,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rss_bytes: Option<String>,
-}
-
-impl From<&ThreadsJson> for FormattedThreadsJson {
-    fn from(json: &ThreadsJson) -> Self {
-        FormattedThreadsJson {
-            current_elapsed_ns: json.current_elapsed_ns,
-            sample_interval_ms: json.sample_interval_ms,
-            threads: json
-                .threads
-                .iter()
-                .map(FormattedThreadMetrics::from)
-                .collect(),
-            thread_count: json.thread_count,
-            rss_bytes: json.rss_bytes.map(format_bytes),
-        }
-    }
 }

@@ -208,13 +208,6 @@ impl FutureCall {
     }
 }
 
-/// Wrapper for futures-only JSON response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FuturesJson {
-    pub current_elapsed_ns: u64,
-    pub futures: Vec<SerializableFutureStats>,
-}
-
 /// Serializable version of future statistics for JSON responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableFutureStats {
@@ -287,22 +280,6 @@ impl ThreadMetrics {
             mem_diff: None,
         }
     }
-}
-
-/// JSON response structure for /threads endpoint.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThreadsJson {
-    /// Current elapsed time since program start in nanoseconds
-    pub current_elapsed_ns: u64,
-    /// Sample interval in milliseconds
-    pub sample_interval_ms: u64,
-    /// Thread metrics
-    pub threads: Vec<ThreadMetrics>,
-    /// Total number of threads
-    pub thread_count: usize,
-    /// Process RSS (Resident Set Size) in bytes
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rss_bytes: Option<u64>,
 }
 
 /// HTTP routes for the hotpath metrics server.

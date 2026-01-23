@@ -6,7 +6,8 @@ use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
 
-use crate::futures::{get_futures_json, init_futures_state, FuturesJson};
+use crate::formatted::FormattedFuturesJson;
+use crate::futures::{get_futures_json, init_futures_state};
 use crate::Format;
 
 /// Builder for creating a FuturesGuard with custom configuration.
@@ -159,8 +160,7 @@ impl Drop for FuturesGuard {
                 table.printstd();
             }
             Format::Json => {
-                // Update elapsed time to use actual guard elapsed time
-                let json_output = FuturesJson {
+                let json_output = FormattedFuturesJson {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
                     futures: futures_json.futures,
                 };
@@ -170,7 +170,7 @@ impl Drop for FuturesGuard {
                 }
             }
             Format::JsonPretty => {
-                let json_output = FuturesJson {
+                let json_output = FormattedFuturesJson {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
                     futures: futures_json.futures,
                 };

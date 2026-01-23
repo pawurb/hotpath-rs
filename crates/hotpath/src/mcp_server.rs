@@ -17,8 +17,7 @@ use tokio_util::sync::CancellationToken;
 use crate::channels::{get_channel_logs, get_channels_json, START_TIME};
 use crate::formatted::{
     FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
-    FormattedThreadsJson,
+    FormattedFunctionsJson, FormattedFutureCalls, FormattedStreamLogs,
 };
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
@@ -174,9 +173,8 @@ High poll counts with "active" state suggest futures that wake frequently withou
         log_debug("Tool called: futures");
 
         let futures = get_futures_json();
-        let formatted = FormattedFuturesJson::from(&futures);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &formatted,
+            &futures,
         )?)]))
     }
 
@@ -191,9 +189,8 @@ Sampled at configurable interval (HOTPATH_THREADS_INTERVAL env var, default 1000
         log_debug("Tool called: threads");
 
         let threads = get_threads_json();
-        let formatted = FormattedThreadsJson::from(&threads);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &formatted,
+            &threads,
         )?)]))
     }
 

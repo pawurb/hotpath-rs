@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod tests {
-    use hotpath::threads::ThreadsJson;
+    use hotpath::formatted::FormattedThreadsJson;
     use std::process::Command;
     use std::thread::sleep;
     use std::time::Duration;
@@ -50,8 +50,8 @@ pub mod tests {
             panic!("Failed after 30 retries: {}", error);
         }
 
-        // Parse JSON response
-        let threads_response: ThreadsJson =
+        // Parse JSON response (server returns formatted values)
+        let threads_response: FormattedThreadsJson =
             serde_json::from_str(&json_text).expect("Failed to parse threads JSON");
 
         // Assert we have at least some threads
@@ -85,7 +85,11 @@ pub mod tests {
 
         for thread in &threads_response.threads {
             assert!(thread.os_tid > 0, "Thread should have valid os_tid");
-            assert!(thread.cpu_total >= 0.0, "CPU total should be non-negative");
+            // cpu_total is now a formatted string like "0.083s"
+            assert!(
+                thread.cpu_total.ends_with('s'),
+                "CPU total should be formatted as seconds"
+            );
         }
 
         let _ = child.kill();
