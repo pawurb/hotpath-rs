@@ -180,7 +180,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6770 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-std --example basic_std --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::ChannelsJson;
+        use hotpath::formatted::FormattedChannelsJson;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -236,7 +236,7 @@ pub mod tests {
         }
 
         // Test /channels/:id/logs endpoint
-        let channels_response: ChannelsJson =
+        let channels_response: FormattedChannelsJson =
             serde_json::from_str(&json_text).expect("Failed to parse channels JSON");
 
         if let Some(first_channel) = channels_response.channels.first() {

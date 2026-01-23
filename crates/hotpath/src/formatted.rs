@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::json::{
-    ChannelLogs, ChannelsJson, FutureCall, FutureCalls, FuturesJson, LogEntry,
-    SerializableChannelStats, SerializableFutureStats, SerializableStreamStats, StreamLogs,
-    StreamsJson, ThreadMetrics, ThreadsJson,
+    ChannelLogs, FutureCall, FutureCalls, FuturesJson, LogEntry, SerializableChannelStats,
+    SerializableFutureStats, SerializableStreamStats, StreamLogs, StreamsJson, ThreadMetrics,
+    ThreadsJson,
 };
 use crate::output::{
     format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricType,
@@ -333,19 +333,6 @@ impl From<&SerializableChannelStats> for FormattedChannelStats {
 pub struct FormattedChannelsJson {
     pub current_elapsed_ns: u64,
     pub channels: Vec<FormattedChannelStats>,
-}
-
-impl From<&ChannelsJson> for FormattedChannelsJson {
-    fn from(json: &ChannelsJson) -> Self {
-        FormattedChannelsJson {
-            current_elapsed_ns: json.current_elapsed_ns,
-            channels: json
-                .channels
-                .iter()
-                .map(FormattedChannelStats::from)
-                .collect(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -16,9 +16,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::channels::{get_channel_logs, get_channels_json, START_TIME};
 use crate::formatted::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
-    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
-    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
+    FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
+    FormattedStreamsJson, FormattedThreadsJson,
 };
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
@@ -138,9 +138,8 @@ Look for channels with growing queue_size or "full" state to identify bottleneck
         log_debug("Tool called: channels");
 
         let channels = get_channels_json();
-        let formatted = FormattedChannelsJson::from(&channels);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &formatted,
+            &channels,
         )?)]))
     }
 
