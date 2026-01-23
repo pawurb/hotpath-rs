@@ -12,7 +12,7 @@ use crate::json::{
 };
 use crate::output::{
     format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, FunctionsJson, MetricType,
-    ProfilingMode,
+    MetricsProvider, ProfilingMode,
 };
 
 pub fn format_time_ago(nanos_ago: u64) -> String {
@@ -79,54 +79,8 @@ pub struct FormattedFunctionsJson {
 impl FormattedFunctionsJson {
     pub fn new(json: &FunctionsJson, current_elapsed_ns: u64) -> Self {
         let is_alloc = matches!(json.hotpath_profiling_mode, ProfilingMode::Alloc);
-
-        let format_value = |metric: &MetricType| -> String {
-            match metric {
-                MetricType::DurationNs(ns) => format_duration(*ns),
-                MetricType::Alloc(bytes, _) => format_bytes(*bytes),
-                MetricType::Unsupported => "N/A".to_string(),
-                _ => metric.to_string(),
-            }
-        };
-
-        let data = json
-            .data
-            .iter()
-            .map(|(name, metrics)| {
-                let calls = match &metrics[0] {
-                    MetricType::CallsCount(c) => *c,
-                    _ => 0,
-                };
-                let avg = format_value(&metrics[1]);
-
-                let mut percentiles = HashMap::new();
-                for (i, &p) in json.percentiles.iter().enumerate() {
-                    let metric_idx = 2 + i;
-                    if metric_idx < metrics.len() - 2 {
-                        percentiles.insert(format!("p{}", p), format_value(&metrics[metric_idx]));
-                    }
-                }
-
-                let total_idx = metrics.len() - 2;
-                let percent_idx = metrics.len() - 1;
-
-                let total = format_value(&metrics[total_idx]);
-                let percent_total = match &metrics[percent_idx] {
-                    MetricType::Percentage(bp) => format!("{:.2}%", *bp as f64 / 100.0),
-                    MetricType::Unsupported => "N/A".to_string(),
-                    _ => "0%".to_string(),
-                };
-
-                FormattedFunctionData {
-                    name: name.clone(),
-                    calls,
-                    avg,
-                    percentiles,
-                    total,
-                    percent_total,
-                }
-            })
-            .collect();
+        let percentiles_config = &json.percentiles;
+        let data = format_metric_data(&json.data, percentiles_config);
 
         let (time_elapsed, total_allocated) = if is_alloc {
             (
@@ -148,6 +102,86 @@ impl FormattedFunctionsJson {
             data,
         }
     }
+
+    pub fn from_provider(provider: &dyn MetricsProvider<'_>, current_elapsed_ns: u64) -> Self {
+        let profiling_mode = provider.profiling_mode();
+        let is_alloc = matches!(profiling_mode, ProfilingMode::Alloc);
+        let percentiles_config = provider.percentiles();
+        let metric_data = provider.metric_data();
+        let data = format_metric_data(&metric_data, &percentiles_config);
+        let total_elapsed = provider.total_elapsed();
+
+        let (time_elapsed, total_allocated) = if is_alloc {
+            (
+                format_duration(current_elapsed_ns),
+                Some(format_bytes(total_elapsed)),
+            )
+        } else {
+            (format_duration(total_elapsed), None)
+        };
+
+        FormattedFunctionsJson {
+            profiling_mode,
+            time_elapsed,
+            total_elapsed_ns: current_elapsed_ns,
+            total_allocated,
+            description: provider.description(),
+            caller_name: provider.caller_name().to_string(),
+            percentiles: percentiles_config,
+            data,
+        }
+    }
+}
+
+fn format_metric_data(
+    data: &[(String, Vec<MetricType>)],
+    percentiles_config: &[u8],
+) -> Vec<FormattedFunctionData> {
+    let format_value = |metric: &MetricType| -> String {
+        match metric {
+            MetricType::DurationNs(ns) => format_duration(*ns),
+            MetricType::Alloc(bytes, _) => format_bytes(*bytes),
+            MetricType::Unsupported => "N/A".to_string(),
+            _ => metric.to_string(),
+        }
+    };
+
+    data.iter()
+        .map(|(name, metrics)| {
+            let calls = match &metrics[0] {
+                MetricType::CallsCount(c) => *c,
+                _ => 0,
+            };
+            let avg = format_value(&metrics[1]);
+
+            let mut percentiles = HashMap::new();
+            for (i, &p) in percentiles_config.iter().enumerate() {
+                let metric_idx = 2 + i;
+                if metric_idx < metrics.len() - 2 {
+                    percentiles.insert(format!("p{}", p), format_value(&metrics[metric_idx]));
+                }
+            }
+
+            let total_idx = metrics.len() - 2;
+            let percent_idx = metrics.len() - 1;
+
+            let total = format_value(&metrics[total_idx]);
+            let percent_total = match &metrics[percent_idx] {
+                MetricType::Percentage(bp) => format!("{:.2}%", *bp as f64 / 100.0),
+                MetricType::Unsupported => "N/A".to_string(),
+                _ => "0%".to_string(),
+            };
+
+            FormattedFunctionData {
+                name: name.clone(),
+                calls,
+                avg,
+                percentiles,
+                total,
+                percent_total,
+            }
+        })
+        .collect()
 }
 
 impl From<&FunctionsJson> for FormattedFunctionsJson {

@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use crate::channels::{get_channel_logs, get_channels_json, START_TIME};
 use crate::formatted::{
     FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedFutureCalls, FormattedStreamLogs,
+    FormattedFutureCalls, FormattedStreamLogs,
 };
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
@@ -85,9 +85,7 @@ Use this first to identify performance hotspots. Look for high p95/p99 values in
     async fn functions_timing(&self) -> Result<CallToolResult, McpError> {
         log_debug("Tool called: functions_timing");
 
-        let metrics = get_functions_timing_json();
-        let current_elapsed_ns = get_current_elapsed_ns();
-        let formatted = FormattedFunctionsJson::new(&metrics, current_elapsed_ns);
+        let formatted = get_functions_timing_json();
         Ok(CallToolResult::success(vec![Content::text(to_json(
             &formatted,
         )?)]))
@@ -107,13 +105,9 @@ Returns error if hotpath-alloc feature is not enabled. Cross-reference with func
         log_debug("Tool called: functions_alloc");
 
         match get_functions_alloc_json() {
-            Some(metrics) => {
-                let current_elapsed_ns = get_current_elapsed_ns();
-                let formatted = FormattedFunctionsJson::new(&metrics, current_elapsed_ns);
-                Ok(CallToolResult::success(vec![Content::text(to_json(
-                    &formatted,
-                )?)]))
-            }
+            Some(formatted) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &formatted,
+            )?)])),
             None => Ok(CallToolResult::error(vec![Content::text(
                 "Memory profiling not available - enable hotpath-alloc feature",
             )])),
