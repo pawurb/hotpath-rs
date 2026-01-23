@@ -83,7 +83,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6774 TEST_SLEEP_SECONDS=10 cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::streams::StreamsJson;
+        use hotpath::formatted::FormattedStreamsJson;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -139,7 +139,7 @@ pub mod tests {
         }
 
         // Test /streams/:id/logs endpoint
-        let streams_response: StreamsJson =
+        let streams_response: FormattedStreamsJson =
             serde_json::from_str(&json_text).expect("Failed to parse streams JSON");
 
         if let Some(first_stream) = streams_response.streams.first() {

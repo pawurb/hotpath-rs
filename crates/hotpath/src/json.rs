@@ -135,15 +135,6 @@ pub struct ChannelLogs {
     pub received_logs: Vec<LogEntry>,
 }
 
-/// Wrapper for streams-only JSON response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamsJson {
-    /// Current elapsed time since program start in nanoseconds
-    pub current_elapsed_ns: u64,
-    /// Stream statistics
-    pub streams: Vec<SerializableStreamStats>,
-}
-
 /// Serializable version of stream statistics for JSON responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableStreamStats {

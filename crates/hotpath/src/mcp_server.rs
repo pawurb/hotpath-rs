@@ -18,7 +18,7 @@ use crate::channels::{get_channel_logs, get_channels_json, START_TIME};
 use crate::formatted::{
     FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
     FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
-    FormattedStreamsJson, FormattedThreadsJson,
+    FormattedThreadsJson,
 };
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
@@ -156,9 +156,8 @@ Use to track stream throughput and identify stalled streams."#)]
         log_debug("Tool called: streams");
 
         let streams = get_streams_json();
-        let formatted = FormattedStreamsJson::from(&streams);
         Ok(CallToolResult::success(vec![Content::text(to_json(
-            &formatted,
+            &streams,
         )?)]))
     }
 
