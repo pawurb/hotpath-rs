@@ -8,8 +8,6 @@ use std::collections::HashMap;
 
 use super::{ChannelLogs, FutureCall, FutureCalls, LogEntry, StreamLogs, ThreadMetrics};
 
-#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
-use super::ChannelType;
 use crate::output::{
     format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, MetricType, MetricsProvider,
     ProfilingMode,
@@ -410,39 +408,6 @@ pub struct FormattedChannelStats {
     pub iter: u32,
 }
 
-#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
-impl From<&crate::lib_on::channels::ChannelStats> for FormattedChannelStats {
-    fn from(stats: &crate::lib_on::channels::ChannelStats) -> Self {
-        let label = crate::lib_on::channels::resolve_label(
-            stats.source,
-            stats.label.as_deref(),
-            Some(stats.iter),
-        );
-        let queued = stats.queued();
-        let capacity = match &stats.channel_type {
-            ChannelType::Bounded(cap) => Some(cap),
-            _ => None,
-        };
-
-        FormattedChannelStats {
-            id: stats.id,
-            source: stats.source.to_string(),
-            label,
-            has_custom_label: stats.label.is_some(),
-            channel_type: stats.channel_type.to_string(),
-            state: stats.state.as_str().to_string(),
-            sent_count: stats.sent_count,
-            received_count: stats.received_count,
-            queued,
-            queue_status: format_queue_status(queued, capacity.copied()),
-            type_name: stats.type_name.to_string(),
-            type_size: stats.type_size,
-            queued_bytes: format_bytes(stats.queued_bytes()),
-            iter: stats.iter,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedChannelsJson {
     pub current_elapsed_ns: u64,
@@ -540,29 +505,6 @@ pub struct FormattedStreamStats {
     pub iter: u32,
 }
 
-#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
-impl From<&crate::lib_on::streams::StreamStats> for FormattedStreamStats {
-    fn from(stats: &crate::lib_on::streams::StreamStats) -> Self {
-        let label = crate::lib_on::channels::resolve_label(
-            stats.source,
-            stats.label.as_deref(),
-            Some(stats.iter),
-        );
-
-        FormattedStreamStats {
-            id: stats.id,
-            source: stats.source.to_string(),
-            label,
-            has_custom_label: stats.label.is_some(),
-            state: stats.state.as_str().to_string(),
-            items_yielded: stats.items_yielded,
-            type_name: stats.type_name.to_string(),
-            type_size: stats.type_size,
-            iter: stats.iter,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedStreamsJson {
     pub current_elapsed_ns: u64,
@@ -596,23 +538,6 @@ pub struct FormattedFutureStats {
     pub has_custom_label: bool,
     pub call_count: u64,
     pub total_polls: u64,
-}
-
-#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
-impl From<&crate::lib_on::futures::FutureStats> for FormattedFutureStats {
-    fn from(stats: &crate::lib_on::futures::FutureStats) -> Self {
-        let label =
-            crate::lib_on::channels::resolve_label(stats.source, stats.label.as_deref(), None);
-
-        FormattedFutureStats {
-            id: stats.id,
-            source: stats.source.to_string(),
-            label,
-            has_custom_label: stats.label.is_some(),
-            call_count: stats.call_count,
-            total_polls: stats.total_polls(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

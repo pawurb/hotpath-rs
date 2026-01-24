@@ -16,9 +16,10 @@ pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
 
 mod wrapper;
 
+use crate::json::{format_queue_status, FormattedChannelStats, FormattedChannelsJson};
 pub use crate::json::{ChannelLogs, ChannelState, ChannelType, LogEntry};
-use crate::json::{FormattedChannelStats, FormattedChannelsJson};
 use crate::metrics_server::METRICS_SERVER_PORT;
+use crate::output::format_bytes;
 use crate::output::truncate_result;
 
 pub use crate::Format;
@@ -54,6 +55,34 @@ impl ChannelStats {
 
     pub fn queued_bytes(&self) -> u64 {
         self.queued() * self.type_size as u64
+    }
+}
+
+impl From<&ChannelStats> for FormattedChannelStats {
+    fn from(stats: &ChannelStats) -> Self {
+        let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
+        let queued = stats.queued();
+        let capacity = match &stats.channel_type {
+            ChannelType::Bounded(cap) => Some(cap),
+            _ => None,
+        };
+
+        FormattedChannelStats {
+            id: stats.id,
+            source: stats.source.to_string(),
+            label,
+            has_custom_label: stats.label.is_some(),
+            channel_type: stats.channel_type.to_string(),
+            state: stats.state.as_str().to_string(),
+            sent_count: stats.sent_count,
+            received_count: stats.received_count,
+            queued,
+            queue_status: format_queue_status(queued, capacity.copied()),
+            type_name: stats.type_name.to_string(),
+            type_size: stats.type_size,
+            queued_bytes: format_bytes(stats.queued_bytes()),
+            iter: stats.iter,
+        }
     }
 }
 

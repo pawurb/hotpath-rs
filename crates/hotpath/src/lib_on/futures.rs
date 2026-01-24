@@ -1,6 +1,6 @@
 //! Futures instrumentation module - tracks async Future lifecycle and poll statistics.
 
-use crate::channels::{get_log_limit, START_TIME};
+use crate::channels::{get_log_limit, resolve_label, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
@@ -84,6 +84,21 @@ impl FutureStats {
     /// Find a call by ID
     fn find_call_mut(&mut self, id: u64) -> Option<&mut FutureCall> {
         self.calls.iter_mut().find(|c| c.id == id)
+    }
+}
+
+impl From<&FutureStats> for FormattedFutureStats {
+    fn from(stats: &FutureStats) -> Self {
+        let label = resolve_label(stats.source, stats.label.as_deref(), None);
+
+        FormattedFutureStats {
+            id: stats.id,
+            source: stats.source.to_string(),
+            label,
+            has_custom_label: stats.label.is_some(),
+            call_count: stats.call_count,
+            total_polls: stats.total_polls(),
+        }
     }
 }
 

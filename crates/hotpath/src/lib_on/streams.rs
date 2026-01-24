@@ -16,6 +16,7 @@ pub use guard::{StreamsGuard, StreamsGuardBuilder};
 
 pub(crate) mod wrapper;
 
+use crate::channels::resolve_label;
 pub use crate::json::{ChannelState, LogEntry, StreamLogs};
 use crate::json::{FormattedStreamStats, FormattedStreamsJson};
 use crate::metrics_server::METRICS_SERVER_PORT;
@@ -54,6 +55,24 @@ impl StreamStats {
             type_size,
             logs: VecDeque::new(),
             iter,
+        }
+    }
+}
+
+impl From<&StreamStats> for FormattedStreamStats {
+    fn from(stats: &StreamStats) -> Self {
+        let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
+
+        FormattedStreamStats {
+            id: stats.id,
+            source: stats.source.to_string(),
+            label,
+            has_custom_label: stats.label.is_some(),
+            state: stats.state.as_str().to_string(),
+            items_yielded: stats.items_yielded,
+            type_name: stats.type_name.to_string(),
+            type_size: stats.type_size,
+            iter: stats.iter,
         }
     }
 }
