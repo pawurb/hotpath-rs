@@ -299,8 +299,7 @@ impl Route {
             Route::FutureCalls { future_id } => format!("/futures/{}/calls", future_id),
             Route::DebugStats => "/debug".to_string(),
             Route::DebugLogs { source } => {
-                let encoded =
-                    base64::engine::general_purpose::STANDARD.encode(source.as_bytes());
+                let encoded = base64::engine::general_purpose::STANDARD.encode(source.as_bytes());
                 format!("/debug/{}/logs", encoded)
             }
         }

@@ -11,7 +11,7 @@ members = [
     "crates/test-streams",
     "crates/test-channels-tokio",
     "crates/test-futures",
-    "crates/test-metrics",
+    "crates/test-debug",
 ]
 resolver = "2"
 

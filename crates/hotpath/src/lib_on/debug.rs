@@ -1,4 +1,4 @@
-//! Metrics subsystem - value logging, debug logging, and gauges.
+//! Debug subsystem - value logging, debug logging, and gauges.
 
 use crate::channels::{get_log_limit, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
@@ -16,7 +16,7 @@ pub mod dbg;
 pub mod gauge;
 pub mod value;
 
-pub use dbg::{get_debug_logs, get_debug_stats_json, log_debug, log_debug_location};
+pub use dbg::{get_dbg_logs, get_dbg_stats_json, log_debug, log_debug_location};
 
 #[derive(Debug, Clone)]
 pub struct DebugEntry {
@@ -46,7 +46,7 @@ impl DebugStats {
 }
 
 #[derive(Debug)]
-pub(crate) enum MetricEvent {
+pub(crate) enum DebugEvent {
     DebugLog {
         source: &'static str,
         expression: &'static str,
@@ -61,32 +61,32 @@ pub(crate) enum MetricEvent {
     },
 }
 
-type MetricsState = (
-    CbSender<MetricEvent>,
+type DebugState = (
+    CbSender<DebugEvent>,
     Arc<RwLock<HashMap<&'static str, DebugStats>>>,
 );
 
-static METRICS_STATE: OnceLock<MetricsState> = OnceLock::new();
+static DEBUG_STATE: OnceLock<DebugState> = OnceLock::new();
 
-pub(crate) fn init_metrics_state() {
-    METRICS_STATE.get_or_init(|| {
+pub(crate) fn init_debug_state() {
+    DEBUG_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
-        let (event_tx, event_rx) = unbounded::<MetricEvent>();
+        let (event_tx, event_rx) = unbounded::<DebugEvent>();
         let stats_map = Arc::new(RwLock::new(HashMap::<&'static str, DebugStats>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
-            .name("hp-metrics".into())
+            .name("hp-debug".into())
             .spawn(move || {
                 while let Ok(event) = event_rx.recv() {
                     let mut stats = stats_map_clone.write().unwrap();
-                    process_metric_event(&mut stats, event);
+                    process_debug_event(&mut stats, event);
                 }
             })
-            .expect("Failed to spawn metrics event collector thread");
+            .expect("Failed to spawn debug event collector thread");
 
         (event_tx, stats_map)
     });
@@ -97,9 +97,9 @@ fn timestamp_nanos(timestamp: Instant) -> u64 {
     timestamp.duration_since(start_time).as_nanos() as u64
 }
 
-fn process_metric_event(stats_map: &mut HashMap<&'static str, DebugStats>, event: MetricEvent) {
+fn process_debug_event(stats_map: &mut HashMap<&'static str, DebugStats>, event: DebugEvent) {
     match event {
-        MetricEvent::DebugLog {
+        DebugEvent::DebugLog {
             source,
             expression,
             value,
@@ -125,7 +125,7 @@ fn process_metric_event(stats_map: &mut HashMap<&'static str, DebugStats>, event
             }
             stats.logs.push_back(entry);
         }
-        MetricEvent::DebugLocation {
+        DebugEvent::DebugLocation {
             source,
             timestamp,
             tid,
@@ -152,14 +152,14 @@ fn process_metric_event(stats_map: &mut HashMap<&'static str, DebugStats>, event
     }
 }
 
-pub(crate) fn send_metric_event(event: MetricEvent) {
-    if let Some((tx, _)) = METRICS_STATE.get() {
+pub(crate) fn send_debug_event(event: DebugEvent) {
+    if let Some((tx, _)) = DEBUG_STATE.get() {
         let _ = tx.send(event);
     }
 }
 
 pub(crate) fn get_all_debug_stats() -> HashMap<&'static str, DebugStats> {
-    if let Some((_, stats_map)) = METRICS_STATE.get() {
+    if let Some((_, stats_map)) = DEBUG_STATE.get() {
         stats_map.read().unwrap().clone()
     } else {
         HashMap::new()

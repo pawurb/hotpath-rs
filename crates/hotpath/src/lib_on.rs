@@ -3,8 +3,8 @@ pub use cfg_if::cfg_if;
 pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 
 pub mod channels;
+pub mod debug;
 pub mod futures;
-pub mod metrics;
 pub mod streams;
 #[cfg(feature = "threads")]
 pub mod threads;
@@ -104,14 +104,14 @@ macro_rules! measure_block {
 #[macro_export]
 macro_rules! dbg {
     () => {
-        $crate::metrics::dbg::log_debug_location(file!(), line!(), column!())
+        $crate::debug::dbg::log_debug_location(file!(), line!(), column!())
     };
     ($val:expr $(,)?) => {{
         const DBG_LOC: &'static str = concat!(file!(), ":", line!());
         const DBG_EXPR: &'static str = stringify!($val);
         match $val {
             tmp => {
-                $crate::metrics::dbg::log_debug(DBG_LOC, DBG_EXPR, &tmp);
+                $crate::debug::dbg::log_debug(DBG_LOC, DBG_EXPR, &tmp);
                 tmp
             }
         }

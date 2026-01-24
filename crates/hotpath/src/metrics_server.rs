@@ -1,4 +1,5 @@
 use crate::channels::START_TIME;
+use crate::debug::{get_dbg_logs, get_dbg_stats_json};
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
@@ -8,7 +9,6 @@ use crate::json::{
     FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
     FormattedFutureCalls, FormattedStreamLogs,
 };
-use crate::metrics::{get_debug_logs, get_debug_stats_json};
 use std::sync::LazyLock;
 
 pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
@@ -152,10 +152,10 @@ fn handle_request(request: Request) {
             None => respond_error(request, 404, "Future not found"),
         },
         Ok(Route::DebugStats) => {
-            let debug_stats = get_debug_stats_json();
+            let debug_stats = get_dbg_stats_json();
             respond_json(request, &debug_stats);
         }
-        Ok(Route::DebugLogs { source }) => match get_debug_logs(&source) {
+        Ok(Route::DebugLogs { source }) => match get_dbg_logs(&source) {
             Some(formatted) => {
                 respond_json(request, &formatted);
             }

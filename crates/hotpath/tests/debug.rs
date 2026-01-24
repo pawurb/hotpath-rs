@@ -2,19 +2,19 @@
 pub mod tests {
     use std::process::Command;
 
-    // HOTPATH_METRICS_PORT=6780 TEST_SLEEP_MS=5000 cargo run -p test-metrics --example basic_metrics --features hotpath
+    // HOTPATH_METRICS_PORT=6780 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_debug --features hotpath
     #[test]
     fn test_debug_endpoints() {
-        use hotpath::json::{FormattedDebugJson, FormattedDebugLogs};
+        use hotpath::json::{FormattedDbgJson, FormattedDbgLogs};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
             .args([
                 "run",
                 "-p",
-                "test-metrics",
+                "test-debug",
                 "--example",
-                "basic_metrics",
+                "basic_debug",
                 "--features",
                 "hotpath",
             ])
@@ -49,7 +49,7 @@ pub mod tests {
             panic!("Failed after 12 retries: {}", error);
         }
 
-        let debug_response: FormattedDebugJson =
+        let debug_response: FormattedDbgJson =
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
 
         let first = debug_response.debug_logs.first().expect("No debug logs");
@@ -72,7 +72,7 @@ pub mod tests {
         .read_to_string()
         .expect("Failed to read logs response body");
 
-        let logs: FormattedDebugLogs =
+        let logs: FormattedDbgLogs =
             serde_json::from_str(&logs_json).expect("Failed to parse debug logs JSON");
 
         let first_log = logs.logs.first().expect("No log entries");

@@ -9,13 +9,12 @@ use quanta::Instant;
 use std::time::Instant;
 
 use crate::channels::START_TIME;
-use crate::json::{
-    format_time_ago, FormattedDebugJson, FormattedDebugLogEntry, FormattedDebugLogs,
-    FormattedDebugStats,
+use crate::debug::{
+    get_all_debug_stats, get_sorted_debug_stats, init_debug_state, send_debug_event, DebugEvent,
+    DebugStats,
 };
-use crate::metrics::{
-    get_all_debug_stats, get_sorted_debug_stats, init_metrics_state, send_metric_event,
-    DebugStats, MetricEvent,
+use crate::json::{
+    format_time_ago, FormattedDbgJson, FormattedDbgLogEntry, FormattedDbgLogs, FormattedDbgStats,
 };
 use crate::output::{format_duration, truncate_result};
 
@@ -26,13 +25,13 @@ fn get_thread_id() -> Option<u64> {
 #[doc(hidden)]
 #[inline]
 pub fn log_debug<T: Debug>(source: &'static str, expression: &'static str, value: &T) {
-    init_metrics_state();
+    init_debug_state();
 
     let value_str = truncate_result(format!("{:?}", value));
     let timestamp = Instant::now();
     let tid = get_thread_id();
 
-    send_metric_event(MetricEvent::DebugLog {
+    send_debug_event(DebugEvent::DebugLog {
         source,
         expression,
         value: value_str,
@@ -44,35 +43,35 @@ pub fn log_debug<T: Debug>(source: &'static str, expression: &'static str, value
 #[doc(hidden)]
 #[inline]
 pub fn log_debug_location(file: &'static str, line: u32, column: u32) {
-    init_metrics_state();
+    init_debug_state();
 
     let source: &'static str = Box::leak(format!("{}:{}:{}", file, line, column).into_boxed_str());
     let timestamp = Instant::now();
     let tid = get_thread_id();
 
-    send_metric_event(MetricEvent::DebugLocation {
+    send_debug_event(DebugEvent::DebugLocation {
         source,
         timestamp,
         tid,
     });
 }
 
-pub fn get_debug_stats_json() -> FormattedDebugJson {
+pub fn get_dbg_stats_json() -> FormattedDbgJson {
     let stats = get_sorted_debug_stats();
-    let formatted: Vec<FormattedDebugStats> = stats.iter().map(FormattedDebugStats::from).collect();
+    let formatted: Vec<FormattedDbgStats> = stats.iter().map(FormattedDbgStats::from).collect();
 
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)
         .unwrap_or(0);
 
-    FormattedDebugJson {
+    FormattedDbgJson {
         current_elapsed_ns,
         debug_logs: formatted,
     }
 }
 
-pub fn get_debug_logs(source: &str) -> Option<FormattedDebugLogs> {
+pub fn get_dbg_logs(source: &str) -> Option<FormattedDbgLogs> {
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)
@@ -82,12 +81,12 @@ pub fn get_debug_logs(source: &str) -> Option<FormattedDebugLogs> {
     stats
         .iter()
         .find(|(k, _)| **k == source)
-        .map(|(_, s)| FormattedDebugLogs::from_stats(s, current_elapsed_ns))
+        .map(|(_, s)| FormattedDbgLogs::from_stats(s, current_elapsed_ns))
 }
 
-impl From<&DebugStats> for FormattedDebugStats {
+impl From<&DebugStats> for FormattedDbgStats {
     fn from(stats: &DebugStats) -> Self {
-        FormattedDebugStats {
+        FormattedDbgStats {
             source: stats.source.to_string(),
             expression: stats.expression.to_string(),
             log_count: stats.log_count,
@@ -95,16 +94,16 @@ impl From<&DebugStats> for FormattedDebugStats {
     }
 }
 
-impl FormattedDebugLogs {
+impl FormattedDbgLogs {
     pub fn from_stats(stats: &DebugStats, current_elapsed_ns: u64) -> Self {
-        FormattedDebugLogs {
+        FormattedDbgLogs {
             source: stats.source.to_string(),
             expression: stats.expression.to_string(),
             total_logs: stats.log_count,
             logs: stats
                 .logs
                 .iter()
-                .map(|e| FormattedDebugLogEntry {
+                .map(|e| FormattedDbgLogEntry {
                     index: e.index,
                     timestamp: format_duration(e.timestamp_ns),
                     ago: format_time_ago(current_elapsed_ns.saturating_sub(e.timestamp_ns)),

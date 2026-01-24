@@ -635,20 +635,20 @@ pub struct FormattedThreadsJson {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugStats {
+pub struct FormattedDbgStats {
     pub source: String,
     pub expression: String,
     pub log_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugJson {
+pub struct FormattedDbgJson {
     pub current_elapsed_ns: u64,
-    pub debug_logs: Vec<FormattedDebugStats>,
+    pub debug_logs: Vec<FormattedDbgStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugLogEntry {
+pub struct FormattedDbgLogEntry {
     pub index: u64,
     pub timestamp: String,
     pub ago: String,
@@ -657,10 +657,9 @@ pub struct FormattedDebugLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugLogs {
+pub struct FormattedDbgLogs {
     pub source: String,
     pub expression: String,
     pub total_logs: u64,
-    pub logs: Vec<FormattedDebugLogEntry>,
+    pub logs: Vec<FormattedDbgLogEntry>,
 }
-
