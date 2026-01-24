@@ -18,6 +18,11 @@ name = "hotpath-ci"
 path = "bin/hotpath-ci/main.rs"
 required-features = ["ci"]
 
+[[bin]]
+name = "hotpath-crashtest"
+path = "bin/hotpath-crashtest/main.rs"
+required-features = ["tui"]
+
 [features]
 default = ["threads"]
 hotpath = [
