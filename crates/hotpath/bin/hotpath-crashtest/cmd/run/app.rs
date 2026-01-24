@@ -1,20 +1,37 @@
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crate::cmd::run::events::AppEvent;
+use crate::cmd::run::input::spawn_input_reader;
+use crossbeam_channel::{select, Receiver};
+use crossterm::event::KeyCode;
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Color, Style},
-    text::Text,
-    widgets::Paragraph,
+    style::{Color, Style, Stylize},
+    text::{Line, Span},
     Frame,
 };
 use std::time::Duration;
 
 pub struct App {
     exit: bool,
+    cpu_spike: bool,
+    memory_bloat: bool,
+    thread_panic: bool,
+    runtime_block: bool,
+    event_rx: Receiver<AppEvent>,
 }
 
 impl App {
     pub fn new() -> Self {
-        Self { exit: false }
+        let (tx, rx) = crossbeam_channel::unbounded();
+        spawn_input_reader(tx);
+
+        Self {
+            exit: false,
+            cpu_spike: false,
+            memory_bloat: false,
+            thread_panic: false,
+            runtime_block: false,
+            event_rx: rx,
+        }
     }
 
     pub fn run(
@@ -23,7 +40,7 @@ impl App {
     ) -> std::io::Result<()> {
         while !self.exit {
             terminal.draw(|frame| self.render(frame))?;
-            self.handle_events()?;
+            self.handle_events();
         }
         Ok(())
     }
@@ -31,33 +48,65 @@ impl App {
     fn render(&self, frame: &mut Frame) {
         let area = frame.area();
 
+        let lines = vec![
+            Line::from(self.indicator("[1] CPU Spike", self.cpu_spike)),
+            Line::from(self.indicator("[2] Memory Bloat", self.memory_bloat)),
+            Line::from(self.indicator("[3] Thread Panic", self.thread_panic)),
+            Line::from(self.indicator("[4] Runtime Block", self.runtime_block)),
+        ];
+
         let vertical = Layout::vertical([
             Constraint::Fill(1),
-            Constraint::Length(1),
+            Constraint::Length(4),
             Constraint::Fill(1),
         ]);
         let [_, center, _] = vertical.areas(area);
 
         let horizontal = Layout::horizontal([
             Constraint::Fill(1),
-            Constraint::Length(11),
+            Constraint::Length(20),
             Constraint::Fill(1),
         ]);
         let [_, center, _] = horizontal.areas(center);
 
-        let text = Text::raw("Hello World");
-        let paragraph = Paragraph::new(text).style(Style::default().fg(Color::Green));
-        frame.render_widget(paragraph, center);
+        for (i, line) in lines.into_iter().enumerate() {
+            let line_area = ratatui::layout::Rect {
+                x: center.x,
+                y: center.y + i as u16,
+                width: center.width,
+                height: 1,
+            };
+            frame.render_widget(line, line_area);
+        }
     }
 
-    fn handle_events(&mut self) -> std::io::Result<()> {
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                    self.exit = true;
+    fn indicator<'a>(&self, label: &'a str, active: bool) -> Span<'a> {
+        if active {
+            Span::styled(label, Style::default().fg(Color::Green).bold())
+        } else {
+            Span::styled(label, Style::default().fg(Color::Gray))
+        }
+    }
+
+    fn handle_events(&mut self) {
+        select! {
+            recv(self.event_rx) -> msg => {
+                if let Ok(AppEvent::Key(code)) = msg {
+                    self.handle_key(code);
                 }
             }
+            default(Duration::from_millis(100)) => {}
         }
-        Ok(())
+    }
+
+    fn handle_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Char('1') => self.cpu_spike = !self.cpu_spike,
+            KeyCode::Char('2') => self.memory_bloat = !self.memory_bloat,
+            KeyCode::Char('3') => self.thread_panic = !self.thread_panic,
+            KeyCode::Char('4') => self.runtime_block = !self.runtime_block,
+            KeyCode::Char('q') | KeyCode::Char('Q') => self.exit = true,
+            _ => {}
+        }
     }
 }

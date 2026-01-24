@@ -1,4 +1,6 @@
 mod app;
+mod events;
+mod input;
 
 use app::App;
 use eyre::Result;
