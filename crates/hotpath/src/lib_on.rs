@@ -4,6 +4,7 @@ pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 
 pub mod channels;
 pub mod futures;
+pub mod metrics;
 pub mod streams;
 #[cfg(feature = "threads")]
 pub mod threads;
