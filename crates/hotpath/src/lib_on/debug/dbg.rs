@@ -8,7 +8,7 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-use crate::channels::START_TIME;
+use crate::channels::{extract_filename, START_TIME};
 use crate::debug::{
     get_all_debug_stats, get_sorted_debug_stats, init_debug_state, send_debug_event, DebugEvent,
     DebugStats,
@@ -71,7 +71,7 @@ pub fn get_dbg_stats_json() -> FormattedDbgJson {
     }
 }
 
-pub fn get_dbg_logs(source: &str) -> Option<FormattedDbgLogs> {
+pub fn get_dbg_logs(source: &str, expression: &str) -> Option<FormattedDbgLogs> {
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)
@@ -80,16 +80,31 @@ pub fn get_dbg_logs(source: &str) -> Option<FormattedDbgLogs> {
     let stats = get_all_debug_stats();
     stats
         .iter()
-        .find(|(k, _)| **k == source)
+        .find(|((s, e), _)| *s == source && *e == expression)
         .map(|(_, s)| FormattedDbgLogs::from_stats(s, current_elapsed_ns))
+}
+
+fn truncate_source_path(source: &str) -> String {
+    if let Some(colon_pos) = source.find(':') {
+        let path_part = &source[..colon_pos];
+        let suffix = &source[colon_pos..];
+        format!("{}{}", extract_filename(path_part), suffix)
+    } else {
+        extract_filename(source)
+    }
 }
 
 impl From<&DebugStats> for FormattedDbgStats {
     fn from(stats: &DebugStats) -> Self {
+        let id = format!("{}|{}", stats.source, stats.expression);
+        let last_value = stats.logs.back().map(|e| e.value.clone());
         FormattedDbgStats {
             source: stats.source.to_string(),
+            source_display: truncate_source_path(stats.source),
             expression: stats.expression.to_string(),
             log_count: stats.log_count,
+            id,
+            last_value,
         }
     }
 }
@@ -97,7 +112,7 @@ impl From<&DebugStats> for FormattedDbgStats {
 impl FormattedDbgLogs {
     pub fn from_stats(stats: &DebugStats, current_elapsed_ns: u64) -> Self {
         FormattedDbgLogs {
-            source: stats.source.to_string(),
+            source: truncate_source_path(stats.source),
             expression: stats.expression.to_string(),
             total_logs: stats.log_count,
             logs: stats

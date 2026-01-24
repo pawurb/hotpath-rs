@@ -1,12 +1,12 @@
 //! Data management - fetching, updating, and transforming functions/channels
 
-use super::{App, CachedLogs, CachedStreamLogs, SelectedTab};
+use crate::cmd::console::app::{App, CachedDebugLogs, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
-    FormattedFunctionData, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
-    FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
-    FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson, FormattedDbgLogs,
+    FormattedFunctionAllocLogsJson, FormattedFunctionData, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
+    FormattedStreamsJson, FormattedThreadsJson,
 };
 use std::time::Instant;
 use tracing::{trace, warn};
@@ -349,6 +349,10 @@ impl App {
                 self.loading_futures = true;
                 DataRequest::RefreshFutures
             }
+            SelectedTab::Debug => {
+                self.loading_debug = true;
+                DataRequest::RefreshDebug
+            }
         };
         trace!("Requesting refresh for tab: {}", self.selected_tab.name());
         let _ = self.request_tx.send(request);
@@ -443,6 +447,27 @@ impl App {
                 );
                 self.handle_future_calls(future_id, calls);
             }
+            DataResponse::Debug(data) => {
+                trace!("Received debug data: {} entries", data.debug_logs.len());
+                self.loading_debug = false;
+                self.update_debug(data);
+            }
+            DataResponse::DebugLogs {
+                source,
+                expression,
+                logs,
+            } => {
+                trace!(
+                    "Received debug {}|{} logs: {} entries",
+                    source,
+                    expression,
+                    logs.logs.len()
+                );
+                self.handle_debug_logs(logs);
+            }
+            DataResponse::DebugLogsNotFound { .. } => {
+                self.debug_logs = None;
+            }
             DataResponse::Error(e) => {
                 warn!("Data fetch error: {}", e);
                 self.loading_functions = false;
@@ -450,6 +475,7 @@ impl App {
                 self.loading_streams = false;
                 self.loading_threads = false;
                 self.loading_futures = false;
+                self.loading_debug = false;
                 self.set_error(e);
             }
         }
@@ -520,6 +546,65 @@ impl App {
             if let Some(selected) = self.future_calls_table_state.selected() {
                 if selected >= call_count && call_count > 0 {
                     self.future_calls_table_state.select(Some(call_count - 1));
+                }
+            }
+        }
+    }
+
+    pub(crate) fn update_debug(&mut self, debug: FormattedDbgJson) {
+        let selected_id = self
+            .debug_table_state
+            .selected()
+            .and_then(|idx| self.debug_stats.get(idx))
+            .map(|stat| stat.id.clone());
+
+        self.debug_stats = debug.debug_logs;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        if let Some(id) = selected_id {
+            if let Some(new_idx) = self.debug_stats.iter().position(|stat| stat.id == id) {
+                self.debug_table_state.select(Some(new_idx));
+            } else if !self.debug_stats.is_empty() {
+                self.debug_table_state
+                    .select(Some(self.debug_stats.len() - 1));
+            }
+        } else if let Some(selected) = self.debug_table_state.selected() {
+            if selected >= self.debug_stats.len() && !self.debug_stats.is_empty() {
+                self.debug_table_state
+                    .select(Some(self.debug_stats.len() - 1));
+            }
+        }
+
+        if self.show_debug_logs {
+            self.request_debug_logs();
+        }
+    }
+
+    pub(crate) fn request_debug_logs(&self) {
+        if self.paused {
+            return;
+        }
+
+        if let Some(selected) = self.debug_table_state.selected() {
+            if !self.debug_stats.is_empty() && selected < self.debug_stats.len() {
+                let stat = &self.debug_stats[selected];
+                let _ = self.request_tx.send(DataRequest::FetchDebugLogs {
+                    source: stat.source.clone(),
+                    expression: stat.expression.clone(),
+                });
+            }
+        }
+    }
+
+    pub(crate) fn handle_debug_logs(&mut self, logs: FormattedDbgLogs) {
+        self.debug_logs = Some(CachedDebugLogs { logs });
+
+        if let Some(ref cached_logs) = self.debug_logs {
+            let log_count = cached_logs.logs.logs.len();
+            if let Some(selected) = self.debug_logs_table_state.selected() {
+                if selected >= log_count && log_count > 0 {
+                    self.debug_logs_table_state.select(Some(log_count - 1));
                 }
             }
         }

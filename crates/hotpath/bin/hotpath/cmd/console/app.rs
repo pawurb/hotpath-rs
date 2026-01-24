@@ -2,10 +2,11 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
-    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCall,
-    FormattedFutureCalls, FormattedFuturesJson, FormattedLogEntry, FormattedSentLogEntry,
-    FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgLogEntry, FormattedDbgLogs,
+    FormattedDbgStats, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson, FormattedFutureCall, FormattedFutureCalls, FormattedFuturesJson,
+    FormattedLogEntry, FormattedSentLogEntry, FormattedStreamLogs, FormattedStreamsJson,
+    FormattedThreadsJson,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -25,6 +26,7 @@ pub(crate) enum SelectedTab {
     Channels,
     Streams,
     Threads,
+    Debug,
 }
 
 impl SelectedTab {
@@ -36,6 +38,7 @@ impl SelectedTab {
             SelectedTab::Channels => 4,
             SelectedTab::Streams => 5,
             SelectedTab::Threads => 6,
+            SelectedTab::Debug => 7,
         }
     }
 
@@ -47,6 +50,7 @@ impl SelectedTab {
             SelectedTab::Channels => "Channels",
             SelectedTab::Streams => "Streams",
             SelectedTab::Threads => "Threads",
+            SelectedTab::Debug => "Debug",
         }
     }
 
@@ -87,6 +91,14 @@ pub(crate) enum FuturesFocus {
     Inspect,
 }
 
+/// Represents which UI component has focus in the Debug tab
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DebugFocus {
+    Debug,
+    Logs,
+    Inspect,
+}
+
 /// Cached channel logs
 pub(crate) struct CachedLogs {
     pub(crate) logs: FormattedChannelLogs,
@@ -111,6 +123,10 @@ pub(crate) struct InspectedFunctionLog {
 
 pub(crate) struct CachedStreamLogs {
     pub(crate) logs: FormattedStreamLogs,
+}
+
+pub(crate) struct CachedDebugLogs {
+    pub(crate) logs: FormattedDbgLogs,
 }
 
 pub(crate) struct App {
@@ -172,6 +188,15 @@ pub(crate) struct App {
     pub(crate) future_calls_table_state: TableState,
     pub(crate) future_calls: Option<FormattedFutureCalls>,
     pub(crate) inspected_future_call: Option<FormattedFutureCall>,
+
+    pub(crate) debug_stats: Vec<FormattedDbgStats>,
+    pub(crate) debug_table_state: TableState,
+    pub(crate) debug_focus: DebugFocus,
+    pub(crate) show_debug_logs: bool,
+    pub(crate) debug_logs: Option<CachedDebugLogs>,
+    pub(crate) debug_logs_table_state: TableState,
+    pub(crate) inspected_debug_log: Option<FormattedDbgLogEntry>,
+    pub(crate) loading_debug: bool,
 }
 
 #[hotpath::measure_all]
@@ -266,6 +291,14 @@ impl App {
             future_calls_table_state: TableState::default(),
             future_calls: None,
             inspected_future_call: None,
+            debug_stats: Vec::new(),
+            debug_table_state: TableState::default().with_selected(0),
+            debug_focus: DebugFocus::Debug,
+            show_debug_logs: false,
+            debug_logs: None,
+            debug_logs_table_state: TableState::default(),
+            inspected_debug_log: None,
+            loading_debug: false,
         }
     }
 
@@ -289,6 +322,7 @@ impl App {
             SelectedTab::Streams => &mut self.streams_table_state,
             SelectedTab::Threads => &mut self.threads_table_state,
             SelectedTab::Futures => &mut self.futures_table_state,
+            SelectedTab::Debug => &mut self.debug_table_state,
         }
     }
 

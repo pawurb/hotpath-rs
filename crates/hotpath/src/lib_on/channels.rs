@@ -292,7 +292,7 @@ pub(crate) fn resolve_label(id: &'static str, provided: Option<&str>, iter: Opti
     }
 }
 
-pub(crate) fn extract_filename(path: &str) -> String {
+pub fn extract_filename(path: &str) -> String {
     let components: Vec<&str> = path.split('/').collect();
     if components.len() >= 2 {
         format!(

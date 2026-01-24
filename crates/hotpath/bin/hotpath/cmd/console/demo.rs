@@ -20,6 +20,9 @@ fn spawn_bounded_channel() {
             if tx.send(msg).is_err() {
                 break;
             }
+            if counter.is_multiple_of(10) {
+                hotpath::dbg!(counter);
+            }
             counter += 1;
             thread::sleep(Duration::from_millis(100));
         }
@@ -49,7 +52,10 @@ fn spawn_unbounded_channel() {
     });
 
     thread::spawn(move || {
-        while let Ok(_value) = rx.recv() {
+        while let Ok(value) = rx.recv() {
+            if value % 20 == 0 {
+                hotpath::dbg!(value, "received");
+            }
             thread::sleep(Duration::from_millis(80));
         }
     });

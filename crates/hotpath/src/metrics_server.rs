@@ -155,7 +155,7 @@ fn handle_request(request: Request) {
             let debug_stats = get_dbg_stats_json();
             respond_json(request, &debug_stats);
         }
-        Ok(Route::DebugLogs { source }) => match get_dbg_logs(&source) {
+        Ok(Route::DebugLogs { source, expression }) => match get_dbg_logs(&source, &expression) {
             Some(formatted) => {
                 respond_json(request, &formatted);
             }

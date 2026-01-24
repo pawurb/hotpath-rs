@@ -1,13 +1,19 @@
-use super::super::app::{
-    App, ChannelsFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
+use crate::cmd::console::app::{
+    App, ChannelsFocus, DebugFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
 };
-use super::channels::{inspect, logs as channel_logs};
-use super::functions_memory::{inspect as memory_inspect, logs as memory_logs};
-use super::functions_timing::{inspect as timing_inspect, logs as timing_logs};
-use super::futures::{calls as future_calls, inspect as future_inspect};
-use super::streams::{inspect as stream_inspect, logs as stream_logs};
-use super::{
-    bottom_bar, channels, functions_memory, functions_timing, futures, streams, threads, top_bar,
+use crate::cmd::console::views::channels::{inspect, logs as channel_logs};
+use crate::cmd::console::views::debug::{inspect as debug_inspect, logs as debug_logs};
+use crate::cmd::console::views::functions_memory::{
+    inspect as memory_inspect, logs as memory_logs,
+};
+use crate::cmd::console::views::functions_timing::{
+    inspect as timing_inspect, logs as timing_logs,
+};
+use crate::cmd::console::views::futures::{calls as future_calls, inspect as future_inspect};
+use crate::cmd::console::views::streams::{inspect as stream_inspect, logs as stream_logs};
+use crate::cmd::console::views::{
+    bottom_bar, channels, debug, functions_memory, functions_timing, futures, streams, threads,
+    top_bar,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -37,6 +43,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         SelectedTab::Streams => !app.streams.streams.is_empty(),
         SelectedTab::Threads => !app.threads.threads.is_empty(),
         SelectedTab::Futures => !app.futures.futures.is_empty(),
+        SelectedTab::Debug => !app.debug_stats.is_empty(),
     };
 
     top_bar::render_status_bar(
@@ -126,6 +133,9 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         SelectedTab::Futures => {
             render_futures_view(frame, app, main_chunks[2]);
         }
+        SelectedTab::Debug => {
+            render_debug_view(frame, app, main_chunks[2]);
+        }
     }
 
     bottom_bar::render_help_bar(
@@ -136,6 +146,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         app.streams_focus,
         app.functions_focus,
         app.futures_focus,
+        app.debug_focus,
     );
 }
 
@@ -544,6 +555,106 @@ fn render_futures_view(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 #[hotpath::measure]
+fn render_debug_view(frame: &mut Frame, app: &mut App, area: Rect) {
+    let stats = &app.debug_stats;
+
+    if let Some(ref error_msg) = app.error_message {
+        if stats.is_empty() {
+            let error_text = vec![
+                Line::from(""),
+                Line::from("Error").red().bold().centered(),
+                Line::from(""),
+                Line::from(error_msg.as_str()).red().centered(),
+                Line::from(""),
+                Line::from(format!(
+                    "Make sure the metrics server is running on {}",
+                    app.metrics_host
+                ))
+                .yellow()
+                .centered(),
+            ];
+
+            let block = Block::bordered().border_set(border::THICK);
+            frame.render_widget(Paragraph::new(error_text).block(block), area);
+            return;
+        }
+    }
+
+    if stats.is_empty() {
+        let empty_text = vec![
+            Line::from(""),
+            Line::from("No debug logs found").yellow().centered(),
+            Line::from(""),
+            Line::from("Use hotpath::dbg! macro to log debug values").centered(),
+        ];
+
+        let block = Block::bordered().border_set(border::THICK);
+        frame.render_widget(Paragraph::new(empty_text).block(block), area);
+        return;
+    }
+
+    let (table_area, logs_area) = if app.show_debug_logs {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+        (chunks[0], Some(chunks[1]))
+    } else {
+        (area, None)
+    };
+
+    let selected_index = app.debug_table_state.selected().unwrap_or(0);
+    let debug_position = selected_index + 1;
+    let total_debug = stats.len();
+
+    debug::render_debug_panel(
+        stats,
+        table_area,
+        frame,
+        &mut app.debug_table_state,
+        app.show_debug_logs,
+        app.debug_focus,
+        debug_position,
+        total_debug,
+    );
+
+    if let Some(logs_area) = logs_area {
+        let source_label = app
+            .debug_table_state
+            .selected()
+            .and_then(|i| stats.get(i))
+            .map(|stat| stat.source_display.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        if let Some(ref cached_logs) = app.debug_logs {
+            debug_logs::render_debug_logs_panel(
+                cached_logs,
+                &source_label,
+                logs_area,
+                frame,
+                &mut app.debug_logs_table_state,
+                app.debug_focus == DebugFocus::Logs,
+            );
+        } else {
+            let message = if app.paused {
+                "(refresh paused)"
+            } else if app.error_message.is_some() {
+                "(cannot fetch new data)"
+            } else {
+                "(no data)"
+            };
+            debug_logs::render_debug_logs_placeholder(&source_label, message, logs_area, frame);
+        }
+    }
+
+    if app.debug_focus == DebugFocus::Inspect {
+        if let Some(ref inspected_log) = app.inspected_debug_log {
+            debug_inspect::render_debug_inspect_popup(inspected_log, area, frame);
+        }
+    }
+}
+
+#[hotpath::measure]
 fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: SelectedTab) {
     let create_tab_line = |tab: SelectedTab| {
         let name = if tab == selected_tab {
@@ -569,6 +680,7 @@ fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: Sel
         create_tab_line(SelectedTab::Channels),
         create_tab_line(SelectedTab::Streams),
         create_tab_line(SelectedTab::Threads),
+        create_tab_line(SelectedTab::Debug),
     ];
 
     let selected_index = (selected_tab.number() - 1) as usize;

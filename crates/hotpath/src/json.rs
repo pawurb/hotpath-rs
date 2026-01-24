@@ -269,8 +269,9 @@ pub enum Route {
     FutureCalls { future_id: u64 },
     /// GET /debug - Returns all debug log statistics
     DebugStats,
-    /// GET /debug/{base64_source}/logs - Returns logs for a specific debug location
-    DebugLogs { source: String },
+    /// GET /debug/{base64_id}/logs - Returns logs for a specific debug location
+    /// The id is formatted as "source|expression"
+    DebugLogs { source: String, expression: String },
 }
 
 impl Route {
@@ -298,8 +299,9 @@ impl Route {
             Route::StreamLogs { stream_id } => format!("/streams/{}/logs", stream_id),
             Route::FutureCalls { future_id } => format!("/futures/{}/calls", future_id),
             Route::DebugStats => "/debug".to_string(),
-            Route::DebugLogs { source } => {
-                let encoded = base64::engine::general_purpose::STANDARD.encode(source.as_bytes());
+            Route::DebugLogs { source, expression } => {
+                let id = format!("{}|{}", source, expression);
+                let encoded = base64::engine::general_purpose::STANDARD.encode(id.as_bytes());
                 format!("/debug/{}/logs", encoded)
             }
         }
@@ -377,8 +379,12 @@ impl FromStr for Route {
         }
 
         if let Some(caps) = RE_DEBUG_LOGS.captures(path) {
-            let source = base64_decode(&caps[1]).map_err(|_| ())?;
-            return Ok(Route::DebugLogs { source });
+            let id = base64_decode(&caps[1]).map_err(|_| ())?;
+            let (source, expression) = id.split_once('|').ok_or(())?;
+            return Ok(Route::DebugLogs {
+                source: source.to_string(),
+                expression: expression.to_string(),
+            });
         }
 
         Err(())

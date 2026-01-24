@@ -63,7 +63,7 @@ pub(crate) enum DebugEvent {
 
 type DebugState = (
     CbSender<DebugEvent>,
-    Arc<RwLock<HashMap<&'static str, DebugStats>>>,
+    Arc<RwLock<HashMap<(&'static str, &'static str), DebugStats>>>,
 );
 
 static DEBUG_STATE: OnceLock<DebugState> = OnceLock::new();
@@ -75,7 +75,10 @@ pub(crate) fn init_debug_state() {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<DebugEvent>();
-        let stats_map = Arc::new(RwLock::new(HashMap::<&'static str, DebugStats>::new()));
+        let stats_map = Arc::new(RwLock::new(HashMap::<
+            (&'static str, &'static str),
+            DebugStats,
+        >::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
@@ -97,7 +100,10 @@ fn timestamp_nanos(timestamp: Instant) -> u64 {
     timestamp.duration_since(start_time).as_nanos() as u64
 }
 
-fn process_debug_event(stats_map: &mut HashMap<&'static str, DebugStats>, event: DebugEvent) {
+fn process_debug_event(
+    stats_map: &mut HashMap<(&'static str, &'static str), DebugStats>,
+    event: DebugEvent,
+) {
     match event {
         DebugEvent::DebugLog {
             source,
@@ -106,8 +112,9 @@ fn process_debug_event(stats_map: &mut HashMap<&'static str, DebugStats>, event:
             timestamp,
             tid,
         } => {
+            let key = (source, expression);
             let stats = stats_map
-                .entry(source)
+                .entry(key)
                 .or_insert_with(|| DebugStats::new(source, expression));
 
             stats.log_count += 1;
@@ -130,8 +137,9 @@ fn process_debug_event(stats_map: &mut HashMap<&'static str, DebugStats>, event:
             timestamp,
             tid,
         } => {
+            let key = (source, "()");
             let stats = stats_map
-                .entry(source)
+                .entry(key)
                 .or_insert_with(|| DebugStats::new(source, "()"));
 
             stats.log_count += 1;
@@ -158,7 +166,7 @@ pub(crate) fn send_debug_event(event: DebugEvent) {
     }
 }
 
-pub(crate) fn get_all_debug_stats() -> HashMap<&'static str, DebugStats> {
+pub(crate) fn get_all_debug_stats() -> HashMap<(&'static str, &'static str), DebugStats> {
     if let Some((_, stats_map)) = DEBUG_STATE.get() {
         stats_map.read().unwrap().clone()
     } else {
@@ -166,12 +174,8 @@ pub(crate) fn get_all_debug_stats() -> HashMap<&'static str, DebugStats> {
     }
 }
 
-fn compare_debug_stats(a: &DebugStats, b: &DebugStats) -> std::cmp::Ordering {
-    a.source.cmp(b.source)
-}
-
 pub(crate) fn get_sorted_debug_stats() -> Vec<DebugStats> {
     let mut stats: Vec<DebugStats> = get_all_debug_stats().into_values().collect();
-    stats.sort_by(compare_debug_stats);
+    stats.sort_by(|a, b| a.source.cmp(b.source).then(a.expression.cmp(b.expression)));
     stats
 }

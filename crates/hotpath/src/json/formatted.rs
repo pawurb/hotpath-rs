@@ -643,8 +643,11 @@ pub struct FormattedDbgJson {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedDbgStats {
     pub source: String,
+    pub source_display: String,
     pub expression: String,
     pub log_count: u64,
+    pub id: String,
+    pub last_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

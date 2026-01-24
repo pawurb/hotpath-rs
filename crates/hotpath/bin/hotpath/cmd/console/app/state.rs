@@ -1,8 +1,8 @@
 //! UI state management - navigation, selection, and focus handling
 
-use super::{
-    App, ChannelsFocus, FunctionsFocus, FuturesFocus, InspectedFunctionLog, SelectedTab,
-    StreamsFocus,
+use crate::cmd::console::app::{
+    App, ChannelsFocus, DebugFocus, FunctionsFocus, FuturesFocus, InspectedFunctionLog,
+    SelectedTab, StreamsFocus,
 };
 use tracing::{debug, info};
 
@@ -673,5 +673,162 @@ impl App {
         self.inspected_future_call = None;
         self.futures_focus = FuturesFocus::Futures;
         self.future_calls_table_state.select(None);
+    }
+
+    pub(crate) fn select_previous_debug(&mut self) {
+        let count = self.debug_stats.len();
+        if count == 0 {
+            return;
+        }
+
+        let i = match self.debug_table_state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        self.debug_table_state.select(Some(i));
+
+        if self.paused && self.show_debug_logs {
+            self.debug_logs = None;
+        } else if self.show_debug_logs {
+            self.request_debug_logs();
+        }
+    }
+
+    pub(crate) fn select_next_debug(&mut self) {
+        let count = self.debug_stats.len();
+        if count == 0 {
+            return;
+        }
+
+        let i = match self.debug_table_state.selected() {
+            Some(i) => (i + 1).min(count - 1),
+            None => 0,
+        };
+        self.debug_table_state.select(Some(i));
+
+        if self.paused && self.show_debug_logs {
+            self.debug_logs = None;
+        } else if self.show_debug_logs {
+            self.request_debug_logs();
+        }
+    }
+
+    pub(crate) fn toggle_debug_logs(&mut self) {
+        let has_valid_selection = self
+            .debug_table_state
+            .selected()
+            .map(|i| i < self.debug_stats.len())
+            .unwrap_or(false);
+
+        if !self.debug_stats.is_empty() && has_valid_selection {
+            if self.show_debug_logs {
+                self.hide_debug_logs();
+            } else {
+                self.show_debug_logs = true;
+                if self.paused {
+                    self.debug_logs = None;
+                } else {
+                    self.request_debug_logs();
+                }
+            }
+        }
+    }
+
+    pub(crate) fn hide_debug_logs(&mut self) {
+        self.show_debug_logs = false;
+        self.debug_logs = None;
+        self.debug_logs_table_state.select(None);
+        self.debug_focus = DebugFocus::Debug;
+    }
+
+    pub(crate) fn focus_debug(&mut self) {
+        self.debug_focus = DebugFocus::Debug;
+        self.debug_logs_table_state.select(None);
+    }
+
+    pub(crate) fn focus_debug_logs(&mut self) {
+        if !self.show_debug_logs {
+            self.toggle_debug_logs();
+        } else if !self.debug_stats.is_empty() {
+            if let Some(ref cached_logs) = self.debug_logs {
+                if !cached_logs.logs.logs.is_empty() {
+                    self.debug_focus = DebugFocus::Logs;
+                    if self.debug_logs_table_state.selected().is_none() {
+                        self.debug_logs_table_state.select(Some(0));
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn select_previous_debug_log(&mut self) {
+        if let Some(ref cached_logs) = self.debug_logs {
+            let log_count = cached_logs.logs.logs.len();
+            if log_count > 0 {
+                let i = match self.debug_logs_table_state.selected() {
+                    Some(i) => i.saturating_sub(1),
+                    None => 0,
+                };
+                self.debug_logs_table_state.select(Some(i));
+
+                if self.debug_focus == DebugFocus::Inspect {
+                    let actual_idx = log_count - 1 - i;
+                    if let Some(entry) = cached_logs.logs.logs.get(actual_idx) {
+                        self.inspected_debug_log = Some(entry.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn select_next_debug_log(&mut self) {
+        if let Some(ref cached_logs) = self.debug_logs {
+            let log_count = cached_logs.logs.logs.len();
+            if log_count > 0 {
+                let i = match self.debug_logs_table_state.selected() {
+                    Some(i) => (i + 1).min(log_count - 1),
+                    None => 0,
+                };
+                self.debug_logs_table_state.select(Some(i));
+
+                if self.debug_focus == DebugFocus::Inspect {
+                    let actual_idx = log_count - 1 - i;
+                    if let Some(entry) = cached_logs.logs.logs.get(actual_idx) {
+                        self.inspected_debug_log = Some(entry.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn toggle_debug_inspect(&mut self) {
+        if self.debug_focus == DebugFocus::Inspect {
+            self.debug_focus = DebugFocus::Logs;
+            self.inspected_debug_log = None;
+        } else if self.debug_focus == DebugFocus::Logs
+            && self.debug_logs_table_state.selected().is_some()
+        {
+            if let Some(selected) = self.debug_logs_table_state.selected() {
+                if let Some(ref cached_logs) = self.debug_logs {
+                    let log_count = cached_logs.logs.logs.len();
+                    let actual_idx = log_count - 1 - selected;
+                    if let Some(entry) = cached_logs.logs.logs.get(actual_idx) {
+                        self.inspected_debug_log = Some(entry.clone());
+                        self.debug_focus = DebugFocus::Inspect;
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn close_debug_inspect_and_refocus_debug(&mut self) {
+        self.inspected_debug_log = None;
+        self.hide_debug_logs();
+    }
+
+    pub(crate) fn close_debug_inspect_only(&mut self) {
+        self.inspected_debug_log = None;
+        self.debug_focus = DebugFocus::Debug;
+        self.debug_logs_table_state.select(None);
     }
 }

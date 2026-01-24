@@ -3,9 +3,10 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedFunctionAllocLogsJson,
-    FormattedFunctionTimingLogsJson, FormattedFunctionsJson, FormattedFutureCalls,
-    FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson, FormattedDbgLogs,
+    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+    FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
+    FormattedThreadsJson,
 };
 
 #[derive(Debug)]
@@ -16,11 +17,13 @@ pub(crate) enum DataRequest {
     RefreshStreams,
     RefreshThreads,
     RefreshFutures,
+    RefreshDebug,
     FetchFunctionLogsTiming(String),
     FetchFunctionLogsAlloc(String),
     FetchChannelLogs(u64),
     FetchStreamLogs(u64),
     FetchFutureCalls(u64),
+    FetchDebugLogs { source: String, expression: String },
 }
 
 impl DataRequest {
@@ -32,6 +35,7 @@ impl DataRequest {
             DataRequest::RefreshStreams => Route::Streams,
             DataRequest::RefreshThreads => Route::Threads,
             DataRequest::RefreshFutures => Route::Futures,
+            DataRequest::RefreshDebug => Route::DebugStats,
             DataRequest::FetchFunctionLogsTiming(name) => Route::FunctionTimingLogs {
                 function_name: name.clone(),
             },
@@ -41,6 +45,10 @@ impl DataRequest {
             DataRequest::FetchChannelLogs(id) => Route::ChannelLogs { channel_id: *id },
             DataRequest::FetchStreamLogs(id) => Route::StreamLogs { stream_id: *id },
             DataRequest::FetchFutureCalls(id) => Route::FutureCalls { future_id: *id },
+            DataRequest::FetchDebugLogs { source, expression } => Route::DebugLogs {
+                source: source.clone(),
+                expression: expression.clone(),
+            },
         }
     }
 }
@@ -76,6 +84,16 @@ pub(crate) enum DataResponse {
     FutureCalls {
         future_id: u64,
         calls: FormattedFutureCalls,
+    },
+    Debug(FormattedDbgJson),
+    DebugLogs {
+        source: String,
+        expression: String,
+        logs: FormattedDbgLogs,
+    },
+    DebugLogsNotFound {
+        source: String,
+        expression: String,
     },
     Error(String),
 }

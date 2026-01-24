@@ -1,6 +1,8 @@
 //! Keyboard input handling
 
-use super::{App, ChannelsFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus};
+use crate::cmd::console::app::{
+    App, ChannelsFocus, DebugFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
+};
 use crossterm::event::KeyCode;
 use tracing::debug;
 
@@ -32,6 +34,9 @@ impl App {
             KeyCode::Char('6') => {
                 self.switch_to_tab(SelectedTab::Threads);
             }
+            KeyCode::Char('7') => {
+                self.switch_to_tab(SelectedTab::Debug);
+            }
             KeyCode::Char('o') | KeyCode::Char('O') => {
                 if self.selected_tab == SelectedTab::Channels {
                     match self.channels_focus {
@@ -53,6 +58,12 @@ impl App {
                     }
                 } else if self.selected_tab == SelectedTab::Threads {
                     // No logs panel for threads tab - do nothing
+                } else if self.selected_tab == SelectedTab::Debug {
+                    match self.debug_focus {
+                        DebugFocus::Inspect => self.close_debug_inspect_and_refocus_debug(),
+                        DebugFocus::Logs => self.hide_debug_logs(),
+                        DebugFocus::Debug => self.toggle_debug_logs(),
+                    }
                 } else if self.selected_tab.is_functions_tab() {
                     match self.functions_focus {
                         FunctionsFocus::Inspect => {
@@ -87,6 +98,12 @@ impl App {
                     } else {
                         self.focus_futures();
                     }
+                } else if self.selected_tab == SelectedTab::Debug {
+                    if self.debug_focus == DebugFocus::Inspect {
+                        self.close_debug_inspect_only();
+                    } else {
+                        self.focus_debug();
+                    }
                 } else if self.selected_tab.is_functions_tab() {
                     if self.functions_focus == FunctionsFocus::Inspect {
                         self.close_function_inspect_only();
@@ -102,6 +119,8 @@ impl App {
                     self.focus_stream_logs();
                 } else if self.selected_tab == SelectedTab::Futures {
                     self.focus_future_calls();
+                } else if self.selected_tab == SelectedTab::Debug {
+                    self.focus_debug_logs();
                 } else if self.selected_tab.is_functions_tab() {
                     self.focus_function_logs();
                 }
@@ -113,6 +132,8 @@ impl App {
                     self.toggle_stream_inspect();
                 } else if self.selected_tab == SelectedTab::Futures {
                     self.toggle_future_inspect();
+                } else if self.selected_tab == SelectedTab::Debug {
+                    self.toggle_debug_inspect();
                 } else if self.selected_tab.is_functions_tab() {
                     self.toggle_function_inspect();
                 }
@@ -134,6 +155,11 @@ impl App {
                         FuturesFocus::Calls | FuturesFocus::Inspect => {
                             self.select_next_future_call()
                         }
+                    }
+                } else if self.selected_tab == SelectedTab::Debug {
+                    match self.debug_focus {
+                        DebugFocus::Debug => self.select_next_debug(),
+                        DebugFocus::Logs | DebugFocus::Inspect => self.select_next_debug_log(),
                     }
                 } else if self.selected_tab == SelectedTab::Threads {
                     self.select_next_thread();
@@ -168,6 +194,11 @@ impl App {
                         FuturesFocus::Calls | FuturesFocus::Inspect => {
                             self.select_previous_future_call()
                         }
+                    }
+                } else if self.selected_tab == SelectedTab::Debug {
+                    match self.debug_focus {
+                        DebugFocus::Debug => self.select_previous_debug(),
+                        DebugFocus::Logs | DebugFocus::Inspect => self.select_previous_debug_log(),
                     }
                 } else if self.selected_tab == SelectedTab::Threads {
                     self.select_previous_thread();

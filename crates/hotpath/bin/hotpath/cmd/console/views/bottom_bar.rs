@@ -1,5 +1,5 @@
 use crate::cmd::console::app::{
-    ChannelsFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
+    ChannelsFocus, DebugFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
 };
 use ratatui::{
     layout::Rect,
@@ -36,6 +36,7 @@ pub(crate) fn render_help_bar(
     streams_focus: StreamsFocus,
     functions_focus: FunctionsFocus,
     futures_focus: FuturesFocus,
+    debug_focus: DebugFocus,
 ) {
     let controls_line = if selected_tab == SelectedTab::Threads {
         // Threads tab - simple controls, no logs
@@ -138,6 +139,40 @@ pub(crate) fn render_help_bar(
                 QUIT_KEY.blue().bold(),
             ]),
             ChannelsFocus::Inspect => Line::from(vec![
+                NAV_KEYS_FULL.blue().bold(),
+                TOGGLE_LOGS_LABEL.into(),
+                TOGGLE_LOGS_KEY.blue().bold(),
+                PAUSE_LABEL.into(),
+                PAUSE_KEY.blue().bold(),
+                CLOSE_LABEL.into(),
+                CLOSE_KEYS.blue().bold(),
+                QUIT_LABEL.into(),
+                QUIT_KEY.blue().bold(),
+            ]),
+        }
+    } else if selected_tab == SelectedTab::Debug {
+        match debug_focus {
+            DebugFocus::Debug => Line::from(vec![
+                NAV_KEYS_FULL.blue().bold(),
+                TOGGLE_LOGS_LABEL.into(),
+                TOGGLE_LOGS_KEY.blue().bold(),
+                PAUSE_LABEL.into(),
+                PAUSE_KEY.blue().bold(),
+                QUIT_LABEL.into(),
+                QUIT_KEY.blue().bold(),
+            ]),
+            DebugFocus::Logs => Line::from(vec![
+                NAV_KEYS_FULL.blue().bold(),
+                TOGGLE_LOGS_LABEL.into(),
+                TOGGLE_LOGS_KEY.blue().bold(),
+                PAUSE_LABEL.into(),
+                PAUSE_KEY.blue().bold(),
+                INSPECT_LABEL.into(),
+                INSPECT_KEY.blue().bold(),
+                QUIT_LABEL.into(),
+                QUIT_KEY.blue().bold(),
+            ]),
+            DebugFocus::Inspect => Line::from(vec![
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
