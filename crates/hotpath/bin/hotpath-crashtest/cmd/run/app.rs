@@ -1,5 +1,6 @@
 use crate::cmd::run::events::AppEvent;
 use crate::cmd::run::input::spawn_input_reader;
+use crate::scenarios::cpu_spike::CpuSpike;
 use crossbeam_channel::{select, Receiver};
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -12,7 +13,7 @@ use std::time::Duration;
 
 pub struct App {
     exit: bool,
-    cpu_spike: bool,
+    cpu_spike: CpuSpike,
     memory_bloat: bool,
     thread_panic: bool,
     runtime_block: bool,
@@ -26,7 +27,7 @@ impl App {
 
         Self {
             exit: false,
-            cpu_spike: false,
+            cpu_spike: CpuSpike::new(),
             memory_bloat: false,
             thread_panic: false,
             runtime_block: false,
@@ -49,7 +50,7 @@ impl App {
         let area = frame.area();
 
         let lines = vec![
-            Line::from(self.indicator("[1] CPU Spike", self.cpu_spike)),
+            Line::from(self.indicator("[1] CPU Spike", self.cpu_spike.is_activated())),
             Line::from(self.indicator("[2] Memory Bloat", self.memory_bloat)),
             Line::from(self.indicator("[3] Thread Panic", self.thread_panic)),
             Line::from(self.indicator("[4] Runtime Block", self.runtime_block)),
@@ -101,7 +102,9 @@ impl App {
 
     fn handle_key(&mut self, code: KeyCode) {
         match code {
-            KeyCode::Char('1') => self.cpu_spike = !self.cpu_spike,
+            KeyCode::Char('1') => {
+                self.cpu_spike.set_activated(!self.cpu_spike.is_activated());
+            }
             KeyCode::Char('2') => self.memory_bloat = !self.memory_bloat,
             KeyCode::Char('3') => self.thread_panic = !self.thread_panic,
             KeyCode::Char('4') => self.runtime_block = !self.runtime_block,
