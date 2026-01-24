@@ -19,6 +19,9 @@ pub(crate) fn render_threads_panel(
     thread_position: usize,
     total_threads: usize,
     rss_bytes: Option<&str>,
+    total_alloc_bytes: Option<&str>,
+    total_dealloc_bytes: Option<&str>,
+    alloc_dealloc_diff: Option<&str>,
 ) {
     let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
     let info_area = chunks[0];
@@ -37,7 +40,23 @@ pub(crate) fn render_threads_panel(
         ),
     ];
 
-    if !alloc_enabled {
+    if let Some(alloc) = total_alloc_bytes {
+        spans.push(Span::raw("  Alloc: "));
+        spans.push(Span::styled(
+            alloc,
+            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+        ));
+        spans.push(Span::raw("  Dealloc: "));
+        spans.push(Span::styled(
+            total_dealloc_bytes.unwrap_or("-"),
+            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+        ));
+        spans.push(Span::raw("  Diff: "));
+        spans.push(Span::styled(
+            alloc_dealloc_diff.unwrap_or("-"),
+            ratatui::style::Style::default().fg(ratatui::style::Color::Green),
+        ));
+    } else if !alloc_enabled {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             "Enable 'hotpath-alloc' to track memory usage",

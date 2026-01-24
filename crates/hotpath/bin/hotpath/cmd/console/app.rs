@@ -251,6 +251,9 @@ impl App {
                 threads: vec![],
                 thread_count: 0,
                 rss_bytes: None,
+                total_alloc_bytes: None,
+                total_dealloc_bytes: None,
+                alloc_dealloc_diff: None,
             },
             threads_table_state: TableState::default().with_selected(0),
             futures: FormattedFuturesJson {

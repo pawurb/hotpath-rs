@@ -14,7 +14,7 @@ mod collector;
 mod collector;
 
 pub use crate::json::ThreadMetrics;
-use crate::json::{FormattedThreadMetrics, FormattedThreadsJson};
+use crate::json::{format_bytes_signed, FormattedThreadMetrics, FormattedThreadsJson};
 use crate::output::format_bytes;
 
 pub fn thread_metrics_with_percentage(
@@ -158,6 +158,33 @@ pub fn get_threads_json() -> FormattedThreadsJson {
         if let Ok(state_guard) = state.read() {
             let current_elapsed_ns = state_guard.start_time.elapsed().as_nanos() as u64;
 
+            let (total_alloc, total_dealloc) =
+                state_guard
+                    .current_metrics
+                    .iter()
+                    .fold((0u64, 0u64), |(alloc, dealloc), m| {
+                        (
+                            alloc + m.alloc_bytes.unwrap_or(0),
+                            dealloc + m.dealloc_bytes.unwrap_or(0),
+                        )
+                    });
+
+            let has_alloc_data = state_guard
+                .current_metrics
+                .iter()
+                .any(|m| m.alloc_bytes.is_some());
+
+            let (total_alloc_bytes, total_dealloc_bytes, alloc_dealloc_diff) = if has_alloc_data {
+                let diff = total_alloc as i64 - total_dealloc as i64;
+                (
+                    Some(format_bytes(total_alloc)),
+                    Some(format_bytes(total_dealloc)),
+                    Some(format_bytes_signed(diff)),
+                )
+            } else {
+                (None, None, None)
+            };
+
             return FormattedThreadsJson {
                 current_elapsed_ns,
                 sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
@@ -168,6 +195,9 @@ pub fn get_threads_json() -> FormattedThreadsJson {
                     .collect(),
                 thread_count: state_guard.current_metrics.len(),
                 rss_bytes: rss_bytes.map(format_bytes),
+                total_alloc_bytes,
+                total_dealloc_bytes,
+                alloc_dealloc_diff,
             };
         }
     }
@@ -178,5 +208,8 @@ pub fn get_threads_json() -> FormattedThreadsJson {
         threads: Vec::new(),
         thread_count: 0,
         rss_bytes: rss_bytes.map(format_bytes),
+        total_alloc_bytes: None,
+        total_dealloc_bytes: None,
+        alloc_dealloc_diff: None,
     }
 }

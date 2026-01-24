@@ -429,6 +429,9 @@ fn render_threads_view(frame: &mut Frame, app: &mut App, area: Rect) {
         thread_position,
         total_threads,
         app.threads.rss_bytes.as_deref(),
+        app.threads.total_alloc_bytes.as_deref(),
+        app.threads.total_dealloc_bytes.as_deref(),
+        app.threads.alloc_dealloc_diff.as_deref(),
     );
 }
 

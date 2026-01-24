@@ -626,4 +626,10 @@ pub struct FormattedThreadsJson {
     pub thread_count: usize,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rss_bytes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub total_alloc_bytes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub total_dealloc_bytes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub alloc_dealloc_diff: Option<String>,
 }
