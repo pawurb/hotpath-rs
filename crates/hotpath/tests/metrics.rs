@@ -2,10 +2,13 @@
 pub mod tests {
     use std::process::Command;
 
-    // cargo run -p test-metrics --example basic_metrics --features hotpath
+    // HOTPATH_METRICS_PORT=6780 TEST_SLEEP_MS=5000 cargo run -p test-metrics --example basic_metrics --features hotpath
     #[test]
-    fn test_basic_metrics_output() {
-        let output = Command::new("cargo")
+    fn test_debug_endpoints() {
+        use hotpath::json::{FormattedDebugJson, FormattedDebugLogs};
+        use std::{thread::sleep, time::Duration};
+
+        let mut child = Command::new("cargo")
             .args([
                 "run",
                 "-p",
@@ -15,21 +18,70 @@ pub mod tests {
                 "--features",
                 "hotpath",
             ])
-            .output()
-            .expect("Failed to execute command");
+            .env("HOTPATH_METRICS_PORT", "6780")
+            .env("TEST_SLEEP_MS", "5000")
+            .spawn()
+            .expect("Failed to spawn command");
+
+        let mut json_text = String::new();
+        let mut last_error = None;
+
+        for _attempt in 0..12 {
+            sleep(Duration::from_millis(500));
+
+            match ureq::get("http://localhost:6780/debug").call() {
+                Ok(mut response) => {
+                    json_text = response
+                        .body_mut()
+                        .read_to_string()
+                        .expect("Failed to read response body");
+                    last_error = None;
+                    break;
+                }
+                Err(e) => {
+                    last_error = Some(format!("Request error: {}", e));
+                }
+            }
+        }
+
+        if let Some(error) = last_error {
+            let _ = child.kill();
+            panic!("Failed after 12 retries: {}", error);
+        }
+
+        let debug_response: FormattedDebugJson =
+            serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
+
+        let first = debug_response.debug_logs.first().expect("No debug logs");
 
         assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
+            !first.source.is_empty() && !first.expression.is_empty() && first.log_count >= 1,
+            "Debug response missing expected fields"
         );
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        use base64::Engine;
+        let encoded_source =
+            base64::engine::general_purpose::STANDARD.encode(first.source.as_bytes());
+        let logs_json = ureq::get(&format!(
+            "http://localhost:6780/debug/{}/logs",
+            encoded_source
+        ))
+        .call()
+        .expect("Failed to call /debug/:source/logs endpoint")
+        .body_mut()
+        .read_to_string()
+        .expect("Failed to read logs response body");
 
+        let logs: FormattedDebugLogs =
+            serde_json::from_str(&logs_json).expect("Failed to parse debug logs JSON");
+
+        let first_log = logs.logs.first().expect("No log entries");
         assert!(
-            stdout.contains("Hello, world!"),
-            "Expected 'Hello, world!' in output, got:\n{}",
-            stdout
+            !logs.source.is_empty() && logs.total_logs >= 1 && !first_log.value.is_empty(),
+            "Logs response missing expected fields"
         );
+
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

@@ -200,6 +200,9 @@ impl RouteExt for Route {
                     calls,
                 })
             }
+            Route::DebugStats | Route::DebugLogs { .. } => {
+                return DataResponse::Error("Debug routes not yet supported in TUI".to_string())
+            }
         }
         .unwrap_or_else(|e| DataResponse::Error(format!("JSON parse error: {}", e)))
     }

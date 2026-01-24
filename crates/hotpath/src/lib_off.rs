@@ -8,6 +8,17 @@ macro_rules! measure_block {
 }
 
 #[macro_export]
+macro_rules! dbg {
+    () => {};
+    ($val:expr $(,)?) => {
+        $val
+    };
+    ($($val:expr),+ $(,)?) => {
+        ($($val),+,)
+    };
+}
+
+#[macro_export]
 macro_rules! channel {
     ($expr:expr) => {
         $expr

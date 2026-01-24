@@ -75,6 +75,52 @@ macro_rules! measure_block {
     }};
 }
 
+/// Debug macro that tracks debug output in the profiler.
+///
+/// Works like `std::dbg!` but sends debug logs to a background worker thread
+/// for tracking in the profiler. The logs can be viewed in the TUI or via
+/// the HTTP API at `/debug` and `/debug/{id}/logs`.
+///
+/// # Variants
+///
+/// - `dbg!()` - Prints location only (file:line:column)
+/// - `dbg!(expr)` - Returns value, logs expression + result
+/// - `dbg!(a, b, c)` - Multiple expressions, returns tuple
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use hotpath::dbg;
+///
+/// // Print location only
+/// dbg!();
+///
+/// // Debug a single value
+/// let x = dbg!(1 + 2);  // returns 3, logs "1 + 2 = 3"
+///
+/// // Debug multiple values
+/// let (a, b) = dbg!(1, 2);  // returns (1, 2)
+/// ```
+#[macro_export]
+macro_rules! dbg {
+    () => {
+        $crate::metrics::dbg::log_debug_location(file!(), line!(), column!())
+    };
+    ($val:expr $(,)?) => {{
+        const DBG_LOC: &'static str = concat!(file!(), ":", line!());
+        const DBG_EXPR: &'static str = stringify!($val);
+        match $val {
+            tmp => {
+                $crate::metrics::dbg::log_debug(DBG_LOC, DBG_EXPR, &tmp);
+                tmp
+            }
+        }
+    }};
+    ($($val:expr),+ $(,)?) => {
+        ($($crate::dbg!($val)),+,)
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

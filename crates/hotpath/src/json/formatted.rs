@@ -633,3 +633,34 @@ pub struct FormattedThreadsJson {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alloc_dealloc_diff: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormattedDebugStats {
+    pub source: String,
+    pub expression: String,
+    pub log_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormattedDebugJson {
+    pub current_elapsed_ns: u64,
+    pub debug_logs: Vec<FormattedDebugStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormattedDebugLogEntry {
+    pub index: u64,
+    pub timestamp: String,
+    pub ago: String,
+    pub value: String,
+    pub thread_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormattedDebugLogs {
+    pub source: String,
+    pub expression: String,
+    pub total_logs: u64,
+    pub logs: Vec<FormattedDebugLogEntry>,
+}
+

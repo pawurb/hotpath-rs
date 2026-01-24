@@ -267,6 +267,10 @@ pub enum Route {
     StreamLogs { stream_id: u64 },
     /// GET /futures/{id}/calls - Returns calls for a specific future
     FutureCalls { future_id: u64 },
+    /// GET /debug - Returns all debug log statistics
+    DebugStats,
+    /// GET /debug/{base64_source}/logs - Returns logs for a specific debug location
+    DebugLogs { source: String },
 }
 
 impl Route {
@@ -293,6 +297,12 @@ impl Route {
             Route::ChannelLogs { channel_id } => format!("/channels/{}/logs", channel_id),
             Route::StreamLogs { stream_id } => format!("/streams/{}/logs", stream_id),
             Route::FutureCalls { future_id } => format!("/futures/{}/calls", future_id),
+            Route::DebugStats => "/debug".to_string(),
+            Route::DebugLogs { source } => {
+                let encoded =
+                    base64::engine::general_purpose::STANDARD.encode(source.as_bytes());
+                format!("/debug/{}/logs", encoded)
+            }
         }
     }
 
@@ -312,6 +322,8 @@ static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/functions_alloc/([^/]+)/logs$").unwrap());
+static RE_DEBUG_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/debug/([^/]+)/logs$").unwrap());
 
 fn base64_decode(encoded: &str) -> Result<String, String> {
     use base64::Engine;
@@ -336,6 +348,7 @@ impl FromStr for Route {
             "/streams" => return Ok(Route::Streams),
             "/futures" => return Ok(Route::Futures),
             "/threads" => return Ok(Route::Threads),
+            "/debug" => return Ok(Route::DebugStats),
             _ => {}
         }
 
@@ -362,6 +375,11 @@ impl FromStr for Route {
         if let Some(caps) = RE_FUTURE_CALLS.captures(path) {
             let future_id = caps[1].parse().map_err(|_| ())?;
             return Ok(Route::FutureCalls { future_id });
+        }
+
+        if let Some(caps) = RE_DEBUG_LOGS.captures(path) {
+            let source = base64_decode(&caps[1]).map_err(|_| ())?;
+            return Ok(Route::DebugLogs { source });
         }
 
         Err(())
