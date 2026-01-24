@@ -21,7 +21,7 @@ required-features = ["ci"]
 [[bin]]
 name = "hotpath-crashtest"
 path = "bin/hotpath-crashtest/main.rs"
-required-features = ["tui"]
+required-features = ["tui", "hotpath", "hotpath-alloc"]
 
 [features]
 default = ["threads"]
