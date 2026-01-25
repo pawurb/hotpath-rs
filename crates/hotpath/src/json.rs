@@ -300,7 +300,7 @@ impl Route {
             Route::FutureCalls { future_id } => format!("/futures/{}/calls", future_id),
             Route::DebugStats => "/debug".to_string(),
             Route::DebugLogs { source, expression } => {
-                let id = format!("{}|{}", source, expression);
+                let id = format!("{}\0{}", source, expression);
                 let encoded = base64::engine::general_purpose::STANDARD.encode(id.as_bytes());
                 format!("/debug/{}/logs", encoded)
             }
@@ -380,7 +380,7 @@ impl FromStr for Route {
 
         if let Some(caps) = RE_DEBUG_LOGS.captures(path) {
             let id = base64_decode(&caps[1]).map_err(|_| ())?;
-            let (source, expression) = id.split_once('|').ok_or(())?;
+            let (source, expression) = id.split_once('\0').ok_or(())?;
             return Ok(Route::DebugLogs {
                 source: source.to_string(),
                 expression: expression.to_string(),

@@ -80,7 +80,7 @@ fn truncate_source_path(source: &str) -> String {
 
 impl From<&DebugStats> for FormattedDbgStats {
     fn from(stats: &DebugStats) -> Self {
-        let id = format!("{}|{}", stats.source, stats.expression);
+        let id = format!("{}\0{}", stats.source, stats.expression);
         let last_value = stats.logs.back().map(|e| e.value.clone());
         FormattedDbgStats {
             source: stats.source.to_string(),
