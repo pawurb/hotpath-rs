@@ -161,20 +161,20 @@ pub mod tests {
             );
         }
 
-        // Test /futures/{id}/calls endpoint
+        // Test /futures/{id}/logs endpoint
         let futures_response: JsonFuturesList =
             serde_json::from_str(&json_text).expect("Failed to parse futures JSON");
 
         if let Some(first_future) = futures_response.futures.first() {
-            let calls_url = format!("http://localhost:6775/futures/{}/calls", first_future.id);
+            let calls_url = format!("http://localhost:6775/futures/{}/logs", first_future.id);
             let mut response = ureq::get(&calls_url)
                 .call()
-                .expect("Failed to call /futures/{id}/calls endpoint");
+                .expect("Failed to call /futures/{id}/logs endpoint");
 
             assert_eq!(
                 response.status(),
                 200,
-                "Expected status 200 for /futures/{{id}}/calls endpoint"
+                "Expected status 200 for /futures/{{id}}/logs endpoint"
             );
 
             // Verify the calls response contains expected data
