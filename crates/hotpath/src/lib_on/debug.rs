@@ -16,7 +16,7 @@ pub mod dbg;
 pub mod gauge;
 pub mod value;
 
-pub use dbg::{get_dbg_logs, get_dbg_stats_json, log_debug, log_debug_location};
+pub use dbg::{get_dbg_logs, get_dbg_stats_json, log_dbg};
 
 #[derive(Debug, Clone)]
 pub struct DebugEntry {
@@ -47,15 +47,10 @@ impl DebugStats {
 
 #[derive(Debug)]
 pub(crate) enum DebugEvent {
-    DebugLog {
+    DbgLog {
         source: &'static str,
         expression: &'static str,
         value: String,
-        timestamp: Instant,
-        tid: Option<u64>,
-    },
-    DebugLocation {
-        source: &'static str,
         timestamp: Instant,
         tid: Option<u64>,
     },
@@ -104,60 +99,33 @@ fn process_debug_event(
     stats_map: &mut HashMap<(&'static str, &'static str), DebugStats>,
     event: DebugEvent,
 ) {
-    match event {
-        DebugEvent::DebugLog {
-            source,
-            expression,
-            value,
-            timestamp,
-            tid,
-        } => {
-            let key = (source, expression);
-            let stats = stats_map
-                .entry(key)
-                .or_insert_with(|| DebugStats::new(source, expression));
+    let DebugEvent::DbgLog {
+        source,
+        expression,
+        value,
+        timestamp,
+        tid,
+    } = event;
 
-            stats.log_count += 1;
+    let key = (source, expression);
+    let stats = stats_map
+        .entry(key)
+        .or_insert_with(|| DebugStats::new(source, expression));
 
-            let entry = DebugEntry {
-                index: stats.log_count,
-                timestamp_ns: timestamp_nanos(timestamp),
-                value,
-                tid,
-            };
+    stats.log_count += 1;
 
-            let limit = get_log_limit();
-            if stats.logs.len() >= limit {
-                stats.logs.pop_front();
-            }
-            stats.logs.push_back(entry);
-        }
-        DebugEvent::DebugLocation {
-            source,
-            timestamp,
-            tid,
-        } => {
-            let key = (source, "()");
-            let stats = stats_map
-                .entry(key)
-                .or_insert_with(|| DebugStats::new(source, "()"));
+    let entry = DebugEntry {
+        index: stats.log_count,
+        timestamp_ns: timestamp_nanos(timestamp),
+        value,
+        tid,
+    };
 
-            stats.log_count += 1;
-
-            let entry = DebugEntry {
-                index: stats.log_count,
-                timestamp_ns: timestamp_nanos(timestamp),
-                value: "()".to_string(),
-                tid,
-            };
-
-            let limit = get_log_limit();
-            if stats.logs.len() >= limit {
-                stats.logs.pop_front();
-            }
-            stats.logs.push_back(entry);
-        }
+    let limit = get_log_limit();
+    if stats.logs.len() >= limit {
+        stats.logs.pop_front();
     }
+    stats.logs.push_back(entry);
 }
 
 pub(crate) fn send_debug_event(event: DebugEvent) {

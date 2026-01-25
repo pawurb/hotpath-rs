@@ -5,8 +5,6 @@ fn main() {
     hotpath::dbg!(name);
     let _ = hotpath::dbg!(y + 1);
 
-    hotpath::dbg!();
-
     std::thread::sleep(std::time::Duration::from_millis(
         std::env::var("TEST_SLEEP_MS")
             .ok()

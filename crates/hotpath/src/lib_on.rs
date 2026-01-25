@@ -83,7 +83,6 @@ macro_rules! measure_block {
 ///
 /// # Variants
 ///
-/// - `dbg!()` - Prints location only (file:line:column)
 /// - `dbg!(expr)` - Returns value, logs expression + result
 /// - `dbg!(a, b, c)` - Multiple expressions, returns tuple
 ///
@@ -91,9 +90,6 @@ macro_rules! measure_block {
 ///
 /// ```rust,ignore
 /// use hotpath::dbg;
-///
-/// // Print location only
-/// dbg!();
 ///
 /// // Debug a single value
 /// let x = dbg!(1 + 2);  // returns 3, logs "1 + 2 = 3"
@@ -103,15 +99,12 @@ macro_rules! measure_block {
 /// ```
 #[macro_export]
 macro_rules! dbg {
-    () => {
-        $crate::debug::dbg::log_debug_location(file!(), line!(), column!())
-    };
     ($val:expr $(,)?) => {{
         const DBG_LOC: &'static str = concat!(file!(), ":", line!());
         const DBG_EXPR: &'static str = stringify!($val);
         match $val {
             tmp => {
-                $crate::debug::dbg::log_debug(DBG_LOC, DBG_EXPR, &tmp);
+                $crate::debug::dbg::log_dbg(DBG_LOC, DBG_EXPR, &tmp);
                 tmp
             }
         }

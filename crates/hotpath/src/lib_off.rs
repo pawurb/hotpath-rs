@@ -9,7 +9,6 @@ macro_rules! measure_block {
 
 #[macro_export]
 macro_rules! dbg {
-    () => {};
     ($val:expr $(,)?) => {
         $val
     };

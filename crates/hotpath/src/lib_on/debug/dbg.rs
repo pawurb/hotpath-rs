@@ -24,33 +24,17 @@ fn get_thread_id() -> Option<u64> {
 
 #[doc(hidden)]
 #[inline]
-pub fn log_debug<T: Debug>(source: &'static str, expression: &'static str, value: &T) {
+pub fn log_dbg<T: Debug>(source: &'static str, expression: &'static str, value: &T) {
     init_debug_state();
 
     let value_str = truncate_result(format!("{:?}", value));
     let timestamp = Instant::now();
     let tid = get_thread_id();
 
-    send_debug_event(DebugEvent::DebugLog {
+    send_debug_event(DebugEvent::DbgLog {
         source,
         expression,
         value: value_str,
-        timestamp,
-        tid,
-    });
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn log_debug_location(file: &'static str, line: u32, column: u32) {
-    init_debug_state();
-
-    let source: &'static str = Box::leak(format!("{}:{}:{}", file, line, column).into_boxed_str());
-    let timestamp = Instant::now();
-    let tid = get_thread_id();
-
-    send_debug_event(DebugEvent::DebugLocation {
-        source,
         timestamp,
         tid,
     });
