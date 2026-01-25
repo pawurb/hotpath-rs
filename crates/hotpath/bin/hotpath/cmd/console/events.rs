@@ -35,7 +35,7 @@ impl DataRequest {
             DataRequest::RefreshStreams => Route::Streams,
             DataRequest::RefreshThreads => Route::Threads,
             DataRequest::RefreshFutures => Route::Futures,
-            DataRequest::RefreshDebug => Route::DebugStats,
+            DataRequest::RefreshDebug => Route::Debug,
             DataRequest::FetchFunctionLogsTiming(name) => Route::FunctionTimingLogs {
                 function_name: name.clone(),
             },
@@ -44,7 +44,7 @@ impl DataRequest {
             },
             DataRequest::FetchChannelLogs(id) => Route::ChannelLogs { channel_id: *id },
             DataRequest::FetchStreamLogs(id) => Route::StreamLogs { stream_id: *id },
-            DataRequest::FetchFutureCalls(id) => Route::FutureCalls { future_id: *id },
+            DataRequest::FetchFutureCalls(id) => Route::FutureLogs { future_id: *id },
             DataRequest::FetchDebugDbgLogs(id) => Route::DebugDbgLogs { id: *id },
             DataRequest::FetchDebugValLogs(id) => Route::DebugValLogs { id: *id },
         }
@@ -79,7 +79,7 @@ pub(crate) enum DataResponse {
     },
     Threads(JsonThreadsList),
     Futures(JsonFuturesList),
-    FutureCalls {
+    FutureLogs {
         future_id: u64,
         calls: JsonFutureLogsList,
     },

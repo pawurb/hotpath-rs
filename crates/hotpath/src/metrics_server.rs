@@ -144,14 +144,14 @@ fn handle_request(request: Request) {
             }
             None => respond_error(request, 404, "Stream not found"),
         },
-        Ok(Route::FutureCalls { future_id }) => match get_future_calls(future_id) {
+        Ok(Route::FutureLogs { future_id }) => match get_future_calls(future_id) {
             Some(calls) => {
                 let formatted = JsonFutureLogsList::from(&calls);
                 respond_json(request, &formatted);
             }
             None => respond_error(request, 404, "Future not found"),
         },
-        Ok(Route::DebugStats) => {
+        Ok(Route::Debug) => {
             let debug_stats = get_debug_entries_json();
             respond_json(request, &debug_stats);
         }

@@ -203,13 +203,13 @@ impl RouteExt for Route {
                     logs,
                 })
             }
-            Route::FutureCalls { future_id } => {
-                parse_json::<JsonFutureLogsList>(bytes).map(|calls| DataResponse::FutureCalls {
+            Route::FutureLogs { future_id } => {
+                parse_json::<JsonFutureLogsList>(bytes).map(|calls| DataResponse::FutureLogs {
                     future_id: *future_id,
                     calls,
                 })
             }
-            Route::DebugStats => parse_json::<JsonDebugList>(bytes).map(DataResponse::Debug),
+            Route::Debug => parse_json::<JsonDebugList>(bytes).map(DataResponse::Debug),
             Route::DebugDbgLogs { id } => {
                 parse_json::<JsonDebugDbgLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
                     id: *id,

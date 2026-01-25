@@ -266,9 +266,9 @@ pub enum Route {
     /// GET /streams/{id}/logs - Returns logs for a specific stream
     StreamLogs { stream_id: u64 },
     /// GET /futures/{id}/calls - Returns calls for a specific future
-    FutureCalls { future_id: u64 },
+    FutureLogs { future_id: u64 },
     /// GET /debug - Returns all debug log statistics
-    DebugStats,
+    Debug,
     /// GET /debug/dbg/{id}/logs - Returns logs for a dbg! entry
     DebugDbgLogs { id: u64 },
     /// GET /debug/val/{id}/logs - Returns logs for a val! entry
@@ -298,8 +298,8 @@ impl Route {
             }
             Route::ChannelLogs { channel_id } => format!("/channels/{}/logs", channel_id),
             Route::StreamLogs { stream_id } => format!("/streams/{}/logs", stream_id),
-            Route::FutureCalls { future_id } => format!("/futures/{}/calls", future_id),
-            Route::DebugStats => "/debug".to_string(),
+            Route::FutureLogs { future_id } => format!("/futures/{}/logs", future_id),
+            Route::Debug => "/debug".to_string(),
             Route::DebugDbgLogs { id } => format!("/debug/dbg/{}/logs", id),
             Route::DebugValLogs { id } => format!("/debug/val/{}/logs", id),
         }
@@ -316,7 +316,7 @@ static RE_CHANNEL_LOGS: LazyLock<Regex> =
 static RE_STREAM_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/streams/(\d+)/logs$").unwrap());
 static RE_FUTURE_CALLS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/futures/(\d+)/calls$").unwrap());
+    LazyLock::new(|| Regex::new(r"^/futures/(\d+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
@@ -349,7 +349,7 @@ impl FromStr for Route {
             "/streams" => return Ok(Route::Streams),
             "/futures" => return Ok(Route::Futures),
             "/threads" => return Ok(Route::Threads),
-            "/debug" => return Ok(Route::DebugStats),
+            "/debug" => return Ok(Route::Debug),
             _ => {}
         }
 
@@ -375,7 +375,7 @@ impl FromStr for Route {
 
         if let Some(caps) = RE_FUTURE_CALLS.captures(path) {
             let future_id = caps[1].parse().map_err(|_| ())?;
-            return Ok(Route::FutureCalls { future_id });
+            return Ok(Route::FutureLogs { future_id });
         }
 
         if let Some(caps) = RE_DEBUG_DBG_LOGS.captures(path) {

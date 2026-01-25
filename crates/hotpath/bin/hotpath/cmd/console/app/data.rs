@@ -438,7 +438,7 @@ impl App {
                 self.loading_futures = false;
                 self.update_futures(data);
             }
-            DataResponse::FutureCalls { future_id, calls } => {
+            DataResponse::FutureLogs { future_id, calls } => {
                 trace!(
                     "Received future {} calls: {} entries",
                     future_id,
