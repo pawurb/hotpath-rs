@@ -114,6 +114,31 @@ macro_rules! dbg {
     };
 }
 
+/// Value tracking macro that logs key-value pairs to the profiler.
+///
+/// Unlike `dbg!`, this macro takes a string key and value. Values are
+/// grouped by key (not source location), but each log entry records
+/// its source location for debugging.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use hotpath::val;
+///
+/// // Track a counter value
+/// hotpath::val!("counter", count);
+///
+/// // Track state changes
+/// hotpath::val!("state", current_state);
+/// ```
+#[macro_export]
+macro_rules! val {
+    ($key:expr, $val:expr $(,)?) => {{
+        const VAL_LOC: &'static str = concat!(file!(), ":", line!());
+        $crate::debug::value::log_val($key, VAL_LOC, &$val);
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

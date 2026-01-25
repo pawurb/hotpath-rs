@@ -751,7 +751,7 @@ impl App {
             self.toggle_debug_logs();
         } else if !self.debug_stats.is_empty() {
             if let Some(ref cached_logs) = self.debug_logs {
-                if !cached_logs.logs.logs.is_empty() {
+                if !cached_logs.logs.is_empty() {
                     self.debug_focus = DebugFocus::Logs;
                     if self.debug_logs_table_state.selected().is_none() {
                         self.debug_logs_table_state.select(Some(0));
@@ -763,7 +763,7 @@ impl App {
 
     pub(crate) fn select_previous_debug_log(&mut self) {
         if let Some(ref cached_logs) = self.debug_logs {
-            let log_count = cached_logs.logs.logs.len();
+            let log_count = cached_logs.logs.len();
             if log_count > 0 {
                 let i = match self.debug_logs_table_state.selected() {
                     Some(i) => i.saturating_sub(1),
@@ -773,7 +773,7 @@ impl App {
 
                 if self.debug_focus == DebugFocus::Inspect {
                     let actual_idx = log_count - 1 - i;
-                    if let Some(entry) = cached_logs.logs.logs.get(actual_idx) {
+                    if let Some(entry) = cached_logs.logs.get(actual_idx) {
                         self.inspected_debug_log = Some(entry.clone());
                     }
                 }
@@ -783,7 +783,7 @@ impl App {
 
     pub(crate) fn select_next_debug_log(&mut self) {
         if let Some(ref cached_logs) = self.debug_logs {
-            let log_count = cached_logs.logs.logs.len();
+            let log_count = cached_logs.logs.len();
             if log_count > 0 {
                 let i = match self.debug_logs_table_state.selected() {
                     Some(i) => (i + 1).min(log_count - 1),
@@ -793,7 +793,7 @@ impl App {
 
                 if self.debug_focus == DebugFocus::Inspect {
                     let actual_idx = log_count - 1 - i;
-                    if let Some(entry) = cached_logs.logs.logs.get(actual_idx) {
+                    if let Some(entry) = cached_logs.logs.get(actual_idx) {
                         self.inspected_debug_log = Some(entry.clone());
                     }
                 }
@@ -810,9 +810,9 @@ impl App {
         {
             if let Some(selected) = self.debug_logs_table_state.selected() {
                 if let Some(ref cached_logs) = self.debug_logs {
-                    let log_count = cached_logs.logs.logs.len();
+                    let log_count = cached_logs.logs.len();
                     let actual_idx = log_count - 1 - selected;
-                    if let Some(entry) = cached_logs.logs.logs.get(actual_idx) {
+                    if let Some(entry) = cached_logs.logs.get(actual_idx) {
                         self.inspected_debug_log = Some(entry.clone());
                         self.debug_focus = DebugFocus::Inspect;
                     }

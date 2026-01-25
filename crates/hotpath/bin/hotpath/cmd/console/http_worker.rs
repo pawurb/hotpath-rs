@@ -6,7 +6,7 @@ use hotpath::json::{
     FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson, FormattedDbgLogs,
     FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
     FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
-    FormattedThreadsJson,
+    FormattedThreadsJson, FormattedValLogs,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -32,7 +32,8 @@ enum RequestKey {
     ChannelLogs,
     StreamLogs,
     FutureCalls,
-    DebugLogs,
+    DebugDbgLogs,
+    DebugValLogs,
 }
 
 impl DataRequest {
@@ -50,7 +51,8 @@ impl DataRequest {
             DataRequest::FetchChannelLogs(_) => RequestKey::ChannelLogs,
             DataRequest::FetchStreamLogs(_) => RequestKey::StreamLogs,
             DataRequest::FetchFutureCalls(_) => RequestKey::FutureCalls,
-            DataRequest::FetchDebugLogs { .. } => RequestKey::DebugLogs,
+            DataRequest::FetchDebugDbgLogs(_) => RequestKey::DebugDbgLogs,
+            DataRequest::FetchDebugValLogs(_) => RequestKey::DebugValLogs,
         }
     }
 }
@@ -155,10 +157,9 @@ impl RouteExt for Route {
             Route::FunctionAllocLogs { function_name } => Some(
                 DataResponse::FunctionLogsAllocNotFound(function_name.clone()),
             ),
-            Route::DebugLogs { source, expression } => Some(DataResponse::DebugLogsNotFound {
-                source: source.clone(),
-                expression: expression.clone(),
-            }),
+            Route::DebugDbgLogs { id } | Route::DebugValLogs { id } => {
+                Some(DataResponse::DebugLogsNotFound { id: *id })
+            }
             _ => None,
         }
     }
@@ -210,11 +211,16 @@ impl RouteExt for Route {
                 })
             }
             Route::DebugStats => parse_json::<FormattedDbgJson>(bytes).map(DataResponse::Debug),
-            Route::DebugLogs { source, expression } => {
-                parse_json::<FormattedDbgLogs>(bytes).map(|logs| DataResponse::DebugLogs {
-                    source: source.clone(),
-                    expression: expression.clone(),
-                    logs,
+            Route::DebugDbgLogs { id } => {
+                parse_json::<FormattedDbgLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
+                    id: *id,
+                    logs: logs.logs,
+                })
+            }
+            Route::DebugValLogs { id } => {
+                parse_json::<FormattedValLogs>(bytes).map(|logs| DataResponse::DebugValLogs {
+                    id: *id,
+                    logs: logs.logs,
                 })
             }
         }

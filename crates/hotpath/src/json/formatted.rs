@@ -634,6 +634,23 @@ pub struct FormattedThreadsJson {
     pub alloc_dealloc_diff: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DebugEntryType {
+    #[default]
+    Dbg,
+    Val,
+}
+
+impl DebugEntryType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DebugEntryType::Dbg => "dbg",
+            DebugEntryType::Val => "val",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedDbgJson {
     pub current_elapsed_ns: u64,
@@ -642,11 +659,13 @@ pub struct FormattedDbgJson {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedDbgStats {
+    pub id: u64,
+    #[serde(default)]
+    pub entry_type: DebugEntryType,
     pub source: String,
     pub source_display: String,
     pub expression: String,
     pub log_count: u64,
-    pub id: String,
     pub last_value: Option<String>,
 }
 
@@ -659,10 +678,19 @@ pub struct FormattedDbgLogs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormattedValLogs {
+    pub key: String,
+    pub total_logs: u64,
+    pub logs: Vec<FormattedDbgLogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedDbgLogEntry {
     pub index: u64,
     pub timestamp: String,
     pub ago: String,
     pub value: String,
     pub thread_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }

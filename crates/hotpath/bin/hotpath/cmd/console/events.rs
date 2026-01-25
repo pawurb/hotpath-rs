@@ -3,7 +3,7 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson, FormattedDbgLogs,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson, FormattedDbgLogEntry,
     FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
     FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
     FormattedThreadsJson,
@@ -23,7 +23,8 @@ pub(crate) enum DataRequest {
     FetchChannelLogs(u64),
     FetchStreamLogs(u64),
     FetchFutureCalls(u64),
-    FetchDebugLogs { source: String, expression: String },
+    FetchDebugDbgLogs(u64),
+    FetchDebugValLogs(u64),
 }
 
 impl DataRequest {
@@ -45,10 +46,8 @@ impl DataRequest {
             DataRequest::FetchChannelLogs(id) => Route::ChannelLogs { channel_id: *id },
             DataRequest::FetchStreamLogs(id) => Route::StreamLogs { stream_id: *id },
             DataRequest::FetchFutureCalls(id) => Route::FutureCalls { future_id: *id },
-            DataRequest::FetchDebugLogs { source, expression } => Route::DebugLogs {
-                source: source.clone(),
-                expression: expression.clone(),
-            },
+            DataRequest::FetchDebugDbgLogs(id) => Route::DebugDbgLogs { id: *id },
+            DataRequest::FetchDebugValLogs(id) => Route::DebugValLogs { id: *id },
         }
     }
 }
@@ -86,14 +85,16 @@ pub(crate) enum DataResponse {
         calls: FormattedFutureCalls,
     },
     Debug(FormattedDbgJson),
-    DebugLogs {
-        source: String,
-        expression: String,
-        logs: FormattedDbgLogs,
+    DebugDbgLogs {
+        id: u64,
+        logs: Vec<FormattedDbgLogEntry>,
+    },
+    DebugValLogs {
+        id: u64,
+        logs: Vec<FormattedDbgLogEntry>,
     },
     DebugLogsNotFound {
-        source: String,
-        expression: String,
+        id: u64,
     },
     Error(String),
 }

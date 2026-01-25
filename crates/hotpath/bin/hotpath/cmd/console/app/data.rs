@@ -3,7 +3,7 @@
 use crate::cmd::console::app::{App, CachedDebugLogs, CachedLogs, CachedStreamLogs, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson, FormattedDbgLogs,
+    DebugEntryType, FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson,
     FormattedFunctionAllocLogsJson, FormattedFunctionData, FormattedFunctionTimingLogsJson,
     FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
     FormattedStreamsJson, FormattedThreadsJson,
@@ -452,17 +452,12 @@ impl App {
                 self.loading_debug = false;
                 self.update_debug(data);
             }
-            DataResponse::DebugLogs {
-                source,
-                expression,
-                logs,
-            } => {
-                trace!(
-                    "Received debug {}|{} logs: {} entries",
-                    source,
-                    expression,
-                    logs.logs.len()
-                );
+            DataResponse::DebugDbgLogs { id, logs } => {
+                trace!("Received dbg logs for {}: {} entries", id, logs.len());
+                self.handle_debug_logs(logs);
+            }
+            DataResponse::DebugValLogs { id, logs } => {
+                trace!("Received val logs for {}: {} entries", id, logs.len());
                 self.handle_debug_logs(logs);
             }
             DataResponse::DebugLogsNotFound { .. } => {
@@ -556,7 +551,7 @@ impl App {
             .debug_table_state
             .selected()
             .and_then(|idx| self.debug_stats.get(idx))
-            .map(|stat| stat.id.clone());
+            .map(|stat| stat.id);
 
         self.debug_stats = debug.debug_logs;
         self.last_successful_fetch = Some(Instant::now());
@@ -589,19 +584,20 @@ impl App {
         if let Some(selected) = self.debug_table_state.selected() {
             if !self.debug_stats.is_empty() && selected < self.debug_stats.len() {
                 let stat = &self.debug_stats[selected];
-                let _ = self.request_tx.send(DataRequest::FetchDebugLogs {
-                    source: stat.source.clone(),
-                    expression: stat.expression.clone(),
-                });
+                let request = match stat.entry_type {
+                    DebugEntryType::Dbg => DataRequest::FetchDebugDbgLogs(stat.id),
+                    DebugEntryType::Val => DataRequest::FetchDebugValLogs(stat.id),
+                };
+                let _ = self.request_tx.send(request);
             }
         }
     }
 
-    pub(crate) fn handle_debug_logs(&mut self, logs: FormattedDbgLogs) {
+    pub(crate) fn handle_debug_logs(&mut self, logs: Vec<hotpath::json::FormattedDbgLogEntry>) {
         self.debug_logs = Some(CachedDebugLogs { logs });
 
         if let Some(ref cached_logs) = self.debug_logs {
-            let log_count = cached_logs.logs.logs.len();
+            let log_count = cached_logs.logs.len();
             if let Some(selected) = self.debug_logs_table_state.selected() {
                 if selected >= log_count && log_count > 0 {
                     self.debug_logs_table_state.select(Some(log_count - 1));

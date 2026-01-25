@@ -18,6 +18,11 @@ macro_rules! dbg {
 }
 
 #[macro_export]
+macro_rules! val {
+    ($key:expr, $val:expr $(,)?) => {{}};
+}
+
+#[macro_export]
 macro_rules! channel {
     ($expr:expr) => {
         $expr

@@ -2,11 +2,10 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgLogEntry, FormattedDbgLogs,
-    FormattedDbgStats, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedFutureCall, FormattedFutureCalls, FormattedFuturesJson,
-    FormattedLogEntry, FormattedSentLogEntry, FormattedStreamLogs, FormattedStreamsJson,
-    FormattedThreadsJson,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgLogEntry, FormattedDbgStats,
+    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
+    FormattedFutureCall, FormattedFutureCalls, FormattedFuturesJson, FormattedLogEntry,
+    FormattedSentLogEntry, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -126,7 +125,7 @@ pub(crate) struct CachedStreamLogs {
 }
 
 pub(crate) struct CachedDebugLogs {
-    pub(crate) logs: FormattedDbgLogs,
+    pub(crate) logs: Vec<FormattedDbgLogEntry>,
 }
 
 pub(crate) struct App {

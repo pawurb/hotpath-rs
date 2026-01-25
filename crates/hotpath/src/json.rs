@@ -269,9 +269,10 @@ pub enum Route {
     FutureCalls { future_id: u64 },
     /// GET /debug - Returns all debug log statistics
     DebugStats,
-    /// GET /debug/{base64_id}/logs - Returns logs for a specific debug location
-    /// The id is formatted as "source|expression"
-    DebugLogs { source: String, expression: String },
+    /// GET /debug/dbg/{id}/logs - Returns logs for a dbg! entry
+    DebugDbgLogs { id: u64 },
+    /// GET /debug/val/{id}/logs - Returns logs for a val! entry
+    DebugValLogs { id: u64 },
 }
 
 impl Route {
@@ -299,11 +300,8 @@ impl Route {
             Route::StreamLogs { stream_id } => format!("/streams/{}/logs", stream_id),
             Route::FutureCalls { future_id } => format!("/futures/{}/calls", future_id),
             Route::DebugStats => "/debug".to_string(),
-            Route::DebugLogs { source, expression } => {
-                let id = format!("{}\0{}", source, expression);
-                let encoded = base64::engine::general_purpose::STANDARD.encode(id.as_bytes());
-                format!("/debug/{}/logs", encoded)
-            }
+            Route::DebugDbgLogs { id } => format!("/debug/dbg/{}/logs", id),
+            Route::DebugValLogs { id } => format!("/debug/val/{}/logs", id),
         }
     }
 
@@ -323,8 +321,10 @@ static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/functions_alloc/([^/]+)/logs$").unwrap());
-static RE_DEBUG_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/debug/([^/]+)/logs$").unwrap());
+static RE_DEBUG_DBG_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/debug/dbg/(\d+)/logs$").unwrap());
+static RE_DEBUG_VAL_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/debug/val/(\d+)/logs$").unwrap());
 
 fn base64_decode(encoded: &str) -> Result<String, String> {
     use base64::Engine;
@@ -378,13 +378,14 @@ impl FromStr for Route {
             return Ok(Route::FutureCalls { future_id });
         }
 
-        if let Some(caps) = RE_DEBUG_LOGS.captures(path) {
-            let id = base64_decode(&caps[1]).map_err(|_| ())?;
-            let (source, expression) = id.split_once('\0').ok_or(())?;
-            return Ok(Route::DebugLogs {
-                source: source.to_string(),
-                expression: expression.to_string(),
-            });
+        if let Some(caps) = RE_DEBUG_DBG_LOGS.captures(path) {
+            let id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::DebugDbgLogs { id });
+        }
+
+        if let Some(caps) = RE_DEBUG_VAL_LOGS.captures(path) {
+            let id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::DebugValLogs { id });
         }
 
         Err(())
