@@ -151,7 +151,7 @@ pub mod tests {
             panic!("Failed after 12 retries: {}", error);
         }
 
-        let all_expected = ["basic_futures.rs", "call_count", "total_polls"];
+        let all_expected = ["basic_futures.rs", "primary_count", "data_flow_type"];
         for expected in all_expected {
             assert!(
                 json_text.contains(expected),
