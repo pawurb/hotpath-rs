@@ -249,24 +249,12 @@ pub enum Route {
     FunctionsTiming,
     /// GET /functions_alloc - Returns allocation metrics for all functions
     FunctionsAlloc,
-    /// GET /channels - Returns all channel statistics
-    Channels,
-    /// GET /streams - Returns all stream statistics
-    Streams,
-    /// GET /futures - Returns all future statistics
-    Futures,
     /// GET /threads - Returns thread metrics
     Threads,
     /// GET /functions_timing/{base64_name}/logs - Returns timing logs for a function
     FunctionTimingLogs { function_name: String },
     /// GET /functions_alloc/{base64_name}/logs - Returns allocation logs for a function
     FunctionAllocLogs { function_name: String },
-    /// GET /channels/{id}/logs - Returns logs for a specific channel
-    ChannelLogs { channel_id: u64 },
-    /// GET /streams/{id}/logs - Returns logs for a specific stream
-    StreamLogs { stream_id: u64 },
-    /// GET /futures/{id}/calls - Returns calls for a specific future
-    FutureLogs { future_id: u64 },
     /// GET /debug - Returns all debug log statistics
     Debug,
     /// GET /debug/dbg/{id}/logs - Returns logs for a dbg! entry
@@ -290,9 +278,6 @@ impl Route {
         match self {
             Route::FunctionsTiming => "/functions_timing".to_string(),
             Route::FunctionsAlloc => "/functions_alloc".to_string(),
-            Route::Channels => "/channels".to_string(),
-            Route::Streams => "/streams".to_string(),
-            Route::Futures => "/futures".to_string(),
             Route::Threads => "/threads".to_string(),
             Route::FunctionTimingLogs { function_name } => {
                 let encoded =
@@ -304,9 +289,6 @@ impl Route {
                     base64::engine::general_purpose::STANDARD.encode(function_name.as_bytes());
                 format!("/functions_alloc/{}/logs", encoded)
             }
-            Route::ChannelLogs { channel_id } => format!("/channels/{}/logs", channel_id),
-            Route::StreamLogs { stream_id } => format!("/streams/{}/logs", stream_id),
-            Route::FutureLogs { future_id } => format!("/futures/{}/logs", future_id),
             Route::Debug => "/debug".to_string(),
             Route::DebugDbgLogs { id } => format!("/debug/dbg/{}/logs", id),
             Route::DebugValLogs { id } => format!("/debug/val/{}/logs", id),
@@ -329,12 +311,6 @@ impl Route {
     }
 }
 
-static RE_CHANNEL_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/channels/(\d+)/logs$").unwrap());
-static RE_STREAM_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/streams/(\d+)/logs$").unwrap());
-static RE_FUTURE_CALLS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/futures/(\d+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
 static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
@@ -369,9 +345,6 @@ impl FromStr for Route {
         match path {
             "/functions_timing" => return Ok(Route::FunctionsTiming),
             "/functions_alloc" => return Ok(Route::FunctionsAlloc),
-            "/channels" => return Ok(Route::Channels),
-            "/streams" => return Ok(Route::Streams),
-            "/futures" => return Ok(Route::Futures),
             "/threads" => return Ok(Route::Threads),
             "/debug" => return Ok(Route::Debug),
             "/data_flow" => return Ok(Route::DataFlow),
@@ -386,21 +359,6 @@ impl FromStr for Route {
         if let Some(caps) = RE_FUNCTION_LOGS_ALLOC.captures(path) {
             let function_name = base64_decode(&caps[1]).map_err(|_| ())?;
             return Ok(Route::FunctionAllocLogs { function_name });
-        }
-
-        if let Some(caps) = RE_CHANNEL_LOGS.captures(path) {
-            let channel_id = caps[1].parse().map_err(|_| ())?;
-            return Ok(Route::ChannelLogs { channel_id });
-        }
-
-        if let Some(caps) = RE_STREAM_LOGS.captures(path) {
-            let stream_id = caps[1].parse().map_err(|_| ())?;
-            return Ok(Route::StreamLogs { stream_id });
-        }
-
-        if let Some(caps) = RE_FUTURE_CALLS.captures(path) {
-            let future_id = caps[1].parse().map_err(|_| ())?;
-            return Ok(Route::FutureLogs { future_id });
         }
 
         if let Some(caps) = RE_DEBUG_DBG_LOGS.captures(path) {

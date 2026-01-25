@@ -13,11 +13,31 @@ use ratatui::{
     Frame,
 };
 
-fn type_display(data_flow_type: DataFlowType) -> &'static str {
-    match data_flow_type {
-        DataFlowType::Channel => "Channel",
-        DataFlowType::Stream => "Stream",
-        DataFlowType::Future => "Future",
+fn format_type_with_capacity(entry: &JsonDataFlowEntry) -> String {
+    match entry.data_flow_type {
+        DataFlowType::Channel => {
+            let capacity = match entry.subtype.as_deref() {
+                Some("unbounded") => "∞".to_string(),
+                Some("oneshot") => "1".to_string(),
+                Some(s) if s.starts_with("bounded") => {
+                    // Extract number from "bounded[N]" or "bounded"
+                    if let Some(start) = s.find('[') {
+                        if let Some(end) = s.find(']') {
+                            s[start + 1..end].to_string()
+                        } else {
+                            // Handle truncated case like "bounded[10"
+                            s[start + 1..].to_string()
+                        }
+                    } else {
+                        "?".to_string()
+                    }
+                }
+                _ => "?".to_string(),
+            };
+            format!("Channel[{}]", capacity)
+        }
+        DataFlowType::Stream => "Stream".to_string(),
+        DataFlowType::Future => "Future".to_string(),
     }
 }
 
@@ -70,7 +90,7 @@ pub(crate) fn render_data_flow_panel(
     total: usize,
 ) {
     let available_width = area.width.saturating_sub(10);
-    let label_width = ((available_width as f32 * 0.35) as usize).max(20);
+    let label_width = ((available_width as f32 * 0.45) as usize).max(20);
 
     let header = Row::new(vec![
         Cell::from("ID"),
@@ -78,7 +98,6 @@ pub(crate) fn render_data_flow_panel(
         Cell::from("Label"),
         Cell::from("State"),
         Cell::from("Count"),
-        Cell::from("Subtype"),
     ])
     .style(common_styles::HEADER_STYLE)
     .height(1);
@@ -86,8 +105,9 @@ pub(crate) fn render_data_flow_panel(
     let rows: Vec<Row> = entries
         .iter()
         .map(|entry| {
-            let type_cell = Cell::from(type_display(entry.data_flow_type))
-                .style(Style::default().fg(type_color(entry.data_flow_type)));
+            let type_text = format_type_with_capacity(entry);
+            let type_cell =
+                Cell::from(type_text).style(Style::default().fg(type_color(entry.data_flow_type)));
 
             let state_text = if entry.state == "full" {
                 format!("⚠ {}", entry.state)
@@ -95,26 +115,22 @@ pub(crate) fn render_data_flow_panel(
                 entry.state.clone()
             };
 
-            let subtype = entry.subtype.as_deref().unwrap_or("-");
-
             Row::new(vec![
                 Cell::from(entry.id.to_string()),
                 type_cell,
                 Cell::from(truncate_left(&entry.label, label_width)),
                 Cell::from(state_text).style(state_style(&entry.state)),
                 Cell::from(format_counts(entry)),
-                Cell::from(subtype.to_string()),
             ])
         })
         .collect();
 
     let widths = [
         Constraint::Length(5),      // ID
-        Constraint::Length(8),      // Type
-        Constraint::Percentage(35), // Label
+        Constraint::Length(12),     // Type (Channel[∞], Channel[100], etc.)
+        Constraint::Percentage(45), // Label
         Constraint::Length(10),     // State
         Constraint::Length(12),     // Count
-        Constraint::Length(10),     // Subtype
     ];
 
     let table_block = if show_logs {

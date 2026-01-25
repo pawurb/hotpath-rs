@@ -250,7 +250,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6772 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-ftc --example basic_ftc --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::JsonChannelsList;
+        use hotpath::json::JsonDataFlowList;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -271,13 +271,10 @@ pub mod tests {
         let mut json_text = String::new();
         let mut last_error = None;
 
-        // Test /channels endpoint
-        // Give the server some time to start up
-
         for _attempt in 0..12 {
             sleep(Duration::from_millis(500));
 
-            match ureq::get("http://localhost:6772/channels").call() {
+            match ureq::get("http://localhost:6772/data_flow").call() {
                 Ok(mut response) => {
                     json_text = response
                         .body_mut()
@@ -305,20 +302,22 @@ pub mod tests {
             );
         }
 
-        // Test /channels/:id/logs endpoint
-        let channels_response: JsonChannelsList =
-            serde_json::from_str(&json_text).expect("Failed to parse channels JSON");
+        let data_flow: JsonDataFlowList =
+            serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
 
-        if let Some(first_channel) = channels_response.channels.first() {
-            let logs_url = format!("http://localhost:6772/channels/{}/logs", first_channel.id);
+        if let Some(first_channel) = data_flow.channels.first() {
+            let logs_url = format!(
+                "http://localhost:6772/data_flow/channel/{}/logs",
+                first_channel.id
+            );
             let response = ureq::get(&logs_url)
                 .call()
-                .expect("Failed to call /channels/:id/logs endpoint");
+                .expect("Failed to call /data_flow/channel/:id/logs endpoint");
 
             assert_eq!(
                 response.status(),
                 200,
-                "Expected status 200 for /channels/:id/logs endpoint"
+                "Expected status 200 for /data_flow/channel/:id/logs endpoint"
             );
         }
 

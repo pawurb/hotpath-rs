@@ -27,10 +27,10 @@ pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
 
 pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
 
-use crate::channels::{get_channel_logs, get_channels_json};
+use crate::channels::get_channel_logs;
 use crate::data_flow::get_data_flow_json;
-use crate::futures::{get_future_calls, get_futures_json};
-use crate::streams::{get_stream_logs, get_streams_json};
+use crate::futures::get_future_calls;
+use crate::streams::get_stream_logs;
 use serde::Serialize;
 use std::fmt::Display;
 use std::sync::OnceLock;
@@ -91,18 +91,6 @@ fn handle_request(request: Request) {
                 "Memory profiling not available - enable hotpath-alloc feature",
             ),
         },
-        Ok(Route::Channels) => {
-            let channels = get_channels_json();
-            respond_json(request, &channels);
-        }
-        Ok(Route::Streams) => {
-            let streams = get_streams_json();
-            respond_json(request, &streams);
-        }
-        Ok(Route::Futures) => {
-            let futures = get_futures_json();
-            respond_json(request, &futures);
-        }
         Ok(Route::FunctionTimingLogs { function_name }) => {
             match get_function_logs_timing(&function_name) {
                 Some(logs) => {
@@ -131,27 +119,6 @@ fn handle_request(request: Request) {
                 ),
             }
         }
-        Ok(Route::ChannelLogs { channel_id }) => match get_channel_logs(&channel_id.to_string()) {
-            Some(logs) => {
-                let formatted = JsonChannelLogsList::from_logs(&logs, get_current_elapsed_ns());
-                respond_json(request, &formatted);
-            }
-            None => respond_error(request, 404, "Channel not found"),
-        },
-        Ok(Route::StreamLogs { stream_id }) => match get_stream_logs(&stream_id.to_string()) {
-            Some(logs) => {
-                let formatted = JsonStreamLogsList::from_logs(&logs, get_current_elapsed_ns());
-                respond_json(request, &formatted);
-            }
-            None => respond_error(request, 404, "Stream not found"),
-        },
-        Ok(Route::FutureLogs { future_id }) => match get_future_calls(future_id) {
-            Some(calls) => {
-                let formatted = JsonFutureLogsList::from(&calls);
-                respond_json(request, &formatted);
-            }
-            None => respond_error(request, 404, "Future not found"),
-        },
         Ok(Route::Debug) => {
             let debug_stats = get_debug_entries_json();
             respond_json(request, &debug_stats);

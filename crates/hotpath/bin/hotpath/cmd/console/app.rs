@@ -45,7 +45,6 @@ impl SelectedTab {
             SelectedTab::Debug => "Debug",
         }
     }
-
 }
 
 /// Represents which UI component has focus in the Functions tab

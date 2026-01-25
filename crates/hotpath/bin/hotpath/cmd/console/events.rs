@@ -3,9 +3,9 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    JsonChannelLogsList, JsonChannelsList, JsonDataFlowList, JsonDebugList, JsonDebugLog,
-    JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList,
-    JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonChannelLogsList, JsonDataFlowList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
+    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonStreamLogsList,
+    JsonThreadsList,
 };
 
 #[derive(Debug)]
@@ -97,22 +97,6 @@ pub(crate) enum DataResponse {
     },
     DebugLogsNotFound {
         id: u64,
-    },
-    // Legacy responses kept for backward compat with http_worker parsing
-    Channels(JsonChannelsList),
-    ChannelLogs {
-        channel_id: u64,
-        logs: JsonChannelLogsList,
-    },
-    Streams(JsonStreamsList),
-    StreamLogs {
-        stream_id: u64,
-        logs: JsonStreamLogsList,
-    },
-    Futures(JsonFuturesList),
-    FutureLogs {
-        future_id: u64,
-        calls: JsonFutureLogsList,
     },
     Error(String),
 }

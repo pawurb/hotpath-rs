@@ -3,9 +3,9 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
-    JsonChannelLogsList, JsonChannelsList, JsonDataFlowList, JsonDebugDbgLogs, JsonDebugList,
-    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonChannelLogsList, JsonDataFlowList, JsonDebugDbgLogs, JsonDebugList, JsonDebugValLogs,
+    JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList,
+    JsonStreamLogsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -226,28 +226,6 @@ impl RouteExt for Route {
                 parse_json::<JsonDebugValLogs>(bytes).map(|logs| DataResponse::DebugValLogs {
                     id: *id,
                     logs: logs.logs,
-                })
-            }
-            // Legacy routes - still parse for backward compatibility during transition
-            Route::Channels => parse_json::<JsonChannelsList>(bytes).map(DataResponse::Channels),
-            Route::Streams => parse_json::<JsonStreamsList>(bytes).map(DataResponse::Streams),
-            Route::Futures => parse_json::<JsonFuturesList>(bytes).map(DataResponse::Futures),
-            Route::ChannelLogs { channel_id } => {
-                parse_json::<JsonChannelLogsList>(bytes).map(|logs| DataResponse::ChannelLogs {
-                    channel_id: *channel_id,
-                    logs,
-                })
-            }
-            Route::StreamLogs { stream_id } => {
-                parse_json::<JsonStreamLogsList>(bytes).map(|logs| DataResponse::StreamLogs {
-                    stream_id: *stream_id,
-                    logs,
-                })
-            }
-            Route::FutureLogs { future_id } => {
-                parse_json::<JsonFutureLogsList>(bytes).map(|calls| DataResponse::FutureLogs {
-                    future_id: *future_id,
-                    calls,
                 })
             }
         }

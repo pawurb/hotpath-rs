@@ -107,7 +107,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-futures --example basic_futures --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::JsonFuturesList;
+        use hotpath::json::JsonDataFlowList;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -128,12 +128,10 @@ pub mod tests {
         let mut json_text = String::new();
         let mut last_error = None;
 
-        // Test /futures endpoint
-        // Give the server some time to start up
         for _attempt in 0..12 {
             sleep(Duration::from_millis(500));
 
-            match ureq::get("http://localhost:6775/futures").call() {
+            match ureq::get("http://localhost:6775/data_flow").call() {
                 Ok(mut response) => {
                     json_text = response
                         .body_mut()
@@ -161,23 +159,24 @@ pub mod tests {
             );
         }
 
-        // Test /futures/{id}/logs endpoint
-        let futures_response: JsonFuturesList =
-            serde_json::from_str(&json_text).expect("Failed to parse futures JSON");
+        let data_flow: JsonDataFlowList =
+            serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
 
-        if let Some(first_future) = futures_response.futures.first() {
-            let calls_url = format!("http://localhost:6775/futures/{}/logs", first_future.id);
+        if let Some(first_future) = data_flow.futures.first() {
+            let calls_url = format!(
+                "http://localhost:6775/data_flow/future/{}/logs",
+                first_future.id
+            );
             let mut response = ureq::get(&calls_url)
                 .call()
-                .expect("Failed to call /futures/{id}/logs endpoint");
+                .expect("Failed to call /data_flow/future/{id}/logs endpoint");
 
             assert_eq!(
                 response.status(),
                 200,
-                "Expected status 200 for /futures/{{id}}/logs endpoint"
+                "Expected status 200 for /data_flow/future/{{id}}/logs endpoint"
             );
 
-            // Verify the calls response contains expected data
             let calls_text = response
                 .body_mut()
                 .read_to_string()

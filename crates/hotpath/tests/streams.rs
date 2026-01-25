@@ -83,7 +83,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6774 TEST_SLEEP_SECONDS=10 cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::JsonStreamsList;
+        use hotpath::json::JsonDataFlowList;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -104,13 +104,10 @@ pub mod tests {
         let mut json_text = String::new();
         let mut last_error = None;
 
-        // Test /streams endpoint
-        // Give the server some time to start up
-
         for _attempt in 0..12 {
             sleep(Duration::from_millis(500));
 
-            match ureq::get("http://localhost:6774/streams").call() {
+            match ureq::get("http://localhost:6774/data_flow").call() {
                 Ok(mut response) => {
                     json_text = response
                         .body_mut()
@@ -138,20 +135,22 @@ pub mod tests {
             );
         }
 
-        // Test /streams/:id/logs endpoint
-        let streams_response: JsonStreamsList =
-            serde_json::from_str(&json_text).expect("Failed to parse streams JSON");
+        let data_flow: JsonDataFlowList =
+            serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
 
-        if let Some(first_stream) = streams_response.streams.first() {
-            let logs_url = format!("http://localhost:6774/streams/{}/logs", first_stream.id);
+        if let Some(first_stream) = data_flow.streams.first() {
+            let logs_url = format!(
+                "http://localhost:6774/data_flow/stream/{}/logs",
+                first_stream.id
+            );
             let response = ureq::get(&logs_url)
                 .call()
-                .expect("Failed to call /streams/:id/logs endpoint");
+                .expect("Failed to call /data_flow/stream/:id/logs endpoint");
 
             assert_eq!(
                 response.status(),
                 200,
-                "Expected status 200 for /streams/:id/logs endpoint"
+                "Expected status 200 for /data_flow/stream/:id/logs endpoint"
             );
         }
 

@@ -426,13 +426,6 @@ impl App {
             DataResponse::DebugLogsNotFound { .. } => {
                 self.debug_logs = None;
             }
-            // Legacy responses - ignore
-            DataResponse::Channels(_)
-            | DataResponse::ChannelLogs { .. }
-            | DataResponse::Streams(_)
-            | DataResponse::StreamLogs { .. }
-            | DataResponse::Futures(_)
-            | DataResponse::FutureLogs { .. } => {}
             DataResponse::Error(e) => {
                 warn!("Data fetch error: {}", e);
                 self.loading_functions = false;
