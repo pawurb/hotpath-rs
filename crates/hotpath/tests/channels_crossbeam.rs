@@ -207,7 +207,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6771 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-crossbeam --example basic_crossbeam --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::JsonDataFlowList;
+        use hotpath::json::{DataFlowType, JsonDataFlowList};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -262,10 +262,15 @@ pub mod tests {
         let data_flow: JsonDataFlowList =
             serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
 
-        if let Some(first_channel) = data_flow.channels.first() {
+        let first_channel = data_flow
+            .entries
+            .iter()
+            .find(|e| e.data_flow_type == DataFlowType::Channel);
+
+        if let Some(channel) = first_channel {
             let logs_url = format!(
                 "http://localhost:6771/data_flow/channel/{}/logs",
-                first_channel.id
+                channel.id
             );
             let response = ureq::get(&logs_url)
                 .call()

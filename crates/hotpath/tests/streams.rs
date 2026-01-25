@@ -83,7 +83,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6774 TEST_SLEEP_SECONDS=10 cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::JsonDataFlowList;
+        use hotpath::json::{DataFlowType, JsonDataFlowList};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -138,11 +138,13 @@ pub mod tests {
         let data_flow: JsonDataFlowList =
             serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
 
-        if let Some(first_stream) = data_flow.streams.first() {
-            let logs_url = format!(
-                "http://localhost:6774/data_flow/stream/{}/logs",
-                first_stream.id
-            );
+        let first_stream = data_flow
+            .entries
+            .iter()
+            .find(|e| e.data_flow_type == DataFlowType::Stream);
+
+        if let Some(stream) = first_stream {
+            let logs_url = format!("http://localhost:6774/data_flow/stream/{}/logs", stream.id);
             let response = ureq::get(&logs_url)
                 .call()
                 .expect("Failed to call /data_flow/stream/:id/logs endpoint");

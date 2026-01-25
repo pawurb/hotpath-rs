@@ -107,7 +107,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-futures --example basic_futures --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::JsonDataFlowList;
+        use hotpath::json::{DataFlowType, JsonDataFlowList};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -162,11 +162,13 @@ pub mod tests {
         let data_flow: JsonDataFlowList =
             serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
 
-        if let Some(first_future) = data_flow.futures.first() {
-            let calls_url = format!(
-                "http://localhost:6775/data_flow/future/{}/logs",
-                first_future.id
-            );
+        let first_future = data_flow
+            .entries
+            .iter()
+            .find(|e| e.data_flow_type == DataFlowType::Future);
+
+        if let Some(future) = first_future {
+            let calls_url = format!("http://localhost:6775/data_flow/future/{}/logs", future.id);
             let mut response = ureq::get(&calls_url)
                 .call()
                 .expect("Failed to call /data_flow/future/{id}/logs endpoint");
