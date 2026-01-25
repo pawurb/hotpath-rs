@@ -599,6 +599,10 @@ pub struct JsonDataFlowEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secondary_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_mem: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub type_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub type_size: Option<usize>,

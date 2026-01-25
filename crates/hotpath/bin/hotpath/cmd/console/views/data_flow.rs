@@ -77,6 +77,14 @@ fn format_counts(entry: &JsonDataFlowEntry) -> String {
     }
 }
 
+fn format_queue(entry: &JsonDataFlowEntry) -> &str {
+    entry.queue.as_deref().unwrap_or("-")
+}
+
+fn format_queue_mem(entry: &JsonDataFlowEntry) -> &str {
+    entry.queue_mem.as_deref().unwrap_or("-")
+}
+
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_data_flow_panel(
@@ -93,10 +101,11 @@ pub(crate) fn render_data_flow_panel(
     let label_width = ((available_width as f32 * 0.45) as usize).max(20);
 
     let header = Row::new(vec![
-        Cell::from("ID"),
         Cell::from("Type"),
         Cell::from("Label"),
         Cell::from("State"),
+        Cell::from("Queue"),
+        Cell::from("Mem"),
         Cell::from("Count"),
     ])
     .style(common_styles::HEADER_STYLE)
@@ -116,20 +125,22 @@ pub(crate) fn render_data_flow_panel(
             };
 
             Row::new(vec![
-                Cell::from(entry.id.to_string()),
                 type_cell,
                 Cell::from(truncate_left(&entry.label, label_width)),
                 Cell::from(state_text).style(state_style(&entry.state)),
+                Cell::from(format_queue(entry)),
+                Cell::from(format_queue_mem(entry)),
                 Cell::from(format_counts(entry)),
             ])
         })
         .collect();
 
     let widths = [
-        Constraint::Length(5),      // ID
         Constraint::Length(12),     // Type (Channel[∞], Channel[100], etc.)
-        Constraint::Percentage(45), // Label
+        Constraint::Percentage(40), // Label
         Constraint::Length(10),     // State
+        Constraint::Length(8),      // Queue
+        Constraint::Length(8),      // Mem
         Constraint::Length(12),     // Count
     ];
 

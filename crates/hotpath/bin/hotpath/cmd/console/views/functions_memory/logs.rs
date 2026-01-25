@@ -46,10 +46,10 @@ pub(crate) fn render_function_logs_panel(
                 .add_modifier(Modifier::BOLD),
         ));
 
-    // Fixed columns: Index(7) + Mem(10) + Objects(9) + Ago(12) + TID(10) + spacing(10) + borders(2) + highlight(3) = 63
+    // Fixed columns: Index(7) + Mem(12) + Objects(12) + Ago(10) + TID(6) + spacing(10) + borders(2) + highlight(3) = 62
     let inner_width = area.width.saturating_sub(2);
-    let fixed_width: u16 = 7 + 10 + 9 + 12 + 10 + 10 + 3;
-    let result_width = (inner_width.saturating_sub(fixed_width) as usize).max(20);
+    let fixed_width: u16 = 7 + 12 + 12 + 10 + 6 + 10 + 3;
+    let result_width = (inner_width.saturating_sub(fixed_width) as usize).max(10);
 
     if let Some(function_logs_data) = current_function_logs {
         let headers = Row::new(vec![
@@ -108,11 +108,11 @@ pub(crate) fn render_function_logs_panel(
 
         let widths = [
             Constraint::Length(7),
-            Constraint::Length(10),
-            Constraint::Length(9),
+            Constraint::Length(12),
             Constraint::Length(12),
             Constraint::Length(10),
-            Constraint::Min(20),
+            Constraint::Length(6),
+            Constraint::Min(10),
         ]
         .as_slice();
 
