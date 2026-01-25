@@ -3,7 +3,7 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson, FormattedDbgLogs,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugJson, FormattedDebugLogs,
     FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
     FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
     FormattedThreadsJson, FormattedValLogs,
@@ -210,9 +210,9 @@ impl RouteExt for Route {
                     calls,
                 })
             }
-            Route::DebugStats => parse_json::<FormattedDbgJson>(bytes).map(DataResponse::Debug),
+            Route::DebugStats => parse_json::<FormattedDebugJson>(bytes).map(DataResponse::Debug),
             Route::DebugDbgLogs { id } => {
-                parse_json::<FormattedDbgLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
+                parse_json::<FormattedDebugLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
                     id: *id,
                     logs: logs.logs,
                 })

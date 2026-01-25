@@ -67,7 +67,6 @@ pub(crate) fn render_debug_logs_panel(
         .height(1);
 
     let rows: Vec<Row> = cached_logs
-        .logs
         .iter()
         .rev()
         .map(|entry| {

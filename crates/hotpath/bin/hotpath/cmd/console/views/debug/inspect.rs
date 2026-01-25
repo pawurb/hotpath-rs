@@ -1,4 +1,4 @@
-use hotpath::json::FormattedDbgLogEntry;
+use hotpath::json::FormattedDebugLogEntry;
 use ratatui::{
     layout::Rect,
     symbols::border,
@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 pub(crate) fn render_debug_inspect_popup(
-    entry: &FormattedDbgLogEntry,
+    entry: &FormattedDebugLogEntry,
     area: Rect,
     frame: &mut Frame,
 ) {

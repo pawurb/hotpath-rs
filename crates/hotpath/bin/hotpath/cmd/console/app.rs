@@ -2,7 +2,7 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDbgLogEntry, FormattedDbgStats,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugLogEntry, FormattedDebugStats,
     FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
     FormattedFutureCall, FormattedFutureCalls, FormattedFuturesJson, FormattedLogEntry,
     FormattedSentLogEntry, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
@@ -98,10 +98,7 @@ pub(crate) enum DebugFocus {
     Inspect,
 }
 
-/// Cached channel logs
-pub(crate) struct CachedLogs {
-    pub(crate) logs: FormattedChannelLogs,
-}
+pub(crate) type CachedLogs = FormattedChannelLogs;
 
 /// Inspected function log entry for the inspect popup
 #[derive(Debug, Clone)]
@@ -120,13 +117,8 @@ pub(crate) struct InspectedFunctionLog {
     pub(crate) result: Option<String>,
 }
 
-pub(crate) struct CachedStreamLogs {
-    pub(crate) logs: FormattedStreamLogs,
-}
-
-pub(crate) struct CachedDebugLogs {
-    pub(crate) logs: Vec<FormattedDbgLogEntry>,
-}
+pub(crate) type CachedStreamLogs = FormattedStreamLogs;
+pub(crate) type CachedDebugLogs = Vec<FormattedDebugLogEntry>;
 
 pub(crate) struct App {
     pub(crate) timing_functions: FormattedFunctionsJson,
@@ -188,13 +180,13 @@ pub(crate) struct App {
     pub(crate) future_calls: Option<FormattedFutureCalls>,
     pub(crate) inspected_future_call: Option<FormattedFutureCall>,
 
-    pub(crate) debug_stats: Vec<FormattedDbgStats>,
+    pub(crate) debug_stats: Vec<FormattedDebugStats>,
     pub(crate) debug_table_state: TableState,
     pub(crate) debug_focus: DebugFocus,
     pub(crate) show_debug_logs: bool,
     pub(crate) debug_logs: Option<CachedDebugLogs>,
     pub(crate) debug_logs_table_state: TableState,
-    pub(crate) inspected_debug_log: Option<FormattedDbgLogEntry>,
+    pub(crate) inspected_debug_log: Option<FormattedDebugLogEntry>,
     pub(crate) loading_debug: bool,
 }
 

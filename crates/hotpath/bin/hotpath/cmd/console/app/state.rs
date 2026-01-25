@@ -123,7 +123,7 @@ impl App {
             self.toggle_logs();
         } else if !self.channels.channels.is_empty() {
             if let Some(ref cached_logs) = self.logs {
-                if !cached_logs.logs.sent_logs.is_empty() {
+                if !cached_logs.sent_logs.is_empty() {
                     self.channels_focus = ChannelsFocus::Logs;
                     if self.channel_logs_table_state.selected().is_none() {
                         self.channel_logs_table_state.select(Some(0));
@@ -135,7 +135,7 @@ impl App {
 
     pub(crate) fn select_previous_log(&mut self) {
         if let Some(ref cached_logs) = self.logs {
-            let log_count = cached_logs.logs.sent_logs.len();
+            let log_count = cached_logs.sent_logs.len();
             if log_count > 0 {
                 let i = match self.channel_logs_table_state.selected() {
                     Some(i) => i.saturating_sub(1),
@@ -145,7 +145,7 @@ impl App {
 
                 // Update inspected log if inspect popup is open
                 if self.channels_focus == ChannelsFocus::Inspect {
-                    if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
+                    if let Some(entry) = cached_logs.sent_logs.get(i) {
                         self.inspected_log = Some(entry.clone());
                     }
                 }
@@ -155,7 +155,7 @@ impl App {
 
     pub(crate) fn select_next_log(&mut self) {
         if let Some(ref cached_logs) = self.logs {
-            let log_count = cached_logs.logs.sent_logs.len();
+            let log_count = cached_logs.sent_logs.len();
             if log_count > 0 {
                 let i = match self.channel_logs_table_state.selected() {
                     Some(i) => (i + 1).min(log_count - 1),
@@ -165,7 +165,7 @@ impl App {
 
                 // Update inspected log if inspect popup is open
                 if self.channels_focus == ChannelsFocus::Inspect {
-                    if let Some(entry) = cached_logs.logs.sent_logs.get(i) {
+                    if let Some(entry) = cached_logs.sent_logs.get(i) {
                         self.inspected_log = Some(entry.clone());
                     }
                 }
@@ -184,7 +184,7 @@ impl App {
             // Opening inspect popup - capture the current log entry
             if let Some(selected) = self.channel_logs_table_state.selected() {
                 if let Some(ref cached_logs) = self.logs {
-                    if let Some(entry) = cached_logs.logs.sent_logs.get(selected) {
+                    if let Some(entry) = cached_logs.sent_logs.get(selected) {
                         self.inspected_log = Some(entry.clone());
                         self.channels_focus = ChannelsFocus::Inspect;
                     }
@@ -411,7 +411,7 @@ impl App {
             self.toggle_stream_logs();
         } else if !self.streams.streams.is_empty() {
             if let Some(ref cached_logs) = self.stream_logs {
-                if !cached_logs.logs.logs.is_empty() {
+                if !cached_logs.logs.is_empty() {
                     self.streams_focus = StreamsFocus::Logs;
                     if self.stream_logs_table_state.selected().is_none() {
                         self.stream_logs_table_state.select(Some(0));
@@ -423,7 +423,7 @@ impl App {
 
     pub(crate) fn select_previous_stream_log(&mut self) {
         if let Some(ref cached_logs) = self.stream_logs {
-            let log_count = cached_logs.logs.logs.len();
+            let log_count = cached_logs.logs.len();
             if log_count > 0 {
                 let i = match self.stream_logs_table_state.selected() {
                     Some(i) => i.saturating_sub(1),
@@ -433,7 +433,7 @@ impl App {
 
                 // Update inspected log if inspect popup is open
                 if self.streams_focus == StreamsFocus::Inspect {
-                    if let Some(entry) = cached_logs.logs.logs.get(i) {
+                    if let Some(entry) = cached_logs.logs.get(i) {
                         self.inspected_stream_log = Some(entry.clone());
                     }
                 }
@@ -443,7 +443,7 @@ impl App {
 
     pub(crate) fn select_next_stream_log(&mut self) {
         if let Some(ref cached_logs) = self.stream_logs {
-            let log_count = cached_logs.logs.logs.len();
+            let log_count = cached_logs.logs.len();
             if log_count > 0 {
                 let i = match self.stream_logs_table_state.selected() {
                     Some(i) => (i + 1).min(log_count - 1),
@@ -453,7 +453,7 @@ impl App {
 
                 // Update inspected log if inspect popup is open
                 if self.streams_focus == StreamsFocus::Inspect {
-                    if let Some(entry) = cached_logs.logs.logs.get(i) {
+                    if let Some(entry) = cached_logs.logs.get(i) {
                         self.inspected_stream_log = Some(entry.clone());
                     }
                 }
@@ -472,7 +472,7 @@ impl App {
             // Opening inspect popup - capture the current log entry
             if let Some(selected) = self.stream_logs_table_state.selected() {
                 if let Some(ref cached_logs) = self.stream_logs {
-                    if let Some(entry) = cached_logs.logs.logs.get(selected) {
+                    if let Some(entry) = cached_logs.logs.get(selected) {
                         self.inspected_stream_log = Some(entry.clone());
                         self.streams_focus = StreamsFocus::Inspect;
                     }
@@ -751,7 +751,7 @@ impl App {
             self.toggle_debug_logs();
         } else if !self.debug_stats.is_empty() {
             if let Some(ref cached_logs) = self.debug_logs {
-                if !cached_logs.logs.is_empty() {
+                if !cached_logs.is_empty() {
                     self.debug_focus = DebugFocus::Logs;
                     if self.debug_logs_table_state.selected().is_none() {
                         self.debug_logs_table_state.select(Some(0));
@@ -763,7 +763,7 @@ impl App {
 
     pub(crate) fn select_previous_debug_log(&mut self) {
         if let Some(ref cached_logs) = self.debug_logs {
-            let log_count = cached_logs.logs.len();
+            let log_count = cached_logs.len();
             if log_count > 0 {
                 let i = match self.debug_logs_table_state.selected() {
                     Some(i) => i.saturating_sub(1),
@@ -773,7 +773,7 @@ impl App {
 
                 if self.debug_focus == DebugFocus::Inspect {
                     let actual_idx = log_count - 1 - i;
-                    if let Some(entry) = cached_logs.logs.get(actual_idx) {
+                    if let Some(entry) = cached_logs.get(actual_idx) {
                         self.inspected_debug_log = Some(entry.clone());
                     }
                 }
@@ -783,7 +783,7 @@ impl App {
 
     pub(crate) fn select_next_debug_log(&mut self) {
         if let Some(ref cached_logs) = self.debug_logs {
-            let log_count = cached_logs.logs.len();
+            let log_count = cached_logs.len();
             if log_count > 0 {
                 let i = match self.debug_logs_table_state.selected() {
                     Some(i) => (i + 1).min(log_count - 1),
@@ -793,7 +793,7 @@ impl App {
 
                 if self.debug_focus == DebugFocus::Inspect {
                     let actual_idx = log_count - 1 - i;
-                    if let Some(entry) = cached_logs.logs.get(actual_idx) {
+                    if let Some(entry) = cached_logs.get(actual_idx) {
                         self.inspected_debug_log = Some(entry.clone());
                     }
                 }
@@ -810,9 +810,9 @@ impl App {
         {
             if let Some(selected) = self.debug_logs_table_state.selected() {
                 if let Some(ref cached_logs) = self.debug_logs {
-                    let log_count = cached_logs.logs.len();
+                    let log_count = cached_logs.len();
                     let actual_idx = log_count - 1 - selected;
-                    if let Some(entry) = cached_logs.logs.get(actual_idx) {
+                    if let Some(entry) = cached_logs.get(actual_idx) {
                         self.inspected_debug_log = Some(entry.clone());
                         self.debug_focus = DebugFocus::Inspect;
                     }

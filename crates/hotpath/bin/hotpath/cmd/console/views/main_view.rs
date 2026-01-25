@@ -234,7 +234,6 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
         if let Some(ref cached_logs) = app.logs {
             let has_missing_log = cached_logs
-                .logs
                 .sent_logs
                 .iter()
                 .any(|entry| entry.message.is_none());
@@ -351,11 +350,7 @@ fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
             .unwrap_or_else(|| "Unknown".to_string());
 
         if let Some(ref cached_logs) = app.stream_logs {
-            let has_missing_log = cached_logs
-                .logs
-                .logs
-                .iter()
-                .any(|entry| entry.message.is_none());
+            let has_missing_log = cached_logs.logs.iter().any(|entry| entry.message.is_none());
             let display_label = if has_missing_log {
                 format!("{} (missing \"log = true\")", stream_label)
             } else {

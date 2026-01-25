@@ -13,7 +13,8 @@ use crate::debug::{
     get_sorted_value_stats, init_debug_state, send_debug_event, DebugEvent, ValueStats,
 };
 use crate::json::{
-    format_time_ago, FormattedDbgJson, FormattedDbgLogEntry, FormattedDbgStats, FormattedValLogs,
+    format_time_ago, FormattedDebugJson, FormattedDebugLogEntry, FormattedDebugStats,
+    FormattedValLogs,
 };
 use crate::output::{format_duration, truncate_result};
 
@@ -39,16 +40,16 @@ pub fn log_val<T: Debug>(key: &'static str, source: &'static str, value: &T) {
     });
 }
 
-pub fn get_val_stats_json() -> FormattedDbgJson {
+pub fn get_val_stats_json() -> FormattedDebugJson {
     let stats = get_sorted_value_stats();
-    let formatted: Vec<FormattedDbgStats> = stats.iter().map(FormattedDbgStats::from).collect();
+    let formatted: Vec<FormattedDebugStats> = stats.iter().map(FormattedDebugStats::from).collect();
 
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)
         .unwrap_or(0);
 
-    FormattedDbgJson {
+    FormattedDebugJson {
         current_elapsed_ns,
         debug_logs: formatted,
     }
@@ -74,11 +75,11 @@ fn truncate_source_path(source: &str) -> String {
     }
 }
 
-impl From<&ValueStats> for FormattedDbgStats {
+impl From<&ValueStats> for FormattedDebugStats {
     fn from(stats: &ValueStats) -> Self {
         let last_value = stats.logs.back().map(|e| e.value.clone());
         let last_source = stats.logs.back().map(|e| e.source).unwrap_or(stats.key);
-        FormattedDbgStats {
+        FormattedDebugStats {
             id: stats.id,
             entry_type: crate::json::DebugEntryType::Val,
             source: last_source.to_string(),
@@ -98,7 +99,7 @@ impl FormattedValLogs {
             logs: stats
                 .logs
                 .iter()
-                .map(|e| FormattedDbgLogEntry {
+                .map(|e| FormattedDebugLogEntry {
                     index: e.index,
                     timestamp: format_duration(e.timestamp_ns),
                     ago: format_time_ago(current_elapsed_ns.saturating_sub(e.timestamp_ns)),

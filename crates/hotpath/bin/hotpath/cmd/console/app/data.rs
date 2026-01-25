@@ -1,9 +1,9 @@
 //! Data management - fetching, updating, and transforming functions/channels
 
-use crate::cmd::console::app::{App, CachedDebugLogs, CachedLogs, CachedStreamLogs, SelectedTab};
+use crate::cmd::console::app::{App, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
-    DebugEntryType, FormattedChannelLogs, FormattedChannelsJson, FormattedDbgJson,
+    DebugEntryType, FormattedChannelLogs, FormattedChannelsJson, FormattedDebugJson,
     FormattedFunctionAllocLogsJson, FormattedFunctionData, FormattedFunctionTimingLogsJson,
     FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
     FormattedStreamsJson, FormattedThreadsJson,
@@ -136,11 +136,11 @@ impl App {
     }
 
     pub(crate) fn handle_channel_logs(&mut self, _channel_id: u64, logs: FormattedChannelLogs) {
-        self.logs = Some(CachedLogs { logs });
+        self.logs = Some(logs);
 
         // Ensure logs table selection is valid
         if let Some(ref cached_logs) = self.logs {
-            let log_count = cached_logs.logs.sent_logs.len();
+            let log_count = cached_logs.sent_logs.len();
             if let Some(selected) = self.channel_logs_table_state.selected() {
                 if selected >= log_count && log_count > 0 {
                     self.channel_logs_table_state.select(Some(log_count - 1));
@@ -310,11 +310,11 @@ impl App {
     }
 
     pub(crate) fn handle_stream_logs(&mut self, _stream_id: u64, logs: FormattedStreamLogs) {
-        self.stream_logs = Some(CachedStreamLogs { logs });
+        self.stream_logs = Some(logs);
 
         // Ensure logs table selection is valid
         if let Some(ref cached_logs) = self.stream_logs {
-            let log_count = cached_logs.logs.logs.len();
+            let log_count = cached_logs.logs.len();
             if let Some(selected) = self.stream_logs_table_state.selected() {
                 if selected >= log_count && log_count > 0 {
                     self.stream_logs_table_state.select(Some(log_count - 1));
@@ -546,7 +546,7 @@ impl App {
         }
     }
 
-    pub(crate) fn update_debug(&mut self, debug: FormattedDbgJson) {
+    pub(crate) fn update_debug(&mut self, debug: FormattedDebugJson) {
         let selected_id = self
             .debug_table_state
             .selected()
@@ -593,11 +593,11 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_debug_logs(&mut self, logs: Vec<hotpath::json::FormattedDbgLogEntry>) {
-        self.debug_logs = Some(CachedDebugLogs { logs });
+    pub(crate) fn handle_debug_logs(&mut self, logs: Vec<hotpath::json::FormattedDebugLogEntry>) {
+        self.debug_logs = Some(logs);
 
         if let Some(ref cached_logs) = self.debug_logs {
-            let log_count = cached_logs.logs.len();
+            let log_count = cached_logs.len();
             if let Some(selected) = self.debug_logs_table_state.selected() {
                 if selected >= log_count && log_count > 0 {
                     self.debug_logs_table_state.select(Some(log_count - 1));

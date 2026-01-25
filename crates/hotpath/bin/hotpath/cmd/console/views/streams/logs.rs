@@ -70,7 +70,6 @@ pub(crate) fn render_logs_panel(
 
     let rows: Vec<Row> = cached_logs
         .logs
-        .logs
         .iter()
         .map(|entry| {
             let msg = entry.message.as_deref().unwrap_or("");
