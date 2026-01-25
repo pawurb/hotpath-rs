@@ -14,7 +14,7 @@ use crate::debug::{
     DebugStats,
 };
 use crate::json::{
-    format_time_ago, FormattedDebugLogs, FormattedDebugJson, FormattedDebugLogEntry,
+    format_time_ago, FormattedDebugJson, FormattedDebugLogEntry, FormattedDebugLogs,
     FormattedDebugStats,
 };
 use crate::output::{format_duration, truncate_result};

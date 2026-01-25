@@ -14,4 +14,4 @@ test_all:
     cargo test --features hotpath --test channels_tokio -- --nocapture --test-threads=1
     cargo test --features hotpath --test threads -- --nocapture --test-threads=1
     cargo test --features hotpath --test futures -- --nocapture --test-threads=1
-    cargo test --features hotpath --test metrics -- --nocapture --test-threads=1
+    cargo test --features hotpath --test debug -- --nocapture --test-threads=1

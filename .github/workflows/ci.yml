@@ -100,3 +100,6 @@ jobs:
       - name: Run futures tests
         run: |
           cargo test --features hotpath --test futures -- --nocapture --test-threads=1
+      - name: Run debug tests
+        run: |
+          cargo test --features hotpath --test debug -- --nocapture --test-threads=1
