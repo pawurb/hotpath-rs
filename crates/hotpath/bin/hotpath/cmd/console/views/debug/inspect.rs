@@ -7,11 +7,7 @@ use ratatui::{
     Frame,
 };
 
-pub(crate) fn render_debug_inspect_popup(
-    entry: &JsonDebugLog,
-    area: Rect,
-    frame: &mut Frame,
-) {
+pub(crate) fn render_debug_inspect_popup(entry: &JsonDebugLog, area: Rect, frame: &mut Frame) {
     let popup_width = (area.width as f32 * 0.8) as u16;
     let popup_height = (area.height as f32 * 0.8) as u16;
     let x = (area.width.saturating_sub(popup_width)) / 2;

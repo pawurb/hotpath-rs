@@ -4,9 +4,8 @@ use crate::cmd::console::app::{App, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
-    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList,
-    JsonThreadsList, JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList,
-    JsonFunctionsList,
+    JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList, JsonFunctionsList,
+    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use std::time::Instant;
 use tracing::{trace, warn};

@@ -21,8 +21,8 @@ use crate::functions::{
 };
 use crate::futures::{get_future_calls, get_futures_json};
 use crate::json::{
-    JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
-    JsonFutureLogsList, JsonStreamLogsList,
+    JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFutureLogsList,
+    JsonStreamLogsList,
 };
 use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
@@ -204,8 +204,7 @@ Returns JSON array of recent execution logs with timestamps and duration. Use fu
         match get_function_logs_timing(function_name) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
-                let formatted =
-                    JsonFunctionTimingLogsList::from_logs(&logs, current_elapsed_ns);
+                let formatted = JsonFunctionTimingLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))
@@ -235,8 +234,7 @@ Returns JSON array of recent allocation logs. Use functions_alloc first to get f
         match get_function_logs_alloc(function_name) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
-                let formatted =
-                    JsonFunctionAllocLogsList::from_logs(&logs, current_elapsed_ns);
+                let formatted = JsonFunctionAllocLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))

@@ -14,7 +14,7 @@ mod collector;
 mod collector;
 
 pub use crate::json::ThreadMetrics;
-use crate::json::{format_bytes_signed, JsonThreadsList, JsonThreadEntry};
+use crate::json::{format_bytes_signed, JsonThreadEntry, JsonThreadsList};
 use crate::output::format_bytes;
 
 pub fn thread_metrics_with_percentage(

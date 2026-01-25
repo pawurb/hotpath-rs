@@ -6,8 +6,8 @@ use crate::functions::{
 };
 use crate::json::Route;
 use crate::json::{
-    JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
-    JsonFutureLogsList, JsonStreamLogsList,
+    JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFutureLogsList,
+    JsonStreamLogsList,
 };
 use std::sync::LazyLock;
 

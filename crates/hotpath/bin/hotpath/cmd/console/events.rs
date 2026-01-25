@@ -3,10 +3,9 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog,
-    JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList,
-    JsonThreadsList,
+    JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
+    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
+    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 
 #[derive(Debug)]

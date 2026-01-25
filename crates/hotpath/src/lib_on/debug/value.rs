@@ -12,9 +12,7 @@ use crate::channels::{extract_filename, START_TIME};
 use crate::debug::{
     get_sorted_value_stats, init_debug_state, send_debug_event, DebugEvent, ValEntry,
 };
-use crate::json::{
-    format_time_ago, JsonDebugEntry, JsonDebugList, JsonDebugLog, JsonDebugValLogs,
-};
+use crate::json::{format_time_ago, JsonDebugEntry, JsonDebugList, JsonDebugLog, JsonDebugValLogs};
 use crate::output::{format_duration, truncate_result};
 
 fn get_thread_id() -> Option<u64> {
@@ -41,8 +39,7 @@ pub fn log_val<T: Debug>(key: &'static str, source: &'static str, value: &T) {
 
 pub fn get_val_stats_json() -> JsonDebugList {
     let stats = get_sorted_value_stats();
-    let formatted: Vec<JsonDebugEntry> =
-        stats.iter().map(JsonDebugEntry::from).collect();
+    let formatted: Vec<JsonDebugEntry> = stats.iter().map(JsonDebugEntry::from).collect();
 
     let current_elapsed_ns = START_TIME
         .get()
