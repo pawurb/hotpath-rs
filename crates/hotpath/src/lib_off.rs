@@ -31,6 +31,34 @@ impl ValHandle {
     pub fn set<T: std::fmt::Debug>(&self, _value: &T) {}
 }
 
+pub use crate::shared::IntoF64;
+
+#[macro_export]
+macro_rules! gauge {
+    ($key:expr) => {{
+        $crate::GaugeHandle
+    }};
+}
+
+pub struct GaugeHandle;
+
+impl GaugeHandle {
+    #[inline]
+    pub fn set(&self, _value: impl IntoF64) -> &Self {
+        self
+    }
+
+    #[inline]
+    pub fn inc(&self, _delta: impl IntoF64) -> &Self {
+        self
+    }
+
+    #[inline]
+    pub fn dec(&self, _delta: impl IntoF64) -> &Self {
+        self
+    }
+}
+
 #[macro_export]
 macro_rules! channel {
     ($expr:expr) => {

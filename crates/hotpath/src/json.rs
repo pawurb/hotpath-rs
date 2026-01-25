@@ -261,6 +261,8 @@ pub enum Route {
     DebugDbgLogs { id: u64 },
     /// GET /debug/val/{id}/logs - Returns logs for a val! entry
     DebugValLogs { id: u64 },
+    /// GET /debug/gauge/{id}/logs - Returns logs for a gauge! entry
+    DebugGaugeLogs { id: u64 },
     /// GET /data_flow - Returns unified channels, streams, and futures statistics
     DataFlow,
     /// GET /data_flow/channel/{id}/logs - Returns logs for a specific channel
@@ -292,6 +294,7 @@ impl Route {
             Route::Debug => "/debug".to_string(),
             Route::DebugDbgLogs { id } => format!("/debug/dbg/{}/logs", id),
             Route::DebugValLogs { id } => format!("/debug/val/{}/logs", id),
+            Route::DebugGaugeLogs { id } => format!("/debug/gauge/{}/logs", id),
             Route::DataFlow => "/data_flow".to_string(),
             Route::DataFlowChannelLogs { channel_id } => {
                 format!("/data_flow/channel/{}/logs", channel_id)
@@ -319,6 +322,8 @@ static RE_DEBUG_DBG_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/debug/dbg/(\d+)/logs$").unwrap());
 static RE_DEBUG_VAL_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/debug/val/(\d+)/logs$").unwrap());
+static RE_DEBUG_GAUGE_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/debug/gauge/(\d+)/logs$").unwrap());
 static RE_DATA_FLOW_CHANNEL_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/data_flow/channel/(\d+)/logs$").unwrap());
 static RE_DATA_FLOW_STREAM_LOGS: LazyLock<Regex> =
@@ -369,6 +374,11 @@ impl FromStr for Route {
         if let Some(caps) = RE_DEBUG_VAL_LOGS.captures(path) {
             let id = caps[1].parse().map_err(|_| ())?;
             return Ok(Route::DebugValLogs { id });
+        }
+
+        if let Some(caps) = RE_DEBUG_GAUGE_LOGS.captures(path) {
+            let id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::DebugGaugeLogs { id });
         }
 
         if let Some(caps) = RE_DATA_FLOW_CHANNEL_LOGS.captures(path) {

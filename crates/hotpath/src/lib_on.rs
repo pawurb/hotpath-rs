@@ -144,6 +144,35 @@ macro_rules! val {
     }};
 }
 
+/// Gauge macro for tracking numeric values with set/inc/dec operations.
+///
+/// Returns a `GaugeHandle` that can be used to set, increment, or decrement
+/// a numeric value. Gauges track the current value, min/max values, and
+/// update history. Gauges are displayed in the Data Flow tab of the TUI.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use hotpath::gauge;
+///
+/// // Set an absolute value
+/// hotpath::gauge!("queue_size").set(42.0);
+///
+/// // Increment/decrement with fluent API
+/// hotpath::gauge!("active_connections").inc(1.0);
+/// hotpath::gauge!("active_connections").dec(1.0);
+///
+/// // Chain operations
+/// hotpath::gauge!("counter").set(0.0).inc(5.0).dec(2.0);
+/// ```
+#[macro_export]
+macro_rules! gauge {
+    ($key:expr) => {{
+        const GAUGE_LOC: &'static str = concat!(file!(), ":", line!());
+        $crate::debug::gauge::GaugeHandle::new($key, GAUGE_LOC)
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

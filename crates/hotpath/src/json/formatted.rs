@@ -695,13 +695,15 @@ pub enum DebugEntryType {
     #[default]
     Dbg,
     Val,
+    Gauge,
 }
 
 impl DebugEntryType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            DebugEntryType::Dbg => "dbg",
-            DebugEntryType::Val => "val",
+            DebugEntryType::Dbg => "dbg!",
+            DebugEntryType::Val => "val!",
+            DebugEntryType::Gauge => "gauge!",
         }
     }
 }
@@ -734,6 +736,13 @@ pub struct JsonDebugDbgLogs {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonDebugValLogs {
+    pub key: String,
+    pub total_logs: u64,
+    pub logs: Vec<JsonDebugLog>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonDebugGaugeLogs {
     pub key: String,
     pub total_logs: u64,
     pub logs: Vec<JsonDebugLog>,

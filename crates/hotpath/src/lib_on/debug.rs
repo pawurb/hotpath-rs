@@ -20,6 +20,7 @@ pub mod gauge;
 pub mod val;
 
 pub use dbg::{get_dbg_logs, get_debug_entries_json, log_dbg};
+pub use gauge::{get_debug_gauge_entries_json, get_debug_gauge_logs, GaugeHandle};
 pub use val::{get_val_logs, ValHandle};
 
 #[derive(Debug, Clone)]
@@ -95,12 +96,36 @@ pub(crate) enum DebugEvent {
         timestamp: Instant,
         tid: Option<u64>,
     },
+    Gauge {
+        key: String,
+        source: &'static str,
+        value: f64,
+        timestamp: Instant,
+        tid: Option<u64>,
+    },
+    GaugeInc {
+        key: String,
+        source: &'static str,
+        delta: f64,
+        timestamp: Instant,
+        tid: Option<u64>,
+    },
+    GaugeDec {
+        key: String,
+        source: &'static str,
+        delta: f64,
+        timestamp: Instant,
+        tid: Option<u64>,
+    },
 }
+
+use gauge::{GaugeEntry, GaugeLog};
 
 type DebugState = (
     CbSender<DebugEvent>,
     Arc<RwLock<HashMap<(&'static str, &'static str), DbgEntry>>>,
     Arc<RwLock<HashMap<String, ValEntry>>>,
+    Arc<RwLock<HashMap<String, GaugeEntry>>>,
 );
 
 static DEBUG_STATE: OnceLock<DebugState> = OnceLock::new();
@@ -116,8 +141,10 @@ pub(crate) fn init_debug_state() {
             HashMap::<(&'static str, &'static str), DbgEntry>::new(),
         ));
         let val_stats_map = Arc::new(RwLock::new(HashMap::<String, ValEntry>::new()));
+        let gauge_stats_map = Arc::new(RwLock::new(HashMap::<String, GaugeEntry>::new()));
         let dbg_stats_clone = Arc::clone(&dbg_stats_map);
         let val_stats_clone = Arc::clone(&val_stats_map);
+        let gauge_stats_clone = Arc::clone(&gauge_stats_map);
 
         std::thread::Builder::new()
             .name("hp-debug".into())
@@ -132,12 +159,18 @@ pub(crate) fn init_debug_state() {
                             let mut stats = val_stats_clone.write().unwrap();
                             process_val_event(&mut stats, event);
                         }
+                        DebugEvent::Gauge { .. }
+                        | DebugEvent::GaugeInc { .. }
+                        | DebugEvent::GaugeDec { .. } => {
+                            let mut stats = gauge_stats_clone.write().unwrap();
+                            process_gauge_event(&mut stats, event);
+                        }
                     }
                 }
             })
             .expect("Failed to spawn debug event collector thread");
 
-        (event_tx, dbg_stats_map, val_stats_map)
+        (event_tx, dbg_stats_map, val_stats_map, gauge_stats_map)
     });
 }
 
@@ -217,8 +250,64 @@ fn process_val_event(stats_map: &mut HashMap<String, ValEntry>, event: DebugEven
     stats.logs.push_back(entry);
 }
 
+fn process_gauge_event(stats_map: &mut HashMap<String, GaugeEntry>, event: DebugEvent) {
+    let (key, source, new_value, timestamp, tid) = match event {
+        DebugEvent::Gauge {
+            key,
+            source,
+            value,
+            timestamp,
+            tid,
+        } => (key, source, value, timestamp, tid),
+        DebugEvent::GaugeInc {
+            key,
+            source,
+            delta,
+            timestamp,
+            tid,
+        } => {
+            let current = stats_map.get(&key).map(|s| s.current_value).unwrap_or(0.0);
+            (key, source, current + delta, timestamp, tid)
+        }
+        DebugEvent::GaugeDec {
+            key,
+            source,
+            delta,
+            timestamp,
+            tid,
+        } => {
+            let current = stats_map.get(&key).map(|s| s.current_value).unwrap_or(0.0);
+            (key, source, current - delta, timestamp, tid)
+        }
+        _ => return,
+    };
+
+    let stats = stats_map.entry(key.clone()).or_insert_with(|| {
+        let id = DEBUG_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        GaugeEntry::new(id, key, source, new_value)
+    });
+
+    stats.current_value = new_value;
+    stats.min_value = stats.min_value.min(new_value);
+    stats.max_value = stats.max_value.max(new_value);
+    stats.update_count += 1;
+
+    let entry = GaugeLog {
+        index: stats.update_count,
+        timestamp_ns: timestamp_nanos(timestamp),
+        value: new_value,
+        tid,
+    };
+
+    let limit = get_log_limit();
+    if stats.logs.len() >= limit {
+        stats.logs.pop_front();
+    }
+    stats.logs.push_back(entry);
+}
+
 pub(crate) fn send_debug_event(event: DebugEvent) {
-    if let Some((tx, _, _)) = DEBUG_STATE.get() {
+    if let Some((tx, _, _, _)) = DEBUG_STATE.get() {
         let _ = tx.send(event);
     }
 }
@@ -230,7 +319,7 @@ pub(crate) fn get_sorted_debug_dbg_entries() -> Vec<DbgEntry> {
 }
 
 fn get_all_debug_dbg_entries() -> HashMap<(&'static str, &'static str), DbgEntry> {
-    if let Some((_, dbg_map, _)) = DEBUG_STATE.get() {
+    if let Some((_, dbg_map, _, _)) = DEBUG_STATE.get() {
         dbg_map.read().unwrap().clone()
     } else {
         HashMap::new()
@@ -244,7 +333,7 @@ pub(crate) fn get_sorted_debug_val_entries() -> Vec<ValEntry> {
 }
 
 fn get_all_debug_val_entries() -> HashMap<String, ValEntry> {
-    if let Some((_, _, val_map)) = DEBUG_STATE.get() {
+    if let Some((_, _, val_map, _)) = DEBUG_STATE.get() {
         val_map.read().unwrap().clone()
     } else {
         HashMap::new()
@@ -259,6 +348,26 @@ pub(crate) fn get_debug_dbg_entries_by_id(id: u64) -> Option<DbgEntry> {
 
 pub(crate) fn get_debug_val_entries_by_id(id: u64) -> Option<ValEntry> {
     get_all_debug_val_entries()
+        .into_values()
+        .find(|stats| stats.id == id)
+}
+
+pub(crate) fn get_sorted_debug_gauge_entries() -> Vec<GaugeEntry> {
+    let mut stats: Vec<GaugeEntry> = get_all_debug_gauge_entries().into_values().collect();
+    stats.sort_by(|a, b| a.key.cmp(&b.key));
+    stats
+}
+
+fn get_all_debug_gauge_entries() -> HashMap<String, GaugeEntry> {
+    if let Some((_, _, _, gauge_map)) = DEBUG_STATE.get() {
+        gauge_map.read().unwrap().clone()
+    } else {
+        HashMap::new()
+    }
+}
+
+pub(crate) fn get_debug_gauge_entries_by_id(id: u64) -> Option<GaugeEntry> {
+    get_all_debug_gauge_entries()
         .into_values()
         .find(|stats| stats.id == id)
 }

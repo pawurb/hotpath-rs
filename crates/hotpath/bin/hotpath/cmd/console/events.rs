@@ -22,6 +22,7 @@ pub(crate) enum DataRequest {
     FetchDataFlowFutureLogs(u64),
     FetchDebugDbgLogs(u64),
     FetchDebugValLogs(u64),
+    FetchDebugGaugeLogs(u64),
 }
 
 impl DataRequest {
@@ -49,6 +50,7 @@ impl DataRequest {
             }
             DataRequest::FetchDebugDbgLogs(id) => Route::DebugDbgLogs { id: *id },
             DataRequest::FetchDebugValLogs(id) => Route::DebugValLogs { id: *id },
+            DataRequest::FetchDebugGaugeLogs(id) => Route::DebugGaugeLogs { id: *id },
         }
     }
 }
@@ -92,6 +94,10 @@ pub(crate) enum DataResponse {
         logs: Vec<JsonDebugLog>,
     },
     DebugValLogs {
+        id: u64,
+        logs: Vec<JsonDebugLog>,
+    },
+    DebugGaugeLogs {
         id: u64,
         logs: Vec<JsonDebugLog>,
     },

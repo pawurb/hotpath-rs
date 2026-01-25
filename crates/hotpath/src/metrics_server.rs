@@ -1,5 +1,5 @@
 use crate::channels::START_TIME;
-use crate::debug::{get_dbg_logs, get_debug_entries_json, get_val_logs};
+use crate::debug::{get_dbg_logs, get_debug_entries_json, get_debug_gauge_logs, get_val_logs};
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
@@ -159,6 +159,10 @@ fn handle_request(request: Request) {
         Ok(Route::DebugValLogs { id }) => match get_val_logs(id) {
             Some(formatted) => respond_json(request, &formatted),
             None => respond_error(request, 404, "Value entry not found"),
+        },
+        Ok(Route::DebugGaugeLogs { id }) => match get_debug_gauge_logs(id) {
+            Some(logs) => respond_json(request, &logs),
+            None => respond_error(request, 404, "Gauge entry not found"),
         },
         #[cfg(feature = "threads")]
         Ok(Route::Threads) => {

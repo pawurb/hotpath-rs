@@ -62,7 +62,7 @@ pub(crate) fn render_debug_logs_panel(
     let available_width = inner_area.width.saturating_sub(2);
     let value_width = (available_width.saturating_sub(30) as usize).max(20);
 
-    let header = Row::new(vec!["Index", "Ago", "Value", "Thread"])
+    let header = Row::new(vec!["Index", "Ago", "Value", "TID"])
         .style(common_styles::HEADER_STYLE)
         .height(1);
 

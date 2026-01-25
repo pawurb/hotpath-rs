@@ -15,6 +15,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use crate::channels::{get_channel_logs, get_channels_json, START_TIME};
+use crate::debug::gauge::{get_debug_gauge_entries_json, get_debug_gauge_logs};
 use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
@@ -49,6 +50,12 @@ struct StreamIdParam {
 struct FutureIdParam {
     #[schemars(description = "Future identifier from the futures list")]
     future_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GaugeIdParam {
+    #[schemars(description = "Gauge identifier from the gauges list")]
+    gauge_id: String,
 }
 
 static MCP_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
@@ -316,6 +323,50 @@ Returns JSON array of poll events and completion status. Use futures first to ge
             }
             None => Ok(CallToolResult::error(vec![Content::text(
                 "Future not found",
+            )])),
+        }
+    }
+
+    #[tool(description = r#"Get metrics for all tracked gauges.
+
+Returns JSON array with:
+- id: gauge identifier
+- key: gauge name/label
+- current_value: current numeric value
+- min_value: minimum value seen
+- max_value: maximum value seen
+- update_count: number of set/inc/dec operations
+
+Use gauges to track numeric values that change over time like queue sizes, connection counts, or custom metrics."#)]
+    async fn gauges(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: gauges");
+
+        let gauges = get_debug_gauge_entries_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &gauges,
+        )?)]))
+    }
+
+    #[tool(description = r#"Get detailed logs for a specific gauge.
+
+Returns JSON array of recent value updates with timestamps. Use gauges first to get gauge IDs, then use this tool to get detailed logs."#)]
+    async fn gauge_logs(
+        &self,
+        params: Parameters<GaugeIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let gauge_id = &params.0.gauge_id;
+        log_debug(&format!("Tool called: gauge_logs({})", gauge_id));
+
+        let id: u64 = gauge_id.parse().map_err(|_| {
+            McpError::invalid_params(format!("Invalid gauge_id: {}", gauge_id), None)
+        })?;
+
+        match get_debug_gauge_logs(id) {
+            Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &logs,
+            )?)])),
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "Gauge not found",
             )])),
         }
     }

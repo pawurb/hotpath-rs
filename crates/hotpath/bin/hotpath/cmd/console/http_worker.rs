@@ -3,9 +3,9 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
-    JsonChannelLogsList, JsonDataFlowList, JsonDebugDbgLogs, JsonDebugList, JsonDebugValLogs,
-    JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList,
-    JsonStreamLogsList, JsonThreadsList,
+    JsonChannelLogsList, JsonDataFlowList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
+    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
+    JsonFutureLogsList, JsonStreamLogsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -31,6 +31,7 @@ enum RequestKey {
     DataFlowFutureLogs,
     DebugDbgLogs,
     DebugValLogs,
+    DebugGaugeLogs,
 }
 
 impl DataRequest {
@@ -48,6 +49,7 @@ impl DataRequest {
             DataRequest::FetchDataFlowFutureLogs(_) => RequestKey::DataFlowFutureLogs,
             DataRequest::FetchDebugDbgLogs(_) => RequestKey::DebugDbgLogs,
             DataRequest::FetchDebugValLogs(_) => RequestKey::DebugValLogs,
+            DataRequest::FetchDebugGaugeLogs(_) => RequestKey::DebugGaugeLogs,
         }
     }
 }
@@ -161,9 +163,9 @@ impl RouteExt for Route {
             Route::DataFlowFutureLogs { future_id } => {
                 Some(DataResponse::DataFlowLogsNotFound { id: *future_id })
             }
-            Route::DebugDbgLogs { id } | Route::DebugValLogs { id } => {
-                Some(DataResponse::DebugLogsNotFound { id: *id })
-            }
+            Route::DebugDbgLogs { id }
+            | Route::DebugValLogs { id }
+            | Route::DebugGaugeLogs { id } => Some(DataResponse::DebugLogsNotFound { id: *id }),
             _ => None,
         }
     }
@@ -224,6 +226,12 @@ impl RouteExt for Route {
             }
             Route::DebugValLogs { id } => {
                 parse_json::<JsonDebugValLogs>(bytes).map(|logs| DataResponse::DebugValLogs {
+                    id: *id,
+                    logs: logs.logs,
+                })
+            }
+            Route::DebugGaugeLogs { id } => {
+                parse_json::<JsonDebugGaugeLogs>(bytes).map(|logs| DataResponse::DebugGaugeLogs {
                     id: *id,
                     logs: logs.logs,
                 })

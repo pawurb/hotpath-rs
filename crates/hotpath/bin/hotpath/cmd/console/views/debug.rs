@@ -4,14 +4,22 @@ pub(crate) mod logs;
 use crate::cmd::console::app::DebugFocus;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::JsonDebugEntry;
+use hotpath::json::{DebugEntryType, JsonDebugEntry};
 use ratatui::{
     layout::{Constraint, Rect},
-    style::Style,
+    style::{Color, Style},
     symbols::border,
     widgets::{Block, Cell, HighlightSpacing, Row, Table, TableState},
     Frame,
 };
+
+fn type_color(entry_type: DebugEntryType) -> Color {
+    match entry_type {
+        DebugEntryType::Dbg => Color::Cyan,
+        DebugEntryType::Val => Color::Magenta,
+        DebugEntryType::Gauge => Color::Yellow,
+    }
+}
 
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
@@ -45,10 +53,15 @@ pub(crate) fn render_debug_panel(
         .map(|stat| {
             let last_value = stat.last_value.as_deref().unwrap_or("-");
             let entry_type = stat.entry_type.as_str();
+            let color = type_color(stat.entry_type);
+            let key_expr = match stat.entry_type {
+                DebugEntryType::Dbg => stat.expression.clone(),
+                DebugEntryType::Val | DebugEntryType::Gauge => format!("\"{}\"", stat.expression),
+            };
             Row::new(vec![
-                Cell::from(entry_type),
+                Cell::from(entry_type).style(Style::default().fg(color)),
                 Cell::from(truncate_left(&stat.source_display, source_width)),
-                Cell::from(truncate_left(&stat.expression, label_width)),
+                Cell::from(truncate_left(&key_expr, label_width)),
                 Cell::from(truncate_left(last_value, value_width)),
                 Cell::from(stat.log_count.to_string()),
             ])
@@ -56,10 +69,10 @@ pub(crate) fn render_debug_panel(
         .collect();
 
     let widths = [
-        Constraint::Length(4),
+        Constraint::Length(7),
         Constraint::Percentage(22),
         Constraint::Percentage(22),
-        Constraint::Percentage(33),
+        Constraint::Percentage(30),
         Constraint::Percentage(10),
     ];
 

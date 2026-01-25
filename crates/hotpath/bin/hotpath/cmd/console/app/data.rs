@@ -284,6 +284,7 @@ impl App {
                 let request = match stat.entry_type {
                     DebugEntryType::Dbg => DataRequest::FetchDebugDbgLogs(stat.id),
                     DebugEntryType::Val => DataRequest::FetchDebugValLogs(stat.id),
+                    DebugEntryType::Gauge => DataRequest::FetchDebugGaugeLogs(stat.id),
                 };
                 let _ = self.request_tx.send(request);
             }
@@ -421,6 +422,10 @@ impl App {
             }
             DataResponse::DebugValLogs { id, logs } => {
                 trace!("Received val logs for {}: {} entries", id, logs.len());
+                self.handle_debug_logs(logs);
+            }
+            DataResponse::DebugGaugeLogs { id, logs } => {
+                trace!("Received gauge logs for {}: {} entries", id, logs.len());
                 self.handle_debug_logs(logs);
             }
             DataResponse::DebugLogsNotFound { .. } => {
