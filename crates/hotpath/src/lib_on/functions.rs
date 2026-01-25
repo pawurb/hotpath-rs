@@ -6,9 +6,9 @@ use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
 
 use crate::channels::START_TIME;
-use crate::json::FormattedFunctionsJson;
+use crate::json::JsonFunctionsList;
 use crate::metrics_server::RECV_TIMEOUT_MS;
-use crate::FunctionLogsJson;
+use crate::FunctionLogsList;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
@@ -118,18 +118,18 @@ pub mod guard;
 /// Query request sent from TUI HTTP server to profiler worker thread
 pub(crate) enum FunctionsQuery {
     /// Request timing metrics snapshot
-    Timing(Sender<FormattedFunctionsJson>),
+    Timing(Sender<JsonFunctionsList>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
-    Alloc(Sender<Option<FormattedFunctionsJson>>),
+    Alloc(Sender<Option<JsonFunctionsList>>),
     /// Request timing function logs for a specific function (returns None if function not found)
     LogsTiming {
         function_name: String,
-        response_tx: Sender<Option<FunctionLogsJson>>,
+        response_tx: Sender<Option<FunctionLogsList>>,
     },
     /// Request allocation function logs for a specific function (returns None if hotpath-alloc not enabled or function not found)
     LogsAlloc {
         function_name: String,
-        response_tx: Sender<Option<FunctionLogsJson>>,
+        response_tx: Sender<Option<FunctionLogsList>>,
     },
 }
 
@@ -162,15 +162,15 @@ where
     }
 }
 
-pub(crate) fn get_functions_timing_json() -> FormattedFunctionsJson {
+pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
     if let Some(formatted) = query_functions_state(FunctionsQuery::Timing) {
         return formatted;
     }
 
-    FormattedFunctionsJson::empty_fallback(get_current_elapsed_ns())
+    JsonFunctionsList::empty_fallback(get_current_elapsed_ns())
 }
 
-pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsJson> {
+pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsList> {
     let name = function_name.to_string();
     query_functions_state(|response_tx| FunctionsQuery::LogsTiming {
         function_name: name,
@@ -179,13 +179,13 @@ pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLo
     .flatten()
 }
 
-pub(crate) fn get_functions_alloc_json() -> Option<FormattedFunctionsJson> {
+pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
     query_functions_state(FunctionsQuery::Alloc).flatten()
 }
 
 // Get instrumented function calls information
 // Will return None unless hotpath-alloc is enabled
-pub(crate) fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLogsJson> {
+pub(crate) fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLogsList> {
     let name = function_name.to_string();
     query_functions_state(|response_tx| FunctionsQuery::LogsAlloc {
         function_name: name,

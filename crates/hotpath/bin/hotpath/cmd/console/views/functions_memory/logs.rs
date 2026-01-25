@@ -1,5 +1,5 @@
 use super::super::super::widgets::formatters::truncate_right;
-use hotpath::json::FormattedFunctionAllocLogsJson;
+use hotpath::json::JsonFunctionAllocLogsList;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
@@ -11,7 +11,7 @@ use ratatui::{
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_function_logs_panel(
-    current_function_logs: Option<&FormattedFunctionAllocLogsJson>,
+    current_function_logs: Option<&JsonFunctionAllocLogsList>,
     selected_function_name: Option<&str>,
     area: Rect,
     frame: &mut Frame,

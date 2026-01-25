@@ -6,10 +6,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{ChannelLogs, FutureCall, FutureCalls, LogEntry, StreamLogs, ThreadMetrics};
+use super::{ChannelLogs, DataFlowLogEntry, FutureCalls, FutureLog, StreamLogs, ThreadMetrics};
 
 use crate::output::{
-    format_bytes, format_duration, FunctionLogEntry, FunctionLogsJson, MetricType, MetricsProvider,
+    format_bytes, format_duration, FunctionLog, FunctionLogsList, MetricType, MetricsProvider,
     ProfilingMode,
 };
 
@@ -51,7 +51,7 @@ pub fn format_bytes_signed(bytes: i64) -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFunctionData {
+pub struct JsonFunctionEntry {
     pub name: String,
     pub calls: u64,
     pub avg: String,
@@ -74,7 +74,7 @@ fn is_zero(v: &u64) -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFunctionsJson {
+pub struct JsonFunctionsList {
     pub hotpath_profiling_mode: ProfilingMode,
     pub time_elapsed: String,
     pub total_elapsed_ns: u64,
@@ -87,10 +87,10 @@ pub struct FormattedFunctionsJson {
     pub description: String,
     pub caller_name: String,
     pub percentiles: Vec<u8>,
-    pub data: Vec<FormattedFunctionData>,
+    pub data: Vec<JsonFunctionEntry>,
 }
 
-impl FormattedFunctionsJson {
+impl JsonFunctionsList {
     pub fn from_provider(provider: &dyn MetricsProvider<'_>, current_elapsed_ns: u64) -> Self {
         let hotpath_profiling_mode = provider.profiling_mode();
         let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
@@ -108,7 +108,7 @@ impl FormattedFunctionsJson {
             (format_duration(total_elapsed), None)
         };
 
-        FormattedFunctionsJson {
+        JsonFunctionsList {
             hotpath_profiling_mode,
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
@@ -143,7 +143,7 @@ impl FormattedFunctionsJson {
             (format_duration(total_elapsed), None, None)
         };
 
-        FormattedFunctionsJson {
+        JsonFunctionsList {
             hotpath_profiling_mode,
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
@@ -158,7 +158,7 @@ impl FormattedFunctionsJson {
     }
 
     pub fn empty_fallback(current_elapsed_ns: u64) -> Self {
-        FormattedFunctionsJson {
+        JsonFunctionsList {
             hotpath_profiling_mode: ProfilingMode::Timing,
             time_elapsed: format_duration(0),
             total_elapsed_ns: current_elapsed_ns,
@@ -187,7 +187,7 @@ fn format_metric_data(
     data: &[(String, Vec<MetricType>)],
     percentiles_config: &[u8],
     include_raw: bool,
-) -> Vec<FormattedFunctionData> {
+) -> Vec<JsonFunctionEntry> {
     let format_value = |metric: &MetricType| -> String {
         match metric {
             MetricType::DurationNs(ns) => format_duration(*ns),
@@ -246,7 +246,7 @@ fn format_metric_data(
                 None
             };
 
-            FormattedFunctionData {
+            JsonFunctionEntry {
                 name: name.clone(),
                 calls,
                 avg,
@@ -263,7 +263,7 @@ fn format_metric_data(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFunctionTimingLogEntry {
+pub struct JsonFunctionTimingLog {
     pub invocation: u64,
     pub duration: String,
     pub timestamp: String,
@@ -273,14 +273,14 @@ pub struct FormattedFunctionTimingLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFunctionTimingLogsJson {
+pub struct JsonFunctionTimingLogsList {
     pub function_name: String,
     pub total_invocations: usize,
-    pub logs: Vec<FormattedFunctionTimingLogEntry>,
+    pub logs: Vec<JsonFunctionTimingLog>,
 }
 
-impl FormattedFunctionTimingLogsJson {
-    pub fn from_logs(json: &FunctionLogsJson, current_elapsed_ns: u64) -> Self {
+impl JsonFunctionTimingLogsList {
+    pub fn from_logs(json: &FunctionLogsList, current_elapsed_ns: u64) -> Self {
         let total = json.count;
         let logs_len = json.logs.len();
 
@@ -294,7 +294,7 @@ impl FormattedFunctionTimingLogsJson {
             })
             .collect();
 
-        FormattedFunctionTimingLogsJson {
+        JsonFunctionTimingLogsList {
             function_name: json.function_name.clone(),
             total_invocations: total,
             logs,
@@ -303,10 +303,10 @@ impl FormattedFunctionTimingLogsJson {
 }
 
 fn format_timing_log_entry(
-    entry: &FunctionLogEntry,
+    entry: &FunctionLog,
     current_elapsed_ns: u64,
     invocation: u64,
-) -> FormattedFunctionTimingLogEntry {
+) -> JsonFunctionTimingLog {
     let duration = entry
         .value
         .map(format_duration)
@@ -315,7 +315,7 @@ fn format_timing_log_entry(
     let timestamp = format_duration(entry.elapsed_nanos);
     let ago = format_time_ago(current_elapsed_ns.saturating_sub(entry.elapsed_nanos));
 
-    FormattedFunctionTimingLogEntry {
+    JsonFunctionTimingLog {
         invocation,
         duration,
         timestamp,
@@ -326,7 +326,7 @@ fn format_timing_log_entry(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFunctionAllocLogEntry {
+pub struct JsonFunctionAllocLog {
     pub invocation: u64,
     pub bytes: String,
     pub alloc_count: Option<u64>,
@@ -337,14 +337,14 @@ pub struct FormattedFunctionAllocLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFunctionAllocLogsJson {
+pub struct JsonFunctionAllocLogsList {
     pub function_name: String,
     pub total_invocations: usize,
-    pub logs: Vec<FormattedFunctionAllocLogEntry>,
+    pub logs: Vec<JsonFunctionAllocLog>,
 }
 
-impl FormattedFunctionAllocLogsJson {
-    pub fn from_logs(json: &FunctionLogsJson, current_elapsed_ns: u64) -> Self {
+impl JsonFunctionAllocLogsList {
+    pub fn from_logs(json: &FunctionLogsList, current_elapsed_ns: u64) -> Self {
         let total = json.count;
         let logs_len = json.logs.len();
 
@@ -358,7 +358,7 @@ impl FormattedFunctionAllocLogsJson {
             })
             .collect();
 
-        FormattedFunctionAllocLogsJson {
+        JsonFunctionAllocLogsList {
             function_name: json.function_name.clone(),
             total_invocations: total,
             logs,
@@ -367,10 +367,10 @@ impl FormattedFunctionAllocLogsJson {
 }
 
 fn format_alloc_log_entry(
-    entry: &FunctionLogEntry,
+    entry: &FunctionLog,
     current_elapsed_ns: u64,
     invocation: u64,
-) -> FormattedFunctionAllocLogEntry {
+) -> JsonFunctionAllocLog {
     let bytes = entry
         .value
         .map(format_bytes)
@@ -379,7 +379,7 @@ fn format_alloc_log_entry(
     let timestamp = format_duration(entry.elapsed_nanos);
     let ago = format_time_ago(current_elapsed_ns.saturating_sub(entry.elapsed_nanos));
 
-    FormattedFunctionAllocLogEntry {
+    JsonFunctionAllocLog {
         invocation,
         bytes,
         alloc_count: entry.alloc_count,
@@ -391,7 +391,13 @@ fn format_alloc_log_entry(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedChannelStats {
+pub struct JsonChannelsList {
+    pub current_elapsed_ns: u64,
+    pub channels: Vec<JsonChannelEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonChannelEntry {
     pub id: u64,
     pub source: String,
     pub label: String,
@@ -409,13 +415,7 @@ pub struct FormattedChannelStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedChannelsJson {
-    pub current_elapsed_ns: u64,
-    pub channels: Vec<FormattedChannelStats>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedSentLogEntry {
+pub struct JsonChannelSentLog {
     pub index: u64,
     pub timestamp: String,
     pub ago: String,
@@ -425,7 +425,7 @@ pub struct FormattedSentLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedLogEntry {
+pub struct JsonDataFlowLog {
     pub index: u64,
     pub timestamp: String,
     pub ago: String,
@@ -434,13 +434,13 @@ pub struct FormattedLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedChannelLogs {
+pub struct JsonChannelLogsList {
     pub id: String,
-    pub sent_logs: Vec<FormattedSentLogEntry>,
-    pub received_logs: Vec<FormattedLogEntry>,
+    pub sent_logs: Vec<JsonChannelSentLog>,
+    pub received_logs: Vec<JsonDataFlowLog>,
 }
 
-impl FormattedChannelLogs {
+impl JsonChannelLogsList {
     pub fn from_logs(logs: &ChannelLogs, current_elapsed_ns: u64) -> Self {
         let sent_logs = logs
             .sent_logs
@@ -451,10 +451,10 @@ impl FormattedChannelLogs {
         let received_logs = logs
             .received_logs
             .iter()
-            .map(|entry| format_log_entry(entry, current_elapsed_ns))
+            .map(|entry| format_received_log_entry(entry, current_elapsed_ns))
             .collect();
 
-        FormattedChannelLogs {
+        JsonChannelLogsList {
             id: logs.id.clone(),
             sent_logs,
             received_logs,
@@ -463,16 +463,16 @@ impl FormattedChannelLogs {
 }
 
 fn format_sent_log_entry(
-    entry: &LogEntry,
+    entry: &DataFlowLogEntry,
     current_elapsed_ns: u64,
-    received_logs: &[LogEntry],
-) -> FormattedSentLogEntry {
+    received_logs: &[DataFlowLogEntry],
+) -> JsonChannelSentLog {
     let delay = received_logs
         .iter()
         .find(|recv| recv.index == entry.index)
         .map(|recv| format_delay(recv.timestamp.saturating_sub(entry.timestamp)));
 
-    FormattedSentLogEntry {
+    JsonChannelSentLog {
         index: entry.index,
         timestamp: format_duration(entry.timestamp),
         ago: format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp)),
@@ -482,8 +482,8 @@ fn format_sent_log_entry(
     }
 }
 
-fn format_log_entry(entry: &LogEntry, current_elapsed_ns: u64) -> FormattedLogEntry {
-    FormattedLogEntry {
+fn format_received_log_entry(entry: &DataFlowLogEntry, current_elapsed_ns: u64) -> JsonDataFlowLog {
+    JsonDataFlowLog {
         index: entry.index,
         timestamp: format_duration(entry.timestamp),
         ago: format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp)),
@@ -493,7 +493,13 @@ fn format_log_entry(entry: &LogEntry, current_elapsed_ns: u64) -> FormattedLogEn
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedStreamStats {
+pub struct JsonStreamsList {
+    pub current_elapsed_ns: u64,
+    pub streams: Vec<JsonStreamEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonStreamEntry {
     pub id: u64,
     pub source: String,
     pub label: String,
@@ -506,32 +512,32 @@ pub struct FormattedStreamStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedStreamsJson {
-    pub current_elapsed_ns: u64,
-    pub streams: Vec<FormattedStreamStats>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedStreamLogs {
+pub struct JsonStreamLogsList {
     pub id: String,
-    pub logs: Vec<FormattedLogEntry>,
+    pub logs: Vec<JsonDataFlowLog>,
 }
 
-impl FormattedStreamLogs {
+impl JsonStreamLogsList {
     pub fn from_logs(logs: &StreamLogs, current_elapsed_ns: u64) -> Self {
-        FormattedStreamLogs {
+        JsonStreamLogsList {
             id: logs.id.clone(),
             logs: logs
                 .logs
                 .iter()
-                .map(|entry| format_log_entry(entry, current_elapsed_ns))
+                .map(|entry| format_received_log_entry(entry, current_elapsed_ns))
                 .collect(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFutureStats {
+pub struct JsonFuturesList {
+    pub current_elapsed_ns: u64,
+    pub futures: Vec<JsonFutureEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonFutureEntry {
     pub id: u64,
     pub source: String,
     pub label: String,
@@ -541,13 +547,7 @@ pub struct FormattedFutureStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFuturesJson {
-    pub current_elapsed_ns: u64,
-    pub futures: Vec<FormattedFutureStats>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFutureCall {
+pub struct JsonFutureLog {
     pub id: u64,
     pub future_id: u64,
     pub state: String,
@@ -555,35 +555,35 @@ pub struct FormattedFutureCall {
     pub result: Option<String>,
 }
 
-impl From<&FutureCall> for FormattedFutureCall {
-    fn from(call: &FutureCall) -> Self {
-        FormattedFutureCall {
-            id: call.id,
-            future_id: call.future_id,
-            state: call.state.as_str().to_string(),
-            poll_count: call.poll_count,
-            result: call.result.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedFutureCalls {
+pub struct JsonFutureLogsList {
     pub id: String,
-    pub calls: Vec<FormattedFutureCall>,
+    pub calls: Vec<JsonFutureLog>,
 }
 
-impl From<&FutureCalls> for FormattedFutureCalls {
+impl From<&FutureLog> for JsonFutureLog {
+    fn from(log: &FutureLog) -> Self {
+        JsonFutureLog {
+            id: log.id,
+            future_id: log.future_id,
+            state: log.state.as_str().to_string(),
+            poll_count: log.poll_count,
+            result: log.result.clone(),
+        }
+    }
+}
+
+impl From<&FutureCalls> for JsonFutureLogsList {
     fn from(calls: &FutureCalls) -> Self {
-        FormattedFutureCalls {
+        JsonFutureLogsList {
             id: calls.id.clone(),
-            calls: calls.calls.iter().map(FormattedFutureCall::from).collect(),
+            calls: calls.calls.iter().map(JsonFutureLog::from).collect(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedThreadMetrics {
+pub struct JsonThreadEntry {
     pub os_tid: u64,
     pub name: String,
     pub status: String,
@@ -600,9 +600,9 @@ pub struct FormattedThreadMetrics {
     pub mem_diff: Option<String>,
 }
 
-impl From<&ThreadMetrics> for FormattedThreadMetrics {
+impl From<&ThreadMetrics> for JsonThreadEntry {
     fn from(metrics: &ThreadMetrics) -> Self {
-        FormattedThreadMetrics {
+        JsonThreadEntry {
             os_tid: metrics.os_tid,
             name: metrics.name.clone(),
             status: metrics.status.clone(),
@@ -619,10 +619,9 @@ impl From<&ThreadMetrics> for FormattedThreadMetrics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedThreadsJson {
+pub struct JsonThreadsList {
     pub current_elapsed_ns: u64,
     pub sample_interval_ms: u64,
-    pub threads: Vec<FormattedThreadMetrics>,
     pub thread_count: usize,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rss_bytes: Option<String>,
@@ -632,6 +631,7 @@ pub struct FormattedThreadsJson {
     pub total_dealloc_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alloc_dealloc_diff: Option<String>,
+    pub threads: Vec<JsonThreadEntry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -652,13 +652,13 @@ impl DebugEntryType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugJson {
+pub struct JsonDebugList {
     pub current_elapsed_ns: u64,
-    pub entries: Vec<FormattedDebugEntries>,
+    pub entries: Vec<JsonDebugEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugEntries {
+pub struct JsonDebugEntry {
     pub id: u64,
     #[serde(default)]
     pub entry_type: DebugEntryType,
@@ -670,22 +670,22 @@ pub struct FormattedDebugEntries {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugDbgLogs {
+pub struct JsonDebugDbgLogs {
     pub source: String,
     pub expression: String,
     pub total_logs: u64,
-    pub logs: Vec<FormattedDebugLog>,
+    pub logs: Vec<JsonDebugLog>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugValLogs {
+pub struct JsonDebugValLogs {
     pub key: String,
     pub total_logs: u64,
-    pub logs: Vec<FormattedDebugLog>,
+    pub logs: Vec<JsonDebugLog>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugLog {
+pub struct JsonDebugLog {
     pub index: u64,
     pub timestamp: String,
     pub ago: String,

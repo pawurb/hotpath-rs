@@ -1,4 +1,4 @@
-use crate::json::FormattedFunctionsJson;
+use crate::json::JsonFunctionsList;
 use crate::output::{shorten_function_name, MetricType, MetricsProvider, Reporter};
 use colored::*;
 use prettytable::{color, Attr, Cell, Row, Table};
@@ -166,7 +166,7 @@ impl Reporter for JsonReporter {
         }
 
         let elapsed_ns = metrics_provider.total_elapsed();
-        let json = FormattedFunctionsJson::from_provider_with_raw(metrics_provider, elapsed_ns);
+        let json = JsonFunctionsList::from_provider_with_raw(metrics_provider, elapsed_ns);
         println!("{}", serde_json::to_string(&json).unwrap());
         Ok(())
     }
@@ -185,7 +185,7 @@ impl Reporter for JsonPrettyReporter {
         }
 
         let elapsed_ns = metrics_provider.total_elapsed();
-        let json = FormattedFunctionsJson::from_provider_with_raw(metrics_provider, elapsed_ns);
+        let json = JsonFunctionsList::from_provider_with_raw(metrics_provider, elapsed_ns);
         println!("{}", serde_json::to_string_pretty(&json)?);
         Ok(())
     }

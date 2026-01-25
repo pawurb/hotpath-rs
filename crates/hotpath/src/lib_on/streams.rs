@@ -17,8 +17,8 @@ pub use guard::{StreamsGuard, StreamsGuardBuilder};
 pub(crate) mod wrapper;
 
 use crate::channels::resolve_label;
-pub use crate::json::{ChannelState, LogEntry, StreamLogs};
-use crate::json::{FormattedStreamStats, FormattedStreamsJson};
+pub use crate::json::{ChannelState, DataFlowLogEntry, StreamLogs};
+use crate::json::{JsonStreamEntry, JsonStreamsList};
 use crate::metrics_server::METRICS_SERVER_PORT;
 pub use crate::Format;
 
@@ -32,7 +32,7 @@ pub(crate) struct StreamStats {
     pub(crate) items_yielded: u64,
     pub(crate) type_name: &'static str,
     pub(crate) type_size: usize,
-    pub(crate) logs: VecDeque<LogEntry>,
+    pub(crate) logs: VecDeque<DataFlowLogEntry>,
     pub(crate) iter: u32,
 }
 
@@ -59,11 +59,11 @@ impl StreamStats {
     }
 }
 
-impl From<&StreamStats> for FormattedStreamStats {
+impl From<&StreamStats> for JsonStreamEntry {
     fn from(stats: &StreamStats) -> Self {
         let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
-        FormattedStreamStats {
+        JsonStreamEntry {
             id: stats.id,
             source: stats.source.to_string(),
             label,
@@ -152,7 +152,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
                                 if stream_stats.logs.len() >= limit {
                                     stream_stats.logs.pop_front();
                                 }
-                                stream_stats.logs.push_back(LogEntry::new(
+                                stream_stats.logs.push_back(DataFlowLogEntry::new(
                                     stream_stats.items_yielded,
                                     crate::channels::timestamp_nanos(timestamp),
                                     log,
@@ -310,10 +310,10 @@ pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
     stats
 }
 
-pub fn get_streams_json() -> FormattedStreamsJson {
+pub fn get_streams_json() -> JsonStreamsList {
     let streams = get_sorted_stream_stats()
         .iter()
-        .map(FormattedStreamStats::from)
+        .map(JsonStreamEntry::from)
         .collect();
 
     let current_elapsed_ns = crate::channels::START_TIME
@@ -322,7 +322,7 @@ pub fn get_streams_json() -> FormattedStreamsJson {
         .elapsed()
         .as_nanos() as u64;
 
-    FormattedStreamsJson {
+    JsonStreamsList {
         current_elapsed_ns,
         streams,
     }
@@ -332,7 +332,7 @@ pub fn get_stream_logs(stream_id: &str) -> Option<StreamLogs> {
     let id = stream_id.parse::<u64>().ok()?;
     let stats = get_all_stream_stats();
     stats.get(&id).map(|stream_stats| {
-        let mut yielded_logs: Vec<LogEntry> = stream_stats.logs.iter().cloned().collect();
+        let mut yielded_logs: Vec<DataFlowLogEntry> = stream_stats.logs.iter().cloned().collect();
 
         // Sort by index descending (most recent first)
         yielded_logs.sort_by(|a, b| b.index.cmp(&a.index));

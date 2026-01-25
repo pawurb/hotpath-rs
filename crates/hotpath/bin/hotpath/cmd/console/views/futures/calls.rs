@@ -1,6 +1,6 @@
 use super::super::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_message;
-use hotpath::json::{FormattedFutureCall, FormattedFutureCalls};
+use hotpath::json::{JsonFutureLog, JsonFutureLogsList};
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
@@ -44,7 +44,7 @@ fn state_style(state: &str) -> Style {
     }
 }
 
-fn render_call_row(call: &FormattedFutureCall, result_width: usize) -> Row<'static> {
+fn render_call_row(call: &JsonFutureLog, result_width: usize) -> Row<'static> {
     let result = call.result.as_deref().unwrap_or("-");
     let result_text = truncate_message(result, result_width);
 
@@ -57,7 +57,7 @@ fn render_call_row(call: &FormattedFutureCall, result_width: usize) -> Row<'stat
 }
 
 pub(crate) fn render_calls_panel(
-    future_calls: &FormattedFutureCalls,
+    future_calls: &JsonFutureLogsList,
     future_label: &str,
     area: Rect,
     frame: &mut Frame,

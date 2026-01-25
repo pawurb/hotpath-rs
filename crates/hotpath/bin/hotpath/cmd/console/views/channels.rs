@@ -4,7 +4,7 @@ pub(crate) mod logs;
 use super::common_styles;
 use crate::cmd::console::app::ChannelsFocus;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::FormattedChannelStats;
+use hotpath::json::JsonChannelEntry;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},
@@ -48,7 +48,7 @@ fn queue_status_cell(queue_status: &str, queued: u64) -> Cell<'static> {
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_channels_panel(
-    stats: &[FormattedChannelStats],
+    stats: &[JsonChannelEntry],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,

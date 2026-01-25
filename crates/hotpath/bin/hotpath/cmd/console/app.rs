@@ -2,10 +2,10 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugEntries, FormattedDebugLog,
-    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
-    FormattedFutureCall, FormattedFutureCalls, FormattedFuturesJson, FormattedLogEntry,
-    FormattedSentLogEntry, FormattedStreamLogs, FormattedStreamsJson, FormattedThreadsJson,
+    JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
+    JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
+    JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList,
+    JsonThreadsList,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -98,7 +98,7 @@ pub(crate) enum DebugFocus {
     Inspect,
 }
 
-pub(crate) type CachedLogs = FormattedChannelLogs;
+pub(crate) type CachedLogs = JsonChannelLogsList;
 
 /// Inspected function log entry for the inspect popup
 #[derive(Debug, Clone)]
@@ -117,15 +117,15 @@ pub(crate) struct InspectedFunctionLog {
     pub(crate) result: Option<String>,
 }
 
-pub(crate) type CachedStreamLogs = FormattedStreamLogs;
-pub(crate) type CachedDebugLogs = Vec<FormattedDebugLog>;
+pub(crate) type CachedStreamLogs = JsonStreamLogsList;
+pub(crate) type CachedDebugLogs = Vec<JsonDebugLog>;
 
 pub(crate) struct App {
-    pub(crate) timing_functions: FormattedFunctionsJson,
-    pub(crate) memory_functions: FormattedFunctionsJson,
+    pub(crate) timing_functions: JsonFunctionsList,
+    pub(crate) memory_functions: JsonFunctionsList,
     pub(crate) memory_available: bool,
-    pub(crate) channels: FormattedChannelsJson,
-    pub(crate) streams: FormattedStreamsJson,
+    pub(crate) channels: JsonChannelsList,
+    pub(crate) streams: JsonStreamsList,
 
     pub(crate) timing_table_state: TableState,
     pub(crate) memory_table_state: TableState,
@@ -141,8 +141,8 @@ pub(crate) struct App {
     pub(crate) function_logs_table_state: TableState,
     pub(crate) functions_focus: FunctionsFocus,
     pub(crate) show_function_logs: bool,
-    pub(crate) current_timing_logs: Option<FormattedFunctionTimingLogsJson>,
-    pub(crate) current_alloc_logs: Option<FormattedFunctionAllocLogsJson>,
+    pub(crate) current_timing_logs: Option<JsonFunctionTimingLogsList>,
+    pub(crate) current_alloc_logs: Option<JsonFunctionAllocLogsList>,
     pub(crate) pinned_function: Option<String>,
     pub(crate) inspected_function_log: Option<InspectedFunctionLog>,
 
@@ -162,31 +162,31 @@ pub(crate) struct App {
     pub(crate) channels_focus: ChannelsFocus,
     pub(crate) show_logs: bool,
     pub(crate) logs: Option<CachedLogs>,
-    pub(crate) inspected_log: Option<FormattedSentLogEntry>,
+    pub(crate) inspected_log: Option<JsonChannelSentLog>,
 
     pub(crate) stream_logs_table_state: TableState,
     pub(crate) streams_focus: StreamsFocus,
     pub(crate) show_stream_logs: bool,
     pub(crate) stream_logs: Option<CachedStreamLogs>,
-    pub(crate) inspected_stream_log: Option<FormattedLogEntry>,
-    pub(crate) threads: FormattedThreadsJson,
+    pub(crate) inspected_stream_log: Option<JsonDataFlowLog>,
+    pub(crate) threads: JsonThreadsList,
     pub(crate) threads_table_state: TableState,
 
-    pub(crate) futures: FormattedFuturesJson,
+    pub(crate) futures: JsonFuturesList,
     pub(crate) futures_table_state: TableState,
     pub(crate) futures_focus: FuturesFocus,
     pub(crate) show_future_calls: bool,
     pub(crate) future_calls_table_state: TableState,
-    pub(crate) future_calls: Option<FormattedFutureCalls>,
-    pub(crate) inspected_future_call: Option<FormattedFutureCall>,
+    pub(crate) future_calls: Option<JsonFutureLogsList>,
+    pub(crate) inspected_future_call: Option<JsonFutureLog>,
 
-    pub(crate) debug_stats: Vec<FormattedDebugEntries>,
+    pub(crate) debug_stats: Vec<JsonDebugEntry>,
     pub(crate) debug_table_state: TableState,
     pub(crate) debug_focus: DebugFocus,
     pub(crate) show_debug_logs: bool,
     pub(crate) debug_logs: Option<CachedDebugLogs>,
     pub(crate) debug_logs_table_state: TableState,
-    pub(crate) inspected_debug_log: Option<FormattedDebugLog>,
+    pub(crate) inspected_debug_log: Option<JsonDebugLog>,
     pub(crate) loading_debug: bool,
 }
 
@@ -200,7 +200,7 @@ impl App {
         super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), base_url.clone());
         super::input::spawn_input_reader(event_tx);
 
-        let empty_functions = FormattedFunctionsJson {
+        let empty_functions = JsonFunctionsList {
             hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
             time_elapsed: "0 ns".to_string(),
             total_elapsed_ns: 0,
@@ -217,11 +217,11 @@ impl App {
             timing_functions: empty_functions.clone(),
             memory_functions: empty_functions,
             memory_available: true,
-            channels: FormattedChannelsJson {
+            channels: JsonChannelsList {
                 current_elapsed_ns: 0,
                 channels: vec![],
             },
-            streams: FormattedStreamsJson {
+            streams: JsonStreamsList {
                 current_elapsed_ns: 0,
                 streams: vec![],
             },
@@ -261,7 +261,7 @@ impl App {
             show_stream_logs: false,
             stream_logs: None,
             inspected_stream_log: None,
-            threads: FormattedThreadsJson {
+            threads: JsonThreadsList {
                 current_elapsed_ns: 0,
                 sample_interval_ms: 1000,
                 threads: vec![],
@@ -272,7 +272,7 @@ impl App {
                 alloc_dealloc_diff: None,
             },
             threads_table_state: TableState::default().with_selected(0),
-            futures: FormattedFuturesJson {
+            futures: JsonFuturesList {
                 current_elapsed_ns: 0,
                 futures: vec![],
             },
@@ -297,7 +297,7 @@ impl App {
         self.exit = true;
     }
 
-    pub(crate) fn active_functions(&self) -> &FormattedFunctionsJson {
+    pub(crate) fn active_functions(&self) -> &JsonFunctionsList {
         match self.selected_tab {
             SelectedTab::Timing => &self.timing_functions,
             SelectedTab::Memory => &self.memory_functions,

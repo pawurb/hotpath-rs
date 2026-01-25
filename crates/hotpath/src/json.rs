@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::LazyLock;
 
-pub use crate::output::FunctionLogsJson;
+pub use crate::output::FunctionLogsList;
 
 /// State of a channel or stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -94,14 +94,14 @@ impl<'de> Deserialize<'de> for ChannelType {
 
 /// A single log entry for a message sent/received or item yielded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LogEntry {
+pub struct DataFlowLogEntry {
     pub index: u64,
     pub timestamp: u64,
     pub message: Option<String>,
     pub tid: Option<u64>,
 }
 
-impl LogEntry {
+impl DataFlowLogEntry {
     pub fn new(index: u64, timestamp: u64, message: Option<String>, tid: Option<u64>) -> Self {
         Self {
             index,
@@ -116,15 +116,15 @@ impl LogEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelLogs {
     pub id: String,
-    pub sent_logs: Vec<LogEntry>,
-    pub received_logs: Vec<LogEntry>,
+    pub sent_logs: Vec<DataFlowLogEntry>,
+    pub received_logs: Vec<DataFlowLogEntry>,
 }
 
 /// Serializable log response containing yielded logs for streams.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamLogs {
     pub id: String,
-    pub logs: Vec<LogEntry>,
+    pub logs: Vec<DataFlowLogEntry>,
 }
 
 /// State of an instrumented future.
@@ -159,7 +159,7 @@ impl std::fmt::Display for FutureState {
 
 /// A single invocation/call of a future.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FutureCall {
+pub struct FutureLog {
     pub id: u64,
     pub future_id: u64,
     pub state: FutureState,
@@ -167,7 +167,7 @@ pub struct FutureCall {
     pub result: Option<String>,
 }
 
-impl FutureCall {
+impl FutureLog {
     pub fn new(id: u64, future_id: u64) -> Self {
         Self {
             id,
@@ -183,7 +183,7 @@ impl FutureCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FutureCalls {
     pub id: String,
-    pub calls: Vec<FutureCall>,
+    pub calls: Vec<FutureLog>,
 }
 
 /// Thread metrics collected from the OS.

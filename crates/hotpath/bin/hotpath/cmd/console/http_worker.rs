@@ -3,10 +3,9 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugDbgLogs, FormattedDebugJson,
-    FormattedDebugValLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
-    FormattedStreamsJson, FormattedThreadsJson,
+    JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugList, JsonDebugValLogs,
+    JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList,
+    JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -167,58 +166,58 @@ impl RouteExt for Route {
     fn parse_bytes(&self, bytes: &[u8]) -> DataResponse {
         match self {
             Route::FunctionsTiming => {
-                parse_json::<FormattedFunctionsJson>(bytes).map(DataResponse::FunctionsTiming)
+                parse_json::<JsonFunctionsList>(bytes).map(DataResponse::FunctionsTiming)
             }
             Route::FunctionsAlloc => {
-                parse_json::<FormattedFunctionsJson>(bytes).map(DataResponse::FunctionsAlloc)
+                parse_json::<JsonFunctionsList>(bytes).map(DataResponse::FunctionsAlloc)
             }
-            Route::Channels => {
-                parse_json::<FormattedChannelsJson>(bytes).map(DataResponse::Channels)
+            Route::Channels => parse_json::<JsonChannelsList>(bytes).map(DataResponse::Channels),
+            Route::Streams => parse_json::<JsonStreamsList>(bytes).map(DataResponse::Streams),
+            Route::Threads => parse_json::<JsonThreadsList>(bytes).map(DataResponse::Threads),
+            Route::Futures => parse_json::<JsonFuturesList>(bytes).map(DataResponse::Futures),
+            Route::FunctionTimingLogs { function_name } => {
+                parse_json::<JsonFunctionTimingLogsList>(bytes).map(|logs| {
+                    DataResponse::FunctionLogsTiming {
+                        function_name: function_name.clone(),
+                        logs,
+                    }
+                })
             }
-            Route::Streams => parse_json::<FormattedStreamsJson>(bytes).map(DataResponse::Streams),
-            Route::Threads => parse_json::<FormattedThreadsJson>(bytes).map(DataResponse::Threads),
-            Route::Futures => parse_json::<FormattedFuturesJson>(bytes).map(DataResponse::Futures),
-            Route::FunctionTimingLogs { function_name } => parse_json::<
-                FormattedFunctionTimingLogsJson,
-            >(bytes)
-            .map(|logs| DataResponse::FunctionLogsTiming {
-                function_name: function_name.clone(),
-                logs,
-            }),
-            Route::FunctionAllocLogs { function_name } => parse_json::<
-                FormattedFunctionAllocLogsJson,
-            >(bytes)
-            .map(|logs| DataResponse::FunctionLogsAlloc {
-                function_name: function_name.clone(),
-                logs,
-            }),
+            Route::FunctionAllocLogs { function_name } => {
+                parse_json::<JsonFunctionAllocLogsList>(bytes).map(|logs| {
+                    DataResponse::FunctionLogsAlloc {
+                        function_name: function_name.clone(),
+                        logs,
+                    }
+                })
+            }
             Route::ChannelLogs { channel_id } => {
-                parse_json::<FormattedChannelLogs>(bytes).map(|logs| DataResponse::ChannelLogs {
+                parse_json::<JsonChannelLogsList>(bytes).map(|logs| DataResponse::ChannelLogs {
                     channel_id: *channel_id,
                     logs,
                 })
             }
             Route::StreamLogs { stream_id } => {
-                parse_json::<FormattedStreamLogs>(bytes).map(|logs| DataResponse::StreamLogs {
+                parse_json::<JsonStreamLogsList>(bytes).map(|logs| DataResponse::StreamLogs {
                     stream_id: *stream_id,
                     logs,
                 })
             }
             Route::FutureCalls { future_id } => {
-                parse_json::<FormattedFutureCalls>(bytes).map(|calls| DataResponse::FutureCalls {
+                parse_json::<JsonFutureLogsList>(bytes).map(|calls| DataResponse::FutureCalls {
                     future_id: *future_id,
                     calls,
                 })
             }
-            Route::DebugStats => parse_json::<FormattedDebugJson>(bytes).map(DataResponse::Debug),
+            Route::DebugStats => parse_json::<JsonDebugList>(bytes).map(DataResponse::Debug),
             Route::DebugDbgLogs { id } => {
-                parse_json::<FormattedDebugDbgLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
+                parse_json::<JsonDebugDbgLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
                     id: *id,
                     logs: logs.logs,
                 })
             }
             Route::DebugValLogs { id } => {
-                parse_json::<FormattedDebugValLogs>(bytes).map(|logs| DataResponse::DebugValLogs {
+                parse_json::<JsonDebugValLogs>(bytes).map(|logs| DataResponse::DebugValLogs {
                     id: *id,
                     logs: logs.logs,
                 })

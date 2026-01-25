@@ -14,7 +14,7 @@ mod collector;
 mod collector;
 
 pub use crate::json::ThreadMetrics;
-use crate::json::{format_bytes_signed, FormattedThreadMetrics, FormattedThreadsJson};
+use crate::json::{format_bytes_signed, JsonThreadsList, JsonThreadEntry};
 use crate::output::format_bytes;
 
 pub fn thread_metrics_with_percentage(
@@ -151,7 +151,7 @@ fn get_rss_bytes() -> Option<u64> {
 }
 
 /// Get current thread metrics as JSON
-pub fn get_threads_json() -> FormattedThreadsJson {
+pub fn get_threads_json() -> JsonThreadsList {
     let rss_bytes = get_rss_bytes();
 
     if let Some(state) = THREADS_STATE.get() {
@@ -185,13 +185,13 @@ pub fn get_threads_json() -> FormattedThreadsJson {
                 (None, None, None)
             };
 
-            return FormattedThreadsJson {
+            return JsonThreadsList {
                 current_elapsed_ns,
                 sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
                 threads: state_guard
                     .current_metrics
                     .iter()
-                    .map(FormattedThreadMetrics::from)
+                    .map(JsonThreadEntry::from)
                     .collect(),
                 thread_count: state_guard.current_metrics.len(),
                 rss_bytes: rss_bytes.map(format_bytes),
@@ -202,7 +202,7 @@ pub fn get_threads_json() -> FormattedThreadsJson {
         }
     }
 
-    FormattedThreadsJson {
+    JsonThreadsList {
         current_elapsed_ns: 0,
         sample_interval_ms: DEFAULT_SAMPLE_INTERVAL_MS,
         threads: Vec::new(),

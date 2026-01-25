@@ -4,7 +4,7 @@ pub(crate) mod logs;
 use crate::cmd::console::app::DebugFocus;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::FormattedDebugEntries;
+use hotpath::json::JsonDebugEntry;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
@@ -16,7 +16,7 @@ use ratatui::{
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_debug_panel(
-    stats: &[FormattedDebugEntries],
+    stats: &[JsonDebugEntry],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,

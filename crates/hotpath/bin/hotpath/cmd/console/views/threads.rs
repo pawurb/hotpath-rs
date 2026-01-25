@@ -1,6 +1,6 @@
 use super::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_right;
-use hotpath::json::FormattedThreadMetrics;
+use hotpath::json::JsonThreadEntry;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     symbols::border,
@@ -12,7 +12,7 @@ use ratatui::{
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_threads_panel(
-    threads: &[FormattedThreadMetrics],
+    threads: &[JsonThreadEntry],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,

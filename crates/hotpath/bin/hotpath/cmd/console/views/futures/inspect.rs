@@ -1,4 +1,4 @@
-use hotpath::json::FormattedFutureCall;
+use hotpath::json::JsonFutureLog;
 use ratatui::{
     layout::Rect,
     symbols::border,
@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 /// Renders a centered popup displaying the full result value
-pub(crate) fn render_inspect_popup(call: &FormattedFutureCall, area: Rect, frame: &mut Frame) {
+pub(crate) fn render_inspect_popup(call: &JsonFutureLog, area: Rect, frame: &mut Frame) {
     // Center the popup at 80% of screen size
     let popup_width = (area.width as f32 * 0.8) as u16;
     let popup_height = (area.height as f32 * 0.8) as u16;

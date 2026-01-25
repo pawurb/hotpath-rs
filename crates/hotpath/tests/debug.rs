@@ -5,7 +5,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6780 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_dbg --features hotpath
     #[test]
     fn test_dbg_endpoints() {
-        use hotpath::json::{DebugEntryType, FormattedDebugDbgLogs, FormattedDebugJson};
+        use hotpath::json::{DebugEntryType, JsonDebugDbgLogs, JsonDebugList};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -49,7 +49,7 @@ pub mod tests {
             panic!("Failed after 12 retries: {}", error);
         }
 
-        let debug_response: FormattedDebugJson =
+        let debug_response: JsonDebugList =
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
 
         let first = debug_response.entries.first().expect("No debug logs");
@@ -73,7 +73,7 @@ pub mod tests {
         .read_to_string()
         .expect("Failed to read logs response body");
 
-        let logs: FormattedDebugDbgLogs =
+        let logs: JsonDebugDbgLogs =
             serde_json::from_str(&logs_json).expect("Failed to parse debug logs JSON");
 
         let first_log = logs.logs.first().expect("No log entries");
@@ -89,7 +89,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6781 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_val --features hotpath
     #[test]
     fn test_val_endpoints() {
-        use hotpath::json::{DebugEntryType, FormattedDebugJson, FormattedDebugValLogs};
+        use hotpath::json::{DebugEntryType, JsonDebugList, JsonDebugValLogs};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -133,7 +133,7 @@ pub mod tests {
             panic!("Failed after 12 retries: {}", error);
         }
 
-        let debug_response: FormattedDebugJson =
+        let debug_response: JsonDebugList =
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
 
         assert!(
@@ -183,7 +183,7 @@ pub mod tests {
         .read_to_string()
         .expect("Failed to read logs response body");
 
-        let logs: FormattedDebugValLogs =
+        let logs: JsonDebugValLogs =
             serde_json::from_str(&logs_json).expect("Failed to parse val logs JSON");
 
         assert_eq!(logs.key, "counter", "Expected key to be 'counter'");

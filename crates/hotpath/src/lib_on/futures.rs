@@ -19,8 +19,8 @@ pub(crate) mod wrapper;
 pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
-use crate::json::{FormattedFutureStats, FormattedFuturesJson};
-pub use crate::json::{FutureCall, FutureCalls, FutureState};
+pub use crate::json::{FutureCalls, FutureLog, FutureState};
+use crate::json::{JsonFutureEntry, JsonFuturesList};
 pub use crate::Format;
 
 pub(crate) static FUTURE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -61,7 +61,7 @@ pub struct FutureStats {
     pub id: u64,
     pub source: &'static str,
     pub label: Option<String>,
-    pub calls: VecDeque<FutureCall>,
+    pub calls: VecDeque<FutureLog>,
     pub call_count: u64,
 }
 
@@ -82,16 +82,16 @@ impl FutureStats {
     }
 
     /// Find a call by ID
-    fn find_call_mut(&mut self, id: u64) -> Option<&mut FutureCall> {
+    fn find_call_mut(&mut self, id: u64) -> Option<&mut FutureLog> {
         self.calls.iter_mut().find(|c| c.id == id)
     }
 }
 
-impl From<&FutureStats> for FormattedFutureStats {
+impl From<&FutureStats> for JsonFutureEntry {
     fn from(stats: &FutureStats) -> Self {
         let label = resolve_label(stats.source, stats.label.as_deref(), None);
 
-        FormattedFutureStats {
+        JsonFutureEntry {
             id: stats.id,
             source: stats.source.to_string(),
             label,
@@ -193,7 +193,7 @@ fn process_future_event(stats_map: &mut HashMap<u64, FutureStats>, event: Future
                 }
                 future_stats
                     .calls
-                    .push_back(FutureCall::new(call_id, future_id));
+                    .push_back(FutureLog::new(call_id, future_id));
             }
         }
         FutureEvent::Polled {
@@ -310,10 +310,10 @@ pub(crate) fn get_sorted_future_stats() -> Vec<FutureStats> {
     stats
 }
 
-pub fn get_futures_json() -> FormattedFuturesJson {
+pub fn get_futures_json() -> JsonFuturesList {
     let futures = get_sorted_future_stats()
         .iter()
-        .map(FormattedFutureStats::from)
+        .map(JsonFutureEntry::from)
         .collect();
 
     let current_elapsed_ns = START_TIME
@@ -321,7 +321,7 @@ pub fn get_futures_json() -> FormattedFuturesJson {
         .map(|t| t.elapsed().as_nanos() as u64)
         .unwrap_or(0);
 
-    FormattedFuturesJson {
+    JsonFuturesList {
         current_elapsed_ns,
         futures,
     }

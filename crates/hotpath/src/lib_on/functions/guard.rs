@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 
-use crate::json::FormattedFunctionsJson;
+use crate::json::JsonFunctionsList;
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crate::output::{FunctionLogEntry, FunctionLogsJson, MetricsProvider};
+use crate::output::{FunctionLog, FunctionLogsList, MetricsProvider};
 use crate::output_on::{JsonPrettyReporter, JsonReporter, TableReporter};
 use crate::Reporter;
 
@@ -440,7 +440,7 @@ impl FunctionsGuard {
                                                     worker_caller_name,
                                                     worker_limit,
                                                 );
-                                                let formatted = FormattedFunctionsJson::from_provider(&provider, current_elapsed_ns);
+                                                let formatted = JsonFunctionsList::from_provider(&provider, current_elapsed_ns);
                                                 let _ = response_tx.send(Some(formatted));
                                             } else {
                                                 let _ = response_tx.send(None);
@@ -459,7 +459,7 @@ impl FunctionsGuard {
                                                     worker_caller_name,
                                                     worker_limit,
                                                 );
-                                                let formatted = FormattedFunctionsJson::from_provider(&provider, current_elapsed_ns);
+                                                let formatted = JsonFunctionsList::from_provider(&provider, current_elapsed_ns);
                                                 let _ = response_tx.send(formatted);
                                             } else {
                                                 let total_elapsed = worker_start_time.elapsed();
@@ -471,7 +471,7 @@ impl FunctionsGuard {
                                                     worker_caller_name,
                                                     worker_limit,
                                                 );
-                                                let formatted = FormattedFunctionsJson::from_provider(&provider, current_elapsed_ns);
+                                                let formatted = JsonFunctionsList::from_provider(&provider, current_elapsed_ns);
                                                 let _ = response_tx.send(formatted);
                                             }
                                         }
@@ -480,10 +480,10 @@ impl FunctionsGuard {
                                         let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
                                             cfg_if::cfg_if! {
                                                 if #[cfg(feature = "hotpath-alloc")] {
-                                                    let logs: Vec<FunctionLogEntry> = stats.recent_logs
+                                                    let logs: Vec<FunctionLog> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| FunctionLogEntry {
+                                                        .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| FunctionLog {
                                                             value: Some(*duration_ns),
                                                             elapsed_nanos: elapsed.as_nanos() as u64,
                                                             alloc_count: None,
@@ -492,10 +492,10 @@ impl FunctionsGuard {
                                                         })
                                                         .collect();
                                                 } else {
-                                                    let logs: Vec<FunctionLogEntry> = stats.recent_logs
+                                                    let logs: Vec<FunctionLog> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(duration_ns, elapsed, tid, result_log)| FunctionLogEntry {
+                                                        .map(|(duration_ns, elapsed, tid, result_log)| FunctionLog {
                                                             value: Some(*duration_ns),
                                                             elapsed_nanos: elapsed.as_nanos() as u64,
                                                             alloc_count: None,
@@ -505,7 +505,7 @@ impl FunctionsGuard {
                                                         .collect();
                                                 }
                                             }
-                                            Some(FunctionLogsJson {
+                                            Some(FunctionLogsList {
                                                 function_name: function_name.clone(),
                                                 logs,
                                                 count: stats.count as usize,
@@ -520,10 +520,10 @@ impl FunctionsGuard {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
                                                 let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
-                                                    let logs: Vec<FunctionLogEntry> = stats.recent_logs
+                                                    let logs: Vec<FunctionLog> = stats.recent_logs
                                                         .iter()
                                                         .rev()
-                                                        .map(|(bytes, count, _duration_ns, elapsed, tid, result_log)| FunctionLogEntry {
+                                                        .map(|(bytes, count, _duration_ns, elapsed, tid, result_log)| FunctionLog {
                                                             value: *bytes,
                                                             elapsed_nanos: elapsed.as_nanos() as u64,
                                                             alloc_count: *count,
@@ -531,7 +531,7 @@ impl FunctionsGuard {
                                                             result: result_log.clone(),
                                                         })
                                                         .collect();
-                                                    Some(FunctionLogsJson {
+                                                    Some(FunctionLogsList {
                                                         function_name,
                                                         logs,
                                                         count: stats.count as usize, // Total invocations, not just recent logs

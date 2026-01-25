@@ -21,8 +21,8 @@ use crate::functions::{
 };
 use crate::futures::{get_future_calls, get_futures_json};
 use crate::json::{
-    FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFutureCalls, FormattedStreamLogs,
+    JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
+    JsonFutureLogsList, JsonStreamLogsList,
 };
 use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
@@ -205,7 +205,7 @@ Returns JSON array of recent execution logs with timestamps and duration. Use fu
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted =
-                    FormattedFunctionTimingLogsJson::from_logs(&logs, current_elapsed_ns);
+                    JsonFunctionTimingLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))
@@ -236,7 +236,7 @@ Returns JSON array of recent allocation logs. Use functions_alloc first to get f
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted =
-                    FormattedFunctionAllocLogsJson::from_logs(&logs, current_elapsed_ns);
+                    JsonFunctionAllocLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))
@@ -260,7 +260,7 @@ Returns JSON array of recent send/receive events with timestamps. Use channels f
         match get_channel_logs(channel_id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
-                let formatted = FormattedChannelLogs::from_logs(&logs, current_elapsed_ns);
+                let formatted = JsonChannelLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))
@@ -284,7 +284,7 @@ Returns JSON array of recent yield events with timestamps. Use streams first to 
         match get_stream_logs(stream_id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
-                let formatted = FormattedStreamLogs::from_logs(&logs, current_elapsed_ns);
+                let formatted = JsonStreamLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))
@@ -311,7 +311,7 @@ Returns JSON array of poll events and completion status. Use futures first to ge
 
         match get_future_calls(id) {
             Some(calls) => {
-                let formatted = FormattedFutureCalls::from(&calls);
+                let formatted = JsonFutureLogsList::from(&calls);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))

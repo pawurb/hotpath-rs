@@ -4,7 +4,7 @@ pub(crate) mod logs;
 use super::common_styles;
 use crate::cmd::console::app::StreamsFocus;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::FormattedStreamStats;
+use hotpath::json::JsonStreamEntry;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},
@@ -17,7 +17,7 @@ use ratatui::{
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_streams_panel(
-    stats: &[FormattedStreamStats],
+    stats: &[JsonStreamEntry],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,

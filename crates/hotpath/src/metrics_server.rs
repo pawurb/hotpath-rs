@@ -6,8 +6,8 @@ use crate::functions::{
 };
 use crate::json::Route;
 use crate::json::{
-    FormattedChannelLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
-    FormattedFutureCalls, FormattedStreamLogs,
+    JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
+    JsonFutureLogsList, JsonStreamLogsList,
 };
 use std::sync::LazyLock;
 
@@ -106,7 +106,7 @@ fn handle_request(request: Request) {
             match get_function_logs_timing(&function_name) {
                 Some(logs) => {
                     let formatted =
-                        FormattedFunctionTimingLogsJson::from_logs(&logs, get_current_elapsed_ns());
+                        JsonFunctionTimingLogsList::from_logs(&logs, get_current_elapsed_ns());
                     respond_json(request, &formatted);
                 }
                 None => respond_error(
@@ -120,7 +120,7 @@ fn handle_request(request: Request) {
             match get_function_logs_alloc(&function_name) {
                 Some(logs) => {
                     let formatted =
-                        FormattedFunctionAllocLogsJson::from_logs(&logs, get_current_elapsed_ns());
+                        JsonFunctionAllocLogsList::from_logs(&logs, get_current_elapsed_ns());
                     respond_json(request, &formatted);
                 }
                 None => respond_error(
@@ -132,21 +132,21 @@ fn handle_request(request: Request) {
         }
         Ok(Route::ChannelLogs { channel_id }) => match get_channel_logs(&channel_id.to_string()) {
             Some(logs) => {
-                let formatted = FormattedChannelLogs::from_logs(&logs, get_current_elapsed_ns());
+                let formatted = JsonChannelLogsList::from_logs(&logs, get_current_elapsed_ns());
                 respond_json(request, &formatted);
             }
             None => respond_error(request, 404, "Channel not found"),
         },
         Ok(Route::StreamLogs { stream_id }) => match get_stream_logs(&stream_id.to_string()) {
             Some(logs) => {
-                let formatted = FormattedStreamLogs::from_logs(&logs, get_current_elapsed_ns());
+                let formatted = JsonStreamLogsList::from_logs(&logs, get_current_elapsed_ns());
                 respond_json(request, &formatted);
             }
             None => respond_error(request, 404, "Stream not found"),
         },
         Ok(Route::FutureCalls { future_id }) => match get_future_calls(future_id) {
             Some(calls) => {
-                let formatted = FormattedFutureCalls::from(&calls);
+                let formatted = JsonFutureLogsList::from(&calls);
                 respond_json(request, &formatted);
             }
             None => respond_error(request, 404, "Future not found"),

@@ -4,7 +4,7 @@ use clap::Parser;
 use comment::upsert_pr_comment;
 use eyre::Result;
 use hotpath::format_bytes;
-use hotpath::json::{FormattedFunctionData, FormattedFunctionsJson};
+use hotpath::json::{JsonFunctionEntry, JsonFunctionsList};
 use prettytable::{Cell, Row, Table};
 use std::env;
 use std::fmt;
@@ -53,9 +53,9 @@ impl ProfilePrArgs {
             Some(self.emoji_threshold.unwrap_or(20))
         };
 
-        let head_metrics_data: FormattedFunctionsJson = serde_json::from_str(&self.head_metrics)
+        let head_metrics_data: JsonFunctionsList = serde_json::from_str(&self.head_metrics)
             .map_err(|e| eyre::eyre!("Failed to deserialize head metrics: {}", e))?;
-        let base_metrics_data: FormattedFunctionsJson = serde_json::from_str(&self.base_metrics)
+        let base_metrics_data: JsonFunctionsList = serde_json::from_str(&self.base_metrics)
             .map_err(|e| eyre::eyre!("Failed to deserialize base metrics: {}", e))?;
 
         let comparison = compare_metrics(&base_metrics_data, &head_metrics_data);
@@ -189,15 +189,12 @@ fn calculate_percentage_diff(before: u64, after: u64) -> f64 {
     }
 }
 
-fn find_function<'a>(
-    data: &'a [FormattedFunctionData],
-    name: &str,
-) -> Option<&'a FormattedFunctionData> {
+fn find_function<'a>(data: &'a [JsonFunctionEntry], name: &str) -> Option<&'a JsonFunctionEntry> {
     data.iter().find(|f| f.name == name)
 }
 
 fn build_metrics_from_function(
-    func: &FormattedFunctionData,
+    func: &JsonFunctionEntry,
     percentiles: &[u8],
     is_alloc: bool,
 ) -> Vec<(MetricKind, u64)> {
@@ -257,8 +254,8 @@ enum MetricKind {
 }
 
 fn compare_metrics(
-    before_metrics: &FormattedFunctionsJson,
-    after_metrics: &FormattedFunctionsJson,
+    before_metrics: &JsonFunctionsList,
+    after_metrics: &JsonFunctionsList,
 ) -> MetricsComparison {
     use hotpath::ProfilingMode;
 
@@ -381,7 +378,7 @@ fn compare_metrics(
 
 fn format_comparison_markdown(
     comparison: &MetricsComparison,
-    metrics: &FormattedFunctionsJson,
+    metrics: &JsonFunctionsList,
     emoji_threshold: Option<u32>,
     benchmark_id: Option<&str>,
 ) -> String {
@@ -467,13 +464,13 @@ mod test {
         p95: u64,
         total: u64,
         percent: u64,
-    ) -> FormattedFunctionData {
+    ) -> JsonFunctionEntry {
         let mut percentiles = HashMap::new();
         percentiles.insert("p95".to_string(), "formatted".to_string());
         let mut percentiles_raw = HashMap::new();
         percentiles_raw.insert("p95".to_string(), p95);
 
-        FormattedFunctionData {
+        JsonFunctionEntry {
             name: name.to_string(),
             calls,
             avg: "formatted".to_string(),
@@ -487,11 +484,8 @@ mod test {
         }
     }
 
-    fn make_metrics(
-        data: Vec<FormattedFunctionData>,
-        total_elapsed_raw: u64,
-    ) -> FormattedFunctionsJson {
-        FormattedFunctionsJson {
+    fn make_metrics(data: Vec<JsonFunctionEntry>, total_elapsed_raw: u64) -> JsonFunctionsList {
+        JsonFunctionsList {
             hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
             time_elapsed: "formatted".to_string(),
             total_elapsed_ns: total_elapsed_raw,

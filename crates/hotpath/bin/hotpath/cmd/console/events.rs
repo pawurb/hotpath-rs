@@ -3,10 +3,10 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugJson, FormattedDebugLog,
-    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
-    FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
-    FormattedThreadsJson,
+    JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog,
+    JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
+    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList,
+    JsonThreadsList,
 };
 
 #[derive(Debug)]
@@ -55,43 +55,43 @@ impl DataRequest {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub(crate) enum DataResponse {
-    FunctionsTiming(FormattedFunctionsJson),
-    FunctionsAlloc(FormattedFunctionsJson),
+    FunctionsTiming(JsonFunctionsList),
+    FunctionsAlloc(JsonFunctionsList),
     FunctionsAllocUnavailable,
     FunctionLogsTiming {
         function_name: String,
-        logs: FormattedFunctionTimingLogsJson,
+        logs: JsonFunctionTimingLogsList,
     },
     FunctionLogsTimingNotFound(String),
     FunctionLogsAlloc {
         function_name: String,
-        logs: FormattedFunctionAllocLogsJson,
+        logs: JsonFunctionAllocLogsList,
     },
     FunctionLogsAllocNotFound(String),
-    Channels(FormattedChannelsJson),
+    Channels(JsonChannelsList),
     ChannelLogs {
         channel_id: u64,
-        logs: FormattedChannelLogs,
+        logs: JsonChannelLogsList,
     },
-    Streams(FormattedStreamsJson),
+    Streams(JsonStreamsList),
     StreamLogs {
         stream_id: u64,
-        logs: FormattedStreamLogs,
+        logs: JsonStreamLogsList,
     },
-    Threads(FormattedThreadsJson),
-    Futures(FormattedFuturesJson),
+    Threads(JsonThreadsList),
+    Futures(JsonFuturesList),
     FutureCalls {
         future_id: u64,
-        calls: FormattedFutureCalls,
+        calls: JsonFutureLogsList,
     },
-    Debug(FormattedDebugJson),
+    Debug(JsonDebugList),
     DebugDbgLogs {
         id: u64,
-        logs: Vec<FormattedDebugLog>,
+        logs: Vec<JsonDebugLog>,
     },
     DebugValLogs {
         id: u64,
-        logs: Vec<FormattedDebugLog>,
+        logs: Vec<JsonDebugLog>,
     },
     DebugLogsNotFound {
         id: u64,

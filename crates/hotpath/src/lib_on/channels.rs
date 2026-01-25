@@ -16,8 +16,8 @@ pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
 
 mod wrapper;
 
-use crate::json::{format_queue_status, FormattedChannelStats, FormattedChannelsJson};
-pub use crate::json::{ChannelLogs, ChannelState, ChannelType, LogEntry};
+use crate::json::{format_queue_status, JsonChannelEntry, JsonChannelsList};
+pub use crate::json::{ChannelLogs, ChannelState, ChannelType, DataFlowLogEntry};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::format_bytes;
 use crate::output::truncate_result;
@@ -41,8 +41,8 @@ pub(crate) struct ChannelStats {
     pub(crate) received_count: u64,
     pub(crate) type_name: &'static str,
     pub(crate) type_size: usize,
-    pub(crate) sent_logs: VecDeque<LogEntry>,
-    pub(crate) received_logs: VecDeque<LogEntry>,
+    pub(crate) sent_logs: VecDeque<DataFlowLogEntry>,
+    pub(crate) received_logs: VecDeque<DataFlowLogEntry>,
     pub(crate) iter: u32,
 }
 
@@ -58,7 +58,7 @@ impl ChannelStats {
     }
 }
 
-impl From<&ChannelStats> for FormattedChannelStats {
+impl From<&ChannelStats> for JsonChannelEntry {
     fn from(stats: &ChannelStats) -> Self {
         let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
         let queued = stats.queued();
@@ -67,7 +67,7 @@ impl From<&ChannelStats> for FormattedChannelStats {
             _ => None,
         };
 
-        FormattedChannelStats {
+        JsonChannelEntry {
             id: stats.id,
             source: stats.source.to_string(),
             label,
@@ -229,7 +229,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
                                 if channel_stats.sent_logs.len() >= limit {
                                     channel_stats.sent_logs.pop_front();
                                 }
-                                channel_stats.sent_logs.push_back(LogEntry::new(
+                                channel_stats.sent_logs.push_back(DataFlowLogEntry::new(
                                     channel_stats.sent_count,
                                     timestamp_nanos(timestamp),
                                     log.map(truncate_result),
@@ -246,7 +246,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
                                 if channel_stats.received_logs.len() >= limit {
                                     channel_stats.received_logs.pop_front();
                                 }
-                                channel_stats.received_logs.push_back(LogEntry::new(
+                                channel_stats.received_logs.push_back(DataFlowLogEntry::new(
                                     channel_stats.received_count,
                                     timestamp_nanos(timestamp),
                                     None,
@@ -547,10 +547,10 @@ pub(crate) fn get_sorted_channel_stats() -> Vec<ChannelStats> {
     stats
 }
 
-pub fn get_channels_json() -> FormattedChannelsJson {
+pub fn get_channels_json() -> JsonChannelsList {
     let channels = get_sorted_channel_stats()
         .iter()
-        .map(FormattedChannelStats::from)
+        .map(JsonChannelEntry::from)
         .collect();
 
     let current_elapsed_ns = START_TIME
@@ -559,7 +559,7 @@ pub fn get_channels_json() -> FormattedChannelsJson {
         .elapsed()
         .as_nanos() as u64;
 
-    FormattedChannelsJson {
+    JsonChannelsList {
         current_elapsed_ns,
         channels,
     }

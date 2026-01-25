@@ -14,8 +14,8 @@ use crate::debug::{
     DebugEvent,
 };
 use crate::json::{
-    format_time_ago, FormattedDebugDbgLogs, FormattedDebugEntries, FormattedDebugJson,
-    FormattedDebugLog,
+    format_time_ago, JsonDebugDbgLogs, JsonDebugEntry, JsonDebugList,
+    JsonDebugLog,
 };
 use crate::output::{format_duration, truncate_result};
 
@@ -41,13 +41,13 @@ pub fn log_dbg<T: Debug>(source: &'static str, expression: &'static str, value: 
     });
 }
 
-pub fn get_debug_entries_json() -> FormattedDebugJson {
+pub fn get_debug_entries_json() -> JsonDebugList {
     let dbg_stats = get_sorted_debug_stats();
     let val_stats = get_sorted_value_stats();
 
-    let mut formatted: Vec<FormattedDebugEntries> =
-        dbg_stats.iter().map(FormattedDebugEntries::from).collect();
-    formatted.extend(val_stats.iter().map(FormattedDebugEntries::from));
+    let mut formatted: Vec<JsonDebugEntry> =
+        dbg_stats.iter().map(JsonDebugEntry::from).collect();
+    formatted.extend(val_stats.iter().map(JsonDebugEntry::from));
 
     formatted.sort_by(|a, b| {
         a.entry_type
@@ -62,20 +62,20 @@ pub fn get_debug_entries_json() -> FormattedDebugJson {
         .map(|t| t.elapsed().as_nanos() as u64)
         .unwrap_or(0);
 
-    FormattedDebugJson {
+    JsonDebugList {
         current_elapsed_ns,
         entries: formatted,
     }
 }
 
-pub fn get_dbg_logs(id: u64) -> Option<FormattedDebugDbgLogs> {
+pub fn get_dbg_logs(id: u64) -> Option<JsonDebugDbgLogs> {
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)
         .unwrap_or(0);
 
     crate::debug::get_debug_stats_by_id(id)
-        .map(|s| FormattedDebugDbgLogs::from_stats(&s, current_elapsed_ns))
+        .map(|s| JsonDebugDbgLogs::from_stats(&s, current_elapsed_ns))
 }
 
 fn truncate_source_path(source: &str) -> String {
@@ -88,10 +88,10 @@ fn truncate_source_path(source: &str) -> String {
     }
 }
 
-impl From<&DbgEntry> for FormattedDebugEntries {
+impl From<&DbgEntry> for JsonDebugEntry {
     fn from(stats: &DbgEntry) -> Self {
         let last_value = stats.logs.back().map(|e| e.value.clone());
-        FormattedDebugEntries {
+        JsonDebugEntry {
             id: stats.id,
             entry_type: crate::json::DebugEntryType::Dbg,
             source: stats.source.to_string(),
@@ -103,16 +103,16 @@ impl From<&DbgEntry> for FormattedDebugEntries {
     }
 }
 
-impl FormattedDebugDbgLogs {
+impl JsonDebugDbgLogs {
     pub fn from_stats(stats: &DbgEntry, current_elapsed_ns: u64) -> Self {
-        FormattedDebugDbgLogs {
+        JsonDebugDbgLogs {
             source: truncate_source_path(stats.source),
             expression: stats.expression.to_string(),
             total_logs: stats.log_count,
             logs: stats
                 .logs
                 .iter()
-                .map(|e| FormattedDebugLog {
+                .map(|e| JsonDebugLog {
                     index: e.index,
                     timestamp: format_duration(e.timestamp_ns),
                     ago: format_time_ago(current_elapsed_ns.saturating_sub(e.timestamp_ns)),

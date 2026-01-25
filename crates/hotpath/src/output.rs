@@ -203,7 +203,7 @@ impl fmt::Display for ProfilingMode {
 /// - `tid` is None if cross-thread execution was detected
 /// - `result` contains the Debug representation of the return value when `log = true`
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionLogEntry {
+pub struct FunctionLog {
     /// Measured value (duration in ns for timing, bytes for memory). None if invalid.
     pub value: Option<u64>,
     /// Timestamp when the measurement was taken (nanoseconds since profiler start)
@@ -217,16 +217,16 @@ pub struct FunctionLogEntry {
 }
 
 /// Response containing recent logs for a function
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionLogsJson {
+#[derive(Debug, Clone)]
+pub struct FunctionLogsList {
     pub function_name: String,
-    pub logs: Vec<FunctionLogEntry>,
+    pub logs: Vec<FunctionLog>,
     /// Total number of times this function was invoked (used to calculate invocation numbers)
     pub count: usize,
 }
 
 /// Structured per-function profiling metrics data as an ordered list.
-pub type FunctionsDataJson = Vec<(String, Vec<MetricType>)>;
+pub type FunctionsData = Vec<(String, Vec<MetricType>)>;
 
 /// Trait for accessing profiling metrics data from custom reporters.
 ///

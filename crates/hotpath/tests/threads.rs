@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod tests {
-    use hotpath::json::FormattedThreadsJson;
+    use hotpath::json::JsonThreadsList;
     use std::process::Command;
     use std::thread::sleep;
     use std::time::Duration;
@@ -51,7 +51,7 @@ pub mod tests {
         }
 
         // Parse JSON response (server returns formatted values)
-        let threads_response: FormattedThreadsJson =
+        let threads_response: JsonThreadsList =
             serde_json::from_str(&json_text).expect("Failed to parse threads JSON");
 
         // Assert we have at least some threads

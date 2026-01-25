@@ -7,7 +7,7 @@ use std::time::Instant;
 use prettytable::{Cell, Row, Table};
 
 use crate::channels::resolve_label;
-use crate::json::{FormattedStreamStats, FormattedStreamsJson};
+use crate::json::{JsonStreamEntry, JsonStreamsList};
 use crate::streams::get_sorted_stream_stats;
 use crate::Format;
 
@@ -164,9 +164,9 @@ impl Drop for StreamsGuard {
                 table.printstd();
             }
             Format::Json => {
-                let streams_json = FormattedStreamsJson {
+                let streams_json = JsonStreamsList {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
-                    streams: streams.iter().map(FormattedStreamStats::from).collect(),
+                    streams: streams.iter().map(JsonStreamEntry::from).collect(),
                 };
                 match serde_json::to_string(&streams_json) {
                     Ok(json) => println!("{}", json),
@@ -174,9 +174,9 @@ impl Drop for StreamsGuard {
                 }
             }
             Format::JsonPretty => {
-                let streams_json = FormattedStreamsJson {
+                let streams_json = JsonStreamsList {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
-                    streams: streams.iter().map(FormattedStreamStats::from).collect(),
+                    streams: streams.iter().map(JsonStreamEntry::from).collect(),
                 };
                 match serde_json::to_string_pretty(&streams_json) {
                     Ok(json) => println!("{}", json),
