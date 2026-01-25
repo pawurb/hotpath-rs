@@ -4,7 +4,7 @@ pub(crate) mod logs;
 use crate::cmd::console::app::DebugFocus;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::FormattedDebugStats;
+use hotpath::json::FormattedDebugEntries;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
@@ -16,7 +16,7 @@ use ratatui::{
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_debug_panel(
-    stats: &[FormattedDebugStats],
+    stats: &[FormattedDebugEntries],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -33,8 +33,8 @@ pub(crate) fn render_debug_panel(
     let header = Row::new(vec![
         Cell::from("Type"),
         Cell::from("Source"),
-        Cell::from("Label/Expr"),
-        Cell::from("Last Value"),
+        Cell::from("Key/Expr"),
+        Cell::from("Last"),
         Cell::from("Count"),
     ])
     .style(common_styles::HEADER_STYLE)

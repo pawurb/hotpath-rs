@@ -654,11 +654,11 @@ impl DebugEntryType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormattedDebugJson {
     pub current_elapsed_ns: u64,
-    pub debug_logs: Vec<FormattedDebugStats>,
+    pub entries: Vec<FormattedDebugEntries>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugStats {
+pub struct FormattedDebugEntries {
     pub id: u64,
     #[serde(default)]
     pub entry_type: DebugEntryType,
@@ -670,22 +670,22 @@ pub struct FormattedDebugStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugLogs {
+pub struct FormattedDebugDbgLogs {
     pub source: String,
     pub expression: String,
     pub total_logs: u64,
-    pub logs: Vec<FormattedDebugLogEntry>,
+    pub logs: Vec<FormattedDebugLog>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedValLogs {
+pub struct FormattedDebugValLogs {
     pub key: String,
     pub total_logs: u64,
-    pub logs: Vec<FormattedDebugLogEntry>,
+    pub logs: Vec<FormattedDebugLog>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FormattedDebugLogEntry {
+pub struct FormattedDebugLog {
     pub index: u64,
     pub timestamp: String,
     pub ago: String,

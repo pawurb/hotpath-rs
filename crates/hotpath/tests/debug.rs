@@ -5,7 +5,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6780 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_dbg --features hotpath
     #[test]
     fn test_dbg_endpoints() {
-        use hotpath::json::{DebugEntryType, FormattedDebugJson, FormattedDebugLogs};
+        use hotpath::json::{DebugEntryType, FormattedDebugDbgLogs, FormattedDebugJson};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -52,7 +52,7 @@ pub mod tests {
         let debug_response: FormattedDebugJson =
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
 
-        let first = debug_response.debug_logs.first().expect("No debug logs");
+        let first = debug_response.entries.first().expect("No debug logs");
 
         assert!(
             matches!(first.entry_type, DebugEntryType::Dbg),
@@ -73,7 +73,7 @@ pub mod tests {
         .read_to_string()
         .expect("Failed to read logs response body");
 
-        let logs: FormattedDebugLogs =
+        let logs: FormattedDebugDbgLogs =
             serde_json::from_str(&logs_json).expect("Failed to parse debug logs JSON");
 
         let first_log = logs.logs.first().expect("No log entries");
@@ -89,7 +89,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6781 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_val --features hotpath
     #[test]
     fn test_val_endpoints() {
-        use hotpath::json::{DebugEntryType, FormattedDebugJson, FormattedValLogs};
+        use hotpath::json::{DebugEntryType, FormattedDebugJson, FormattedDebugValLogs};
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -137,11 +137,11 @@ pub mod tests {
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
 
         assert!(
-            !debug_response.debug_logs.is_empty(),
+            !debug_response.entries.is_empty(),
             "Expected at least one debug log entry"
         );
 
-        for entry in &debug_response.debug_logs {
+        for entry in &debug_response.entries {
             assert!(
                 matches!(entry.entry_type, DebugEntryType::Val),
                 "Expected entry_type to be Val, got {:?}",
@@ -150,7 +150,7 @@ pub mod tests {
         }
 
         let expressions: Vec<&str> = debug_response
-            .debug_logs
+            .entries
             .iter()
             .map(|e| e.expression.as_str())
             .collect();
@@ -164,7 +164,7 @@ pub mod tests {
         );
 
         let counter_entry = debug_response
-            .debug_logs
+            .entries
             .iter()
             .find(|e| e.expression == "counter")
             .expect("counter entry not found");
@@ -183,7 +183,7 @@ pub mod tests {
         .read_to_string()
         .expect("Failed to read logs response body");
 
-        let logs: FormattedValLogs =
+        let logs: FormattedDebugValLogs =
             serde_json::from_str(&logs_json).expect("Failed to parse val logs JSON");
 
         assert_eq!(logs.key, "counter", "Expected key to be 'counter'");

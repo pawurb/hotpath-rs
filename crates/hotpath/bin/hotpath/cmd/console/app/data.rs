@@ -448,7 +448,7 @@ impl App {
                 self.handle_future_calls(future_id, calls);
             }
             DataResponse::Debug(data) => {
-                trace!("Received debug data: {} entries", data.debug_logs.len());
+                trace!("Received debug data: {} entries", data.entries.len());
                 self.loading_debug = false;
                 self.update_debug(data);
             }
@@ -553,7 +553,7 @@ impl App {
             .and_then(|idx| self.debug_stats.get(idx))
             .map(|stat| stat.id);
 
-        self.debug_stats = debug.debug_logs;
+        self.debug_stats = debug.entries;
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
 
@@ -593,7 +593,7 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_debug_logs(&mut self, logs: Vec<hotpath::json::FormattedDebugLogEntry>) {
+    pub(crate) fn handle_debug_logs(&mut self, logs: Vec<hotpath::json::FormattedDebugLog>) {
         self.debug_logs = Some(logs);
 
         if let Some(ref cached_logs) = self.debug_logs {

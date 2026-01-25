@@ -3,10 +3,10 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugJson, FormattedDebugLogs,
-    FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
-    FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
-    FormattedThreadsJson, FormattedValLogs,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugDbgLogs, FormattedDebugJson,
+    FormattedDebugValLogs, FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson,
+    FormattedFunctionsJson, FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs,
+    FormattedStreamsJson, FormattedThreadsJson,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -212,13 +212,13 @@ impl RouteExt for Route {
             }
             Route::DebugStats => parse_json::<FormattedDebugJson>(bytes).map(DataResponse::Debug),
             Route::DebugDbgLogs { id } => {
-                parse_json::<FormattedDebugLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
+                parse_json::<FormattedDebugDbgLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {
                     id: *id,
                     logs: logs.logs,
                 })
             }
             Route::DebugValLogs { id } => {
-                parse_json::<FormattedValLogs>(bytes).map(|logs| DataResponse::DebugValLogs {
+                parse_json::<FormattedDebugValLogs>(bytes).map(|logs| DataResponse::DebugValLogs {
                     id: *id,
                     logs: logs.logs,
                 })

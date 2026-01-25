@@ -3,7 +3,7 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugJson, FormattedDebugLogEntry,
+    FormattedChannelLogs, FormattedChannelsJson, FormattedDebugJson, FormattedDebugLog,
     FormattedFunctionAllocLogsJson, FormattedFunctionTimingLogsJson, FormattedFunctionsJson,
     FormattedFutureCalls, FormattedFuturesJson, FormattedStreamLogs, FormattedStreamsJson,
     FormattedThreadsJson,
@@ -87,11 +87,11 @@ pub(crate) enum DataResponse {
     Debug(FormattedDebugJson),
     DebugDbgLogs {
         id: u64,
-        logs: Vec<FormattedDebugLogEntry>,
+        logs: Vec<FormattedDebugLog>,
     },
     DebugValLogs {
         id: u64,
-        logs: Vec<FormattedDebugLogEntry>,
+        logs: Vec<FormattedDebugLog>,
     },
     DebugLogsNotFound {
         id: u64,
