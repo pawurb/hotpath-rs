@@ -3,25 +3,23 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
-    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
-    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonChannelLogsList, JsonChannelsList, JsonDataFlowList, JsonDebugList, JsonDebugLog,
+    JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList,
+    JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
 pub(crate) enum DataRequest {
     RefreshTiming,
     RefreshMemory,
-    RefreshChannels,
-    RefreshStreams,
+    RefreshDataFlow,
     RefreshThreads,
-    RefreshFutures,
     RefreshDebug,
     FetchFunctionLogsTiming(String),
     FetchFunctionLogsAlloc(String),
-    FetchChannelLogs(u64),
-    FetchStreamLogs(u64),
-    FetchFutureCalls(u64),
+    FetchDataFlowChannelLogs(u64),
+    FetchDataFlowStreamLogs(u64),
+    FetchDataFlowFutureLogs(u64),
     FetchDebugDbgLogs(u64),
     FetchDebugValLogs(u64),
 }
@@ -31,10 +29,8 @@ impl DataRequest {
         match self {
             DataRequest::RefreshTiming => Route::FunctionsTiming,
             DataRequest::RefreshMemory => Route::FunctionsAlloc,
-            DataRequest::RefreshChannels => Route::Channels,
-            DataRequest::RefreshStreams => Route::Streams,
+            DataRequest::RefreshDataFlow => Route::DataFlow,
             DataRequest::RefreshThreads => Route::Threads,
-            DataRequest::RefreshFutures => Route::Futures,
             DataRequest::RefreshDebug => Route::Debug,
             DataRequest::FetchFunctionLogsTiming(name) => Route::FunctionTimingLogs {
                 function_name: name.clone(),
@@ -42,9 +38,15 @@ impl DataRequest {
             DataRequest::FetchFunctionLogsAlloc(name) => Route::FunctionAllocLogs {
                 function_name: name.clone(),
             },
-            DataRequest::FetchChannelLogs(id) => Route::ChannelLogs { channel_id: *id },
-            DataRequest::FetchStreamLogs(id) => Route::StreamLogs { stream_id: *id },
-            DataRequest::FetchFutureCalls(id) => Route::FutureLogs { future_id: *id },
+            DataRequest::FetchDataFlowChannelLogs(id) => {
+                Route::DataFlowChannelLogs { channel_id: *id }
+            }
+            DataRequest::FetchDataFlowStreamLogs(id) => {
+                Route::DataFlowStreamLogs { stream_id: *id }
+            }
+            DataRequest::FetchDataFlowFutureLogs(id) => {
+                Route::DataFlowFutureLogs { future_id: *id }
+            }
             DataRequest::FetchDebugDbgLogs(id) => Route::DebugDbgLogs { id: *id },
             DataRequest::FetchDebugValLogs(id) => Route::DebugValLogs { id: *id },
         }
@@ -67,22 +69,23 @@ pub(crate) enum DataResponse {
         logs: JsonFunctionAllocLogsList,
     },
     FunctionLogsAllocNotFound(String),
-    Channels(JsonChannelsList),
-    ChannelLogs {
-        channel_id: u64,
+    DataFlow(JsonDataFlowList),
+    DataFlowChannelLogs {
+        id: u64,
         logs: JsonChannelLogsList,
     },
-    Streams(JsonStreamsList),
-    StreamLogs {
-        stream_id: u64,
+    DataFlowStreamLogs {
+        id: u64,
         logs: JsonStreamLogsList,
     },
-    Threads(JsonThreadsList),
-    Futures(JsonFuturesList),
-    FutureLogs {
-        future_id: u64,
+    DataFlowFutureLogs {
+        id: u64,
         calls: JsonFutureLogsList,
     },
+    DataFlowLogsNotFound {
+        id: u64,
+    },
+    Threads(JsonThreadsList),
     Debug(JsonDebugList),
     DebugDbgLogs {
         id: u64,
@@ -94,6 +97,22 @@ pub(crate) enum DataResponse {
     },
     DebugLogsNotFound {
         id: u64,
+    },
+    // Legacy responses kept for backward compat with http_worker parsing
+    Channels(JsonChannelsList),
+    ChannelLogs {
+        channel_id: u64,
+        logs: JsonChannelLogsList,
+    },
+    Streams(JsonStreamsList),
+    StreamLogs {
+        stream_id: u64,
+        logs: JsonStreamLogsList,
+    },
+    Futures(JsonFuturesList),
+    FutureLogs {
+        future_id: u64,
+        calls: JsonFutureLogsList,
     },
     Error(String),
 }

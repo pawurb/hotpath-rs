@@ -30,6 +30,8 @@ mod lib_on;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub use lib_on::channels;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
+pub use lib_on::data_flow;
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub use lib_on::futures;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub use lib_on::streams;

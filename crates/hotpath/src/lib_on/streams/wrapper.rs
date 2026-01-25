@@ -1,10 +1,10 @@
+use crate::data_flow::next_data_flow_id;
 use crate::output::truncate_result;
-use crate::streams::{init_streams_state, StreamEvent, STREAM_ID_COUNTER};
+use crate::streams::{init_streams_state, StreamEvent};
 use crossbeam_channel::Sender as CbSender;
 use futures_util::Stream;
 use pin_project_lite::pin_project;
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
 use std::task::{Context, Poll};
 
 #[cfg(target_os = "linux")]
@@ -38,7 +38,7 @@ impl<S> InstrumentedStream<S> {
         S: Stream,
     {
         let (stats_tx, _) = init_streams_state();
-        let id = STREAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = next_data_flow_id();
 
         // Send stream creation event
         let _ = stats_tx.send(StreamEvent::Created {
@@ -100,7 +100,7 @@ impl<S> InstrumentedStreamLog<S> {
         S: Stream,
     {
         let (stats_tx, _) = init_streams_state();
-        let id = STREAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = next_data_flow_id();
 
         // Send stream creation event
         let _ = stats_tx.send(StreamEvent::Created {

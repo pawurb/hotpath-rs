@@ -28,6 +28,7 @@ pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
 pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
 
 use crate::channels::{get_channel_logs, get_channels_json};
+use crate::data_flow::get_data_flow_json;
 use crate::futures::{get_future_calls, get_futures_json};
 use crate::streams::{get_stream_logs, get_streams_json};
 use serde::Serialize;
@@ -155,6 +156,35 @@ fn handle_request(request: Request) {
             let debug_stats = get_debug_entries_json();
             respond_json(request, &debug_stats);
         }
+        Ok(Route::DataFlow) => {
+            let data_flow = get_data_flow_json();
+            respond_json(request, &data_flow);
+        }
+        Ok(Route::DataFlowChannelLogs { channel_id }) => {
+            match get_channel_logs(&channel_id.to_string()) {
+                Some(logs) => {
+                    let formatted = JsonChannelLogsList::from_logs(&logs, get_current_elapsed_ns());
+                    respond_json(request, &formatted);
+                }
+                None => respond_error(request, 404, "Channel not found"),
+            }
+        }
+        Ok(Route::DataFlowStreamLogs { stream_id }) => {
+            match get_stream_logs(&stream_id.to_string()) {
+                Some(logs) => {
+                    let formatted = JsonStreamLogsList::from_logs(&logs, get_current_elapsed_ns());
+                    respond_json(request, &formatted);
+                }
+                None => respond_error(request, 404, "Stream not found"),
+            }
+        }
+        Ok(Route::DataFlowFutureLogs { future_id }) => match get_future_calls(future_id) {
+            Some(calls) => {
+                let formatted = JsonFutureLogsList::from(&calls);
+                respond_json(request, &formatted);
+            }
+            None => respond_error(request, 404, "Future not found"),
+        },
         Ok(Route::DebugDbgLogs { id }) => match get_dbg_logs(id) {
             Some(formatted) => respond_json(request, &formatted),
             None => respond_error(request, 404, "Debug entry not found"),

@@ -2,7 +2,6 @@
 
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
@@ -103,8 +102,6 @@ pub(crate) type StreamStatsState = (
 );
 
 static STREAMS_STATE: OnceLock<StreamStatsState> = OnceLock::new();
-
-pub(crate) static STREAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Initialize the stream statistics collection system (called on first instrumented stream).
 /// Returns a reference to the global state.

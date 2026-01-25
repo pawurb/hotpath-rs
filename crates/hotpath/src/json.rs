@@ -273,6 +273,14 @@ pub enum Route {
     DebugDbgLogs { id: u64 },
     /// GET /debug/val/{id}/logs - Returns logs for a val! entry
     DebugValLogs { id: u64 },
+    /// GET /data_flow - Returns unified channels, streams, and futures statistics
+    DataFlow,
+    /// GET /data_flow/channel/{id}/logs - Returns logs for a specific channel
+    DataFlowChannelLogs { channel_id: u64 },
+    /// GET /data_flow/stream/{id}/logs - Returns logs for a specific stream
+    DataFlowStreamLogs { stream_id: u64 },
+    /// GET /data_flow/future/{id}/logs - Returns calls for a specific future
+    DataFlowFutureLogs { future_id: u64 },
 }
 
 impl Route {
@@ -302,6 +310,16 @@ impl Route {
             Route::Debug => "/debug".to_string(),
             Route::DebugDbgLogs { id } => format!("/debug/dbg/{}/logs", id),
             Route::DebugValLogs { id } => format!("/debug/val/{}/logs", id),
+            Route::DataFlow => "/data_flow".to_string(),
+            Route::DataFlowChannelLogs { channel_id } => {
+                format!("/data_flow/channel/{}/logs", channel_id)
+            }
+            Route::DataFlowStreamLogs { stream_id } => {
+                format!("/data_flow/stream/{}/logs", stream_id)
+            }
+            Route::DataFlowFutureLogs { future_id } => {
+                format!("/data_flow/future/{}/logs", future_id)
+            }
         }
     }
 
@@ -325,6 +343,12 @@ static RE_DEBUG_DBG_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/debug/dbg/(\d+)/logs$").unwrap());
 static RE_DEBUG_VAL_LOGS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/debug/val/(\d+)/logs$").unwrap());
+static RE_DATA_FLOW_CHANNEL_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/data_flow/channel/(\d+)/logs$").unwrap());
+static RE_DATA_FLOW_STREAM_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/data_flow/stream/(\d+)/logs$").unwrap());
+static RE_DATA_FLOW_FUTURE_LOGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/data_flow/future/(\d+)/logs$").unwrap());
 
 fn base64_decode(encoded: &str) -> Result<String, String> {
     use base64::Engine;
@@ -350,6 +374,7 @@ impl FromStr for Route {
             "/futures" => return Ok(Route::Futures),
             "/threads" => return Ok(Route::Threads),
             "/debug" => return Ok(Route::Debug),
+            "/data_flow" => return Ok(Route::DataFlow),
             _ => {}
         }
 
@@ -386,6 +411,21 @@ impl FromStr for Route {
         if let Some(caps) = RE_DEBUG_VAL_LOGS.captures(path) {
             let id = caps[1].parse().map_err(|_| ())?;
             return Ok(Route::DebugValLogs { id });
+        }
+
+        if let Some(caps) = RE_DATA_FLOW_CHANNEL_LOGS.captures(path) {
+            let channel_id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::DataFlowChannelLogs { channel_id });
+        }
+
+        if let Some(caps) = RE_DATA_FLOW_STREAM_LOGS.captures(path) {
+            let stream_id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::DataFlowStreamLogs { stream_id });
+        }
+
+        if let Some(caps) = RE_DATA_FLOW_FUTURE_LOGS.captures(path) {
+            let future_id = caps[1].parse().map_err(|_| ())?;
+            return Ok(Route::DataFlowFutureLogs { future_id });
         }
 
         Err(())

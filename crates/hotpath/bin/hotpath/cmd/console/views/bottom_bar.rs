@@ -1,6 +1,4 @@
-use crate::cmd::console::app::{
-    ChannelsFocus, DebugFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
-};
+use crate::cmd::console::app::{DataFlowFocus, DebugFocus, FunctionsFocus, SelectedTab};
 use ratatui::{
     layout::Rect,
     style::Stylize,
@@ -10,7 +8,6 @@ use ratatui::{
     Frame,
 };
 
-// Control text constants
 const NAV_KEYS_FULL: &str = " <←↑↓→/hjkl> ";
 const TOGGLE_LOGS_LABEL: &str = " | Toggle Logs ";
 const TOGGLE_LOGS_KEY: &str = "<o> ";
@@ -22,24 +19,17 @@ const INSPECT_LABEL: &str = " | Inspect ";
 const INSPECT_KEY: &str = "<i> ";
 const CLOSE_LABEL: &str = " | Close ";
 const CLOSE_KEYS: &str = "<i/o/h> ";
-const TOGGLE_CALLS_LABEL: &str = " | Toggle Calls ";
-const TOGGLE_CALLS_KEY: &str = "<o> ";
 
-/// Renders the bottom controls bar showing context-aware keybindings
 #[hotpath::measure]
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_help_bar(
     frame: &mut Frame,
     area: Rect,
     selected_tab: SelectedTab,
-    channels_focus: ChannelsFocus,
-    streams_focus: StreamsFocus,
+    data_flow_focus: DataFlowFocus,
     functions_focus: FunctionsFocus,
-    futures_focus: FuturesFocus,
     debug_focus: DebugFocus,
 ) {
     let controls_line = if selected_tab == SelectedTab::Threads {
-        // Threads tab - simple controls, no logs
         Line::from(vec![
             NAV_KEYS_FULL.blue().bold(),
             PAUSE_LABEL.into(),
@@ -47,44 +37,9 @@ pub(crate) fn render_help_bar(
             QUIT_LABEL.into(),
             QUIT_KEY.blue().bold(),
         ])
-    } else if selected_tab == SelectedTab::Futures {
-        // Futures tab - has calls panel
-        match futures_focus {
-            FuturesFocus::Futures => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_CALLS_LABEL.into(),
-                TOGGLE_CALLS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            FuturesFocus::Calls => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_CALLS_LABEL.into(),
-                TOGGLE_CALLS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                INSPECT_LABEL.into(),
-                INSPECT_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            FuturesFocus::Inspect => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_CALLS_LABEL.into(),
-                TOGGLE_CALLS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                CLOSE_LABEL.into(),
-                CLOSE_KEYS.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-        }
-    } else if selected_tab == SelectedTab::Streams {
-        match streams_focus {
-            StreamsFocus::Streams => Line::from(vec![
+    } else if selected_tab == SelectedTab::DataFlow {
+        match data_flow_focus {
+            DataFlowFocus::List => Line::from(vec![
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -93,7 +48,7 @@ pub(crate) fn render_help_bar(
                 QUIT_LABEL.into(),
                 QUIT_KEY.blue().bold(),
             ]),
-            StreamsFocus::Logs => Line::from(vec![
+            DataFlowFocus::Logs => Line::from(vec![
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),
@@ -104,41 +59,7 @@ pub(crate) fn render_help_bar(
                 QUIT_LABEL.into(),
                 QUIT_KEY.blue().bold(),
             ]),
-            StreamsFocus::Inspect => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                CLOSE_LABEL.into(),
-                CLOSE_KEYS.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-        }
-    } else if selected_tab == SelectedTab::Channels {
-        match channels_focus {
-            ChannelsFocus::Channels => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            ChannelsFocus::Logs => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                INSPECT_LABEL.into(),
-                INSPECT_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            ChannelsFocus::Inspect => Line::from(vec![
+            DataFlowFocus::Inspect => Line::from(vec![
                 NAV_KEYS_FULL.blue().bold(),
                 TOGGLE_LOGS_LABEL.into(),
                 TOGGLE_LOGS_KEY.blue().bold(),

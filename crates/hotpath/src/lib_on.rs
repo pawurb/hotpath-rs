@@ -3,6 +3,7 @@ pub use cfg_if::cfg_if;
 pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 
 pub mod channels;
+pub mod data_flow;
 pub mod debug;
 pub mod futures;
 pub mod streams;

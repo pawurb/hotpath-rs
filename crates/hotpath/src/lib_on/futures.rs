@@ -23,8 +23,7 @@ pub use crate::json::{FutureCalls, FutureLog, FutureState};
 use crate::json::{JsonFutureEntry, JsonFuturesList};
 pub use crate::Format;
 
-pub(crate) static FUTURE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
-pub(crate) static FUTURE_CALL_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+pub(crate) static FUTURE_CALL_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 use std::sync::LazyLock;
 
@@ -50,7 +49,7 @@ pub(crate) fn get_or_create_future_id(source: &'static str) -> (u64, bool) {
         return (future_id, false);
     }
 
-    let future_id = FUTURE_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let future_id = crate::data_flow::next_data_flow_id();
     write_guard.insert(source, future_id);
     (future_id, true)
 }

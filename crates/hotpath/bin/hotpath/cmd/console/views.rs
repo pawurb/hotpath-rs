@@ -1,12 +1,10 @@
 pub(crate) mod bottom_bar;
-pub(crate) mod channels;
 pub(crate) mod common_styles;
+pub(crate) mod data_flow;
 pub(crate) mod debug;
 pub(crate) mod functions_memory;
 pub(crate) mod functions_timing;
-pub(crate) mod futures;
 pub(crate) mod main_view;
-pub(crate) mod streams;
 pub(crate) mod threads;
 pub(crate) mod top_bar;
 pub(crate) use main_view::render_ui;

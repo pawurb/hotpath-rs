@@ -555,6 +555,57 @@ pub struct JsonFutureLog {
     pub result: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataFlowType {
+    Channel,
+    Stream,
+    Future,
+}
+
+impl DataFlowType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DataFlowType::Channel => "channel",
+            DataFlowType::Stream => "stream",
+            DataFlowType::Future => "future",
+        }
+    }
+}
+
+impl std::fmt::Display for DataFlowType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonDataFlowList {
+    pub current_elapsed_ns: u64,
+    pub entries: Vec<JsonDataFlowEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonDataFlowEntry {
+    pub id: u64,
+    pub data_flow_type: DataFlowType,
+    pub source: String,
+    pub label: String,
+    pub has_custom_label: bool,
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtype: Option<String>,
+    pub primary_count: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secondary_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub type_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub type_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iter: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFutureLogsList {
     pub id: String,

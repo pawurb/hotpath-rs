@@ -1,7 +1,7 @@
 use crate::cmd::console::app::{
-    App, ChannelsFocus, DebugFocus, FunctionsFocus, FuturesFocus, SelectedTab, StreamsFocus,
+    App, DataFlowFocus, DataFlowLogs, DebugFocus, FunctionsFocus, SelectedTab,
 };
-use crate::cmd::console::views::channels::{inspect, logs as channel_logs};
+use crate::cmd::console::views::data_flow::{inspect as data_flow_inspect, logs as data_flow_logs};
 use crate::cmd::console::views::debug::{inspect as debug_inspect, logs as debug_logs};
 use crate::cmd::console::views::functions_memory::{
     inspect as memory_inspect, logs as memory_logs,
@@ -9,12 +9,10 @@ use crate::cmd::console::views::functions_memory::{
 use crate::cmd::console::views::functions_timing::{
     inspect as timing_inspect, logs as timing_logs,
 };
-use crate::cmd::console::views::futures::{calls as future_calls, inspect as future_inspect};
-use crate::cmd::console::views::streams::{inspect as stream_inspect, logs as stream_logs};
 use crate::cmd::console::views::{
-    bottom_bar, channels, debug, functions_memory, functions_timing, futures, streams, threads,
-    top_bar,
+    bottom_bar, data_flow, debug, functions_memory, functions_timing, threads, top_bar,
 };
+use hotpath::json::DataFlowType;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -39,10 +37,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
     let has_data = match app.selected_tab {
         SelectedTab::Timing => !app.timing_functions.data.is_empty(),
         SelectedTab::Memory => !app.memory_functions.data.is_empty(),
-        SelectedTab::Channels => !app.channels.channels.is_empty(),
-        SelectedTab::Streams => !app.streams.streams.is_empty(),
+        SelectedTab::DataFlow => !app.data_flow.entries.is_empty(),
         SelectedTab::Threads => !app.threads.threads.is_empty(),
-        SelectedTab::Futures => !app.futures.futures.is_empty(),
         SelectedTab::Debug => !app.debug_stats.is_empty(),
     };
 
@@ -57,7 +53,6 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
     render_tabs(frame, main_chunks[0], app.selected_tab);
 
-    // Render content based on selected tab
     match app.selected_tab {
         SelectedTab::Timing => {
             if app.show_function_logs {
@@ -121,17 +116,11 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                 functions_memory::render_functions_table(frame, app, main_chunks[2]);
             }
         }
-        SelectedTab::Channels => {
-            render_channels_view(frame, app, main_chunks[2]);
-        }
-        SelectedTab::Streams => {
-            render_streams_view(frame, app, main_chunks[2]);
+        SelectedTab::DataFlow => {
+            render_data_flow_view(frame, app, main_chunks[2]);
         }
         SelectedTab::Threads => {
             render_threads_view(frame, app, main_chunks[2]);
-        }
-        SelectedTab::Futures => {
-            render_futures_view(frame, app, main_chunks[2]);
         }
         SelectedTab::Debug => {
             render_debug_view(frame, app, main_chunks[2]);
@@ -142,20 +131,18 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         frame,
         main_chunks[3],
         app.selected_tab,
-        app.channels_focus,
-        app.streams_focus,
+        app.data_flow_focus,
         app.functions_focus,
-        app.futures_focus,
         app.debug_focus,
     );
 }
 
 #[hotpath::measure]
-fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
-    let stats = &app.channels.channels;
+fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
+    let entries = &app.data_flow.entries;
 
     if let Some(ref error_msg) = app.error_message {
-        if stats.is_empty() {
+        if entries.is_empty() {
             let error_text = vec![
                 Line::from(""),
                 Line::from("Error").red().bold().centered(),
@@ -176,14 +163,12 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    if stats.is_empty() {
+    if entries.is_empty() {
         let empty_text = vec![
             Line::from(""),
-            Line::from("No channel statistics found")
-                .yellow()
-                .centered(),
+            Line::from("No data flow entries found").yellow().centered(),
             Line::from(""),
-            Line::from("Make sure channels are instrumented and the server is running").centered(),
+            Line::from("Make sure channels, streams, or futures are instrumented").centered(),
         ];
 
         let block = Block::bordered().border_set(border::THICK);
@@ -191,8 +176,7 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    // Split the area if logs are being shown
-    let (table_area, logs_area) = if app.show_logs {
+    let (table_area, logs_area) = if app.show_data_flow_logs {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -202,53 +186,57 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
         (area, None)
     };
 
-    let selected_index = app.channels_table_state.selected().unwrap_or(0);
-    let channel_position = selected_index + 1; // 1-indexed
-    let total_channels = stats.len();
+    let selected_index = app.data_flow_table_state.selected().unwrap_or(0);
+    let position = selected_index + 1;
+    let total = entries.len();
 
-    channels::render_channels_panel(
-        stats,
+    data_flow::render_data_flow_panel(
+        entries,
         table_area,
         frame,
-        &mut app.channels_table_state,
-        app.show_logs,
-        app.channels_focus,
-        channel_position,
-        total_channels,
+        &mut app.data_flow_table_state,
+        app.show_data_flow_logs,
+        app.data_flow_focus,
+        position,
+        total,
     );
 
-    // Render logs panel if visible
     if let Some(logs_area) = logs_area {
-        let channel_label = app
-            .channels_table_state
+        let selected_entry = app
+            .data_flow_table_state
             .selected()
-            .and_then(|i| stats.get(i))
-            .map(|stat| {
-                if stat.label.is_empty() {
-                    stat.id.to_string()
-                } else {
-                    stat.label.clone()
-                }
-            })
-            .unwrap_or_else(|| "Unknown".to_string());
+            .and_then(|i| entries.get(i));
 
-        if let Some(ref cached_logs) = app.logs {
-            let has_missing_log = cached_logs
-                .sent_logs
-                .iter()
-                .any(|entry| entry.message.is_none());
-            let display_label = if has_missing_log {
-                format!("{} (missing \"log = true\")", channel_label)
-            } else {
-                channel_label
+        let (label, data_flow_type) = selected_entry
+            .map(|entry| {
+                let label = if entry.label.is_empty() {
+                    entry.id.to_string()
+                } else {
+                    entry.label.clone()
+                };
+                (label, entry.data_flow_type)
+            })
+            .unwrap_or_else(|| ("Unknown".to_string(), DataFlowType::Channel));
+
+        if let Some(ref logs) = app.data_flow_logs {
+            let has_missing_log = match logs {
+                DataFlowLogs::Channel(l) => l.sent_logs.iter().any(|e| e.message.is_none()),
+                DataFlowLogs::Stream(l) => l.logs.iter().any(|e| e.message.is_none()),
+                DataFlowLogs::Future(_) => false,
             };
-            channel_logs::render_logs_panel(
-                cached_logs,
+            let display_label = if has_missing_log {
+                format!("{} (missing \"log = true\")", label)
+            } else {
+                label
+            };
+            data_flow_logs::render_logs_panel(
+                logs,
+                data_flow_type,
                 &display_label,
                 logs_area,
                 frame,
-                &mut app.channel_logs_table_state,
-                app.channels_focus == ChannelsFocus::Logs,
+                &mut app.data_flow_logs_table_state,
+                app.data_flow_focus == DataFlowFocus::Logs,
             );
         } else {
             let message = if app.paused {
@@ -258,127 +246,13 @@ fn render_channels_view(frame: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 "(no data)"
             };
-            channel_logs::render_logs_placeholder(&channel_label, message, logs_area, frame);
+            data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
         }
     }
 
-    if app.channels_focus == ChannelsFocus::Inspect {
-        if let Some(ref inspected_log) = app.inspected_log {
-            inspect::render_inspect_popup(inspected_log, area, frame);
-        }
-    }
-}
-
-#[hotpath::measure]
-fn render_streams_view(frame: &mut Frame, app: &mut App, area: Rect) {
-    let stats = &app.streams.streams;
-
-    if let Some(ref error_msg) = app.error_message {
-        if stats.is_empty() {
-            let error_text = vec![
-                Line::from(""),
-                Line::from("Error").red().bold().centered(),
-                Line::from(""),
-                Line::from(error_msg.as_str()).red().centered(),
-                Line::from(""),
-                Line::from(format!(
-                    "Make sure the metrics server is running on {}",
-                    app.metrics_host
-                ))
-                .yellow()
-                .centered(),
-            ];
-
-            let block = Block::bordered().border_set(border::THICK);
-            frame.render_widget(Paragraph::new(error_text).block(block), area);
-            return;
-        }
-    }
-
-    if stats.is_empty() {
-        let empty_text = vec![
-            Line::from(""),
-            Line::from("No stream statistics found").yellow().centered(),
-            Line::from(""),
-            Line::from("Make sure streams are instrumented and the server is running").centered(),
-        ];
-
-        let block = Block::bordered().border_set(border::THICK);
-        frame.render_widget(Paragraph::new(empty_text).block(block), area);
-        return;
-    }
-
-    // Split the area if logs are being shown
-    let (table_area, logs_area) = if app.show_stream_logs {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-        (chunks[0], Some(chunks[1]))
-    } else {
-        (area, None)
-    };
-
-    let selected_index = app.streams_table_state.selected().unwrap_or(0);
-    let stream_position = selected_index + 1; // 1-indexed
-    let total_streams = stats.len();
-
-    streams::render_streams_panel(
-        stats,
-        table_area,
-        frame,
-        &mut app.streams_table_state,
-        app.show_stream_logs,
-        app.streams_focus,
-        stream_position,
-        total_streams,
-    );
-
-    // Render logs panel if visible
-    if let Some(logs_area) = logs_area {
-        let stream_label = app
-            .streams_table_state
-            .selected()
-            .and_then(|i| stats.get(i))
-            .map(|stat| {
-                if stat.label.is_empty() {
-                    stat.id.to_string()
-                } else {
-                    stat.label.clone()
-                }
-            })
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        if let Some(ref cached_logs) = app.stream_logs {
-            let has_missing_log = cached_logs.logs.iter().any(|entry| entry.message.is_none());
-            let display_label = if has_missing_log {
-                format!("{} (missing \"log = true\")", stream_label)
-            } else {
-                stream_label
-            };
-            stream_logs::render_logs_panel(
-                cached_logs,
-                &display_label,
-                logs_area,
-                frame,
-                &mut app.stream_logs_table_state,
-                app.streams_focus == StreamsFocus::Logs,
-            );
-        } else {
-            let message = if app.paused {
-                "(refresh paused)"
-            } else if app.error_message.is_some() {
-                "(cannot fetch new data)"
-            } else {
-                "(no data)"
-            };
-            stream_logs::render_logs_placeholder(&stream_label, message, logs_area, frame);
-        }
-    }
-
-    if app.streams_focus == StreamsFocus::Inspect {
-        if let Some(ref inspected_log) = app.inspected_stream_log {
-            stream_inspect::render_inspect_popup(inspected_log, area, frame);
+    if app.data_flow_focus == DataFlowFocus::Inspect {
+        if let Some(ref inspected) = app.inspected_data_flow_log {
+            data_flow_inspect::render_inspect_popup(inspected, area, frame);
         }
     }
 }
@@ -424,7 +298,7 @@ fn render_threads_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let selected_index = app.threads_table_state.selected().unwrap_or(0);
-    let thread_position = selected_index + 1; // 1-indexed
+    let thread_position = selected_index + 1;
     let total_threads = thread_list.len();
 
     threads::render_threads_panel(
@@ -439,114 +313,6 @@ fn render_threads_view(frame: &mut Frame, app: &mut App, area: Rect) {
         app.threads.total_dealloc_bytes.as_deref(),
         app.threads.alloc_dealloc_diff.as_deref(),
     );
-}
-
-#[hotpath::measure]
-fn render_futures_view(frame: &mut Frame, app: &mut App, area: Rect) {
-    let stats = &app.futures.futures;
-
-    if let Some(ref error_msg) = app.error_message {
-        if stats.is_empty() {
-            let error_text = vec![
-                Line::from(""),
-                Line::from("Error").red().bold().centered(),
-                Line::from(""),
-                Line::from(error_msg.as_str()).red().centered(),
-                Line::from(""),
-                Line::from(format!(
-                    "Make sure the metrics server is running on {}",
-                    app.metrics_host
-                ))
-                .yellow()
-                .centered(),
-            ];
-
-            let block = Block::bordered().border_set(border::THICK);
-            frame.render_widget(Paragraph::new(error_text).block(block), area);
-            return;
-        }
-    }
-
-    if stats.is_empty() {
-        let empty_text = vec![
-            Line::from(""),
-            Line::from("No future statistics found").yellow().centered(),
-            Line::from(""),
-            Line::from("Make sure futures are instrumented and the server is running").centered(),
-        ];
-
-        let block = Block::bordered().border_set(border::THICK);
-        frame.render_widget(Paragraph::new(empty_text).block(block), area);
-        return;
-    }
-
-    // Split the area if calls are being shown
-    let (table_area, calls_area) = if app.show_future_calls {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-        (chunks[0], Some(chunks[1]))
-    } else {
-        (area, None)
-    };
-
-    let selected_index = app.futures_table_state.selected().unwrap_or(0);
-    let future_position = selected_index + 1; // 1-indexed
-    let total_futures = stats.len();
-
-    futures::render_futures_panel(
-        stats,
-        table_area,
-        frame,
-        &mut app.futures_table_state,
-        app.show_future_calls,
-        app.futures_focus,
-        future_position,
-        total_futures,
-    );
-
-    // Render calls panel if visible
-    if let Some(calls_area) = calls_area {
-        let future_label = app
-            .futures_table_state
-            .selected()
-            .and_then(|i| stats.get(i))
-            .map(|stat| {
-                if stat.label.is_empty() {
-                    stat.id.to_string()
-                } else {
-                    stat.label.clone()
-                }
-            })
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        if let Some(ref calls) = app.future_calls {
-            future_calls::render_calls_panel(
-                calls,
-                &future_label,
-                calls_area,
-                frame,
-                &mut app.future_calls_table_state,
-                app.futures_focus == FuturesFocus::Calls,
-            );
-        } else {
-            let message = if app.paused {
-                "(refresh paused)"
-            } else if app.error_message.is_some() {
-                "(cannot fetch new data)"
-            } else {
-                "(no data)"
-            };
-            future_calls::render_calls_placeholder(&future_label, message, calls_area, frame);
-        }
-    }
-
-    if app.futures_focus == FuturesFocus::Inspect {
-        if let Some(ref inspected_call) = app.inspected_future_call {
-            future_inspect::render_inspect_popup(inspected_call, area, frame);
-        }
-    }
 }
 
 #[hotpath::measure]
@@ -671,9 +437,7 @@ fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: Sel
     let titles = vec![
         create_tab_line(SelectedTab::Timing),
         create_tab_line(SelectedTab::Memory),
-        create_tab_line(SelectedTab::Futures),
-        create_tab_line(SelectedTab::Channels),
-        create_tab_line(SelectedTab::Streams),
+        create_tab_line(SelectedTab::DataFlow),
         create_tab_line(SelectedTab::Threads),
         create_tab_line(SelectedTab::Debug),
     ];

@@ -1,11 +1,11 @@
 //! Common utilities for channel wrappers.
 
 use std::mem;
-use std::sync::atomic::Ordering;
 
 use crossbeam_channel::Sender as CbSender;
 
-use crate::channels::{init_channels_state, ChannelEvent, ChannelType, CHANNEL_ID_COUNTER};
+use crate::channels::{init_channels_state, ChannelEvent, ChannelType};
+use crate::data_flow::next_data_flow_id;
 
 #[cfg(target_os = "linux")]
 pub use quanta::Instant;
@@ -24,7 +24,7 @@ pub fn register_channel<T>(
 ) -> RegisteredChannel {
     let type_name = std::any::type_name::<T>();
     let (stats_tx, _) = init_channels_state();
-    let id = CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let id = next_data_flow_id();
 
     let _ = stats_tx.send(ChannelEvent::Created {
         id,

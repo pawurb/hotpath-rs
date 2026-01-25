@@ -2,7 +2,6 @@
 
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
@@ -169,8 +168,6 @@ type ChannelStatsState = (
 static CHANNELS_STATE: OnceLock<ChannelStatsState> = OnceLock::new();
 
 pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
-
-pub(crate) static CHANNEL_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const DEFAULT_LOG_LIMIT: usize = 50;
 

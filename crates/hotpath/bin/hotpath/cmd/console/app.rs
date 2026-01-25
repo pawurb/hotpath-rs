@@ -2,10 +2,9 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
-    JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
+    JsonChannelLogsList, JsonChannelSentLog, JsonDataFlowList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList,
-    JsonThreadsList,
+    JsonFutureLog, JsonFutureLogsList, JsonStreamLogsList, JsonThreadsList,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -21,9 +20,7 @@ pub(crate) enum SelectedTab {
     #[default]
     Timing,
     Memory,
-    Futures,
-    Channels,
-    Streams,
+    DataFlow,
     Threads,
     Debug,
 }
@@ -33,11 +30,9 @@ impl SelectedTab {
         match self {
             SelectedTab::Timing => 1,
             SelectedTab::Memory => 2,
-            SelectedTab::Futures => 3,
-            SelectedTab::Channels => 4,
-            SelectedTab::Streams => 5,
-            SelectedTab::Threads => 6,
-            SelectedTab::Debug => 7,
+            SelectedTab::DataFlow => 3,
+            SelectedTab::Threads => 4,
+            SelectedTab::Debug => 5,
         }
     }
 
@@ -45,33 +40,12 @@ impl SelectedTab {
         match self {
             SelectedTab::Timing => "Timing",
             SelectedTab::Memory => "Memory",
-            SelectedTab::Futures => "Futures",
-            SelectedTab::Channels => "Channels",
-            SelectedTab::Streams => "Streams",
+            SelectedTab::DataFlow => "Data Flow",
             SelectedTab::Threads => "Threads",
             SelectedTab::Debug => "Debug",
         }
     }
 
-    pub(crate) fn is_functions_tab(&self) -> bool {
-        matches!(self, SelectedTab::Timing | SelectedTab::Memory)
-    }
-}
-
-/// Represents which UI component has focus in the Channels tab
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChannelsFocus {
-    Channels,
-    Logs,
-    Inspect,
-}
-
-/// Represents which UI component has focus in the Streams tab
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StreamsFocus {
-    Streams,
-    Logs,
-    Inspect,
 }
 
 /// Represents which UI component has focus in the Functions tab
@@ -82,11 +56,11 @@ pub(crate) enum FunctionsFocus {
     Inspect,
 }
 
-/// Represents which UI component has focus in the Futures tab
+/// Represents which UI component has focus in the Data Flow tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FuturesFocus {
-    Futures,
-    Calls,
+pub(crate) enum DataFlowFocus {
+    List,
+    Logs,
     Inspect,
 }
 
@@ -97,8 +71,6 @@ pub(crate) enum DebugFocus {
     Logs,
     Inspect,
 }
-
-pub(crate) type CachedLogs = JsonChannelLogsList;
 
 /// Inspected function log entry for the inspect popup
 #[derive(Debug, Clone)]
@@ -117,20 +89,31 @@ pub(crate) struct InspectedFunctionLog {
     pub(crate) result: Option<String>,
 }
 
-pub(crate) type CachedStreamLogs = JsonStreamLogsList;
 pub(crate) type CachedDebugLogs = Vec<JsonDebugLog>;
+
+/// Logs for a data flow entry (can be channel, stream, or future)
+#[derive(Debug, Clone)]
+pub(crate) enum DataFlowLogs {
+    Channel(JsonChannelLogsList),
+    Stream(JsonStreamLogsList),
+    Future(JsonFutureLogsList),
+}
+
+/// Inspected log for data flow (can be channel sent log, stream log, or future call)
+#[derive(Debug, Clone)]
+pub(crate) enum InspectedDataFlowLog {
+    ChannelSent(JsonChannelSentLog),
+    Stream(JsonDataFlowLog),
+    FutureCall(JsonFutureLog),
+}
 
 pub(crate) struct App {
     pub(crate) timing_functions: JsonFunctionsList,
     pub(crate) memory_functions: JsonFunctionsList,
     pub(crate) memory_available: bool,
-    pub(crate) channels: JsonChannelsList,
-    pub(crate) streams: JsonStreamsList,
 
     pub(crate) timing_table_state: TableState,
     pub(crate) memory_table_state: TableState,
-    pub(crate) channels_table_state: TableState,
-    pub(crate) streams_table_state: TableState,
     pub(crate) selected_tab: SelectedTab,
     pub(crate) paused: bool,
 
@@ -153,32 +136,20 @@ pub(crate) struct App {
     exit: bool,
 
     pub(crate) loading_functions: bool,
-    pub(crate) loading_channels: bool,
-    pub(crate) loading_streams: bool,
+    pub(crate) loading_data_flow: bool,
     pub(crate) loading_threads: bool,
-    pub(crate) loading_futures: bool,
+    pub(crate) loading_debug: bool,
 
-    pub(crate) channel_logs_table_state: TableState,
-    pub(crate) channels_focus: ChannelsFocus,
-    pub(crate) show_logs: bool,
-    pub(crate) logs: Option<CachedLogs>,
-    pub(crate) inspected_log: Option<JsonChannelSentLog>,
+    pub(crate) data_flow: JsonDataFlowList,
+    pub(crate) data_flow_table_state: TableState,
+    pub(crate) data_flow_focus: DataFlowFocus,
+    pub(crate) show_data_flow_logs: bool,
+    pub(crate) data_flow_logs: Option<DataFlowLogs>,
+    pub(crate) data_flow_logs_table_state: TableState,
+    pub(crate) inspected_data_flow_log: Option<InspectedDataFlowLog>,
 
-    pub(crate) stream_logs_table_state: TableState,
-    pub(crate) streams_focus: StreamsFocus,
-    pub(crate) show_stream_logs: bool,
-    pub(crate) stream_logs: Option<CachedStreamLogs>,
-    pub(crate) inspected_stream_log: Option<JsonDataFlowLog>,
     pub(crate) threads: JsonThreadsList,
     pub(crate) threads_table_state: TableState,
-
-    pub(crate) futures: JsonFuturesList,
-    pub(crate) futures_table_state: TableState,
-    pub(crate) futures_focus: FuturesFocus,
-    pub(crate) show_future_calls: bool,
-    pub(crate) future_calls_table_state: TableState,
-    pub(crate) future_calls: Option<JsonFutureLogsList>,
-    pub(crate) inspected_future_call: Option<JsonFutureLog>,
 
     pub(crate) debug_stats: Vec<JsonDebugEntry>,
     pub(crate) debug_table_state: TableState,
@@ -187,7 +158,6 @@ pub(crate) struct App {
     pub(crate) debug_logs: Option<CachedDebugLogs>,
     pub(crate) debug_logs_table_state: TableState,
     pub(crate) inspected_debug_log: Option<JsonDebugLog>,
-    pub(crate) loading_debug: bool,
 }
 
 #[hotpath::measure_all]
@@ -217,18 +187,8 @@ impl App {
             timing_functions: empty_functions.clone(),
             memory_functions: empty_functions,
             memory_available: true,
-            channels: JsonChannelsList {
-                current_elapsed_ns: 0,
-                channels: vec![],
-            },
-            streams: JsonStreamsList {
-                current_elapsed_ns: 0,
-                streams: vec![],
-            },
             timing_table_state: TableState::default().with_selected(0),
             memory_table_state: TableState::default().with_selected(0),
-            channels_table_state: TableState::default().with_selected(0),
-            streams_table_state: TableState::default().with_selected(0),
             selected_tab: SelectedTab::default(),
             paused: false,
             last_refresh: Instant::now(),
@@ -247,20 +207,19 @@ impl App {
             metrics_host: base_url,
             exit: false,
             loading_functions: false,
-            loading_channels: false,
-            loading_streams: false,
+            loading_data_flow: false,
             loading_threads: false,
-            loading_futures: false,
-            channel_logs_table_state: TableState::default(),
-            channels_focus: ChannelsFocus::Channels,
-            show_logs: false,
-            logs: None,
-            inspected_log: None,
-            stream_logs_table_state: TableState::default(),
-            streams_focus: StreamsFocus::Streams,
-            show_stream_logs: false,
-            stream_logs: None,
-            inspected_stream_log: None,
+            loading_debug: false,
+            data_flow: JsonDataFlowList {
+                current_elapsed_ns: 0,
+                entries: vec![],
+            },
+            data_flow_table_state: TableState::default().with_selected(0),
+            data_flow_focus: DataFlowFocus::List,
+            show_data_flow_logs: false,
+            data_flow_logs: None,
+            data_flow_logs_table_state: TableState::default(),
+            inspected_data_flow_log: None,
             threads: JsonThreadsList {
                 current_elapsed_ns: 0,
                 sample_interval_ms: 1000,
@@ -272,16 +231,6 @@ impl App {
                 alloc_dealloc_diff: None,
             },
             threads_table_state: TableState::default().with_selected(0),
-            futures: JsonFuturesList {
-                current_elapsed_ns: 0,
-                futures: vec![],
-            },
-            futures_table_state: TableState::default().with_selected(0),
-            futures_focus: FuturesFocus::Futures,
-            show_future_calls: false,
-            future_calls_table_state: TableState::default(),
-            future_calls: None,
-            inspected_future_call: None,
             debug_stats: Vec::new(),
             debug_table_state: TableState::default().with_selected(0),
             debug_focus: DebugFocus::Debug,
@@ -289,7 +238,6 @@ impl App {
             debug_logs: None,
             debug_logs_table_state: TableState::default(),
             inspected_debug_log: None,
-            loading_debug: false,
         }
     }
 
@@ -309,10 +257,8 @@ impl App {
         match self.selected_tab {
             SelectedTab::Timing => &mut self.timing_table_state,
             SelectedTab::Memory => &mut self.memory_table_state,
-            SelectedTab::Channels => &mut self.channels_table_state,
-            SelectedTab::Streams => &mut self.streams_table_state,
+            SelectedTab::DataFlow => &mut self.data_flow_table_state,
             SelectedTab::Threads => &mut self.threads_table_state,
-            SelectedTab::Futures => &mut self.futures_table_state,
             SelectedTab::Debug => &mut self.debug_table_state,
         }
     }
