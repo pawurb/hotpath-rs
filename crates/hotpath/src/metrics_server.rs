@@ -175,6 +175,23 @@ fn handle_request(request: Request) {
                 "Thread monitoring not available - enable threads feature",
             );
         }
+        #[cfg(feature = "tokio")]
+        Ok(Route::TokioRuntime) => match crate::tokio_runtime::get_runtime_json() {
+            Some(snapshot) => respond_json(request, &snapshot),
+            None => respond_error(
+                request,
+                404,
+                "No runtime metrics detected, use hotpath::tokio_runtime!() to enable",
+            ),
+        },
+        #[cfg(not(feature = "tokio"))]
+        Ok(Route::TokioRuntime) => {
+            respond_error(
+                request,
+                404,
+                "Tokio runtime not available - enable the tokio feature flag",
+            );
+        }
         Err(_) => respond_error(request, 404, "Not found"),
     }
 }
@@ -201,7 +218,12 @@ fn respond_json<T: Serialize>(request: Request, value: &T) {
 }
 
 fn respond_error(request: Request, code: u16, msg: &str) {
-    let _ = request.respond(Response::from_string(msg).with_status_code(code));
+    let body = format!(r#"{{"error":"{}"}}"#, msg);
+    let mut response = Response::from_string(body).with_status_code(code);
+    response.add_header(
+        Header::from_bytes(b"Content-Type".as_slice(), b"application/json".as_slice()).unwrap(),
+    );
+    let _ = request.respond(response);
 }
 
 fn respond_internal_error(request: Request, e: impl Display) {

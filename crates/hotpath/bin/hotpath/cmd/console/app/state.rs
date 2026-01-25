@@ -355,6 +355,40 @@ impl App {
         self.data_flow_logs_table_state.select(None);
     }
 
+    // Runtime tab state management
+
+    pub(crate) fn select_previous_runtime_worker(&mut self) {
+        let count = self
+            .tokio_runtime
+            .as_ref()
+            .map(|s| s.workers.len())
+            .unwrap_or(0);
+        if count == 0 {
+            return;
+        }
+        let i = match self.runtime_table_state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        self.runtime_table_state.select(Some(i));
+    }
+
+    pub(crate) fn select_next_runtime_worker(&mut self) {
+        let count = self
+            .tokio_runtime
+            .as_ref()
+            .map(|s| s.workers.len())
+            .unwrap_or(0);
+        if count == 0 {
+            return;
+        }
+        let i = match self.runtime_table_state.selected() {
+            Some(i) => (i + 1).min(count - 1),
+            None => 0,
+        };
+        self.runtime_table_state.select(Some(i));
+    }
+
     // Threads tab state management
 
     pub(crate) fn select_previous_thread(&mut self) {

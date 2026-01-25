@@ -271,6 +271,8 @@ pub enum Route {
     DataFlowStreamLogs { stream_id: u64 },
     /// GET /data_flow/future/{id}/logs - Returns calls for a specific future
     DataFlowFutureLogs { future_id: u64 },
+    /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
+    TokioRuntime,
 }
 
 impl Route {
@@ -305,6 +307,7 @@ impl Route {
             Route::DataFlowFutureLogs { future_id } => {
                 format!("/data_flow/future/{}/logs", future_id)
             }
+            Route::TokioRuntime => "/tokio_runtime".to_string(),
         }
     }
 
@@ -353,6 +356,7 @@ impl FromStr for Route {
             "/threads" => return Ok(Route::Threads),
             "/debug" => return Ok(Route::Debug),
             "/data_flow" => return Ok(Route::DataFlow),
+            "/tokio_runtime" => return Ok(Route::TokioRuntime),
             _ => {}
         }
 

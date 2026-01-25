@@ -4,8 +4,8 @@ use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonDataFlowList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
-    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonStreamLogsList,
-    JsonThreadsList,
+    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonRuntimeSnapshot,
+    JsonStreamLogsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
@@ -15,6 +15,7 @@ pub(crate) enum DataRequest {
     RefreshDataFlow,
     RefreshThreads,
     RefreshDebug,
+    RefreshTokioRuntime,
     FetchFunctionLogsTiming(String),
     FetchFunctionLogsAlloc(String),
     FetchDataFlowChannelLogs(u64),
@@ -33,6 +34,7 @@ impl DataRequest {
             DataRequest::RefreshDataFlow => Route::DataFlow,
             DataRequest::RefreshThreads => Route::Threads,
             DataRequest::RefreshDebug => Route::Debug,
+            DataRequest::RefreshTokioRuntime => Route::TokioRuntime,
             DataRequest::FetchFunctionLogsTiming(name) => Route::FunctionTimingLogs {
                 function_name: name.clone(),
             },
@@ -104,6 +106,7 @@ pub(crate) enum DataResponse {
     DebugLogsNotFound {
         id: u64,
     },
+    TokioRuntime(JsonRuntimeSnapshot),
     Error(String),
 }
 

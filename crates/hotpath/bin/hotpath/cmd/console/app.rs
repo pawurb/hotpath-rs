@@ -4,7 +4,7 @@ use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelSentLog, JsonDataFlowList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLog, JsonFutureLogsList, JsonStreamLogsList, JsonThreadsList,
+    JsonFutureLog, JsonFutureLogsList, JsonRuntimeSnapshot, JsonStreamLogsList, JsonThreadsList,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -23,6 +23,7 @@ pub(crate) enum SelectedTab {
     DataFlow,
     Threads,
     Debug,
+    Runtime,
 }
 
 impl SelectedTab {
@@ -33,6 +34,7 @@ impl SelectedTab {
             SelectedTab::DataFlow => 3,
             SelectedTab::Threads => 4,
             SelectedTab::Debug => 5,
+            SelectedTab::Runtime => 6,
         }
     }
 
@@ -43,6 +45,7 @@ impl SelectedTab {
             SelectedTab::DataFlow => "Data Flow",
             SelectedTab::Threads => "Threads",
             SelectedTab::Debug => "Debug",
+            SelectedTab::Runtime => "Runtime",
         }
     }
 }
@@ -157,6 +160,10 @@ pub(crate) struct App {
     pub(crate) debug_logs: Option<CachedDebugLogs>,
     pub(crate) debug_logs_table_state: TableState,
     pub(crate) inspected_debug_log: Option<JsonDebugLog>,
+
+    pub(crate) tokio_runtime: Option<JsonRuntimeSnapshot>,
+    pub(crate) runtime_table_state: TableState,
+    pub(crate) loading_runtime: bool,
 }
 
 #[hotpath::measure_all]
@@ -241,6 +248,10 @@ impl App {
             debug_logs: None,
             debug_logs_table_state: TableState::default(),
             inspected_debug_log: None,
+
+            tokio_runtime: None,
+            runtime_table_state: TableState::default().with_selected(0),
+            loading_runtime: false,
         }
     }
 
@@ -263,6 +274,7 @@ impl App {
             SelectedTab::DataFlow => &mut self.data_flow_table_state,
             SelectedTab::Threads => &mut self.threads_table_state,
             SelectedTab::Debug => &mut self.debug_table_state,
+            SelectedTab::Runtime => &mut self.runtime_table_state,
         }
     }
 

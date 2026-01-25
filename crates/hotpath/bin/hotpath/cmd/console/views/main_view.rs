@@ -10,7 +10,7 @@ use crate::cmd::console::views::functions_timing::{
     inspect as timing_inspect, logs as timing_logs,
 };
 use crate::cmd::console::views::{
-    bottom_bar, data_flow, debug, functions_memory, functions_timing, threads, top_bar,
+    bottom_bar, data_flow, debug, functions_memory, functions_timing, runtime, threads, top_bar,
 };
 use hotpath::json::DataFlowType;
 use ratatui::{
@@ -40,6 +40,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         SelectedTab::DataFlow => !app.data_flow.entries.is_empty(),
         SelectedTab::Threads => !app.threads.threads.is_empty(),
         SelectedTab::Debug => !app.debug_stats.is_empty(),
+        SelectedTab::Runtime => app.tokio_runtime.is_some(),
     };
 
     top_bar::render_status_bar(
@@ -124,6 +125,9 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         }
         SelectedTab::Debug => {
             render_debug_view(frame, app, main_chunks[2]);
+        }
+        SelectedTab::Runtime => {
+            render_runtime_view(frame, app, main_chunks[2]);
         }
     }
 
@@ -416,6 +420,54 @@ fn render_debug_view(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 #[hotpath::measure]
+fn render_runtime_view(frame: &mut Frame, app: &mut App, area: Rect) {
+    let snap = app.tokio_runtime.as_ref();
+
+    if let Some(ref error_msg) = app.error_message {
+        if snap.is_none() {
+            let error_text = vec![
+                Line::from(""),
+                Line::from("Error").red().bold().centered(),
+                Line::from(""),
+                Line::from(error_msg.as_str()).red().centered(),
+            ];
+
+            let block = Block::bordered().border_set(border::THICK);
+            frame.render_widget(Paragraph::new(error_text).block(block), area);
+            return;
+        }
+    }
+
+    let Some(snap) = snap else {
+        let empty_text = vec![
+            Line::from(""),
+            Line::from("No Tokio runtime metrics available")
+                .yellow()
+                .centered(),
+            Line::from(""),
+            Line::from("Use hotpath::tokio_runtime!() in your application").centered(),
+        ];
+
+        let block = Block::bordered().border_set(border::THICK);
+        frame.render_widget(Paragraph::new(empty_text).block(block), area);
+        return;
+    };
+
+    let selected_index = app.runtime_table_state.selected().unwrap_or(0);
+    let worker_position = selected_index + 1;
+    let total_workers = snap.workers.len();
+
+    runtime::render_runtime_panel(
+        snap,
+        area,
+        frame,
+        &mut app.runtime_table_state,
+        worker_position,
+        total_workers,
+    );
+}
+
+#[hotpath::measure]
 fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: SelectedTab) {
     let create_tab_line = |tab: SelectedTab| {
         let name = if tab == selected_tab {
@@ -440,6 +492,7 @@ fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: Sel
         create_tab_line(SelectedTab::DataFlow),
         create_tab_line(SelectedTab::Threads),
         create_tab_line(SelectedTab::Debug),
+        create_tab_line(SelectedTab::Runtime),
     ];
 
     let selected_index = (selected_tab.number() - 1) as usize;

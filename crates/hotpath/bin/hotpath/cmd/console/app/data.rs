@@ -328,6 +328,10 @@ impl App {
                 self.loading_debug = true;
                 DataRequest::RefreshDebug
             }
+            SelectedTab::Runtime => {
+                self.loading_runtime = true;
+                DataRequest::RefreshTokioRuntime
+            }
         };
         trace!("Requesting refresh for tab: {}", self.selected_tab.name());
         let _ = self.request_tx.send(request);
@@ -431,12 +435,20 @@ impl App {
             DataResponse::DebugLogsNotFound { .. } => {
                 self.debug_logs = None;
             }
+            DataResponse::TokioRuntime(snapshot) => {
+                trace!("Received tokio runtime snapshot");
+                self.loading_runtime = false;
+                self.tokio_runtime = Some(snapshot);
+                self.last_successful_fetch = Some(Instant::now());
+                self.error_message = None;
+            }
             DataResponse::Error(e) => {
                 warn!("Data fetch error: {}", e);
                 self.loading_functions = false;
                 self.loading_data_flow = false;
                 self.loading_threads = false;
                 self.loading_debug = false;
+                self.loading_runtime = false;
                 self.set_error(e);
             }
         }

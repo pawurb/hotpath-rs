@@ -758,3 +758,46 @@ pub struct JsonDebugLog {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonRuntimeWorker {
+    pub index: usize,
+    pub park_count: u64,
+    pub busy_duration_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poll_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steal_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steal_operations: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overflow_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_queue_depth: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mean_poll_time_us: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonRuntimeSnapshot {
+    pub num_workers: usize,
+    pub num_alive_tasks: usize,
+    pub global_queue_depth: usize,
+    pub workers: Vec<JsonRuntimeWorker>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_blocking_threads: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_idle_blocking_threads: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocking_queue_depth: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spawned_tasks_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_schedule_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub io_driver_fd_registered_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub io_driver_fd_deregistered_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub io_driver_ready_count: Option<u64>,
+}

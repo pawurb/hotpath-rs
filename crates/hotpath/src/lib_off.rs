@@ -133,6 +133,12 @@ macro_rules! stream {
 }
 
 #[macro_export]
+macro_rules! tokio_runtime {
+    () => {};
+    ($handle:expr) => {};
+}
+
+#[macro_export]
 macro_rules! future {
     ($fut:expr) => {
         $fut

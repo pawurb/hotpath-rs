@@ -29,117 +29,118 @@ pub(crate) fn render_help_bar(
     functions_focus: FunctionsFocus,
     debug_focus: DebugFocus,
 ) {
-    let controls_line = if selected_tab == SelectedTab::Threads {
-        Line::from(vec![
-            NAV_KEYS_FULL.blue().bold(),
-            PAUSE_LABEL.into(),
-            PAUSE_KEY.blue().bold(),
-            QUIT_LABEL.into(),
-            QUIT_KEY.blue().bold(),
-        ])
-    } else if selected_tab == SelectedTab::DataFlow {
-        match data_flow_focus {
-            DataFlowFocus::List => Line::from(vec![
+    let controls_line =
+        if selected_tab == SelectedTab::Threads || selected_tab == SelectedTab::Runtime {
+            Line::from(vec![
                 NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
                 PAUSE_LABEL.into(),
                 PAUSE_KEY.blue().bold(),
                 QUIT_LABEL.into(),
                 QUIT_KEY.blue().bold(),
-            ]),
-            DataFlowFocus::Logs => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                INSPECT_LABEL.into(),
-                INSPECT_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            DataFlowFocus::Inspect => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                CLOSE_LABEL.into(),
-                CLOSE_KEYS.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-        }
-    } else if selected_tab == SelectedTab::Debug {
-        match debug_focus {
-            DebugFocus::Debug => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            DebugFocus::Logs => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                INSPECT_LABEL.into(),
-                INSPECT_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            DebugFocus::Inspect => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                CLOSE_LABEL.into(),
-                CLOSE_KEYS.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-        }
-    } else {
-        match functions_focus {
-            FunctionsFocus::Functions => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            FunctionsFocus::Logs => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                INSPECT_LABEL.into(),
-                INSPECT_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-            FunctionsFocus::Inspect => Line::from(vec![
-                NAV_KEYS_FULL.blue().bold(),
-                TOGGLE_LOGS_LABEL.into(),
-                TOGGLE_LOGS_KEY.blue().bold(),
-                PAUSE_LABEL.into(),
-                PAUSE_KEY.blue().bold(),
-                CLOSE_LABEL.into(),
-                CLOSE_KEYS.blue().bold(),
-                QUIT_LABEL.into(),
-                QUIT_KEY.blue().bold(),
-            ]),
-        }
-    };
+            ])
+        } else if selected_tab == SelectedTab::DataFlow {
+            match data_flow_focus {
+                DataFlowFocus::List => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+                DataFlowFocus::Logs => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    INSPECT_LABEL.into(),
+                    INSPECT_KEY.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+                DataFlowFocus::Inspect => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    CLOSE_LABEL.into(),
+                    CLOSE_KEYS.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+            }
+        } else if selected_tab == SelectedTab::Debug {
+            match debug_focus {
+                DebugFocus::Debug => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+                DebugFocus::Logs => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    INSPECT_LABEL.into(),
+                    INSPECT_KEY.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+                DebugFocus::Inspect => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    CLOSE_LABEL.into(),
+                    CLOSE_KEYS.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+            }
+        } else {
+            match functions_focus {
+                FunctionsFocus::Functions => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+                FunctionsFocus::Logs => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    INSPECT_LABEL.into(),
+                    INSPECT_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+                FunctionsFocus::Inspect => Line::from(vec![
+                    NAV_KEYS_FULL.blue().bold(),
+                    TOGGLE_LOGS_LABEL.into(),
+                    TOGGLE_LOGS_KEY.blue().bold(),
+                    PAUSE_LABEL.into(),
+                    PAUSE_KEY.blue().bold(),
+                    CLOSE_LABEL.into(),
+                    CLOSE_KEYS.blue().bold(),
+                    QUIT_LABEL.into(),
+                    QUIT_KEY.blue().bold(),
+                ]),
+            }
+        };
 
     let block = Block::bordered().border_set(border::PLAIN);
 

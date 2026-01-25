@@ -19,6 +19,8 @@ pub mod futures;
 pub mod streams;
 #[cfg(feature = "threads")]
 pub mod threads;
+#[cfg(feature = "tokio")]
+pub mod tokio_runtime;
 
 pub mod functions;
 
@@ -185,6 +187,16 @@ macro_rules! gauge {
         const GAUGE_LOC: &'static str = concat!(file!(), ":", line!());
         $crate::debug::gauge::GaugeHandle::new($key, GAUGE_LOC)
     }};
+}
+
+#[macro_export]
+macro_rules! tokio_runtime {
+    () => {
+        hotpath::tokio_runtime::init_runtime_monitoring(&tokio::runtime::Handle::current());
+    };
+    ($handle:expr) => {
+        hotpath::tokio_runtime::init_runtime_monitoring($handle);
+    };
 }
 
 #[cfg(test)]

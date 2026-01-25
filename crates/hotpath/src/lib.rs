@@ -20,6 +20,8 @@ pub use lib_on::futures;
 pub use lib_on::streams;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off"), feature = "threads"))]
 pub use lib_on::threads;
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off"), feature = "tokio"))]
+pub use lib_on::tokio_runtime;
 
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
 pub(crate) mod output;

@@ -5,6 +5,7 @@ pub(crate) mod debug;
 pub(crate) mod functions_memory;
 pub(crate) mod functions_timing;
 pub(crate) mod main_view;
+pub(crate) mod runtime;
 pub(crate) mod threads;
 pub(crate) mod top_bar;
 pub(crate) use main_view::render_ui;

@@ -5,7 +5,7 @@ use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonDataFlowList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
     JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonStreamLogsList, JsonThreadsList,
+    JsonFutureLogsList, JsonRuntimeSnapshot, JsonStreamLogsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -24,6 +24,7 @@ enum RequestKey {
     DataFlow,
     Threads,
     Debug,
+    TokioRuntime,
     FunctionLogsTiming,
     FunctionLogsAlloc,
     DataFlowChannelLogs,
@@ -42,6 +43,7 @@ impl DataRequest {
             DataRequest::RefreshDataFlow => RequestKey::DataFlow,
             DataRequest::RefreshThreads => RequestKey::Threads,
             DataRequest::RefreshDebug => RequestKey::Debug,
+            DataRequest::RefreshTokioRuntime => RequestKey::TokioRuntime,
             DataRequest::FetchFunctionLogsTiming(_) => RequestKey::FunctionLogsTiming,
             DataRequest::FetchFunctionLogsAlloc(_) => RequestKey::FunctionLogsAlloc,
             DataRequest::FetchDataFlowChannelLogs(_) => RequestKey::DataFlowChannelLogs,
@@ -62,6 +64,7 @@ pub(crate) fn spawn_http_worker(
     std::thread::spawn(move || {
         info!("HTTP worker started, connecting to {}", base_url);
         let rt = Runtime::new().expect("Failed to create Tokio runtime");
+        hotpath::tokio_runtime!(rt.handle());
         let client = reqwest::Client::builder()
             .timeout(Duration::from_millis(HTTP_TIMEOUT_MS))
             .build()
@@ -123,6 +126,12 @@ impl RouteExt for Route {
                 trace!("Resource not found: {}", url);
                 return not_found;
             }
+            let body = resp.text().await.unwrap_or_default();
+            let msg = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("error")?.as_str().map(String::from))
+                .unwrap_or(body);
+            return DataResponse::Error(msg);
         }
 
         let resp = match resp.error_for_status() {
@@ -235,6 +244,9 @@ impl RouteExt for Route {
                     id: *id,
                     logs: logs.logs,
                 })
+            }
+            Route::TokioRuntime => {
+                parse_json::<JsonRuntimeSnapshot>(bytes).map(DataResponse::TokioRuntime)
             }
         }
         .unwrap_or_else(|e| DataResponse::Error(format!("JSON parse error: {}", e)))

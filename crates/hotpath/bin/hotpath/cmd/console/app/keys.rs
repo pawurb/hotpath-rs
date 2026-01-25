@@ -14,6 +14,7 @@ impl App {
             KeyCode::Char('3') => self.switch_to_tab(SelectedTab::DataFlow),
             KeyCode::Char('4') => self.switch_to_tab(SelectedTab::Threads),
             KeyCode::Char('5') => self.switch_to_tab(SelectedTab::Debug),
+            KeyCode::Char('6') => self.switch_to_tab(SelectedTab::Runtime),
             _ => self.handle_tab_specific_key(key_code),
         }
     }
@@ -31,6 +32,9 @@ impl App {
             }
             SelectedTab::Debug => {
                 self.handle_debug_key(key_code);
+            }
+            SelectedTab::Runtime => {
+                self.handle_runtime_key(key_code);
             }
         }
     }
@@ -123,6 +127,14 @@ impl App {
         match key_code {
             KeyCode::Down | KeyCode::Char('j') => self.select_next_thread(),
             KeyCode::Up | KeyCode::Char('k') => self.select_previous_thread(),
+            _ => {}
+        }
+    }
+
+    fn handle_runtime_key(&mut self, key_code: KeyCode) {
+        match key_code {
+            KeyCode::Down | KeyCode::Char('j') => self.select_next_runtime_worker(),
+            KeyCode::Up | KeyCode::Char('k') => self.select_previous_runtime_worker(),
             _ => {}
         }
     }
