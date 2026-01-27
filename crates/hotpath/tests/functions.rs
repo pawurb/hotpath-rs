@@ -882,6 +882,50 @@ pub mod tests {
         }
     }
 
+    // HOTPATH_EXCLUDE_WRAPPER=1 cargo run -p test-tokio-async --example basic --features hotpath
+    #[test]
+    fn test_exclude_wrapper_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "basic",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_EXCLUDE_WRAPPER", "1")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let expected_content = [
+            "basic::sync_function",
+            "basic::async_function",
+            "custom_block",
+        ];
+
+        for expected in expected_content {
+            assert!(
+                stdout.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+
+        assert!(
+            !stdout.contains("\"name\":\"basic::main\""),
+            "Wrapper function 'basic::main' should not be in data array when HOTPATH_EXCLUDE_WRAPPER=1\n\nGot:\n{stdout}"
+        );
+    }
+
     // HOTPATH_METRICS_PORT=6776 HOTPATH_METRICS_SERVER_OFF=true TEST_SLEEP_SECONDS=5 cargo run -p test-tokio-async --example basic --features hotpath
     #[test]
     fn test_disable_http_server() {

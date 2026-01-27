@@ -59,10 +59,13 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
+        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
         let mut filtered_stats: Vec<_> = self
             .stats
             .iter()
-            .filter(|(_, s)| s.has_data && !(s.wrapper && s.cross_thread))
+            .filter(|(_, s)| {
+                s.has_data && !(s.wrapper && s.cross_thread) && !(exclude_wrapper && s.wrapper)
+            })
             .collect();
 
         filtered_stats.sort_by(|a, b| {
@@ -80,7 +83,13 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             filtered_stats
         };
 
-        let grand_total_bytes: u64 = if super::shared::is_alloc_self_enabled() {
+        let grand_total_bytes: u64 = if crate::functions::is_exclude_wrapper_enabled() {
+            self.stats
+                .iter()
+                .filter(|(_, s)| !s.wrapper && s.has_data)
+                .map(|(_, stats)| stats.total_bytes())
+                .sum()
+        } else if super::shared::is_alloc_self_enabled() {
             self.stats
                 .iter()
                 .filter(|(_, s)| s.has_data)
@@ -162,10 +171,13 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn entry_counts(&self) -> (usize, usize) {
+        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
         let total_count = self
             .stats
             .iter()
-            .filter(|(_, s)| s.has_data && !(s.wrapper && s.cross_thread))
+            .filter(|(_, s)| {
+                s.has_data && !(s.wrapper && s.cross_thread) && !(exclude_wrapper && s.wrapper)
+            })
             .count();
 
         let displayed_count = if self.limit > 0 && self.limit < total_count {
@@ -212,7 +224,12 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
     }
 
     fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
-        let mut filtered_stats: Vec<_> = self.stats.iter().filter(|(_, s)| s.has_data).collect();
+        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let mut filtered_stats: Vec<_> = self
+            .stats
+            .iter()
+            .filter(|(_, s)| s.has_data && !(exclude_wrapper && s.wrapper))
+            .collect();
 
         filtered_stats.sort_by(|a, b| {
             b.1.total_duration_ns
@@ -229,13 +246,20 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
             filtered_stats
         };
 
-        let wrapper_total = self
-            .stats
-            .iter()
-            .find(|(_, s)| s.wrapper)
-            .map(|(_, s)| s.total_duration_ns);
-
-        let reference_total = wrapper_total.unwrap_or(self.total_elapsed.as_nanos() as u64);
+        let reference_total = if exclude_wrapper {
+            self.stats
+                .iter()
+                .filter(|(_, s)| !s.wrapper && s.has_data)
+                .map(|(_, s)| s.total_duration_ns)
+                .sum::<u64>()
+        } else {
+            let wrapper_total = self
+                .stats
+                .iter()
+                .find(|(_, s)| s.wrapper)
+                .map(|(_, s)| s.total_duration_ns);
+            wrapper_total.unwrap_or(self.total_elapsed.as_nanos() as u64)
+        };
 
         filtered_stats
             .into_iter()
@@ -273,7 +297,12 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
     }
 
     fn entry_counts(&self) -> (usize, usize) {
-        let total_count = self.stats.iter().filter(|(_, s)| s.has_data).count();
+        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let total_count = self
+            .stats
+            .iter()
+            .filter(|(_, s)| s.has_data && !(exclude_wrapper && s.wrapper))
+            .count();
 
         let displayed_count = if self.limit > 0 && self.limit < total_count {
             self.limit

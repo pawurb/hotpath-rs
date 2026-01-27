@@ -44,15 +44,27 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
-        let wrapper_total = self
+        let reference_total = if crate::functions::is_exclude_wrapper_enabled() {
+            self.stats
+                .iter()
+                .filter(|(_, s)| !s.wrapper && s.has_data)
+                .map(|(_, s)| s.total_duration_ns)
+                .sum::<u64>()
+        } else {
+            let wrapper_total = self
+                .stats
+                .iter()
+                .find(|(_, s)| s.wrapper)
+                .map(|(_, s)| s.total_duration_ns);
+            wrapper_total.unwrap_or(self.total_elapsed.as_nanos() as u64)
+        };
+
+        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let mut entries: Vec<_> = self
             .stats
             .iter()
-            .find(|(_, s)| s.wrapper)
-            .map(|(_, s)| s.total_duration_ns);
-
-        let reference_total = wrapper_total.unwrap_or(self.total_elapsed.as_nanos() as u64);
-
-        let mut entries: Vec<_> = self.stats.iter().filter(|(_, s)| s.has_data).collect();
+            .filter(|(_, s)| s.has_data && !(exclude_wrapper && s.wrapper))
+            .collect();
 
         entries.sort_by(|a, b| {
             b.1.total_duration_ns
@@ -102,7 +114,12 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn entry_counts(&self) -> (usize, usize) {
-        let total_count = self.stats.iter().filter(|(_, s)| s.has_data).count();
+        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let total_count = self
+            .stats
+            .iter()
+            .filter(|(_, s)| s.has_data && !(exclude_wrapper && s.wrapper))
+            .count();
 
         let displayed_count = if self.limit > 0 && self.limit < total_count {
             self.limit

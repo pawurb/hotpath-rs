@@ -27,6 +27,13 @@ cfg_if::cfg_if! {
 
 pub(crate) use crate::output::truncate_result;
 
+#[inline]
+pub(crate) fn is_exclude_wrapper_enabled() -> bool {
+    std::env::var("HOTPATH_EXCLUDE_WRAPPER")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+}
+
 impl MeasurementGuard {
     pub fn build(measurement_name: &'static str, wrapper: bool, _is_async: bool) -> Self {
         #[allow(clippy::needless_bool)]
