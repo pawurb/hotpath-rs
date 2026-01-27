@@ -22,7 +22,7 @@ fn get_thread_id() -> Option<u64> {
 
 #[doc(hidden)]
 #[inline]
-pub fn log_dbg<T: Debug>(source: &'static str, expression: &'static str, value: &T) {
+pub fn log_dbg<T: Debug>(id: u64, source: &'static str, expression: &'static str, value: &T) {
     init_debug_state();
 
     let value_str = truncate_result(format!("{:?}", value));
@@ -30,6 +30,7 @@ pub fn log_dbg<T: Debug>(source: &'static str, expression: &'static str, value: 
     let tid = get_thread_id();
 
     send_debug_event(DebugEvent::Dbg {
+        id,
         source,
         expression,
         value: value_str,

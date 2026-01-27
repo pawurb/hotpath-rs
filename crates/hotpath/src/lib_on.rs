@@ -101,11 +101,15 @@ macro_rules! measure_block {
 #[macro_export]
 macro_rules! dbg {
     ($val:expr $(,)?) => {{
+        static DBG_ID: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        let id = *DBG_ID.get_or_init(|| {
+            $crate::debug::DEBUG_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        });
         const DBG_LOC: &'static str = concat!(file!(), ":", line!());
         const DBG_EXPR: &'static str = stringify!($val);
         match $val {
             tmp => {
-                $crate::debug::dbg::log_dbg(DBG_LOC, DBG_EXPR, &tmp);
+                $crate::debug::dbg::log_dbg(id, DBG_LOC, DBG_EXPR, &tmp);
                 tmp
             }
         }

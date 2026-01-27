@@ -10,7 +10,8 @@ use std::time::Instant;
 
 use crate::channels::{extract_filename, START_TIME};
 use crate::debug::{
-    get_sorted_debug_val_entries, init_debug_state, send_debug_event, DebugEvent, ValEntry,
+    get_or_create_val_id, get_sorted_debug_val_entries, init_debug_state, send_debug_event,
+    DebugEvent, ValEntry,
 };
 use crate::json::{format_time_ago, JsonDebugEntry, JsonDebugList, JsonDebugLog, JsonDebugValLogs};
 use crate::output::{format_duration, truncate_result};
@@ -20,6 +21,7 @@ fn get_thread_id() -> Option<u64> {
 }
 
 pub struct ValHandle {
+    id: u64,
     key: String,
     source: &'static str,
 }
@@ -28,10 +30,9 @@ impl ValHandle {
     #[inline]
     pub fn new(key: impl Into<String>, source: &'static str) -> Self {
         init_debug_state();
-        Self {
-            key: key.into(),
-            source,
-        }
+        let key = key.into();
+        let id = get_or_create_val_id(&key);
+        Self { id, key, source }
     }
 
     #[inline]
@@ -41,6 +42,7 @@ impl ValHandle {
         let tid = get_thread_id();
 
         send_debug_event(DebugEvent::Val {
+            id: self.id,
             key: self.key.clone(),
             source: self.source,
             value: value_str,

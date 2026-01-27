@@ -11,7 +11,7 @@ use quanta::Instant;
 use std::time::Instant;
 
 use crate::channels::{extract_filename, START_TIME};
-use crate::debug::{init_debug_state, send_debug_event, DebugEvent};
+use crate::debug::{get_or_create_gauge_id, init_debug_state, send_debug_event, DebugEvent};
 use crate::json::{format_time_ago, JsonDebugEntry, JsonDebugGaugeLogs, JsonDebugLog};
 use crate::output::format_duration;
 
@@ -55,6 +55,7 @@ impl GaugeEntry {
 }
 
 pub struct GaugeHandle {
+    id: u64,
     key: String,
     source: &'static str,
 }
@@ -63,10 +64,9 @@ impl GaugeHandle {
     #[inline]
     pub fn new(key: impl Into<String>, source: &'static str) -> Self {
         init_debug_state();
-        Self {
-            key: key.into(),
-            source,
-        }
+        let key = key.into();
+        let id = get_or_create_gauge_id(&key);
+        Self { id, key, source }
     }
 
     #[inline]
@@ -75,6 +75,7 @@ impl GaugeHandle {
         let tid = get_thread_id();
 
         send_debug_event(DebugEvent::Gauge {
+            id: self.id,
             key: self.key.clone(),
             source: self.source,
             value: value.into_f64(),
@@ -90,6 +91,7 @@ impl GaugeHandle {
         let tid = get_thread_id();
 
         send_debug_event(DebugEvent::GaugeInc {
+            id: self.id,
             key: self.key.clone(),
             source: self.source,
             delta: delta.into_f64(),
@@ -105,6 +107,7 @@ impl GaugeHandle {
         let tid = get_thread_id();
 
         send_debug_event(DebugEvent::GaugeDec {
+            id: self.id,
             key: self.key.clone(),
             source: self.source,
             delta: delta.into_f64(),
