@@ -151,12 +151,12 @@ pub(crate) enum DebugEvent {
 
 use gauge::{GaugeEntry, GaugeLog};
 
-type DebugState = (
-    CbSender<DebugEvent>,
-    Arc<RwLock<HashMap<u64, DbgEntry>>>,
-    Arc<RwLock<HashMap<u64, ValEntry>>>,
-    Arc<RwLock<HashMap<u64, GaugeEntry>>>,
-);
+struct DebugState {
+    event_tx: CbSender<DebugEvent>,
+    dbg: Arc<RwLock<HashMap<u64, DbgEntry>>>,
+    val: Arc<RwLock<HashMap<u64, ValEntry>>>,
+    gauge: Arc<RwLock<HashMap<u64, GaugeEntry>>>,
+}
 
 static DEBUG_STATE: OnceLock<DebugState> = OnceLock::new();
 
@@ -167,12 +167,12 @@ pub(crate) fn init_debug_state() {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<DebugEvent>();
-        let dbg_stats_map = Arc::new(RwLock::new(HashMap::<u64, DbgEntry>::new()));
-        let val_stats_map = Arc::new(RwLock::new(HashMap::<u64, ValEntry>::new()));
-        let gauge_stats_map = Arc::new(RwLock::new(HashMap::<u64, GaugeEntry>::new()));
-        let dbg_stats_clone = Arc::clone(&dbg_stats_map);
-        let val_stats_clone = Arc::clone(&val_stats_map);
-        let gauge_stats_clone = Arc::clone(&gauge_stats_map);
+        let dbg = Arc::new(RwLock::new(HashMap::<u64, DbgEntry>::new()));
+        let val = Arc::new(RwLock::new(HashMap::<u64, ValEntry>::new()));
+        let gauge = Arc::new(RwLock::new(HashMap::<u64, GaugeEntry>::new()));
+        let dbg_clone = Arc::clone(&dbg);
+        let val_clone = Arc::clone(&val);
+        let gauge_clone = Arc::clone(&gauge);
 
         std::thread::Builder::new()
             .name("hp-debug".into())
@@ -180,17 +180,17 @@ pub(crate) fn init_debug_state() {
                 while let Ok(event) = event_rx.recv() {
                     match event {
                         DebugEvent::Dbg { .. } => {
-                            let mut stats = dbg_stats_clone.write().unwrap();
+                            let mut stats = dbg_clone.write().unwrap();
                             process_dbg_event(&mut stats, event);
                         }
                         DebugEvent::Val { .. } => {
-                            let mut stats = val_stats_clone.write().unwrap();
+                            let mut stats = val_clone.write().unwrap();
                             process_val_event(&mut stats, event);
                         }
                         DebugEvent::Gauge { .. }
                         | DebugEvent::GaugeInc { .. }
                         | DebugEvent::GaugeDec { .. } => {
-                            let mut stats = gauge_stats_clone.write().unwrap();
+                            let mut stats = gauge_clone.write().unwrap();
                             process_gauge_event(&mut stats, event);
                         }
                     }
@@ -198,7 +198,12 @@ pub(crate) fn init_debug_state() {
             })
             .expect("Failed to spawn debug event collector thread");
 
-        (event_tx, dbg_stats_map, val_stats_map, gauge_stats_map)
+        DebugState {
+            event_tx,
+            dbg,
+            val,
+            gauge,
+        }
     });
 }
 
@@ -333,8 +338,8 @@ fn process_gauge_event(stats_map: &mut HashMap<u64, GaugeEntry>, event: DebugEve
 }
 
 pub(crate) fn send_debug_event(event: DebugEvent) {
-    if let Some((tx, _, _, _)) = DEBUG_STATE.get() {
-        let _ = tx.send(event);
+    if let Some(state) = DEBUG_STATE.get() {
+        let _ = state.event_tx.send(event);
     }
 }
 
@@ -345,8 +350,8 @@ pub(crate) fn get_sorted_debug_dbg_entries() -> Vec<DbgEntry> {
 }
 
 fn get_all_debug_dbg_entries() -> HashMap<u64, DbgEntry> {
-    if let Some((_, dbg_map, _, _)) = DEBUG_STATE.get() {
-        dbg_map.read().unwrap().clone()
+    if let Some(state) = DEBUG_STATE.get() {
+        state.dbg.read().unwrap().clone()
     } else {
         HashMap::new()
     }
@@ -359,8 +364,8 @@ pub(crate) fn get_sorted_debug_val_entries() -> Vec<ValEntry> {
 }
 
 fn get_all_debug_val_entries() -> HashMap<u64, ValEntry> {
-    if let Some((_, _, val_map, _)) = DEBUG_STATE.get() {
-        val_map.read().unwrap().clone()
+    if let Some(state) = DEBUG_STATE.get() {
+        state.val.read().unwrap().clone()
     } else {
         HashMap::new()
     }
@@ -369,14 +374,14 @@ fn get_all_debug_val_entries() -> HashMap<u64, ValEntry> {
 pub(crate) fn get_debug_dbg_entries_by_id(id: u64) -> Option<DbgEntry> {
     DEBUG_STATE
         .get()
-        .and_then(|(_, dbg_map, _, _)| dbg_map.read().ok())
+        .and_then(|state| state.dbg.read().ok())
         .and_then(|map| map.get(&id).cloned())
 }
 
 pub(crate) fn get_debug_val_entries_by_id(id: u64) -> Option<ValEntry> {
     DEBUG_STATE
         .get()
-        .and_then(|(_, _, val_map, _)| val_map.read().ok())
+        .and_then(|state| state.val.read().ok())
         .and_then(|map| map.get(&id).cloned())
 }
 
@@ -387,8 +392,8 @@ pub(crate) fn get_sorted_debug_gauge_entries() -> Vec<GaugeEntry> {
 }
 
 fn get_all_debug_gauge_entries() -> HashMap<u64, GaugeEntry> {
-    if let Some((_, _, _, gauge_map)) = DEBUG_STATE.get() {
-        gauge_map.read().unwrap().clone()
+    if let Some(state) = DEBUG_STATE.get() {
+        state.gauge.read().unwrap().clone()
     } else {
         HashMap::new()
     }
@@ -397,6 +402,6 @@ fn get_all_debug_gauge_entries() -> HashMap<u64, GaugeEntry> {
 pub(crate) fn get_debug_gauge_entries_by_id(id: u64) -> Option<GaugeEntry> {
     DEBUG_STATE
         .get()
-        .and_then(|(_, _, _, gauge_map)| gauge_map.read().ok())
+        .and_then(|state| state.gauge.read().ok())
         .and_then(|map| map.get(&id).cloned())
 }
