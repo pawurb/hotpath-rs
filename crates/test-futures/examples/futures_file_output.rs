@@ -12,7 +12,7 @@ async fn slow_operation() -> i32 {
 async fn main() {
     let _guard = FuturesGuardBuilder::new()
         .format(Format::Json)
-        .output_path("/tmp/futures_output_test.json")
+        .output_path("tmp/futures_output_test.json")
         .build();
 
     let result = future!(slow_operation()).await;

@@ -5,3 +5,4 @@ hotpath_report.csv
 hotpath_report.json
 profile.json*
 log/
+tmp/

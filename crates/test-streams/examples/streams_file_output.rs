@@ -6,7 +6,7 @@ fn main() {
     smol::block_on(async {
         let _streams_guard = StreamsGuardBuilder::new()
             .format(Format::Json)
-            .output_path("/tmp/streams_output_test.json")
+            .output_path("tmp/streams_output_test.json")
             .build();
 
         let stream = hotpath::stream!(stream::iter(1..=5), label = "number-stream");

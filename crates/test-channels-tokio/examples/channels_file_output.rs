@@ -5,7 +5,7 @@ use hotpath::Format;
 async fn main() {
     let _channels_guard = ChannelsGuardBuilder::new()
         .format(Format::Json)
-        .output_path("/tmp/channels_output_test.json")
+        .output_path("tmp/channels_output_test.json")
         .build();
 
     let (tx, mut rx) = hotpath::channel!(

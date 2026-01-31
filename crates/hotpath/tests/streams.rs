@@ -166,8 +166,9 @@ pub mod tests {
         use std::fs;
         use std::path::Path;
 
-        let output_path = "/tmp/streams_output_test.json";
+        let output_path = "tmp/streams_output_test.json";
 
+        fs::create_dir_all("tmp").ok();
         if Path::new(output_path).exists() {
             fs::remove_file(output_path).ok();
         }
