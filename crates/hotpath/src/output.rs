@@ -30,11 +30,16 @@ impl OutputDestination {
     ///
     /// Returns a boxed writer that implements `Write`.
     /// For `Stdout`, returns a handle to stdout.
-    /// For `File`, creates or truncates the file at the specified path.
+    /// For `File`, creates parent directories if needed, then creates or truncates the file.
     pub fn writer(&self) -> Result<Box<dyn Write>, std::io::Error> {
         match self {
             OutputDestination::Stdout => Ok(Box::new(std::io::stdout())),
-            OutputDestination::File(path) => Ok(Box::new(File::create(path)?)),
+            OutputDestination::File(path) => {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                Ok(Box::new(File::create(path)?))
+            }
         }
     }
 
