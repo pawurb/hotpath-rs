@@ -959,4 +959,59 @@ pub mod tests {
         let _ = child.kill();
         let _ = child.wait();
     }
+
+    // cargo run -p test-tokio-async --example functions_file_output --features hotpath
+    #[test]
+    fn test_functions_file_output() {
+        use std::fs;
+        use std::path::Path;
+
+        let output_path = "/tmp/functions_output_test.json";
+
+        if Path::new(output_path).exists() {
+            fs::remove_file(output_path).ok();
+        }
+
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "functions_file_output",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert!(
+            Path::new(output_path).exists(),
+            "Output file was not created at {}",
+            output_path
+        );
+
+        let file_content = fs::read_to_string(output_path).expect("Failed to read output file");
+
+        let expected_content = [
+            "functions_file_output::example_function",
+            "\"hotpath_profiling_mode\"",
+            "\"calls\"",
+        ];
+
+        for expected in expected_content {
+            assert!(
+                file_content.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{file_content}",
+            );
+        }
+
+        fs::remove_file(output_path).ok();
+    }
 }

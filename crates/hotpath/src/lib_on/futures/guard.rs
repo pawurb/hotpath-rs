@@ -5,9 +5,12 @@ use quanta::Instant;
 use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
+use std::io::Write;
+use std::path::PathBuf;
 
 use crate::futures::{get_futures_json, init_futures_state};
 use crate::json::JsonFuturesList;
+use crate::output::resolve_output_path;
 use crate::Format;
 
 /// Builder for creating a FuturesGuard with custom configuration.
@@ -25,6 +28,7 @@ use crate::Format;
 #[must_use = "builder is discarded without creating a guard"]
 pub struct FuturesGuardBuilder {
     format: Format,
+    output_path: Option<PathBuf>,
 }
 
 impl FuturesGuardBuilder {
@@ -32,6 +36,7 @@ impl FuturesGuardBuilder {
     pub fn new() -> Self {
         Self {
             format: Format::default(),
+            output_path: None,
         }
     }
 
@@ -51,6 +56,12 @@ impl FuturesGuardBuilder {
         self
     }
 
+    /// Sets the output file path for the futures statistics report.
+    pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.output_path = Some(resolve_output_path(path));
+        self
+    }
+
     /// Build and return the FuturesGuard.
     /// Statistics will be printed when the guard is dropped.
     pub fn build(self) -> FuturesGuard {
@@ -58,6 +69,7 @@ impl FuturesGuardBuilder {
         FuturesGuard {
             start_time: Instant::now(),
             format: self.format,
+            output_path: self.output_path,
         }
     }
 }
@@ -86,6 +98,7 @@ impl Default for FuturesGuardBuilder {
 pub struct FuturesGuard {
     start_time: Instant,
     format: Format,
+    output_path: Option<PathBuf>,
 }
 
 impl FuturesGuard {
@@ -98,6 +111,7 @@ impl FuturesGuard {
         Self {
             start_time: Instant::now(),
             format: Format::default(),
+            output_path: None,
         }
     }
 
@@ -115,6 +129,12 @@ impl FuturesGuard {
         self.format = format;
         self
     }
+
+    /// Sets the output file path for the futures statistics report.
+    pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.output_path = Some(resolve_output_path(path));
+        self
+    }
 }
 
 impl Default for FuturesGuard {
@@ -128,14 +148,26 @@ impl Drop for FuturesGuard {
         let elapsed = self.start_time.elapsed();
         let futures_json = get_futures_json();
 
+        let mut writer: Box<dyn Write> = match &self.output_path {
+            Some(path) => match std::fs::File::create(path) {
+                Ok(f) => Box::new(f),
+                Err(e) => {
+                    eprintln!("Failed to create output file {:?}: {}", path, e);
+                    return;
+                }
+            },
+            None => Box::new(std::io::stdout()),
+        };
+
         if futures_json.futures.is_empty() {
-            println!("\nNo instrumented futures found.");
+            let _ = writeln!(writer, "\nNo instrumented futures found.");
             return;
         }
 
         match self.format {
             Format::Table => {
-                println!(
+                let _ = writeln!(
+                    writer,
                     "\n=== Future Statistics (runtime: {:.2}s) ===",
                     elapsed.as_secs_f64()
                 );
@@ -156,8 +188,8 @@ impl Drop for FuturesGuard {
                     ]));
                 }
 
-                println!("\nFutures:");
-                table.printstd();
+                let _ = writeln!(writer, "\nFutures:");
+                let _ = table.print(&mut writer);
             }
             Format::Json => {
                 let json_output = JsonFuturesList {
@@ -165,7 +197,9 @@ impl Drop for FuturesGuard {
                     futures: futures_json.futures,
                 };
                 match serde_json::to_string(&json_output) {
-                    Ok(json) => println!("{}", json),
+                    Ok(json) => {
+                        let _ = writeln!(writer, "{}", json);
+                    }
                     Err(e) => eprintln!("Failed to serialize statistics to JSON: {}", e),
                 }
             }
@@ -175,7 +209,9 @@ impl Drop for FuturesGuard {
                     futures: futures_json.futures,
                 };
                 match serde_json::to_string_pretty(&json_output) {
-                    Ok(json) => println!("{}", json),
+                    Ok(json) => {
+                        let _ = writeln!(writer, "{}", json);
+                    }
                     Err(e) => eprintln!("Failed to serialize statistics to pretty JSON: {}", e),
                 }
             }

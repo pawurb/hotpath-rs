@@ -1,13 +1,16 @@
 use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, select, unbounded};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 
 use crate::json::JsonFunctionsList;
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crate::output::{FunctionLog, FunctionLogsList, MetricsProvider};
+use crate::output::{
+    resolve_output_path, FunctionLog, FunctionLogsList, MetricsProvider, OutputDestination,
+};
 use crate::output_on::{JsonPrettyReporter, JsonReporter, TableReporter};
 use crate::Reporter;
 
@@ -108,6 +111,7 @@ pub struct FunctionsGuardBuilder {
     percentiles: Vec<u8>,
     reporter: ReporterConfig,
     limit: usize,
+    output_path: Option<PathBuf>,
 }
 
 impl FunctionsGuardBuilder {
@@ -135,6 +139,7 @@ impl FunctionsGuardBuilder {
             percentiles: vec![95],
             reporter: ReporterConfig::None,
             limit: 15,
+            output_path: None,
         }
     }
 
@@ -262,6 +267,33 @@ impl FunctionsGuardBuilder {
         self
     }
 
+    /// Sets the output file path for the profiling report.
+    ///
+    /// The file will be created or truncated if it already exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the output file
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "hotpath")]
+    /// # {
+    /// use hotpath::{FunctionsGuardBuilder, Format};
+    ///
+    /// // Write JSON output to a file
+    /// let _guard = FunctionsGuardBuilder::new("main")
+    ///     .format(Format::Json)
+    ///     .output_path("profile.json")
+    ///     .build();
+    /// # }
+    /// ```
+    pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.output_path = Some(resolve_output_path(path));
+        self
+    }
+
     /// Builds and initializes the functions profiling guard.
     ///
     /// This method initializes the background profiling thread and returns a guard
@@ -305,6 +337,7 @@ impl FunctionsGuardBuilder {
             self.limit,
             reporter,
             recent_logs_limit,
+            self.output_path,
         )
     }
 
@@ -352,6 +385,7 @@ pub struct FunctionsGuard {
     state: Arc<RwLock<FunctionsState>>,
     reporter: Box<dyn Reporter>,
     wrapper_guard: Option<MeasurementGuard>,
+    output_path: Option<PathBuf>,
 }
 
 impl FunctionsGuard {
@@ -361,6 +395,7 @@ impl FunctionsGuard {
         limit: usize,
         _reporter: Box<dyn Reporter>,
         recent_logs_limit: usize,
+        output_path: Option<PathBuf>,
     ) -> Self {
         // Disable allocation tracking during infrastructure initialization
         // to prevent profiling overhead from being included in measurements
@@ -593,6 +628,7 @@ impl FunctionsGuard {
             state: Arc::clone(&state_arc),
             reporter,
             wrapper_guard: Some(wrapper_guard),
+            output_path,
         }
     }
 }
@@ -637,7 +673,8 @@ impl Drop for FunctionsGuard {
                             state_guard.limit,
                         );
 
-                        match self.reporter.report(&metrics_provider) {
+                        let output = OutputDestination::from_path(self.output_path.take());
+                        match self.reporter.report_to(&metrics_provider, &output) {
                             Ok(()) => (),
                             Err(e) => eprintln!("Failed to report hotpath metrics: {}", e),
                         }

@@ -5,10 +5,12 @@ use quanta::Instant;
 use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
+use std::io::Write;
+use std::path::PathBuf;
 
 use crate::channels::{get_sorted_channel_entries, resolve_label};
 use crate::json::{JsonChannelEntry, JsonChannelsList};
-use crate::output::format_bytes;
+use crate::output::{format_bytes, resolve_output_path};
 use crate::Format;
 
 /// Builder for creating a ChannelsGuard with custom configuration.
@@ -26,6 +28,7 @@ use crate::Format;
 #[must_use = "builder is discarded without creating a guard"]
 pub struct ChannelsGuardBuilder {
     format: Format,
+    output_path: Option<PathBuf>,
 }
 
 impl ChannelsGuardBuilder {
@@ -33,6 +36,7 @@ impl ChannelsGuardBuilder {
     pub fn new() -> Self {
         Self {
             format: Format::default(),
+            output_path: None,
         }
     }
 
@@ -52,12 +56,19 @@ impl ChannelsGuardBuilder {
         self
     }
 
+    /// Sets the output file path for the channels statistics report.
+    pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.output_path = Some(resolve_output_path(path));
+        self
+    }
+
     /// Build and return the ChannelsGuard.
     /// Statistics will be printed when the guard is dropped.
     pub fn build(self) -> ChannelsGuard {
         ChannelsGuard {
             start_time: Instant::now(),
             format: self.format,
+            output_path: self.output_path,
         }
     }
 }
@@ -86,6 +97,7 @@ impl Default for ChannelsGuardBuilder {
 pub struct ChannelsGuard {
     start_time: Instant,
     format: Format,
+    output_path: Option<PathBuf>,
 }
 
 impl ChannelsGuard {
@@ -97,6 +109,7 @@ impl ChannelsGuard {
         Self {
             start_time: Instant::now(),
             format: Format::default(),
+            output_path: None,
         }
     }
 
@@ -114,6 +127,12 @@ impl ChannelsGuard {
         self.format = format;
         self
     }
+
+    /// Sets the output file path for the channels statistics report.
+    pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.output_path = Some(resolve_output_path(path));
+        self
+    }
 }
 
 impl Default for ChannelsGuard {
@@ -127,14 +146,26 @@ impl Drop for ChannelsGuard {
         let elapsed = self.start_time.elapsed();
         let channels = get_sorted_channel_entries();
 
+        let mut writer: Box<dyn Write> = match &self.output_path {
+            Some(path) => match std::fs::File::create(path) {
+                Ok(f) => Box::new(f),
+                Err(e) => {
+                    eprintln!("Failed to create output file {:?}: {}", path, e);
+                    return;
+                }
+            },
+            None => Box::new(std::io::stdout()),
+        };
+
         if channels.is_empty() {
-            println!("\nNo instrumented channels found.");
+            let _ = writeln!(writer, "\nNo instrumented channels found.");
             return;
         }
 
         match self.format {
             Format::Table => {
-                println!(
+                let _ = writeln!(
+                    writer,
                     "\n=== Channel Statistics (runtime: {:.2}s) ===",
                     elapsed.as_secs_f64()
                 );
@@ -168,8 +199,8 @@ impl Drop for ChannelsGuard {
                     ]));
                 }
 
-                println!("\nChannels:");
-                table.printstd();
+                let _ = writeln!(writer, "\nChannels:");
+                let _ = table.print(&mut writer);
             }
             Format::Json => {
                 let channels_json = JsonChannelsList {
@@ -177,7 +208,9 @@ impl Drop for ChannelsGuard {
                     channels: channels.iter().map(JsonChannelEntry::from).collect(),
                 };
                 match serde_json::to_string(&channels_json) {
-                    Ok(json) => println!("{}", json),
+                    Ok(json) => {
+                        let _ = writeln!(writer, "{}", json);
+                    }
                     Err(e) => eprintln!("Failed to serialize statistics to JSON: {}", e),
                 }
             }
@@ -187,7 +220,9 @@ impl Drop for ChannelsGuard {
                     channels: channels.iter().map(JsonChannelEntry::from).collect(),
                 };
                 match serde_json::to_string_pretty(&channels_json) {
-                    Ok(json) => println!("{}", json),
+                    Ok(json) => {
+                        let _ = writeln!(writer, "{}", json);
+                    }
                     Err(e) => eprintln!("Failed to serialize statistics to pretty JSON: {}", e),
                 }
             }

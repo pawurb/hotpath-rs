@@ -115,6 +115,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut format = Format::Table;
     let mut limit: usize = 15;
     let mut timeout: Option<u64> = None;
+    let mut output_path: Option<String> = None;
 
     // Parse named args like: percentiles=[..], format=".."
     if !attr.is_empty() {
@@ -174,8 +175,15 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return Ok(());
             }
 
+            if meta.path.is_ident("output_path") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let lit: LitStr = meta.input.parse()?;
+                output_path = Some(lit.value());
+                return Ok(());
+            }
+
             Err(meta.error(
-                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, timeout=N",
+                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, timeout=N, output_path=\"..\"",
             ))
         });
 
@@ -190,6 +198,11 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let asyncness = sig.asyncness.is_some();
     let fn_name = &sig.ident;
 
+    let output_path_call = match &output_path {
+        Some(path) => quote! { .output_path(#path) },
+        None => quote! {},
+    };
+
     let base_builder = quote! {
         let caller_name: &'static str =
             concat!(module_path!(), "::", stringify!(#fn_name));
@@ -198,6 +211,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             .percentiles(#percentiles_array)
             .limit(#limit)
             .format(#format_token)
+            #output_path_call
     };
 
     let guard_init = if let Some(timeout_ms) = timeout {

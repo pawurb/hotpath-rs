@@ -265,6 +265,10 @@ impl FunctionsGuardBuilder {
         self
     }
 
+    pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
+        self
+    }
+
     pub fn build(self) -> HotPath {
         HotPath
     }
@@ -293,6 +297,9 @@ pub mod channels {
         pub fn format(self, _format: Format) -> Self {
             self
         }
+        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
+            self
+        }
         pub fn build(self) -> ChannelsGuard {
             ChannelsGuard
         }
@@ -311,6 +318,9 @@ pub mod channels {
             Self
         }
         pub fn format(self, _format: Format) -> Self {
+            self
+        }
+        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
             self
         }
     }
@@ -338,6 +348,9 @@ pub mod streams {
         pub fn format(self, _format: Format) -> Self {
             self
         }
+        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
+            self
+        }
         pub fn build(self) -> StreamsGuard {
             StreamsGuard
         }
@@ -356,6 +369,9 @@ pub mod streams {
             Self
         }
         pub fn format(self, _format: Format) -> Self {
+            self
+        }
+        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
             self
         }
     }
@@ -383,6 +399,9 @@ pub mod futures {
         pub fn format(self, _format: Format) -> Self {
             self
         }
+        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
+            self
+        }
         pub fn build(self) -> FuturesGuard {
             FuturesGuard
         }
@@ -401,6 +420,9 @@ pub mod futures {
             Self
         }
         pub fn format(self, _format: Format) -> Self {
+            self
+        }
+        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
             self
         }
     }

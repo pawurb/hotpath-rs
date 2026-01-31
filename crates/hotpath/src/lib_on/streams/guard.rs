@@ -5,9 +5,12 @@ use quanta::Instant;
 use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
+use std::io::Write;
+use std::path::PathBuf;
 
 use crate::channels::resolve_label;
 use crate::json::{JsonStreamEntry, JsonStreamsList};
+use crate::output::resolve_output_path;
 use crate::streams::get_sorted_stream_stats;
 use crate::Format;
 
@@ -26,6 +29,7 @@ use crate::Format;
 #[must_use = "builder is discarded without creating a guard"]
 pub struct StreamsGuardBuilder {
     format: Format,
+    output_path: Option<PathBuf>,
 }
 
 impl StreamsGuardBuilder {
@@ -33,6 +37,7 @@ impl StreamsGuardBuilder {
     pub fn new() -> Self {
         Self {
             format: Format::default(),
+            output_path: None,
         }
     }
 
@@ -52,12 +57,19 @@ impl StreamsGuardBuilder {
         self
     }
 
+    /// Sets the output file path for the streams statistics report.
+    pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.output_path = Some(resolve_output_path(path));
+        self
+    }
+
     /// Build and return the StreamsGuard.
     /// Statistics will be printed when the guard is dropped.
     pub fn build(self) -> StreamsGuard {
         StreamsGuard {
             start_time: Instant::now(),
             format: self.format,
+            output_path: self.output_path,
         }
     }
 }
@@ -86,6 +98,7 @@ impl Default for StreamsGuardBuilder {
 pub struct StreamsGuard {
     start_time: Instant,
     format: Format,
+    output_path: Option<PathBuf>,
 }
 
 impl StreamsGuard {
@@ -97,6 +110,7 @@ impl StreamsGuard {
         Self {
             start_time: Instant::now(),
             format: Format::default(),
+            output_path: None,
         }
     }
 
@@ -114,6 +128,12 @@ impl StreamsGuard {
         self.format = format;
         self
     }
+
+    /// Sets the output file path for the streams statistics report.
+    pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.output_path = Some(resolve_output_path(path));
+        self
+    }
 }
 
 impl Default for StreamsGuard {
@@ -127,14 +147,26 @@ impl Drop for StreamsGuard {
         let elapsed = self.start_time.elapsed();
         let streams = get_sorted_stream_stats();
 
+        let mut writer: Box<dyn Write> = match &self.output_path {
+            Some(path) => match std::fs::File::create(path) {
+                Ok(f) => Box::new(f),
+                Err(e) => {
+                    eprintln!("Failed to create output file {:?}: {}", path, e);
+                    return;
+                }
+            },
+            None => Box::new(std::io::stdout()),
+        };
+
         if streams.is_empty() {
-            println!("\nNo instrumented streams found.");
+            let _ = writeln!(writer, "\nNo instrumented streams found.");
             return;
         }
 
         match self.format {
             Format::Table => {
-                println!(
+                let _ = writeln!(
+                    writer,
                     "\n=== Stream Statistics (runtime: {:.2}s) ===",
                     elapsed.as_secs_f64()
                 );
@@ -160,8 +192,8 @@ impl Drop for StreamsGuard {
                     ]));
                 }
 
-                println!("\nStreams:");
-                table.printstd();
+                let _ = writeln!(writer, "\nStreams:");
+                let _ = table.print(&mut writer);
             }
             Format::Json => {
                 let streams_json = JsonStreamsList {
@@ -169,7 +201,9 @@ impl Drop for StreamsGuard {
                     streams: streams.iter().map(JsonStreamEntry::from).collect(),
                 };
                 match serde_json::to_string(&streams_json) {
-                    Ok(json) => println!("{}", json),
+                    Ok(json) => {
+                        let _ = writeln!(writer, "{}", json);
+                    }
                     Err(e) => eprintln!("Failed to serialize statistics to JSON: {}", e),
                 }
             }
@@ -179,7 +213,9 @@ impl Drop for StreamsGuard {
                     streams: streams.iter().map(JsonStreamEntry::from).collect(),
                 };
                 match serde_json::to_string_pretty(&streams_json) {
-                    Ok(json) => println!("{}", json),
+                    Ok(json) => {
+                        let _ = writeln!(writer, "{}", json);
+                    }
                     Err(e) => eprintln!("Failed to serialize statistics to pretty JSON: {}", e),
                 }
             }

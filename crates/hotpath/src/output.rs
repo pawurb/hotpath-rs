@@ -2,6 +2,9 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "hotpath")]
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 #[cfg(feature = "hotpath")]
 use std::time::Duration;
 
@@ -9,6 +12,56 @@ use std::time::Duration;
 use crate::FunctionStats;
 
 pub use crate::shared::{format_bytes, format_duration, MetricType, ProfilingMode};
+
+/// Destination for profiling report output.
+///
+/// Used to direct output either to stdout or to a file.
+#[derive(Default)]
+pub enum OutputDestination {
+    /// Write to standard output
+    #[default]
+    Stdout,
+    /// Write to a file at the specified path
+    File(PathBuf),
+}
+
+impl OutputDestination {
+    /// Creates a writer for this destination.
+    ///
+    /// Returns a boxed writer that implements `Write`.
+    /// For `Stdout`, returns a handle to stdout.
+    /// For `File`, creates or truncates the file at the specified path.
+    pub fn writer(&self) -> Result<Box<dyn Write>, std::io::Error> {
+        match self {
+            OutputDestination::Stdout => Ok(Box::new(std::io::stdout())),
+            OutputDestination::File(path) => Ok(Box::new(File::create(path)?)),
+        }
+    }
+
+    /// Creates an OutputDestination from an optional path.
+    ///
+    /// If the path is provided, resolves relative paths against the current working directory.
+    /// If no path is provided, returns Stdout.
+    pub fn from_path(path: Option<PathBuf>) -> Self {
+        match path {
+            Some(p) => OutputDestination::File(p),
+            None => OutputDestination::Stdout,
+        }
+    }
+}
+
+/// Resolves a path, converting relative paths to absolute by joining with cwd.
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
+pub fn resolve_output_path(path: impl AsRef<std::path::Path>) -> PathBuf {
+    let path = path.as_ref();
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    }
+}
 
 impl Serialize for MetricType {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -119,10 +172,28 @@ pub fn shorten_function_name(function_name: &str) -> String {
 /// * [`MetricsProvider`] - Trait for accessing profiling metrics data
 /// * `FunctionsGuardBuilder::reporter` - Method to set custom reporter
 pub trait Reporter: Send + Sync {
+    /// Generate a report to stdout.
+    ///
+    /// This is the default method that should be implemented by all reporters.
     fn report(
         &self,
         metrics_provider: &dyn MetricsProvider<'_>,
     ) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// Generate a report to a specified output destination.
+    ///
+    /// The default implementation calls `report()` for stdout, which ignores the destination.
+    /// Custom reporters can override this to support file output.
+    fn report_to(
+        &self,
+        metrics_provider: &dyn MetricsProvider<'_>,
+        output: &OutputDestination,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match output {
+            OutputDestination::Stdout => self.report(metrics_provider),
+            OutputDestination::File(_) => self.report(metrics_provider),
+        }
+    }
 }
 
 /// A single log entry for a function invocation.
