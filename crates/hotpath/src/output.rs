@@ -40,9 +40,14 @@ impl OutputDestination {
 
     /// Creates an OutputDestination from an optional path.
     ///
+    /// Environment variable `HOTPATH_OUTPUT_PATH` takes precedence over programmatic config.
     /// If the path is provided, resolves relative paths against the current working directory.
     /// If no path is provided, returns Stdout.
     pub fn from_path(path: Option<PathBuf>) -> Self {
+        if let Ok(env_path) = std::env::var("HOTPATH_OUTPUT_PATH") {
+            return OutputDestination::File(resolve_output_path(env_path));
+        }
+
         match path {
             Some(p) => OutputDestination::File(p),
             None => OutputDestination::Stdout,
@@ -51,7 +56,6 @@ impl OutputDestination {
 }
 
 /// Resolves a path, converting relative paths to absolute by joining with cwd.
-#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub fn resolve_output_path(path: impl AsRef<std::path::Path>) -> PathBuf {
     let path = path.as_ref();
     if path.is_absolute() {

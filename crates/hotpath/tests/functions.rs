@@ -1015,4 +1015,56 @@ pub mod tests {
 
         fs::remove_file(output_path).ok();
     }
+
+    // HOTPATH_OUTPUT_PATH=tmp/env_override.json cargo run -p test-tokio-async --example functions_file_output --features hotpath
+    #[test]
+    fn test_hotpath_output_path_env_override() {
+        use std::fs;
+        use std::path::Path;
+
+        let programmatic_path = "tmp/functions_output_test.json";
+        let env_override_path = "tmp/env_override.json";
+
+        fs::create_dir_all("tmp").ok();
+        if Path::new(programmatic_path).exists() {
+            fs::remove_file(programmatic_path).ok();
+        }
+        if Path::new(env_override_path).exists() {
+            fs::remove_file(env_override_path).ok();
+        }
+
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "functions_file_output",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_OUTPUT_PATH", env_override_path)
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert!(
+            Path::new(env_override_path).exists(),
+            "Output file was not created at env override path {}",
+            env_override_path
+        );
+
+        assert!(
+            !Path::new(programmatic_path).exists(),
+            "Output file should NOT be created at programmatic path {} when HOTPATH_OUTPUT_PATH is set",
+            programmatic_path
+        );
+
+        fs::remove_file(env_override_path).ok();
+    }
 }

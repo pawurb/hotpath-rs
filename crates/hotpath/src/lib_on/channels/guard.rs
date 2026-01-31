@@ -146,15 +146,13 @@ impl Drop for ChannelsGuard {
         let elapsed = self.start_time.elapsed();
         let channels = get_sorted_channel_entries();
 
-        let mut writer: Box<dyn Write> = match &self.output_path {
-            Some(path) => match std::fs::File::create(path) {
-                Ok(f) => Box::new(f),
-                Err(e) => {
-                    eprintln!("Failed to create output file {:?}: {}", path, e);
-                    return;
-                }
-            },
-            None => Box::new(std::io::stdout()),
+        let output = crate::output::OutputDestination::from_path(self.output_path.take());
+        let mut writer: Box<dyn Write> = match output.writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("Failed to create output writer: {}", e);
+                return;
+            }
         };
 
         if channels.is_empty() {

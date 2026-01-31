@@ -148,15 +148,13 @@ impl Drop for FuturesGuard {
         let elapsed = self.start_time.elapsed();
         let futures_json = get_futures_json();
 
-        let mut writer: Box<dyn Write> = match &self.output_path {
-            Some(path) => match std::fs::File::create(path) {
-                Ok(f) => Box::new(f),
-                Err(e) => {
-                    eprintln!("Failed to create output file {:?}: {}", path, e);
-                    return;
-                }
-            },
-            None => Box::new(std::io::stdout()),
+        let output = crate::output::OutputDestination::from_path(self.output_path.take());
+        let mut writer: Box<dyn Write> = match output.writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("Failed to create output writer: {}", e);
+                return;
+            }
         };
 
         if futures_json.futures.is_empty() {
