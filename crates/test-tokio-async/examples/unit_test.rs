@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use hotpath::Reporter;
+use hotpath::{OutputDestination, Reporter};
 
 /// Run with:
 /// cargo test -p test-tokio-async --example unit_test --features hotpath -- --nocapture --test-threads=1
@@ -21,6 +21,7 @@ impl Reporter for UnitTestReporter {
     fn report(
         &self,
         metrics_provider: &dyn hotpath::MetricsProvider<'_>,
+        _output: &OutputDestination,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if metrics_provider.metric_data().is_empty() {
             println!("No metrics to report");

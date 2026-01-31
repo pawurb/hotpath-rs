@@ -204,10 +204,13 @@ impl HotPath {
     }
 }
 
+pub use crate::shared::OutputDestination;
+
 pub trait Reporter: Send + Sync {
     fn report(
         &self,
         metrics_provider: &dyn MetricsProvider<'_>,
+        output: &OutputDestination,
     ) -> Result<(), Box<dyn std::error::Error>>;
 }
 

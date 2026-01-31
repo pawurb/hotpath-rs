@@ -1,4 +1,13 @@
 use std::fmt;
+use std::path::PathBuf;
+
+/// Destination for profiling report output.
+#[derive(Default)]
+pub enum OutputDestination {
+    #[default]
+    Stdout,
+    File(PathBuf),
+}
 
 /// Formats a duration in nanoseconds into a human-readable string with appropriate units.
 pub fn format_duration(ns: u64) -> String {

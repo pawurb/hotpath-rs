@@ -24,7 +24,7 @@ async fn async_function(sleep: u64) {
     tokio::time::sleep(Duration::from_nanos(sleep)).await;
 }
 
-use hotpath::Reporter;
+use hotpath::{OutputDestination, Reporter};
 use tracing::{info, info_span};
 
 struct TracingReporter;
@@ -33,6 +33,7 @@ impl Reporter for TracingReporter {
     fn report(
         &self,
         metrics_provider: &dyn hotpath::MetricsProvider<'_>,
+        _output: &OutputDestination,
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("HotPath Report for: {}", metrics_provider.caller_name());
         info!("Headers: {}", metrics_provider.headers().join(", "));

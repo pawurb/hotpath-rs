@@ -674,7 +674,7 @@ impl Drop for FunctionsGuard {
                         );
 
                         let output = OutputDestination::from_path(self.output_path.take());
-                        match self.reporter.report_to(&metrics_provider, &output) {
+                        match self.reporter.report(&metrics_provider, &output) {
                             Ok(()) => (),
                             Err(e) => eprintln!("Failed to report hotpath metrics: {}", e),
                         }

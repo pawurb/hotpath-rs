@@ -25,7 +25,7 @@ async fn async_function(sleep: u64) {
     tokio::time::sleep(Duration::from_nanos(sleep)).await;
 }
 
-use hotpath::Reporter;
+use hotpath::{OutputDestination, Reporter};
 
 #[allow(unused)]
 struct FileReporter;
@@ -34,6 +34,7 @@ impl Reporter for FileReporter {
     fn report(
         &self,
         metrics_provider: &dyn hotpath::MetricsProvider<'_>,
+        _output: &OutputDestination,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut output = String::new();
         output.push_str(&format!(

@@ -26,11 +26,7 @@ pub(crate) fn get_sorted_measurements(
     sorted_entries
 }
 
-pub(crate) fn display_table(metrics_provider: &dyn MetricsProvider<'_>) {
-    display_table_to(&mut std::io::stdout(), metrics_provider, true);
-}
-
-pub(crate) fn display_table_to<W: Write>(
+fn display_table_to<W: Write>(
     writer: &mut W,
     metrics_provider: &dyn MetricsProvider<'_>,
     use_colors: bool,
@@ -153,10 +149,6 @@ pub(crate) fn display_table_to<W: Write>(
     }
 }
 
-fn display_no_measurements_message(total_elapsed: Duration, caller_name: &str) {
-    display_no_measurements_message_to(&mut std::io::stdout(), total_elapsed, caller_name, true);
-}
-
 fn display_no_measurements_message_to<W: Write>(
     writer: &mut W,
     total_elapsed: Duration,
@@ -243,22 +235,6 @@ impl Reporter for TableReporter {
     fn report(
         &self,
         metrics_provider: &dyn MetricsProvider<'_>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if metrics_provider.metric_data().is_empty() {
-            display_no_measurements_message(
-                Duration::from_nanos(metrics_provider.total_elapsed()),
-                metrics_provider.caller_name(),
-            );
-            return Ok(());
-        }
-
-        display_table(metrics_provider);
-        Ok(())
-    }
-
-    fn report_to(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
         output: &OutputDestination,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let is_file = matches!(output, OutputDestination::File(_));
@@ -283,21 +259,6 @@ pub(crate) struct JsonReporter;
 
 impl Reporter for JsonReporter {
     fn report(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if metrics_provider.metric_data().is_empty() {
-            display_no_measurements_message(Duration::ZERO, metrics_provider.caller_name());
-            return Ok(());
-        }
-
-        let elapsed_ns = metrics_provider.total_elapsed();
-        let json = JsonFunctionsList::from_provider_with_raw(metrics_provider, elapsed_ns);
-        println!("{}", serde_json::to_string(&json).unwrap());
-        Ok(())
-    }
-
-    fn report_to(
         &self,
         metrics_provider: &dyn MetricsProvider<'_>,
         output: &OutputDestination,
@@ -326,21 +287,6 @@ pub(crate) struct JsonPrettyReporter;
 
 impl Reporter for JsonPrettyReporter {
     fn report(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if metrics_provider.metric_data().is_empty() {
-            display_no_measurements_message(Duration::ZERO, metrics_provider.caller_name());
-            return Ok(());
-        }
-
-        let elapsed_ns = metrics_provider.total_elapsed();
-        let json = JsonFunctionsList::from_provider_with_raw(metrics_provider, elapsed_ns);
-        println!("{}", serde_json::to_string_pretty(&json)?);
-        Ok(())
-    }
-
-    fn report_to(
         &self,
         metrics_provider: &dyn MetricsProvider<'_>,
         output: &OutputDestination,

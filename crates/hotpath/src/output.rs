@@ -11,19 +11,9 @@ use std::time::Duration;
 #[cfg(feature = "hotpath")]
 use crate::FunctionStats;
 
-pub use crate::shared::{format_bytes, format_duration, MetricType, ProfilingMode};
-
-/// Destination for profiling report output.
-///
-/// Used to direct output either to stdout or to a file.
-#[derive(Default)]
-pub enum OutputDestination {
-    /// Write to standard output
-    #[default]
-    Stdout,
-    /// Write to a file at the specified path
-    File(PathBuf),
-}
+pub use crate::shared::{
+    format_bytes, format_duration, MetricType, OutputDestination, ProfilingMode,
+};
 
 impl OutputDestination {
     /// Creates a writer for this destination.
@@ -162,13 +152,17 @@ pub fn shorten_function_name(function_name: &str) -> String {
 /// # Examples
 ///
 /// ```rust
-/// use hotpath::{Reporter, MetricsProvider};
+/// use hotpath::{Reporter, MetricsProvider, OutputDestination};
 /// use std::error::Error;
 ///
 /// struct SimpleLogger;
 ///
 /// impl Reporter for SimpleLogger {
-///     fn report(&self, metrics: &dyn MetricsProvider<'_>) -> Result<(), Box<dyn Error>> {
+///     fn report(
+///         &self,
+///         metrics: &dyn MetricsProvider<'_>,
+///         _output: &OutputDestination,
+///     ) -> Result<(), Box<dyn Error>> {
 ///         println!("Profiling {} complete", metrics.caller_name());
 ///         println!("Functions measured: {}", metrics.metric_data().len());
 ///         Ok(())
@@ -181,28 +175,12 @@ pub fn shorten_function_name(function_name: &str) -> String {
 /// * [`MetricsProvider`] - Trait for accessing profiling metrics data
 /// * `FunctionsGuardBuilder::reporter` - Method to set custom reporter
 pub trait Reporter: Send + Sync {
-    /// Generate a report to stdout.
-    ///
-    /// This is the default method that should be implemented by all reporters.
+    /// Generate a report to the specified output destination.
     fn report(
         &self,
         metrics_provider: &dyn MetricsProvider<'_>,
-    ) -> Result<(), Box<dyn std::error::Error>>;
-
-    /// Generate a report to a specified output destination.
-    ///
-    /// The default implementation calls `report()` for stdout, which ignores the destination.
-    /// Custom reporters can override this to support file output.
-    fn report_to(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
         output: &OutputDestination,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        match output {
-            OutputDestination::Stdout => self.report(metrics_provider),
-            OutputDestination::File(_) => self.report(metrics_provider),
-        }
-    }
+    ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 /// A single log entry for a function invocation.
