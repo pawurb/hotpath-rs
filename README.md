@@ -460,6 +460,7 @@ Attribute macro that initializes the background measurement processing when appl
 - `format = "json"` - Output format ("table", "json", "json-pretty")
 - `limit = 20` - Maximum number of functions to display (default: 15, 0 = show all)
 - `timeout = 5000` - Optional timeout in milliseconds. If specified, the program will print the report and exit after the timeout (useful for profiling long-running programs like HTTP servers)
+- `output_path = "path/to/report.json"` - Write report to file instead of stdout. The `HOTPATH_OUTPUT_PATH` env var takes precedence over this setting.
 
 #### `#[hotpath::measure]`
 
@@ -542,6 +543,7 @@ Macro that instruments streams to track items yielded. Wraps stream creation wit
 - `.percentiles(&[u8])` - Set custom percentiles to display (default: [95])
 - `.format(Format)` - Set output format (Table, Json, JsonPretty)
 - `.limit(usize)` - Set maximum number of functions to display (default: 15, 0 = show all)
+- `.output_path(path)` - Write report to file instead of stdout (`HOTPATH_OUTPUT_PATH` env var takes precedence)
 - `.reporter(Box<dyn Reporter>)` - Set custom reporter (overrides format)
 - `.build()` - Build and return the FunctionsGuard
 - `.build_with_timeout(Duration)` - Build guard that automatically drops after duration and exits the program (useful for profiling long-running programs like HTTP servers)
@@ -554,6 +556,7 @@ Macro that instruments streams to track items yielded. Wraps stream creation wit
 
 **Configuration methods:**
 - `.format(Format)` - Set output format (Table, Json, JsonPretty)
+- `.output_path(path)` - Write report to file instead of stdout (`HOTPATH_OUTPUT_PATH` env var takes precedence)
 - `.build()` - Build and return the ChannelsGuard
 
 **Example:**
@@ -571,6 +574,7 @@ let _guard = hotpath::ChannelsGuardBuilder::new()
 
 **Configuration methods:**
 - `.format(Format)` - Set output format (Table, Json, JsonPretty)
+- `.output_path(path)` - Write report to file instead of stdout (`HOTPATH_OUTPUT_PATH` env var takes precedence)
 - `.build()` - Build and return the StreamsGuard
 
 **Example:**
