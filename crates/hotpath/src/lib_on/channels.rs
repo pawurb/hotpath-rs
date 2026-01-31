@@ -167,7 +167,7 @@ type ChannelStatsState = (
 
 static CHANNELS_STATE: OnceLock<ChannelStatsState> = OnceLock::new();
 
-pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
+pub(crate) use crate::lib_on::START_TIME;
 
 const DEFAULT_LOG_LIMIT: usize = 50;
 

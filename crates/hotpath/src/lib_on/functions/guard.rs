@@ -597,9 +597,9 @@ impl FunctionsGuard {
 
         // Initialize START_TIME for channels/streams (required before HTTP server starts)
         #[cfg(target_os = "linux")]
-        crate::channels::START_TIME.get_or_init(quanta::Instant::now);
+        crate::lib_on::START_TIME.get_or_init(quanta::Instant::now);
         #[cfg(not(target_os = "linux"))]
-        crate::channels::START_TIME.get_or_init(std::time::Instant::now);
+        crate::lib_on::START_TIME.get_or_init(std::time::Instant::now);
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 

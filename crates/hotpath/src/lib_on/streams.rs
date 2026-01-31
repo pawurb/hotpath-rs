@@ -107,7 +107,7 @@ static STREAMS_STATE: OnceLock<StreamStatsState> = OnceLock::new();
 /// Returns a reference to the global state.
 pub(crate) fn init_streams_state() -> &'static StreamStatsState {
     STREAMS_STATE.get_or_init(|| {
-        crate::channels::START_TIME.get_or_init(Instant::now);
+        crate::lib_on::START_TIME.get_or_init(Instant::now);
 
         let (tx, rx) = unbounded::<StreamEvent>();
         let stats_map = Arc::new(RwLock::new(HashMap::<u64, StreamStats>::new()));
@@ -313,7 +313,7 @@ pub fn get_streams_json() -> JsonStreamsList {
         .map(JsonStreamEntry::from)
         .collect();
 
-    let current_elapsed_ns = crate::channels::START_TIME
+    let current_elapsed_ns = crate::lib_on::START_TIME
         .get()
         .expect("START_TIME must be initialized")
         .elapsed()

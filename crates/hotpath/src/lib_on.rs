@@ -2,6 +2,16 @@
 pub use cfg_if::cfg_if;
 pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 
+use std::sync::OnceLock;
+
+#[cfg(target_os = "linux")]
+use quanta::Instant;
+
+#[cfg(not(target_os = "linux"))]
+use std::time::Instant;
+
+pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
+
 pub mod channels;
 pub mod data_flow;
 pub mod debug;
