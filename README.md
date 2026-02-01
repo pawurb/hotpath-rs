@@ -33,10 +33,10 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 - [x] process threads monitoring
 - [x] futures monitoring
 - [x] improved docs on [hotpath.rs](https://hotpath.rs)
+- [x] interactive SSH demo 
+- [x] MCP/LLM interface
 - [ ] runtime metrics 
 - [ ] hosted backend integration
-- [ ] interactive SSH demo 
-- [ ] MCP/LLM interface
 
 ## Quick Demo
 
@@ -165,6 +165,104 @@ The TUI will connect to your running application and display real-time profiling
 
 - `HOTPATH_METRICS_PORT` - Customize the port (default: 6770)
 - `HOTPATH_METRICS_SERVER_OFF=true` - Disable the server entirely
+
+## MCP Server for AI Tool Integration
+
+`hotpath` includes an MCP (Model Context Protocol) server that enables AI assistants like Claude to query profiling data in real-time. This allows you to ask questions about your application's performance directly in your AI-assisted development workflow.
+
+**Configuration:**
+
+Enable the MCP server by adding the `hotpath-mcp` feature:
+
+```toml
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-mcp = ["hotpath/hotpath-mcp"]
+```
+
+Run with:
+```bash
+cargo run --features='hotpath,hotpath-mcp'
+```
+
+- Default port: `6771`
+- Endpoint: `http://localhost:6771/mcp`
+- `HOTPATH_MCP_PORT` - Customize the port
+- `HOTPATH_MCP_AUTH_TOKEN` - Optional authentication token
+
+**Authentication:**
+
+When `HOTPATH_MCP_AUTH_TOKEN` is set, clients must include the token in the `Authorization` header. When not set, no authentication is required.
+
+**Available Tools:**
+
+| Tool | Description |
+|------|-------------|
+| `functions_timing` | Execution timing metrics (call count, avg, p50/p95/p99, total) |
+| `functions_alloc` | Memory allocation metrics per function (requires `hotpath-alloc`) |
+| `channels` | Channel metrics (sent/received counts, queue size, state) |
+| `streams` | Stream metrics (items yielded, state) |
+| `futures` | Future lifecycle metrics (poll counts, state) |
+| `threads` | Thread CPU usage metrics |
+| `gauges` | Gauge metrics (current/min/max values, update count) |
+| `function_timing_logs(function_name)` | Detailed timing logs for a specific function |
+| `function_alloc_logs(function_name)` | Detailed allocation logs for a specific function |
+| `channel_logs(channel_id)` | Message logs for a specific channel |
+| `stream_logs(stream_id)` | Item logs for a specific stream |
+| `future_logs(future_id)` | Poll/completion logs for a specific future |
+| `gauge_logs(gauge_id)` | Value update logs for a specific gauge |
+
+**Claude Code Configuration:**
+
+Run:
+
+```bash
+claude mcp add --transport http hotpath http://localhost:6771/mcp
+```
+
+```json
+"mcpServers": {
+    "hotpath": {
+        "type": "http",
+        "url": "http://localhost:6771/mcp"
+    }
+}
+```
+
+With authentication:
+
+```bash
+claude mcp add --transport http hotpath http://localhost:6771/mcp --header "Authorization: your-secret-token"                                          
+```
+
+```json
+"mcpServers": {
+    "hotpath": {
+        "type": "http",
+        "url": "http://localhost:6771/mcp",
+        "headers": {
+            "Authorization": "your-secret-token"
+        }
+    }
+}
+```
+
+**Usage Workflow:**
+
+1. Start your application with the MCP feature enabled:
+
+```bash
+cargo run --features='hotpath,hotpath-mcp'
+```
+
+2. The MCP server starts on port 6771
+
+3. Configure Claude Code to connect (see above)
+
+4. Query profiling data via your AI assistant:
+   - "What are the slowest functions?"
+   - "Show me the p99 latencies"
+   - "Are there any channels with growing queues?"
 
 ## Allocation Tracking
 
