@@ -1,7 +1,4 @@
-use crate::json::JsonFunctionsList;
-use crate::output::{
-    shorten_function_name, MetricType, MetricsProvider, OutputDestination, Reporter,
-};
+use crate::output::{shorten_function_name, MetricType, MetricsProvider};
 use colored::*;
 use prettytable::{color, Attr, Cell, Row, Table};
 use std::io::Write;
@@ -26,7 +23,7 @@ pub(crate) fn get_sorted_measurements(
     sorted_entries
 }
 
-fn display_table_to<W: Write>(
+pub(crate) fn display_table_to<W: Write>(
     writer: &mut W,
     metrics_provider: &dyn MetricsProvider<'_>,
     use_colors: bool,
@@ -149,7 +146,7 @@ fn display_table_to<W: Write>(
     }
 }
 
-fn display_no_measurements_message_to<W: Write>(
+pub(crate) fn display_no_measurements_message_to<W: Write>(
     writer: &mut W,
     total_elapsed: Duration,
     caller_name: &str,
@@ -226,99 +223,5 @@ fn display_no_measurements_message_to<W: Write>(
         let _ = writeln!(writer, "      // your code here");
         let _ = writeln!(writer, "  }});");
         let _ = writeln!(writer);
-    }
-}
-
-pub(crate) struct TableReporter;
-
-impl Reporter for TableReporter {
-    fn report(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
-        output: &OutputDestination,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let is_file = matches!(output, OutputDestination::File(_));
-        let mut writer = output.writer()?;
-
-        if metrics_provider.metric_data().is_empty() {
-            display_no_measurements_message_to(
-                &mut writer,
-                Duration::from_nanos(metrics_provider.total_elapsed()),
-                metrics_provider.caller_name(),
-                !is_file,
-            );
-            return Ok(());
-        }
-
-        display_table_to(&mut writer, metrics_provider, !is_file);
-        Ok(())
-    }
-}
-
-pub(crate) struct JsonReporter;
-
-impl Reporter for JsonReporter {
-    fn report(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
-        output: &OutputDestination,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let is_file = matches!(output, OutputDestination::File(_));
-        let mut writer = output.writer()?;
-
-        if metrics_provider.metric_data().is_empty() {
-            display_no_measurements_message_to(
-                &mut writer,
-                Duration::ZERO,
-                metrics_provider.caller_name(),
-                !is_file,
-            );
-            return Ok(());
-        }
-
-        let elapsed_ns = metrics_provider.total_elapsed();
-        let json = JsonFunctionsList::from_provider_with_raw(metrics_provider, elapsed_ns);
-        writeln!(writer, "{}", serde_json::to_string(&json)?)?;
-        Ok(())
-    }
-}
-
-pub(crate) struct JsonPrettyReporter;
-
-impl Reporter for JsonPrettyReporter {
-    fn report(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
-        output: &OutputDestination,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let is_file = matches!(output, OutputDestination::File(_));
-        let mut writer = output.writer()?;
-
-        if metrics_provider.metric_data().is_empty() {
-            display_no_measurements_message_to(
-                &mut writer,
-                Duration::ZERO,
-                metrics_provider.caller_name(),
-                !is_file,
-            );
-            return Ok(());
-        }
-
-        let elapsed_ns = metrics_provider.total_elapsed();
-        let json = JsonFunctionsList::from_provider_with_raw(metrics_provider, elapsed_ns);
-        writeln!(writer, "{}", serde_json::to_string_pretty(&json)?)?;
-        Ok(())
-    }
-}
-
-pub(crate) struct NoOpReporter;
-
-impl Reporter for NoOpReporter {
-    fn report(
-        &self,
-        _metrics_provider: &dyn MetricsProvider<'_>,
-        _output: &OutputDestination,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
     }
 }

@@ -6,13 +6,14 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 
+use std::io::Write;
+
 use crate::json::JsonFunctionsList;
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{
     resolve_output_path, FunctionLog, FunctionLogsList, MetricsProvider, OutputDestination,
 };
-use crate::output_on::{JsonPrettyReporter, JsonReporter, NoOpReporter, TableReporter};
-use crate::Reporter;
+use crate::output_on::{display_no_measurements_message_to, display_table_to};
 
 use super::{FunctionsQuery, FUNCTIONS_STATE};
 
@@ -32,12 +33,6 @@ cfg_if::cfg_if! {
 
 use super::MeasurementGuard;
 use crate::Format;
-
-enum ReporterConfig {
-    Format(Format),
-    Custom(Box<dyn Reporter>),
-    None,
-}
 
 /// Builder for creating a functions profiling guard with custom configuration.
 ///
@@ -74,27 +69,6 @@ enum ReporterConfig {
 /// # }
 /// ```
 ///
-/// With custom reporter:
-///
-/// ```rust
-/// # #[cfg(feature = "hotpath")]
-/// # {
-/// use hotpath::{FunctionsGuardBuilder, Reporter, MetricsProvider};
-///
-/// struct MyReporter;
-/// impl Reporter for MyReporter {
-///     fn report(&self, metrics: &dyn MetricsProvider<'_>) -> Result<(), Box<dyn std::error::Error>> {
-///         // Custom reporting logic
-///         Ok(())
-///     }
-/// }
-///
-/// let _guard = FunctionsGuardBuilder::new("main")
-///     .reporter(Box::new(MyReporter))
-///     .build();
-/// # }
-/// ```
-///
 /// # Limitations
 ///
 /// Only one hotpath guard can be active at a time. Creating a second guard (either via
@@ -104,12 +78,11 @@ enum ReporterConfig {
 ///
 /// * `#[hotpath::main]` - Attribute macro for automatic initialization
 /// * [`Format`] - Output format options
-/// * [`Reporter`] - Custom reporter trait
 #[must_use = "builder is discarded without creating a guard"]
 pub struct FunctionsGuardBuilder {
     caller_name: &'static str,
     percentiles: Vec<u8>,
-    reporter: ReporterConfig,
+    format: Format,
     limit: usize,
     output_path: Option<PathBuf>,
 }
@@ -137,7 +110,7 @@ impl FunctionsGuardBuilder {
         Self {
             caller_name,
             percentiles: vec![95],
-            reporter: ReporterConfig::None,
+            format: Format::Table,
             limit: 15,
             output_path: None,
         }
@@ -223,47 +196,7 @@ impl FunctionsGuardBuilder {
     ///
     /// * [`Format`] - Available output formats
     pub fn format(mut self, format: Format) -> Self {
-        self.reporter = ReporterConfig::Format(format);
-        self
-    }
-
-    /// Sets a custom reporter for the profiling report.
-    ///
-    /// Custom reporters allow you to control how profiling results are handled,
-    /// enabling integration with logging systems, CI pipelines, or monitoring tools.
-    ///
-    /// When a custom reporter is set, it overrides any format setting.
-    ///
-    /// # Arguments
-    ///
-    /// * `reporter` - A boxed implementation of the [`Reporter`] trait
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath")]
-    /// # {
-    /// use hotpath::{FunctionsGuardBuilder, Reporter, MetricsProvider};
-    ///
-    /// struct CsvReporter;
-    /// impl Reporter for CsvReporter {
-    ///     fn report(&self, metrics: &dyn MetricsProvider<'_>) -> Result<(), Box<dyn std::error::Error>> {
-    ///         // Write metrics to CSV file
-    ///         Ok(())
-    ///     }
-    /// }
-    ///
-    /// let _guard = FunctionsGuardBuilder::new("main")
-    ///     .reporter(Box::new(CsvReporter))
-    ///     .build();
-    /// # }
-    /// ```
-    ///
-    /// # See Also
-    ///
-    /// * [`Reporter`] - Reporter trait for custom implementations
-    pub fn reporter(mut self, reporter: Box<dyn Reporter>) -> Self {
-        self.reporter = ReporterConfig::Custom(reporter);
+        self.format = format;
         self
     }
 
@@ -316,17 +249,6 @@ impl FunctionsGuardBuilder {
     /// # }
     /// ```
     pub fn build(self) -> FunctionsGuard {
-        let reporter: Box<dyn Reporter> = match self.reporter {
-            ReporterConfig::Format(format) => match format {
-                Format::Table => Box::new(TableReporter),
-                Format::Json => Box::new(JsonReporter),
-                Format::JsonPretty => Box::new(JsonPrettyReporter),
-                Format::None => Box::new(NoOpReporter),
-            },
-            ReporterConfig::Custom(reporter) => reporter,
-            ReporterConfig::None => Box::new(TableReporter),
-        };
-
         let recent_logs_limit = std::env::var("HOTPATH_RECENT_LOGS")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
@@ -336,7 +258,7 @@ impl FunctionsGuardBuilder {
             self.caller_name,
             &self.percentiles,
             self.limit,
-            reporter,
+            self.format,
             recent_logs_limit,
             self.output_path,
         )
@@ -384,7 +306,7 @@ impl FunctionsGuardBuilder {
 #[must_use = "guard is dropped immediately without generating a report"]
 pub struct FunctionsGuard {
     state: Arc<RwLock<FunctionsState>>,
-    reporter: Box<dyn Reporter>,
+    format: Format,
     wrapper_guard: Option<MeasurementGuard>,
     output_path: Option<PathBuf>,
 }
@@ -394,7 +316,7 @@ impl FunctionsGuard {
         caller_name: &'static str,
         percentiles: &[u8],
         limit: usize,
-        _reporter: Box<dyn Reporter>,
+        format: Format,
         recent_logs_limit: usize,
         output_path: Option<PathBuf>,
     ) -> Self {
@@ -607,16 +529,6 @@ impl FunctionsGuard {
         #[cfg(feature = "hotpath-mcp")]
         crate::mcp_server::start_mcp_server_once();
 
-        let reporter: Box<dyn Reporter> = match std::env::var("HOTPATH_OUTPUT_FORMAT") {
-            Ok(_) => match Format::from_env() {
-                Format::Table => Box::new(TableReporter),
-                Format::Json => Box::new(JsonReporter),
-                Format::JsonPretty => Box::new(JsonPrettyReporter),
-                Format::None => Box::new(NoOpReporter),
-            },
-            Err(_) => _reporter,
-        };
-
         let wrapper_guard = MeasurementGuard::build(caller_name, true, false);
 
         // Re-enable allocation tracking after infrastructure is initialized
@@ -627,7 +539,7 @@ impl FunctionsGuard {
 
         Self {
             state: Arc::clone(&state_arc),
-            reporter,
+            format,
             wrapper_guard: Some(wrapper_guard),
             output_path,
         }
@@ -666,6 +578,7 @@ impl Drop for FunctionsGuard {
                 if let Ok(stats) = rx.recv() {
                     if let Ok(state_guard) = state.read() {
                         let total_elapsed = end_time.duration_since(state_guard.start_time);
+                        let elapsed_ns = total_elapsed.as_nanos() as u64;
                         let metrics_provider = StatsData::new(
                             &stats,
                             total_elapsed,
@@ -675,9 +588,58 @@ impl Drop for FunctionsGuard {
                         );
 
                         let output = OutputDestination::from_path(self.output_path.take());
-                        match self.reporter.report(&metrics_provider, &output) {
-                            Ok(()) => (),
-                            Err(e) => eprintln!("Failed to report hotpath metrics: {}", e),
+                        let format = if std::env::var("HOTPATH_OUTPUT_FORMAT").is_ok() {
+                            Format::from_env()
+                        } else {
+                            self.format
+                        };
+
+                        let mut writer = match output.writer() {
+                            Ok(w) => w,
+                            Err(e) => {
+                                eprintln!("Failed to create output writer: {}", e);
+                                return;
+                            }
+                        };
+
+                        let is_file = matches!(output, OutputDestination::File(_));
+
+                        if metrics_provider.metric_data().is_empty() {
+                            display_no_measurements_message_to(
+                                &mut writer,
+                                total_elapsed,
+                                state_guard.caller_name,
+                                !is_file,
+                            );
+                        } else {
+                            match format {
+                                Format::Table => {
+                                    display_table_to(&mut writer, &metrics_provider, !is_file)
+                                }
+                                Format::Json => {
+                                    let json = JsonFunctionsList::from_provider_with_raw(
+                                        &metrics_provider,
+                                        elapsed_ns,
+                                    );
+                                    let _ = writeln!(
+                                        writer,
+                                        "{}",
+                                        serde_json::to_string(&json).unwrap_or_default()
+                                    );
+                                }
+                                Format::JsonPretty => {
+                                    let json = JsonFunctionsList::from_provider_with_raw(
+                                        &metrics_provider,
+                                        elapsed_ns,
+                                    );
+                                    let _ = writeln!(
+                                        writer,
+                                        "{}",
+                                        serde_json::to_string_pretty(&json).unwrap_or_default()
+                                    );
+                                }
+                                Format::None => {}
+                            }
                         }
                     }
                 }

@@ -397,47 +397,6 @@ pub mod tests {
         fs::remove_file(report_path).ok();
     }
 
-    // RUST_LOG=info cargo run -p test-tokio-async --example tracing_reporter --features hotpath
-    #[test]
-    fn test_tracing_reporter_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "tracing_reporter",
-                "--features",
-                "hotpath",
-            ])
-            .env("RUST_LOG", "info")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let expected_content = [
-            "HotPath Report for: main",
-            "Headers: Function, Calls, Avg, P50, P90, P95, Total, % Total",
-            "tracing_reporter::async_function, 100",
-            "tracing_reporter::sync_function, 100",
-            "custom_block, 100",
-        ];
-
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\\n{expected}\\n\\nGot:\\n{stdout}",
-            );
-        }
-    }
-
     // cargo run -p test-tokio-async --example no_op_block
     #[test]
     fn test_no_op_block_output() {

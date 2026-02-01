@@ -143,46 +143,6 @@ pub fn shorten_function_name(function_name: &str) -> String {
     }
 }
 
-/// Trait for implementing custom profiling report output.
-///
-/// Implement this trait to control how profiling results are displayed or stored.
-/// Custom reporters can integrate hotpath with logging systems, CI pipelines,
-/// monitoring tools, or custom file formats.
-///
-/// # Examples
-///
-/// ```rust
-/// use hotpath::{Reporter, MetricsProvider, OutputDestination};
-/// use std::error::Error;
-///
-/// struct SimpleLogger;
-///
-/// impl Reporter for SimpleLogger {
-///     fn report(
-///         &self,
-///         metrics: &dyn MetricsProvider<'_>,
-///         _output: &OutputDestination,
-///     ) -> Result<(), Box<dyn Error>> {
-///         println!("Profiling {} complete", metrics.caller_name());
-///         println!("Functions measured: {}", metrics.metric_data().len());
-///         Ok(())
-///     }
-/// }
-/// ```
-///
-/// # See Also
-///
-/// * [`MetricsProvider`] - Trait for accessing profiling metrics data
-/// * `FunctionsGuardBuilder::reporter` - Method to set custom reporter
-pub trait Reporter: Send + Sync {
-    /// Generate a report to the specified output destination.
-    fn report(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
-        output: &OutputDestination,
-    ) -> Result<(), Box<dyn std::error::Error>>;
-}
-
 /// A single log entry for a function invocation.
 ///
 /// - For timing mode: `value` is duration in nanoseconds, `alloc_count` is None

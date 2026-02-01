@@ -27,7 +27,7 @@ pub(crate) mod output;
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_duration, shorten_function_name,
     truncate_result, FunctionLogsList, FunctionsData, MetricType, MetricsProvider,
-    OutputDestination, ProfilingMode, Reporter, MAX_RESULT_LEN,
+    OutputDestination, ProfilingMode, MAX_RESULT_LEN,
 };
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]

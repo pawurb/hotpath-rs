@@ -204,51 +204,6 @@ impl HotPath {
     }
 }
 
-pub use crate::shared::OutputDestination;
-
-pub trait Reporter: Send + Sync {
-    fn report(
-        &self,
-        metrics_provider: &dyn MetricsProvider<'_>,
-        output: &OutputDestination,
-    ) -> Result<(), Box<dyn std::error::Error>>;
-}
-
-pub use crate::shared::{MetricType, ProfilingMode};
-
-pub trait MetricsProvider<'a> {
-    fn description(&self) -> String {
-        String::new()
-    }
-    fn profiling_mode(&self) -> ProfilingMode {
-        ProfilingMode::Timing
-    }
-    fn headers(&self) -> Vec<String> {
-        vec![]
-    }
-    fn percentiles(&self) -> Vec<u8> {
-        vec![]
-    }
-    fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
-        vec![]
-    }
-    fn sort_key(&self, _metrics: &[MetricType]) -> f64 {
-        0.0
-    }
-    fn has_unsupported_async(&self) -> bool {
-        false
-    }
-    fn entry_counts(&self) -> (usize, usize) {
-        (0, 0)
-    }
-    fn total_elapsed(&self) -> u64 {
-        0
-    }
-    fn caller_name(&self) -> &str {
-        ""
-    }
-}
-
 pub struct FunctionsGuardBuilder {}
 
 impl FunctionsGuardBuilder {
@@ -278,10 +233,6 @@ impl FunctionsGuardBuilder {
 
     pub fn build_with_timeout(self, _duration: std::time::Duration) -> HotPath {
         HotPath
-    }
-
-    pub fn reporter(self, _reporter: Box<dyn Reporter>) -> Self {
-        self
     }
 }
 

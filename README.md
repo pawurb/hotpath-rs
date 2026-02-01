@@ -865,15 +865,6 @@ You can combine multiple parameters:
 #[hotpath::main(percentiles = [50, 90, 99], format = "json", limit = 10, timeout = 30000)]
 ```
 
-## Custom Reporters
-
-You can implement your own reporting to control how profiling results are handled. This allows you to plug `hotpath` into existing tools like loggers, CI pipelines, or monitoring systems.
-
-For complete working examples, see:
-- [`examples/csv_file_reporter.rs`](crates/test-tokio-async/examples/csv_file_reporter.rs) - Save metrics to CSV file
-- [`examples/json_file_reporter.rs`](crates/test-tokio-async/examples/json_file_reporter.rs) - Save metrics to JSON file
-- [`examples/tracing_reporter.rs`](crates/test-tokio-async/examples/tracing_reporter.rs) - Log metrics using the tracing crate
-
 ## Benchmarking
 
 Measure overhead of profiling 10k method calls with [hyperfine](https://github.com/sharkdp/hyperfine):
