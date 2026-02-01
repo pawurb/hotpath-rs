@@ -23,10 +23,10 @@ pub fn register_channel<T>(
     channel_type: ChannelType,
 ) -> RegisteredChannel {
     let type_name = std::any::type_name::<T>();
-    let (stats_tx, _) = init_channels_state();
+    let state = init_channels_state();
     let id = next_data_flow_id();
 
-    let _ = stats_tx.send(ChannelEvent::Created {
+    let _ = state.event_tx.send(ChannelEvent::Created {
         id,
         source,
         display_label: label,
@@ -37,6 +37,6 @@ pub fn register_channel<T>(
 
     RegisteredChannel {
         id,
-        stats_tx: stats_tx.clone(),
+        stats_tx: state.event_tx.clone(),
     }
 }

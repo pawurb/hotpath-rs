@@ -5,11 +5,13 @@ use quanta::Instant;
 use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 
-use crate::futures::{get_futures_json, init_futures_state};
-use crate::json::JsonFuturesList;
+use crate::channels::resolve_label;
+use crate::futures::{compare_future_stats, init_futures_state, FutureEntry, FUTURES_STATE};
+use crate::json::{JsonFutureEntry, JsonFuturesList};
 use crate::output::resolve_output_path;
 use crate::Format;
 
@@ -143,10 +145,33 @@ impl Default for FuturesGuard {
     }
 }
 
+fn get_sorted_futures(stats: HashMap<u64, FutureEntry>) -> Vec<FutureEntry> {
+    let mut futures: Vec<FutureEntry> = stats.into_values().collect();
+    futures.sort_by(compare_future_stats);
+    futures
+}
+
 impl Drop for FuturesGuard {
     fn drop(&mut self) {
         let elapsed = self.start_time.elapsed();
-        let futures_json = get_futures_json();
+
+        let futures = FUTURES_STATE
+            .get()
+            .and_then(|state| {
+                if let Ok(mut guard) = state.shutdown_tx.lock() {
+                    if let Some(tx) = guard.take() {
+                        let _ = tx.send(());
+                    }
+                }
+                state
+                    .completion_rx
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take())
+                    .and_then(|rx| rx.recv().ok())
+            })
+            .map(get_sorted_futures)
+            .unwrap_or_default();
 
         let output = crate::output::OutputDestination::from_path(self.output_path.take());
         let mut writer: Box<dyn Write> = match output.writer() {
@@ -157,7 +182,7 @@ impl Drop for FuturesGuard {
             }
         };
 
-        if futures_json.futures.is_empty() {
+        if futures.is_empty() {
             let _ = writeln!(writer, "\nNo instrumented futures found.");
             return;
         }
@@ -184,11 +209,13 @@ impl Drop for FuturesGuard {
                     Cell::new("Polls"),
                 ]));
 
-                for future_stats in &futures_json.futures {
+                for future_stats in &futures {
+                    let label =
+                        resolve_label(future_stats.source, future_stats.label.as_deref(), None);
                     table.add_row(Row::new(vec![
-                        Cell::new(&future_stats.label),
-                        Cell::new(&future_stats.call_count.to_string()),
-                        Cell::new(&future_stats.total_polls.to_string()),
+                        Cell::new(&label),
+                        Cell::new(&future_stats.logs_count.to_string()),
+                        Cell::new(&future_stats.total_polls().to_string()),
                     ]));
                 }
 
@@ -198,7 +225,7 @@ impl Drop for FuturesGuard {
             Format::Json => {
                 let json_output = JsonFuturesList {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
-                    futures: futures_json.futures,
+                    futures: futures.iter().map(JsonFutureEntry::from).collect(),
                 };
                 match serde_json::to_string(&json_output) {
                     Ok(json) => {
@@ -210,7 +237,7 @@ impl Drop for FuturesGuard {
             Format::JsonPretty => {
                 let json_output = JsonFuturesList {
                     current_elapsed_ns: elapsed.as_nanos() as u64,
-                    futures: futures_json.futures,
+                    futures: futures.iter().map(JsonFutureEntry::from).collect(),
                 };
                 match serde_json::to_string_pretty(&json_output) {
                     Ok(json) => {

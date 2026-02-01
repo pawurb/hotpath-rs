@@ -27,21 +27,14 @@ pin_project! {
 }
 
 impl<S> InstrumentedStream<S> {
-    /// Create a new instrumented stream wrapper.
-    ///
-    /// # Parameters
-    /// - `stream`: The underlying stream to instrument
-    /// - `source`: Source location (file:line) for identification
-    /// - `label`: Optional custom label
     pub(crate) fn new(stream: S, source: &'static str, label: Option<String>) -> Self
     where
         S: Stream,
     {
-        let (stats_tx, _) = init_streams_state();
+        let state = init_streams_state();
         let id = next_data_flow_id();
 
-        // Send stream creation event
-        let _ = stats_tx.send(StreamEvent::Created {
+        let _ = state.event_tx.send(StreamEvent::Created {
             id,
             source,
             display_label: label,
@@ -51,7 +44,7 @@ impl<S> InstrumentedStream<S> {
 
         Self {
             inner: stream,
-            stats_tx: stats_tx.clone(),
+            stats_tx: state.event_tx.clone(),
             id,
         }
     }
@@ -94,16 +87,14 @@ pin_project! {
 }
 
 impl<S> InstrumentedStreamLog<S> {
-    /// Create a new instrumented stream wrapper with logging.
     pub(crate) fn new(stream: S, source: &'static str, label: Option<String>) -> Self
     where
         S: Stream,
     {
-        let (stats_tx, _) = init_streams_state();
+        let state = init_streams_state();
         let id = next_data_flow_id();
 
-        // Send stream creation event
-        let _ = stats_tx.send(StreamEvent::Created {
+        let _ = state.event_tx.send(StreamEvent::Created {
             id,
             source,
             display_label: label,
@@ -113,7 +104,7 @@ impl<S> InstrumentedStreamLog<S> {
 
         Self {
             inner: stream,
-            stats_tx: stats_tx.clone(),
+            stats_tx: state.event_tx.clone(),
             id,
         }
     }

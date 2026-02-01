@@ -5,10 +5,11 @@ use quanta::Instant;
 use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 
-use crate::channels::{get_sorted_channel_entries, resolve_label};
+use crate::channels::{compare_channel_entries, resolve_label, ChannelEntry, CHANNELS_STATE};
 use crate::json::{JsonChannelEntry, JsonChannelsList};
 use crate::output::{format_bytes, resolve_output_path};
 use crate::Format;
@@ -141,10 +142,33 @@ impl Default for ChannelsGuard {
     }
 }
 
+fn get_sorted_channels(stats: HashMap<u64, ChannelEntry>) -> Vec<ChannelEntry> {
+    let mut channels: Vec<ChannelEntry> = stats.into_values().collect();
+    channels.sort_by(compare_channel_entries);
+    channels
+}
+
 impl Drop for ChannelsGuard {
     fn drop(&mut self) {
         let elapsed = self.start_time.elapsed();
-        let channels = get_sorted_channel_entries();
+
+        let channels = CHANNELS_STATE
+            .get()
+            .and_then(|state| {
+                if let Ok(mut guard) = state.shutdown_tx.lock() {
+                    if let Some(tx) = guard.take() {
+                        let _ = tx.send(());
+                    }
+                }
+                state
+                    .completion_rx
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take())
+                    .and_then(|rx| rx.recv().ok())
+            })
+            .map(get_sorted_channels)
+            .unwrap_or_default();
 
         let output = crate::output::OutputDestination::from_path(self.output_path.take());
         let mut writer: Box<dyn Write> = match output.writer() {
@@ -186,7 +210,7 @@ impl Drop for ChannelsGuard {
                     Cell::new("Mem"),
                 ]));
 
-                for channel_stats in channels {
+                for channel_stats in &channels {
                     let label = resolve_label(
                         channel_stats.source,
                         channel_stats.label.as_deref(),

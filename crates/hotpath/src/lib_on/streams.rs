@@ -1,8 +1,8 @@
 //! Stream instrumentation module - tracks items yielded and stream lifecycle.
 
-use crossbeam_channel::{unbounded, Sender as CbSender};
+use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -96,12 +96,55 @@ pub(crate) enum StreamEvent {
     },
 }
 
-pub(crate) type StreamStatsState = (
-    CbSender<StreamEvent>,
-    Arc<RwLock<HashMap<u64, StreamStats>>>,
-);
+pub(crate) struct StreamsState {
+    pub(crate) event_tx: CbSender<StreamEvent>,
+    pub(crate) stats_map: Arc<RwLock<HashMap<u64, StreamStats>>>,
+    pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
+    pub(crate) completion_rx: Mutex<Option<CbReceiver<HashMap<u64, StreamStats>>>>,
+}
 
-static STREAMS_STATE: OnceLock<StreamStatsState> = OnceLock::new();
+pub(crate) type StreamStatsState = StreamsState;
+
+pub(crate) static STREAMS_STATE: OnceLock<StreamStatsState> = OnceLock::new();
+
+fn process_stream_event(stats: &mut HashMap<u64, StreamStats>, event: StreamEvent) {
+    match event {
+        StreamEvent::Created {
+            id,
+            source,
+            display_label,
+            type_name,
+            type_size,
+        } => {
+            let iter = stats.values().filter(|s| s.source == source).count() as u32;
+            stats.insert(
+                id,
+                StreamStats::new(id, source, display_label, type_name, type_size, iter),
+            );
+        }
+        StreamEvent::Yielded { id, log, timestamp } => {
+            if let Some(stream_stats) = stats.get_mut(&id) {
+                stream_stats.items_yielded += 1;
+
+                let limit = crate::channels::get_log_limit();
+                if stream_stats.logs.len() >= limit {
+                    stream_stats.logs.pop_front();
+                }
+                stream_stats.logs.push_back(DataFlowLogEntry::new(
+                    stream_stats.items_yielded,
+                    crate::channels::timestamp_nanos(timestamp),
+                    log,
+                    None,
+                ));
+            }
+        }
+        StreamEvent::Completed { id } => {
+            if let Some(stream_stats) = stats.get_mut(&id) {
+                stream_stats.state = ChannelState::Closed;
+            }
+        }
+    }
+}
 
 /// Initialize the stream statistics collection system (called on first instrumented stream).
 /// Returns a reference to the global state.
@@ -109,67 +152,51 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
     STREAMS_STATE.get_or_init(|| {
         crate::lib_on::START_TIME.get_or_init(Instant::now);
 
-        let (tx, rx) = unbounded::<StreamEvent>();
+        let (event_tx, event_rx) = unbounded::<StreamEvent>();
+        let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
+        let (completion_tx, completion_rx) = bounded::<HashMap<u64, StreamStats>>(1);
         let stats_map = Arc::new(RwLock::new(HashMap::<u64, StreamStats>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
             .name("hp-streams".into())
             .spawn(move || {
-                while let Ok(event) = rx.recv() {
-                    let mut stats = stats_map_clone.write().unwrap();
-                    match event {
-                        StreamEvent::Created {
-                            id,
-                            source,
-                            display_label,
-                            type_name,
-                            type_size,
-                        } => {
-                            // Count existing items with the same source location
-                            let iter = stats.values().filter(|s| s.source == source).count() as u32;
+                let mut local_stats = HashMap::<u64, StreamStats>::new();
 
-                            stats.insert(
-                                id,
-                                StreamStats::new(
-                                    id,
-                                    source,
-                                    display_label,
-                                    type_name,
-                                    type_size,
-                                    iter,
-                                ),
-                            );
-                        }
-                        StreamEvent::Yielded { id, log, timestamp } => {
-                            if let Some(stream_stats) = stats.get_mut(&id) {
-                                stream_stats.items_yielded += 1;
-
-                                let limit = crate::channels::get_log_limit();
-                                if stream_stats.logs.len() >= limit {
-                                    stream_stats.logs.pop_front();
+                loop {
+                    select! {
+                        recv(event_rx) -> result => {
+                            match result {
+                                Ok(event) => {
+                                    process_stream_event(&mut local_stats, event);
+                                    if let Ok(mut shared) = stats_map_clone.write() {
+                                        *shared = local_stats.clone();
+                                    }
                                 }
-                                stream_stats.logs.push_back(DataFlowLogEntry::new(
-                                    stream_stats.items_yielded,
-                                    crate::channels::timestamp_nanos(timestamp),
-                                    log,
-                                    None,
-                                ));
+                                Err(_) => break,
                             }
                         }
-                        StreamEvent::Completed { id } => {
-                            if let Some(stream_stats) = stats.get_mut(&id) {
-                                stream_stats.state = ChannelState::Closed;
+                        recv(shutdown_rx) -> _ => {
+                            while let Ok(event) = event_rx.try_recv() {
+                                process_stream_event(&mut local_stats, event);
                             }
+                            break;
                         }
                     }
                 }
+
+                let _ = completion_tx.send(local_stats);
             })
             .expect("Failed to spawn stream-stats-collector thread");
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
-        (tx, stats_map)
+        StreamsState {
+            event_tx,
+            stats_map,
+            shutdown_tx: Mutex::new(Some(shutdown_tx)),
+            completion_rx: Mutex::new(Some(completion_rx)),
+        }
     })
 }
 
@@ -275,8 +302,8 @@ macro_rules! stream {
 }
 
 fn get_all_stream_stats() -> HashMap<u64, StreamStats> {
-    if let Some((_, stats_map)) = STREAMS_STATE.get() {
-        stats_map.read().unwrap().clone()
+    if let Some(state) = STREAMS_STATE.get() {
+        state.stats_map.read().unwrap().clone()
     } else {
         HashMap::new()
     }
@@ -284,7 +311,7 @@ fn get_all_stream_stats() -> HashMap<u64, StreamStats> {
 
 /// Compare two stream stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
-fn compare_stream_stats(a: &StreamStats, b: &StreamStats) -> std::cmp::Ordering {
+pub(crate) fn compare_stream_stats(a: &StreamStats, b: &StreamStats) -> std::cmp::Ordering {
     let a_has_label = a.label.is_some();
     let b_has_label = b.label.is_some();
 

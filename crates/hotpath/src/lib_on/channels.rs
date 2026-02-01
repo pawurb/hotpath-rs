@@ -1,8 +1,8 @@
 //! Channel instrumentation module - tracks message flow, queue sizes, and channel state.
 
-use crossbeam_channel::{unbounded, Sender as CbSender};
+use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -160,12 +160,16 @@ pub(crate) enum ChannelEvent {
     },
 }
 
-type ChannelStatsState = (
-    CbSender<ChannelEvent>,
-    Arc<RwLock<HashMap<u64, ChannelEntry>>>,
-);
+pub(crate) struct ChannelsState {
+    pub(crate) event_tx: CbSender<ChannelEvent>,
+    pub(crate) stats_map: Arc<RwLock<HashMap<u64, ChannelEntry>>>,
+    pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
+    pub(crate) completion_rx: Mutex<Option<CbReceiver<HashMap<u64, ChannelEntry>>>>,
+}
 
-static CHANNELS_STATE: OnceLock<ChannelStatsState> = OnceLock::new();
+type ChannelStatsState = ChannelsState;
+
+pub(crate) static CHANNELS_STATE: OnceLock<ChannelStatsState> = OnceLock::new();
 
 pub(crate) use crate::lib_on::START_TIME;
 
@@ -178,97 +182,127 @@ pub(crate) fn get_log_limit() -> usize {
         .unwrap_or(DEFAULT_LOG_LIMIT)
 }
 
+fn process_channel_event(stats: &mut HashMap<u64, ChannelEntry>, event: ChannelEvent) {
+    match event {
+        ChannelEvent::Created {
+            id,
+            source,
+            display_label,
+            channel_type,
+            type_name,
+            type_size,
+        } => {
+            let iter = stats.values().filter(|s| s.source == source).count() as u32;
+            stats.insert(
+                id,
+                ChannelEntry::new(
+                    id,
+                    source,
+                    display_label,
+                    channel_type,
+                    type_name,
+                    type_size,
+                    iter,
+                ),
+            );
+        }
+        ChannelEvent::MessageSent { id, log, timestamp } => {
+            if let Some(channel_stats) = stats.get_mut(&id) {
+                channel_stats.sent_count += 1;
+                channel_stats.update_state();
+
+                let limit = get_log_limit();
+                if channel_stats.sent_logs.len() >= limit {
+                    channel_stats.sent_logs.pop_front();
+                }
+                channel_stats.sent_logs.push_back(DataFlowLogEntry::new(
+                    channel_stats.sent_count,
+                    timestamp_nanos(timestamp),
+                    log.map(truncate_result),
+                    None,
+                ));
+            }
+        }
+        ChannelEvent::MessageReceived { id, timestamp } => {
+            if let Some(channel_stats) = stats.get_mut(&id) {
+                channel_stats.received_count += 1;
+                channel_stats.update_state();
+
+                let limit = get_log_limit();
+                if channel_stats.received_logs.len() >= limit {
+                    channel_stats.received_logs.pop_front();
+                }
+                channel_stats.received_logs.push_back(DataFlowLogEntry::new(
+                    channel_stats.received_count,
+                    timestamp_nanos(timestamp),
+                    None,
+                    None,
+                ));
+            }
+        }
+        ChannelEvent::Closed { id } => {
+            if let Some(channel_stats) = stats.get_mut(&id) {
+                channel_stats.state = ChannelState::Closed;
+            }
+        }
+        ChannelEvent::Notified { id } => {
+            if let Some(channel_stats) = stats.get_mut(&id) {
+                channel_stats.state = ChannelState::Notified;
+            }
+        }
+    }
+}
+
 /// Initialize the channel statistics collection system (called on first instrumented channel).
 pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
     CHANNELS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (tx, rx) = unbounded::<ChannelEvent>();
+        let (event_tx, event_rx) = unbounded::<ChannelEvent>();
+        let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
+        let (completion_tx, completion_rx) = bounded::<HashMap<u64, ChannelEntry>>(1);
         let stats_map = Arc::new(RwLock::new(HashMap::<u64, ChannelEntry>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
             .name("hp-channels".into())
             .spawn(move || {
-                while let Ok(event) = rx.recv() {
-                    let mut stats = stats_map_clone.write().unwrap();
-                    match event {
-                        ChannelEvent::Created {
-                            id,
-                            source,
-                            display_label,
-                            channel_type,
-                            type_name,
-                            type_size,
-                        } => {
-                            // Count existing items with the same source location
-                            let iter = stats.values().filter(|s| s.source == source).count() as u32;
+                let mut local_stats = HashMap::<u64, ChannelEntry>::new();
 
-                            stats.insert(
-                                id,
-                                ChannelEntry::new(
-                                    id,
-                                    source,
-                                    display_label,
-                                    channel_type,
-                                    type_name,
-                                    type_size,
-                                    iter,
-                                ),
-                            );
-                        }
-                        ChannelEvent::MessageSent { id, log, timestamp } => {
-                            if let Some(channel_stats) = stats.get_mut(&id) {
-                                channel_stats.sent_count += 1;
-                                channel_stats.update_state();
-
-                                let limit = get_log_limit();
-                                if channel_stats.sent_logs.len() >= limit {
-                                    channel_stats.sent_logs.pop_front();
+                loop {
+                    select! {
+                        recv(event_rx) -> result => {
+                            match result {
+                                Ok(event) => {
+                                    process_channel_event(&mut local_stats, event);
+                                    if let Ok(mut shared) = stats_map_clone.write() {
+                                        *shared = local_stats.clone();
+                                    }
                                 }
-                                channel_stats.sent_logs.push_back(DataFlowLogEntry::new(
-                                    channel_stats.sent_count,
-                                    timestamp_nanos(timestamp),
-                                    log.map(truncate_result),
-                                    None,
-                                ));
+                                Err(_) => break,
                             }
                         }
-                        ChannelEvent::MessageReceived { id, timestamp } => {
-                            if let Some(channel_stats) = stats.get_mut(&id) {
-                                channel_stats.received_count += 1;
-                                channel_stats.update_state();
-
-                                let limit = get_log_limit();
-                                if channel_stats.received_logs.len() >= limit {
-                                    channel_stats.received_logs.pop_front();
-                                }
-                                channel_stats.received_logs.push_back(DataFlowLogEntry::new(
-                                    channel_stats.received_count,
-                                    timestamp_nanos(timestamp),
-                                    None,
-                                    None,
-                                ));
+                        recv(shutdown_rx) -> _ => {
+                            while let Ok(event) = event_rx.try_recv() {
+                                process_channel_event(&mut local_stats, event);
                             }
-                        }
-                        ChannelEvent::Closed { id } => {
-                            if let Some(channel_stats) = stats.get_mut(&id) {
-                                channel_stats.state = ChannelState::Closed;
-                            }
-                        }
-                        ChannelEvent::Notified { id } => {
-                            if let Some(channel_stats) = stats.get_mut(&id) {
-                                channel_stats.state = ChannelState::Notified;
-                            }
+                            break;
                         }
                     }
                 }
+
+                let _ = completion_tx.send(local_stats);
             })
             .expect("Failed to spawn channel-stats-collector thread");
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
-        (tx, stats_map)
+        ChannelsState {
+            event_tx,
+            stats_map,
+            shutdown_tx: Mutex::new(Some(shutdown_tx)),
+            completion_rx: Mutex::new(Some(completion_rx)),
+        }
     })
 }
 
@@ -512,8 +546,8 @@ macro_rules! channel {
 }
 
 fn get_all_channel_stats() -> HashMap<u64, ChannelEntry> {
-    if let Some((_, stats_map)) = CHANNELS_STATE.get() {
-        stats_map.read().unwrap().clone()
+    if let Some(state) = CHANNELS_STATE.get() {
+        state.stats_map.read().unwrap().clone()
     } else {
         HashMap::new()
     }
@@ -521,7 +555,7 @@ fn get_all_channel_stats() -> HashMap<u64, ChannelEntry> {
 
 /// Compare two channel stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
-fn compare_channel_entries(a: &ChannelEntry, b: &ChannelEntry) -> std::cmp::Ordering {
+pub(crate) fn compare_channel_entries(a: &ChannelEntry, b: &ChannelEntry) -> std::cmp::Ordering {
     let a_has_label = a.label.is_some();
     let b_has_label = b.label.is_some();
 

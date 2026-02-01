@@ -2,10 +2,10 @@
 
 use crate::channels::{get_log_limit, resolve_label, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crossbeam_channel::{unbounded, Sender as CbSender};
+use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -136,13 +136,16 @@ pub(crate) enum FutureEvent {
     },
 }
 
-/// State type: event sender + shared stats map
-pub(crate) type FuturesStatsState = (
-    CbSender<FutureEvent>,
-    Arc<RwLock<HashMap<u64, FutureEntry>>>,
-);
+pub(crate) struct FuturesState {
+    pub(crate) event_tx: CbSender<FutureEvent>,
+    pub(crate) stats_map: Arc<RwLock<HashMap<u64, FutureEntry>>>,
+    pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
+    pub(crate) completion_rx: Mutex<Option<CbReceiver<HashMap<u64, FutureEntry>>>>,
+}
 
-static FUTURES_STATE: OnceLock<FuturesStatsState> = OnceLock::new();
+pub(crate) type FuturesStatsState = FuturesState;
+
+pub(crate) static FUTURES_STATE: OnceLock<FuturesStatsState> = OnceLock::new();
 
 /// Initialize the futures event collection system (called on first instrumented future).
 #[doc(hidden)]
@@ -153,20 +156,48 @@ pub fn init_futures_state() {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<FutureEvent>();
+        let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
+        let (completion_tx, completion_rx) = bounded::<HashMap<u64, FutureEntry>>(1);
         let stats_map = Arc::new(RwLock::new(HashMap::<u64, FutureEntry>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
             .name("hp-futures".into())
             .spawn(move || {
-                while let Ok(event) = event_rx.recv() {
-                    let mut stats = stats_map_clone.write().unwrap();
-                    process_future_event(&mut stats, event);
+                let mut local_stats = HashMap::<u64, FutureEntry>::new();
+
+                loop {
+                    select! {
+                        recv(event_rx) -> result => {
+                            match result {
+                                Ok(event) => {
+                                    process_future_event(&mut local_stats, event);
+                                    if let Ok(mut shared) = stats_map_clone.write() {
+                                        *shared = local_stats.clone();
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        recv(shutdown_rx) -> _ => {
+                            while let Ok(event) = event_rx.try_recv() {
+                                process_future_event(&mut local_stats, event);
+                            }
+                            break;
+                        }
+                    }
                 }
+
+                let _ = completion_tx.send(local_stats);
             })
             .expect("Failed to spawn futures event collector thread");
 
-        (event_tx, stats_map)
+        FuturesState {
+            event_tx,
+            stats_map,
+            shutdown_tx: Mutex::new(Some(shutdown_tx)),
+            completion_rx: Mutex::new(Some(completion_rx)),
+        }
     });
 }
 
@@ -239,8 +270,8 @@ fn process_future_event(stats_map: &mut HashMap<u64, FutureEntry>, event: Future
 
 /// Send a future event to the background thread.
 pub(crate) fn send_future_event(event: FutureEvent) {
-    if let Some((tx, _)) = FUTURES_STATE.get() {
-        let _ = tx.send(event);
+    if let Some(state) = FUTURES_STATE.get() {
+        let _ = state.event_tx.send(event);
     }
 }
 
@@ -283,7 +314,7 @@ where
 
 /// Compare two future stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source).
-fn compare_future_stats(a: &FutureEntry, b: &FutureEntry) -> std::cmp::Ordering {
+pub(crate) fn compare_future_stats(a: &FutureEntry, b: &FutureEntry) -> std::cmp::Ordering {
     let a_has_label = a.label.is_some();
     let b_has_label = b.label.is_some();
 
@@ -296,8 +327,8 @@ fn compare_future_stats(a: &FutureEntry, b: &FutureEntry) -> std::cmp::Ordering 
 }
 
 fn get_all_future_stats() -> HashMap<u64, FutureEntry> {
-    if let Some((_, stats_map)) = FUTURES_STATE.get() {
-        stats_map.read().unwrap().clone()
+    if let Some(state) = FUTURES_STATE.get() {
+        state.stats_map.read().unwrap().clone()
     } else {
         HashMap::new()
     }

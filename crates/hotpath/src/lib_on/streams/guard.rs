@@ -5,13 +5,14 @@ use quanta::Instant;
 use std::time::Instant;
 
 use prettytable::{Cell, Row, Table};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 
 use crate::channels::resolve_label;
 use crate::json::{JsonStreamEntry, JsonStreamsList};
 use crate::output::resolve_output_path;
-use crate::streams::get_sorted_stream_stats;
+use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
 use crate::Format;
 
 /// Builder for creating a StreamsGuard with custom configuration.
@@ -142,10 +143,33 @@ impl Default for StreamsGuard {
     }
 }
 
+fn get_sorted_streams(stats: HashMap<u64, StreamStats>) -> Vec<StreamStats> {
+    let mut streams: Vec<StreamStats> = stats.into_values().collect();
+    streams.sort_by(compare_stream_stats);
+    streams
+}
+
 impl Drop for StreamsGuard {
     fn drop(&mut self) {
         let elapsed = self.start_time.elapsed();
-        let streams = get_sorted_stream_stats();
+
+        let streams = STREAMS_STATE
+            .get()
+            .and_then(|state| {
+                if let Ok(mut guard) = state.shutdown_tx.lock() {
+                    if let Some(tx) = guard.take() {
+                        let _ = tx.send(());
+                    }
+                }
+                state
+                    .completion_rx
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take())
+                    .and_then(|rx| rx.recv().ok())
+            })
+            .map(get_sorted_streams)
+            .unwrap_or_default();
 
         let output = crate::output::OutputDestination::from_path(self.output_path.take());
         let mut writer: Box<dyn Write> = match output.writer() {
@@ -183,7 +207,7 @@ impl Drop for StreamsGuard {
                     Cell::new("Yielded"),
                 ]));
 
-                for stream_stats in streams {
+                for stream_stats in &streams {
                     let label = resolve_label(
                         stream_stats.source,
                         stream_stats.label.as_deref(),
