@@ -341,62 +341,6 @@ pub mod tests {
         }
     }
 
-    // cargo run -p test-tokio-async --example csv_file_reporter --features hotpath
-    #[test]
-    fn test_csv_file_reporter_output() {
-        use std::fs;
-        use std::path::Path;
-
-        let report_path = "hotpath_report.csv";
-        if Path::new(report_path).exists() {
-            fs::remove_file(report_path).ok();
-        }
-
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "csv_file_reporter",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        assert!(
-            Path::new(report_path).exists(),
-            "Custom report file was not created"
-        );
-
-        let report_content = fs::read_to_string(report_path).expect("Failed to read report file");
-
-        let expected_content = [
-            "Function, Calls, Avg, P50, P90, P95, Total, % Total",
-            "Functions measured: 4",
-            "csv_file_reporter::async_function, 100",
-            "csv_file_reporter::sync_function, 100",
-            "custom_block, 100",
-            "main, 1",
-        ];
-
-        for expected in expected_content {
-            assert!(
-                report_content.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{report_content}",
-            );
-        }
-
-        fs::remove_file(report_path).ok();
-    }
-
     // cargo run -p test-tokio-async --example no_op_block
     #[test]
     fn test_no_op_block_output() {

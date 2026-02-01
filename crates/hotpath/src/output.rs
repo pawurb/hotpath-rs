@@ -2,6 +2,7 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "hotpath")]
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -11,9 +12,93 @@ use std::time::Duration;
 #[cfg(feature = "hotpath")]
 use crate::FunctionStats;
 
-pub use crate::shared::{
-    format_bytes, format_duration, MetricType, OutputDestination, ProfilingMode,
-};
+/// Destination for profiling report output.
+#[derive(Default)]
+pub enum OutputDestination {
+    #[default]
+    Stdout,
+    File(PathBuf),
+}
+
+/// Formats a duration in nanoseconds into a human-readable string with appropriate units.
+pub fn format_duration(ns: u64) -> String {
+    if ns < 1_000 {
+        format!("{} ns", ns)
+    } else if ns < 1_000_000 {
+        format!("{:.2} µs", ns as f64 / 1_000.0)
+    } else if ns < 1_000_000_000 {
+        format!("{:.2} ms", ns as f64 / 1_000_000.0)
+    } else {
+        format!("{:.2} s", ns as f64 / 1_000_000_000.0)
+    }
+}
+
+/// Formats a byte count into a human-readable string (e.g., "1.5 MB").
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    const THRESHOLD: f64 = 1024.0;
+
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+
+    let bytes_f = bytes as f64;
+    let unit_index = (bytes_f.log(THRESHOLD).floor() as usize).min(UNITS.len() - 1);
+    let unit_value = bytes_f / THRESHOLD.powi(unit_index as i32);
+
+    if unit_index == 0 {
+        format!("{} {}", bytes, UNITS[unit_index])
+    } else {
+        format!("{:.1} {}", unit_value, UNITS[unit_index])
+    }
+}
+
+/// Represents different types of profiling metrics with their values.
+#[derive(Debug, Clone)]
+pub enum MetricType {
+    /// Number of function calls
+    CallsCount(u64),
+    /// Duration in nanoseconds
+    DurationNs(u64),
+    /// Bytes allocated, objects allocated
+    Alloc(u64, u64),
+    /// Percentage as basis points (1% = 100)
+    Percentage(u64),
+    /// For N/A values (async functions when not supported)
+    Unsupported,
+}
+
+impl fmt::Display for MetricType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MetricType::CallsCount(count) => write!(f, "{}", count),
+            MetricType::DurationNs(ns) => write!(f, "{}", format_duration(*ns)),
+            MetricType::Alloc(bytes, _count) => write!(f, "{}", format_bytes(*bytes)),
+            MetricType::Percentage(basis_points) => {
+                write!(f, "{:.2}%", *basis_points as f64 / 100.0)
+            }
+            MetricType::Unsupported => write!(f, "N/A*"),
+        }
+    }
+}
+
+/// Profiling mode indicating what type of measurements were collected.
+#[derive(Debug, Clone)]
+pub enum ProfilingMode {
+    /// Time-based profiling (execution duration)
+    Timing,
+    /// Combined allocation profiling (both bytes and count)
+    Alloc,
+}
+
+impl fmt::Display for ProfilingMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProfilingMode::Timing => write!(f, "timing"),
+            ProfilingMode::Alloc => write!(f, "alloc"),
+        }
+    }
+}
 
 impl OutputDestination {
     /// Creates a writer for this destination.
