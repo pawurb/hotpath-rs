@@ -11,6 +11,7 @@ use std::str::FromStr;
 /// * `Table` - Human-readable table format (default)
 /// * `Json` - JSON format
 /// * `JsonPretty` - Pretty-printed JSON format
+/// * `None` - Suppress all profiling output (metrics server and MCP server still function)
 ///
 /// # Parsing
 ///
@@ -18,12 +19,14 @@ use std::str::FromStr;
 /// - `"table"` → `Format::Table`
 /// - `"json"` → `Format::Json`
 /// - `"json-pretty"` → `Format::JsonPretty`
+/// - `"none"` → `Format::None`
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Format {
     #[default]
     Table,
     Json,
     JsonPretty,
+    None,
 }
 
 impl FromStr for Format {
@@ -34,8 +37,9 @@ impl FromStr for Format {
             "table" => Ok(Format::Table),
             "json" => Ok(Format::Json),
             "json-pretty" | "jsonpretty" => Ok(Format::JsonPretty),
+            "none" => Ok(Format::None),
             _ => Err(format!(
-                "unknown format '{}', expected: table, json, json-pretty",
+                "unknown format '{}', expected: table, json, json-pretty, none",
                 s
             )),
         }

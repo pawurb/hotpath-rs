@@ -333,6 +333,51 @@ pub mod tests {
         let _ = child.wait();
     }
 
+    // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-channels-tokio --example basic_tokio --features hotpath
+    #[test]
+    fn test_format_none_suppresses_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-channels-tokio",
+                "--example",
+                "basic_tokio",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_OUTPUT_FORMAT", "none")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("Example completed!"),
+            "Application output should still be present.\nGot:\n{stdout}"
+        );
+
+        let not_expected = [
+            "Channel Statistics",
+            "bounded-channel",
+            "hello-there",
+            "Channels:",
+        ];
+
+        for not_exp in not_expected {
+            assert!(
+                !stdout.contains(not_exp),
+                "Channel output should be suppressed with HOTPATH_OUTPUT_FORMAT=none.\nFound: {not_exp}\nGot:\n{stdout}"
+            );
+        }
+    }
+
     // cargo run -p test-channels-tokio --example channels_file_output --features hotpath
     #[test]
     fn test_channels_file_output() {

@@ -194,6 +194,46 @@ pub mod tests {
         let _ = child.wait();
     }
 
+    // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-futures --example basic_futures --features hotpath
+    #[test]
+    fn test_format_none_suppresses_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-futures",
+                "--example",
+                "basic_futures",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_OUTPUT_FORMAT", "none")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let not_expected = [
+            "Future Statistics",
+            "Futures:",
+            "attributed_no_log",
+            "attributed_with_log",
+        ];
+
+        for not_exp in not_expected {
+            assert!(
+                !stdout.contains(not_exp),
+                "Futures output should be suppressed with HOTPATH_OUTPUT_FORMAT=none.\nFound: {not_exp}\nGot:\n{stdout}"
+            );
+        }
+    }
+
     // cargo run -p test-futures --example futures_file_output --features hotpath
     #[test]
     fn test_futures_file_output() {

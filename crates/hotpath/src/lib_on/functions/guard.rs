@@ -11,7 +11,7 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{
     resolve_output_path, FunctionLog, FunctionLogsList, MetricsProvider, OutputDestination,
 };
-use crate::output_on::{JsonPrettyReporter, JsonReporter, TableReporter};
+use crate::output_on::{JsonPrettyReporter, JsonReporter, NoOpReporter, TableReporter};
 use crate::Reporter;
 
 use super::{FunctionsQuery, FUNCTIONS_STATE};
@@ -321,6 +321,7 @@ impl FunctionsGuardBuilder {
                 Format::Table => Box::new(TableReporter),
                 Format::Json => Box::new(JsonReporter),
                 Format::JsonPretty => Box::new(JsonPrettyReporter),
+                Format::None => Box::new(NoOpReporter),
             },
             ReporterConfig::Custom(reporter) => reporter,
             ReporterConfig::None => Box::new(TableReporter),
@@ -611,6 +612,7 @@ impl FunctionsGuard {
                 Format::Table => Box::new(TableReporter),
                 Format::Json => Box::new(JsonReporter),
                 Format::JsonPretty => Box::new(JsonPrettyReporter),
+                Format::None => Box::new(NoOpReporter),
             },
             Err(_) => _reporter,
         };

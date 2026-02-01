@@ -310,3 +310,15 @@ impl Reporter for JsonPrettyReporter {
         Ok(())
     }
 }
+
+pub(crate) struct NoOpReporter;
+
+impl Reporter for NoOpReporter {
+    fn report(
+        &self,
+        _metrics_provider: &dyn MetricsProvider<'_>,
+        _output: &OutputDestination,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
+}

@@ -194,6 +194,7 @@ impl Drop for FuturesGuard {
         };
 
         match format {
+            Format::None => (),
             Format::Table => {
                 let _ = writeln!(
                     writer,

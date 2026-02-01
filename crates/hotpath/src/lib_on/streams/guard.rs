@@ -192,6 +192,7 @@ impl Drop for StreamsGuard {
         };
 
         match format {
+            Format::None => (),
             Format::Table => {
                 let _ = writeln!(
                     writer,

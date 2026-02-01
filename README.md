@@ -728,11 +728,13 @@ Supported format options:
 - `"table"` (default) - Human-readable table format
 - `"json"` - Compact, oneline JSON format
 - `"json-pretty"` - Pretty-printed JSON format
+- `"none"` - Suppress all output (profiling still active, metrics server and MCP server still function)
 
-**Environment variable override:** Set `HOTPATH_OUTPUT_FORMAT` to override the format for all guards (functions, channels, streams, futures). This takes precedence over programmatic `.format()` configuration. Invalid values will cause a panic.
+**Environment variable override:** Set `HOTPATH_OUTPUT_FORMAT` to override the format for all guards (functions, channels, streams, futures). This takes precedence over programmatic `.format()` configuration. Invalid values will cause a panic. Use `none` to suppress all output while keeping profiling active (useful when only using the metrics server or MCP server).
 
 ```bash
 HOTPATH_OUTPUT_FORMAT=json cargo run --features hotpath
+HOTPATH_OUTPUT_FORMAT=none cargo run --features hotpath  # Silent mode
 ```
 
 Example JSON output:

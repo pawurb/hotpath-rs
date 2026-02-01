@@ -160,6 +160,51 @@ pub mod tests {
         let _ = child.wait();
     }
 
+    // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-streams --example basic_streams --features hotpath
+    #[test]
+    fn test_format_none_suppresses_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-streams",
+                "--example",
+                "basic_streams",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_OUTPUT_FORMAT", "none")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("Stream example completed!"),
+            "Application output should still be present.\nGot:\n{stdout}"
+        );
+
+        let not_expected = [
+            "Stream Statistics",
+            "number-stream",
+            "text-stream",
+            "Streams:",
+        ];
+
+        for not_exp in not_expected {
+            assert!(
+                !stdout.contains(not_exp),
+                "Stream output should be suppressed with HOTPATH_OUTPUT_FORMAT=none.\nFound: {not_exp}\nGot:\n{stdout}"
+            );
+        }
+    }
+
     // cargo run -p test-streams --example streams_file_output --features hotpath
     #[test]
     fn test_streams_file_output() {

@@ -191,6 +191,7 @@ impl Drop for ChannelsGuard {
         };
 
         match format {
+            Format::None => (),
             Format::Table => {
                 let _ = writeln!(
                     writer,
