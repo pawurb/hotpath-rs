@@ -9,6 +9,7 @@ use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},
     symbols::border,
+    text::Span,
     widgets::{Block, Cell, HighlightSpacing, Row, Table, TableState},
     Frame,
 };
@@ -108,7 +109,7 @@ pub(crate) fn render_data_flow_panel(
         Cell::from("Mem"),
         Cell::from("Count"),
     ])
-    .style(common_styles::HEADER_STYLE)
+    .style(common_styles::HEADER_STYLE_CYAN)
     .height(1);
 
     let rows: Vec<Row> = entries
@@ -144,6 +145,7 @@ pub(crate) fn render_data_flow_panel(
         Constraint::Length(12),     // Count
     ];
 
+    let title = " Data Flow - Channels, streams, and futures. ";
     let table_block = if show_logs {
         let border_set = if focus == DataFlowFocus::List {
             border::THICK
@@ -152,6 +154,7 @@ pub(crate) fn render_data_flow_panel(
         };
         Block::bordered()
             .title(format!(" [{}/{}] ", position, total))
+            .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
             .border_set(border_set)
             .border_style(if focus == DataFlowFocus::List {
                 Style::default()
@@ -161,6 +164,7 @@ pub(crate) fn render_data_flow_panel(
     } else {
         Block::bordered()
             .title(format!(" [{}/{}] ", position, total))
+            .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
             .border_set(border::THICK)
     };
 

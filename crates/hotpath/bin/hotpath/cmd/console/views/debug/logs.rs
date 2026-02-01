@@ -63,7 +63,7 @@ pub(crate) fn render_debug_logs_panel(
     let value_width = (available_width.saturating_sub(30) as usize).max(20);
 
     let header = Row::new(vec!["Index", "Ago", "Value", "TID"])
-        .style(common_styles::HEADER_STYLE)
+        .style(common_styles::HEADER_STYLE_CYAN)
         .height(1);
 
     let rows: Vec<Row> = cached_logs

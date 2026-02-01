@@ -73,7 +73,7 @@ pub(crate) fn render_logs_panel(
     match (logs, data_flow_type) {
         (DataFlowLogs::Channel(channel_logs), DataFlowType::Channel) => {
             let header = Row::new(vec!["Index", "Message", "Delay", "Ago"])
-                .style(common_styles::HEADER_STYLE)
+                .style(common_styles::HEADER_STYLE_CYAN)
                 .height(1);
 
             let rows: Vec<Row> = channel_logs
@@ -110,7 +110,7 @@ pub(crate) fn render_logs_panel(
         }
         (DataFlowLogs::Stream(stream_logs), DataFlowType::Stream) => {
             let header = Row::new(vec!["Index", "Message", "Ago"])
-                .style(common_styles::HEADER_STYLE)
+                .style(common_styles::HEADER_STYLE_CYAN)
                 .height(1);
 
             let rows: Vec<Row> = stream_logs
@@ -146,7 +146,7 @@ pub(crate) fn render_logs_panel(
             let result_width = (available_width.saturating_sub(25) as usize).max(10);
 
             let header = Row::new(vec!["ID", "State", "Result", "Polls"])
-                .style(common_styles::HEADER_STYLE)
+                .style(common_styles::HEADER_STYLE_CYAN)
                 .height(1);
 
             let rows: Vec<Row> = future_logs

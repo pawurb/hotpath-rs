@@ -88,7 +88,7 @@ pub(crate) fn render_threads_panel(
         Cell::from("Dealloc"),
         Cell::from("Diff"),
     ])
-    .style(common_styles::HEADER_STYLE)
+    .style(common_styles::HEADER_STYLE_CYAN)
     .height(1);
 
     let rows: Vec<Row> = threads
@@ -134,8 +134,10 @@ pub(crate) fn render_threads_panel(
         Constraint::Percentage(14), // Diff
     ];
 
+    let title = " Threads - CPU usage and memory metrics. ";
     let table_block = Block::bordered()
         .title(format!(" [{}/{}] ", thread_position, total_threads))
+        .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
         .border_set(border::THICK);
 
     let table = Table::new(rows, widths)

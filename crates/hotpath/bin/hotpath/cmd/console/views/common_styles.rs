@@ -1,6 +1,5 @@
 use ratatui::style::{Color, Modifier, Style};
 
-pub const HEADER_STYLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const HEADER_STYLE_CYAN: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
 pub const SELECTED_ROW_STYLE: Style = Style::new()
     .bg(Color::DarkGray)
