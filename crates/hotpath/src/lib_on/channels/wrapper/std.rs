@@ -1,7 +1,6 @@
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 
-use crate::channels::wrapper::common::{register_channel, Instant, RegisteredChannel};
-use crate::channels::{ChannelEvent, ChannelType};
+use crate::channels::{register_channel, ChannelEvent, ChannelType, Instant, RegisteredChannel};
 
 /// Internal implementation for wrapping bounded std channels with optional logging.
 fn wrap_sync_channel_impl<T, F>(

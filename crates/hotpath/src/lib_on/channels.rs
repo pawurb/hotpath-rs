@@ -15,6 +15,9 @@ pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
 
 mod wrapper;
 
+use std::mem;
+
+use crate::data_flow::next_data_flow_id;
 use crate::json::{format_queue_status, JsonChannelEntry, JsonChannelsList};
 pub use crate::json::{ChannelLogs, ChannelState, ChannelType, DataFlowLogEntry};
 use crate::metrics_server::METRICS_SERVER_PORT;
@@ -22,6 +25,43 @@ use crate::output::format_bytes;
 use crate::output::truncate_result;
 
 pub use crate::Format;
+
+/// Handle returned by [`register_channel`] that gives wrappers the channel's
+/// unique id and a sender to emit [`ChannelEvent`]s to the background worker.
+pub struct RegisteredChannel {
+    pub id: u64,
+    pub stats_tx: CbSender<ChannelEvent>,
+}
+
+/// Registers a new channel with the profiling subsystem.
+///
+/// Sends a [`ChannelEvent::Created`] event to the background worker and returns
+/// a [`RegisteredChannel`] that wrappers use to report subsequent
+/// send/receive/close events. `T` is the message type carried by the channel
+/// and is used to record the type name and per-message byte size.
+pub fn register_channel<T>(
+    source: &'static str,
+    label: Option<String>,
+    channel_type: ChannelType,
+) -> RegisteredChannel {
+    let type_name = std::any::type_name::<T>();
+    let state = init_channels_state();
+    let id = next_data_flow_id();
+
+    let _ = state.event_tx.send(ChannelEvent::Created {
+        id,
+        source,
+        display_label: label,
+        channel_type,
+        type_name,
+        type_size: mem::size_of::<T>(),
+    });
+
+    RegisteredChannel {
+        id,
+        stats_tx: state.event_tx.clone(),
+    }
+}
 
 pub(crate) fn timestamp_nanos(timestamp: Instant) -> u64 {
     let start_time = START_TIME.get().copied().unwrap_or(timestamp);
@@ -133,7 +173,7 @@ impl ChannelEntry {
 
 /// Events sent to the background channel statistics collection thread.
 #[derive(Debug)]
-pub(crate) enum ChannelEvent {
+pub enum ChannelEvent {
     Created {
         id: u64,
         source: &'static str,

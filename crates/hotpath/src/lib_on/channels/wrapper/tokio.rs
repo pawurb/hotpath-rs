@@ -2,8 +2,9 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 
-use crate::channels::wrapper::common::{register_channel, Instant, RegisteredChannel};
-use crate::channels::{ChannelEvent, ChannelType, RT};
+use crate::channels::{
+    register_channel, ChannelEvent, ChannelType, Instant, RegisteredChannel, RT,
+};
 
 /// Internal implementation for wrapping bounded Tokio channels with optional logging.
 fn wrap_channel_impl<T, F>(

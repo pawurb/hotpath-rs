@@ -3,8 +3,9 @@ use futures_channel::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender
 use futures_channel::oneshot;
 use futures_util::sink::SinkExt;
 
-use crate::channels::wrapper::common::{register_channel, Instant, RegisteredChannel};
-use crate::channels::{ChannelEvent, ChannelType, RT};
+use crate::channels::{
+    register_channel, ChannelEvent, ChannelType, Instant, RegisteredChannel, RT,
+};
 
 /// Internal implementation for wrapping bounded futures channels with optional logging.
 fn wrap_channel_impl<T, F>(

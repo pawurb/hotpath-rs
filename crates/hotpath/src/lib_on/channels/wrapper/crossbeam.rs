@@ -1,7 +1,6 @@
 use crossbeam_channel::{self, Receiver, Sender};
 
-use crate::channels::wrapper::common::{register_channel, Instant, RegisteredChannel};
-use crate::channels::{ChannelEvent, ChannelType};
+use crate::channels::{register_channel, ChannelEvent, ChannelType, Instant, RegisteredChannel};
 
 /// Internal implementation for wrapping bounded crossbeam channels with optional logging.
 fn wrap_bounded_impl<T, F>(
