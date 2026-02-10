@@ -1,13 +1,32 @@
-use super::common_styles;
+use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_right;
 use hotpath::json::JsonThreadEntry;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
+    style::{Color, Style},
     symbols::border,
     text::{Line, Span},
     widgets::{Block, Cell, HighlightSpacing, Paragraph, Row, Table, TableState},
     Frame,
 };
+
+fn status_style(status: &str) -> Style {
+    let color = match status.trim() {
+        "Running" => Color::Green,
+        "Sleeping" => Color::Reset,
+        "Blocked" => Color::Red,
+        "Stopped" => Color::Yellow,
+        "Zombie" => Color::Magenta,
+        "Dead" => Color::DarkGray,
+        "Halted" => Color::Red,
+        "Wakekill" => Color::Yellow,
+        "Waking" => Color::Cyan,
+        "Parked" => Color::DarkGray,
+        "Idle" => Color::DarkGray,
+        _ => Color::DarkGray,
+    };
+    Style::default().fg(color)
+}
 
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
@@ -111,7 +130,7 @@ pub(crate) fn render_threads_panel(
             Row::new(vec![
                 Cell::from(truncate_right(&thread.name, thread_width)),
                 Cell::from(thread.os_tid.to_string()),
-                Cell::from(status_str),
+                Cell::from(status_str).style(status_style(&thread.status)),
                 Cell::from(cpu_percent_str),
                 Cell::from(thread.cpu_user.as_str()),
                 Cell::from(thread.cpu_sys.as_str()),
