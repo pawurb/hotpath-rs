@@ -46,6 +46,8 @@ hotpath = [
   "dep:libc",
   "dep:mach2",
 ]
+hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta"]
+hotpath-meta-alloc = ["hotpath-meta/hotpath-meta-alloc"]
 hotpath-alloc = ["dep:tokio"]
 hotpath-off = ["hotpath-macros/hotpath-off"]
 ci = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "dep:base64", "dep:regex"]
@@ -90,6 +92,7 @@ rmcp = { version = "0.13", features = ["server", "transport-streamable-http-serv
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }
+hotpath-meta = { version = "0.10", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mach2 = { version = "0.6", optional = true }

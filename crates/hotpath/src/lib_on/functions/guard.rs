@@ -310,7 +310,7 @@ pub struct FunctionsGuard {
     wrapper_guard: Option<MeasurementGuard>,
     output_path: Option<PathBuf>,
 }
-
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl FunctionsGuard {
     pub fn new(
         caller_name: &'static str,
@@ -364,6 +364,9 @@ impl FunctionsGuard {
         thread::Builder::new()
             .name("hp-functions".into())
             .spawn(move || {
+                #[cfg(feature = "hotpath-meta")]
+                let _guard = hotpath_meta::FunctionsGuardBuilder::new("functions-worker").build();
+
                 let mut local_stats = HashMap::<&'static str, FunctionStats>::new();
 
                 loop {

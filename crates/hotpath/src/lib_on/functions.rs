@@ -92,6 +92,7 @@ impl MeasurementGuardWithLog {
 /// Measure a sync function and log its return value.
 #[doc(hidden)]
 #[inline]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
     name: &'static str,
     wrapper: bool,
@@ -106,6 +107,7 @@ pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
 
 /// Measure an async function and log its return value.
 #[doc(hidden)]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 pub async fn measure_with_log_async<T: std::fmt::Debug, F, Fut>(name: &'static str, f: F) -> T
 where
     F: FnOnce() -> Fut,
@@ -147,6 +149,7 @@ fn get_current_elapsed_ns() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 fn query_functions_state<T, F>(make_query: F) -> Option<T>
 where
     F: FnOnce(Sender<T>) -> FunctionsQuery,
