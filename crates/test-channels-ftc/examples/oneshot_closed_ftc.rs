@@ -4,7 +4,9 @@ use std::time::Duration;
 #[allow(unused_mut)]
 fn main() {
     smol::block_on(async {
-        let _channels_guard = hotpath::channels::ChannelsGuard::new();
+        let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
+            .with_sections(vec![hotpath::Section::Channels])
+            .build();
 
         let (tx, rx) = hotpath::channel!(
             futures_channel::oneshot::channel::<String>(),

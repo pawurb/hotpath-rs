@@ -149,6 +149,7 @@ macro_rules! future {
 }
 
 pub use crate::Format;
+pub use crate::Section;
 
 pub struct MeasurementGuard {}
 
@@ -160,8 +161,6 @@ impl MeasurementGuard {
     pub fn build(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
         Self {}
     }
-
-    pub fn build_with_timeout(self, _duration: std::time::Duration) {}
 }
 
 pub struct MeasurementGuardWithLog {}
@@ -196,24 +195,24 @@ where
     f().await
 }
 
-pub struct HotPath;
+pub struct HotpathGuard;
 
-impl Default for HotPath {
+impl Default for HotpathGuard {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl HotPath {
+impl HotpathGuard {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-pub struct FunctionsGuardBuilder {}
+pub struct HotpathGuardBuilder {}
 
-impl FunctionsGuardBuilder {
-    pub fn new(_caller_name: impl Into<String>) -> Self {
+impl HotpathGuardBuilder {
+    pub fn new(_caller_name: &'static str) -> Self {
         Self {}
     }
 
@@ -233,229 +232,31 @@ impl FunctionsGuardBuilder {
         self
     }
 
-    pub fn build(self) -> HotPath {
-        HotPath
+    pub fn with_sections(self, _sections: Vec<Section>) -> Self {
+        self
     }
 
-    pub fn build_with_timeout(self, _duration: std::time::Duration) -> HotPath {
-        HotPath
+    pub fn build(self) -> HotpathGuard {
+        HotpathGuard
     }
+
+    pub fn build_with_timeout(self, _duration: std::time::Duration) {}
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionStats {}
 
 pub mod channels {
-    use super::Format;
-
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ChannelType {
         Bounded(usize),
         Unbounded,
         Oneshot,
     }
-
-    pub struct ChannelsGuardBuilder;
-
-    impl ChannelsGuardBuilder {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-        pub fn build(self) -> ChannelsGuard {
-            ChannelsGuard
-        }
-        pub fn build_with_timeout(self, _duration: std::time::Duration) {}
-    }
-
-    impl Default for ChannelsGuardBuilder {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    pub struct ChannelsGuard;
-
-    impl ChannelsGuard {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-    }
-
-    impl Default for ChannelsGuard {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    impl Drop for ChannelsGuard {
-        fn drop(&mut self) {}
-    }
 }
 
-pub mod streams {
-    use super::Format;
+pub mod streams {}
 
-    pub struct StreamsGuardBuilder;
+pub mod threads {}
 
-    impl StreamsGuardBuilder {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-        pub fn build(self) -> StreamsGuard {
-            StreamsGuard
-        }
-        pub fn build_with_timeout(self, _duration: std::time::Duration) {}
-    }
-
-    impl Default for StreamsGuardBuilder {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    pub struct StreamsGuard;
-
-    impl StreamsGuard {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-    }
-
-    impl Default for StreamsGuard {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    impl Drop for StreamsGuard {
-        fn drop(&mut self) {}
-    }
-}
-
-pub mod threads {
-    use super::Format;
-
-    pub struct ThreadsGuardBuilder;
-
-    impl ThreadsGuardBuilder {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-        pub fn build(self) -> ThreadsGuard {
-            ThreadsGuard
-        }
-        pub fn build_with_timeout(self, _duration: std::time::Duration) {}
-    }
-
-    impl Default for ThreadsGuardBuilder {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    pub struct ThreadsGuard;
-
-    impl ThreadsGuard {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-    }
-
-    impl Default for ThreadsGuard {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    impl Drop for ThreadsGuard {
-        fn drop(&mut self) {}
-    }
-}
-
-pub mod futures {
-    use super::Format;
-
-    pub struct FuturesGuardBuilder;
-
-    impl FuturesGuardBuilder {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-        pub fn build(self) -> FuturesGuard {
-            FuturesGuard
-        }
-        pub fn build_with_timeout(self, _duration: std::time::Duration) {}
-    }
-
-    impl Default for FuturesGuardBuilder {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    pub struct FuturesGuard;
-
-    impl FuturesGuard {
-        pub fn new() -> Self {
-            Self
-        }
-        pub fn format(self, _format: Format) -> Self {
-            self
-        }
-        pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
-            self
-        }
-    }
-
-    impl Default for FuturesGuard {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    impl Drop for FuturesGuard {
-        fn drop(&mut self) {}
-    }
-}
+pub mod futures {}

@@ -6,12 +6,13 @@
 //! Run with: cargo run -p test-futures --example iter_futures --features hotpath
 
 use hotpath::future;
-use hotpath::futures::FuturesGuard;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    let _guard = FuturesGuard::new();
+    let _guard = hotpath::HotpathGuardBuilder::new("main")
+        .with_sections(vec![hotpath::Section::Futures])
+        .build();
 
     println!("Creating futures in loops...\n");
 

@@ -74,4 +74,4 @@ pub use lib_off::streams;
 pub use lib_off::threads;
 
 mod shared;
-pub use shared::{Format, IntoF64};
+pub use shared::{Format, IntoF64, Section};

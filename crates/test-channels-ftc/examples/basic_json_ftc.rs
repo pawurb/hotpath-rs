@@ -5,8 +5,10 @@ use std::time::Duration;
 #[allow(unused_mut)]
 fn main() {
     smol::block_on(async {
-        let _channels_guard =
-            hotpath::channels::ChannelsGuard::new().format(hotpath::Format::JsonPretty);
+        let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
+            .format(hotpath::Format::JsonPretty)
+            .with_sections(vec![hotpath::Section::Channels])
+            .build();
 
         let (txa, mut _rxa) = hotpath::channel!(
             futures_channel::mpsc::unbounded::<i32>(),

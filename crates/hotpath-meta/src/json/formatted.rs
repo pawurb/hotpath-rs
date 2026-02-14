@@ -686,7 +686,7 @@ pub struct JsonThreadsList {
     pub total_dealloc_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alloc_dealloc_diff: Option<String>,
-    pub threads: Vec<JsonThreadEntry>,
+    pub data: Vec<JsonThreadEntry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

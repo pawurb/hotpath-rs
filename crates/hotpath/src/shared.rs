@@ -1,5 +1,61 @@
 use std::str::FromStr;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Section {
+    FunctionsTiming,
+    FunctionsAlloc,
+    Channels,
+    Streams,
+    Futures,
+    Threads,
+}
+
+impl Section {
+    pub fn all() -> Vec<Section> {
+        vec![
+            Section::FunctionsTiming,
+            Section::FunctionsAlloc,
+            Section::Channels,
+            Section::Streams,
+            Section::Futures,
+            Section::Threads,
+        ]
+    }
+
+    pub fn from_name(s: &str) -> Option<Section> {
+        match s.trim() {
+            "functions-timing" => Some(Section::FunctionsTiming),
+            "functions-alloc" => Some(Section::FunctionsAlloc),
+            "channels" => Some(Section::Channels),
+            "streams" => Some(Section::Streams),
+            "futures" => Some(Section::Futures),
+            "threads" => Some(Section::Threads),
+            _ => None,
+        }
+    }
+
+    pub fn from_env() -> Option<Vec<Section>> {
+        std::env::var("HOTPATH_REPORT").ok().map(|val| {
+            let mut sections = Vec::new();
+            for part in val.split(',') {
+                match part.trim() {
+                    "all" => return Section::all(),
+                    other => {
+                        if let Some(s) = Section::from_name(other) {
+                            if !sections.contains(&s) {
+                                sections.push(s);
+                            }
+                        } else {
+                            eprintln!("[hotpath] Unknown report section: '{}'", other);
+                        }
+                    }
+                }
+            }
+            sections
+        })
+    }
+}
+
 /// Output format for profiling reports.
 ///
 /// This enum specifies how profiling results should be displayed when the program exits.

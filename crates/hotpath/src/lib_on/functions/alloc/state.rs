@@ -433,7 +433,7 @@ pub fn send_alloc_measurement_with_log(
 ) {
     if FUNCTIONS_STATE.get().is_none() {
         panic!(
-            "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath-alloc is enabled"
+            "HotpathGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath-alloc is enabled"
         );
     }
 

@@ -3,7 +3,9 @@ use tokio::time::{sleep, Duration};
 #[allow(unused_mut)]
 #[tokio::main]
 async fn main() {
-    let _channels_guard = hotpath::channels::ChannelsGuard::new();
+    let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
+        .with_sections(vec![hotpath::Section::Channels])
+        .build();
 
     println!("Slow Consumer Example:");
     println!("- Bounded channel with capacity 10");

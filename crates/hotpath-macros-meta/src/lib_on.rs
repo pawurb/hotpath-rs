@@ -97,13 +97,13 @@ impl Format {
 /// # Limitations
 ///
 /// Only one hotpath guard can be active at a time. Creating a second guard (either via this
-/// macro or via [`FunctionsGuardBuilder`](../hotpath_meta/struct.FunctionsGuardBuilder.html)) will cause a panic.
+/// macro or via [`HotpathGuardBuilder`](../hotpath_meta/struct.HotpathGuardBuilder.html)) will cause a panic.
 ///
 /// # See Also
 ///
 /// * [`measure`](macro@measure) - Attribute macro for instrumenting functions
 /// * [`measure_block!`](../hotpath_meta/macro.measure_block.html) - Macro for measuring code blocks
-/// * [`FunctionsGuardBuilder`](../hotpath_meta/struct.FunctionsGuardBuilder.html) - Manual control over profiling lifecycle
+/// * [`HotpathGuardBuilder`](../hotpath_meta/struct.HotpathGuardBuilder.html) - Manual control over profiling lifecycle
 pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
     let vis = &input.vis;
@@ -116,6 +116,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut limit: usize = 15;
     let mut timeout: Option<u64> = None;
     let mut output_path: Option<String> = None;
+    let mut report_sections: Option<String> = None;
 
     // Parse named args like: percentiles=[..], format=".."
     if !attr.is_empty() {
@@ -182,8 +183,15 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return Ok(());
             }
 
+            if meta.path.is_ident("report") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let lit: LitStr = meta.input.parse()?;
+                report_sections = Some(lit.value());
+                return Ok(());
+            }
+
             Err(meta.error(
-                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, timeout=N, output_path=\"..\"",
+                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, timeout=N, output_path=\"..\", report=\"..\"",
             ))
         });
 
@@ -203,15 +211,48 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         None => quote! {},
     };
 
+    let sections_call = match &report_sections {
+        Some(sections_str) => {
+            let section_tokens: Vec<proc_macro2::TokenStream> = sections_str
+                .split(',')
+                .filter_map(|s| {
+                    let trimmed = s.trim();
+                    if trimmed == "all" {
+                        return None;
+                    }
+                    match trimmed {
+                        "functions-timing" => Some(quote!(hotpath_meta::Section::FunctionsTiming)),
+                        "functions-alloc" => Some(quote!(hotpath_meta::Section::FunctionsAlloc)),
+                        "channels" => Some(quote!(hotpath_meta::Section::Channels)),
+                        "streams" => Some(quote!(hotpath_meta::Section::Streams)),
+                        "futures" => Some(quote!(hotpath_meta::Section::Futures)),
+                        "threads" => Some(quote!(hotpath_meta::Section::Threads)),
+                        _ => None,
+                    }
+                })
+                .collect();
+
+            if sections_str.split(',').any(|s| s.trim() == "all") {
+                quote! { .with_sections(hotpath_meta::Section::all()) }
+            } else if !section_tokens.is_empty() {
+                quote! { .with_sections(vec![#(#section_tokens),*]) }
+            } else {
+                quote! {}
+            }
+        }
+        None => quote! {},
+    };
+
     let base_builder = quote! {
         let caller_name: &'static str =
             concat!(module_path!(), "::", stringify!(#fn_name));
 
-        hotpath_meta::FunctionsGuardBuilder::new(caller_name)
+        hotpath_meta::HotpathGuardBuilder::new(caller_name)
             .percentiles(#percentiles_array)
             .limit(#limit)
             .format(#format_token)
             #output_path_call
+            #sections_call
     };
 
     let guard_init = if let Some(timeout_ms) = timeout {

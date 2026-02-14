@@ -235,7 +235,7 @@ impl App {
             threads: JsonThreadsList {
                 current_elapsed_ns: 0,
                 sample_interval_ms: 1000,
-                threads: vec![],
+                data: vec![],
                 thread_count: 0,
                 rss_bytes: None,
                 total_alloc_bytes: None,

@@ -393,7 +393,7 @@ fn format_alloc_log_entry(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelsList {
     pub current_elapsed_ns: u64,
-    pub channels: Vec<JsonChannelEntry>,
+    pub data: Vec<JsonChannelEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -495,7 +495,7 @@ fn format_received_log_entry(entry: &DataFlowLogEntry, current_elapsed_ns: u64) 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonStreamsList {
     pub current_elapsed_ns: u64,
-    pub streams: Vec<JsonStreamEntry>,
+    pub data: Vec<JsonStreamEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -533,7 +533,7 @@ impl JsonStreamLogsList {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFuturesList {
     pub current_elapsed_ns: u64,
-    pub futures: Vec<JsonFutureEntry>,
+    pub data: Vec<JsonFutureEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -686,7 +686,7 @@ pub struct JsonThreadsList {
     pub total_dealloc_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alloc_dealloc_diff: Option<String>,
-    pub threads: Vec<JsonThreadEntry>,
+    pub data: Vec<JsonThreadEntry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

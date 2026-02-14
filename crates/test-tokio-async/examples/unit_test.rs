@@ -31,7 +31,7 @@ mod tests {
         let temp_file = std::env::temp_dir().join("hotpath_unit_test.json");
 
         {
-            let _hotpath = hotpath::FunctionsGuardBuilder::new("test_sync_function")
+            let _hotpath = hotpath::HotpathGuardBuilder::new("test_sync_function")
                 .format(hotpath::Format::Json)
                 .output_path(&temp_file)
                 .build();
@@ -42,8 +42,11 @@ mod tests {
         }
 
         let json_content = std::fs::read_to_string(&temp_file).expect("Failed to read output file");
-        let metrics: JsonFunctionsList =
+        let wrapper: serde_json::Value =
             serde_json::from_str(&json_content).expect("Failed to parse JSON");
+        let metrics: JsonFunctionsList =
+            serde_json::from_value(wrapper["functions_timing"].clone())
+                .expect("Failed to parse functions_timing section");
 
         let sync_fn_entry = metrics
             .data
@@ -64,9 +67,10 @@ mod tests {
         let temp_file = std::env::temp_dir().join("hotpath_channel_test.json");
 
         {
-            let _channels_guard = hotpath::channels::ChannelsGuardBuilder::new()
+            let _channels_guard = hotpath::HotpathGuardBuilder::new("test_channel")
                 .format(hotpath::Format::Json)
                 .output_path(&temp_file)
+                .with_sections(vec![hotpath::Section::Channels])
                 .build();
 
             let (tx, mut rx) = hotpath::channel!(
@@ -84,11 +88,13 @@ mod tests {
         }
 
         let json_content = std::fs::read_to_string(&temp_file).expect("Failed to read output file");
-        let metrics: JsonChannelsList =
+        let wrapper: serde_json::Value =
             serde_json::from_str(&json_content).expect("Failed to parse JSON");
+        let metrics: JsonChannelsList = serde_json::from_value(wrapper["channels"].clone())
+            .expect("Failed to parse channels section");
 
         let channel_entry = metrics
-            .channels
+            .data
             .iter()
             .find(|entry| entry.label == "test_channel")
             .expect("test_channel should be in metrics");

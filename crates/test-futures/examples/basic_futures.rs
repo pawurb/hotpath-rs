@@ -3,7 +3,6 @@
 //! Run with: cargo run -p test-futures --example basic_futures --features hotpath
 
 use hotpath::future;
-use hotpath::futures::FuturesGuard;
 use std::time::Duration;
 
 #[allow(dead_code)]
@@ -40,7 +39,9 @@ async fn attributed_with_log() -> String {
 
 #[tokio::main]
 async fn main() {
-    let _guard = FuturesGuard::new();
+    let _guard = hotpath::HotpathGuardBuilder::new("main")
+        .with_sections(vec![hotpath::Section::Futures])
+        .build();
 
     println!("=== Futures Instrumentation Demo ===\n");
 

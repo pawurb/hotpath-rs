@@ -214,7 +214,7 @@ impl App {
         let selected_thread_tid = self
             .threads_table_state
             .selected()
-            .and_then(|idx| self.threads.threads.get(idx))
+            .and_then(|idx| self.threads.data.get(idx))
             .map(|stat| stat.os_tid);
 
         self.threads = threads;
@@ -224,19 +224,19 @@ impl App {
         if let Some(thread_tid) = selected_thread_tid {
             if let Some(new_idx) = self
                 .threads
-                .threads
+                .data
                 .iter()
                 .position(|stat| stat.os_tid == thread_tid)
             {
                 self.threads_table_state.select(Some(new_idx));
-            } else if !self.threads.threads.is_empty() {
+            } else if !self.threads.data.is_empty() {
                 self.threads_table_state
-                    .select(Some(self.threads.threads.len() - 1));
+                    .select(Some(self.threads.data.len() - 1));
             }
         } else if let Some(selected) = self.threads_table_state.selected() {
-            if selected >= self.threads.threads.len() && !self.threads.threads.is_empty() {
+            if selected >= self.threads.data.len() && !self.threads.data.is_empty() {
                 self.threads_table_state
-                    .select(Some(self.threads.threads.len() - 1));
+                    .select(Some(self.threads.data.len() - 1));
             }
         }
     }
@@ -412,7 +412,7 @@ impl App {
                 self.data_flow_logs = None;
             }
             DataResponse::Threads(data) => {
-                trace!("Received threads data: {} threads", data.threads.len());
+                trace!("Received threads data: {} threads", data.data.len());
                 self.loading_threads = false;
                 self.update_threads(data);
             }

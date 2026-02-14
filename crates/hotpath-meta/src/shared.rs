@@ -1,5 +1,61 @@
 use std::str::FromStr;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Section {
+    FunctionsTiming,
+    FunctionsAlloc,
+    Channels,
+    Streams,
+    Futures,
+    Threads,
+}
+
+impl Section {
+    pub fn all() -> Vec<Section> {
+        vec![
+            Section::FunctionsTiming,
+            Section::FunctionsAlloc,
+            Section::Channels,
+            Section::Streams,
+            Section::Futures,
+            Section::Threads,
+        ]
+    }
+
+    pub fn from_name(s: &str) -> Option<Section> {
+        match s.trim() {
+            "functions-timing" => Some(Section::FunctionsTiming),
+            "functions-alloc" => Some(Section::FunctionsAlloc),
+            "channels" => Some(Section::Channels),
+            "streams" => Some(Section::Streams),
+            "futures" => Some(Section::Futures),
+            "threads" => Some(Section::Threads),
+            _ => None,
+        }
+    }
+
+    pub fn from_env() -> Option<Vec<Section>> {
+        std::env::var("HOTPATH_META_REPORT").ok().map(|val| {
+            let mut sections = Vec::new();
+            for part in val.split(',') {
+                match part.trim() {
+                    "all" => return Section::all(),
+                    other => {
+                        if let Some(s) = Section::from_name(other) {
+                            if !sections.contains(&s) {
+                                sections.push(s);
+                            }
+                        } else {
+                            eprintln!("[hotpath-meta] Unknown report section: '{}'", other);
+                        }
+                    }
+                }
+            }
+            sections
+        })
+    }
+}
+
 /// Output format for profiling reports.
 ///
 /// This enum specifies how profiling results should be displayed when the program exits.
@@ -130,5 +186,23 @@ impl IntoF64 for isize {
 impl IntoF64 for usize {
     fn into_f64(self) -> f64 {
         self as f64
+    }
+}
+
+#[cfg(all(feature = "hotpath-meta", not(feature = "hotpath-off-meta")))]
+pub(crate) fn resolve_timeout_duration(
+    default_duration: std::time::Duration,
+    env_var: &str,
+) -> Option<std::time::Duration> {
+    let effective_duration = std::env::var(env_var)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(default_duration);
+
+    if effective_duration.is_zero() {
+        None
+    } else {
+        Some(effective_duration)
     }
 }

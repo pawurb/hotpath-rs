@@ -83,13 +83,13 @@ mod lib_off;
 /// # Limitations
 ///
 /// Only one hotpath guard can be active at a time. Creating a second guard (either via this
-/// macro or via [`FunctionsGuardBuilder`](../hotpath_meta/struct.FunctionsGuardBuilder.html)) will cause a panic.
+/// macro or via [`HotpathGuardBuilder`](../hotpath_meta/struct.HotpathGuardBuilder.html)) will cause a panic.
 ///
 /// # See Also
 ///
 /// * [`measure`](macro@measure) - Attribute macro for instrumenting functions
 /// * [`measure_block!`](../hotpath_meta/macro.measure_block.html) - Macro for measuring code blocks
-/// * [`FunctionsGuardBuilder`](../hotpath_meta/struct.FunctionsGuardBuilder.html) - Manual control over profiling lifecycle
+/// * [`HotpathGuardBuilder`](../hotpath_meta/struct.HotpathGuardBuilder.html) - Manual control over profiling lifecycle
 #[proc_macro_attribute]
 pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
     #[cfg(all(feature = "hotpath-meta", not(feature = "hotpath-off-meta")))]

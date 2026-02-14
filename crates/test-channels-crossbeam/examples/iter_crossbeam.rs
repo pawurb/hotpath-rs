@@ -2,7 +2,9 @@ use std::thread;
 use std::time::Duration;
 
 fn main() {
-    let _channels_guard = hotpath::channels::ChannelsGuard::new();
+    let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
+        .with_sections(vec![hotpath::Section::Channels])
+        .build();
 
     println!("Creating channels in loops...\n");
 

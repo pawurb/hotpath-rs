@@ -2,7 +2,9 @@ use std::time::Duration;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    hotpath::channels::ChannelsGuardBuilder::new().build_with_timeout(Duration::from_secs(1));
+    hotpath::HotpathGuardBuilder::new("guard_timeout_channels")
+        .with_sections(vec![hotpath::Section::Channels])
+        .build_with_timeout(Duration::from_secs(1));
 
     let (tx, mut rx) = hotpath::channel!(
         tokio::sync::mpsc::channel::<u64>(32),

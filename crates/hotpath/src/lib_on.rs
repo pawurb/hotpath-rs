@@ -28,11 +28,14 @@ pub use channels::{InstrumentChannel, InstrumentChannelLog};
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
-pub use functions::guard::{FunctionsGuard, FunctionsGuardBuilder};
+pub mod hotpath_guard;
+pub(crate) mod report;
+
 pub use functions::{
     measure_with_log, measure_with_log_async, FunctionStats, MeasurementGuard,
     MeasurementGuardWithLog,
 };
+pub use hotpath_guard::{HotpathGuard, HotpathGuardBuilder};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
@@ -207,6 +210,6 @@ mod tests {
 
     #[test]
     fn test_hotpath_is_send_sync() {
-        is_send_sync::<FunctionsGuard>();
+        is_send_sync::<HotpathGuard>();
     }
 }

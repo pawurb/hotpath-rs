@@ -1,7 +1,9 @@
 #[allow(unused_mut)]
 #[tokio::main]
 async fn main() {
-    let _channels_guard = hotpath::channels::ChannelsGuardBuilder::new().build();
+    let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
+        .with_sections(vec![hotpath::Section::Channels])
+        .build();
 
     let (txa, mut rxa) = hotpath::channel!(
         tokio::sync::mpsc::unbounded_channel::<i32>(),

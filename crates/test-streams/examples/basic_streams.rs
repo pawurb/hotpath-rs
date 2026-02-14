@@ -5,7 +5,9 @@ use std::time::Duration;
 #[allow(unused_mut)]
 fn main() {
     smol::block_on(async {
-        let _streams_guard = hotpath::streams::StreamsGuard::new();
+        let _streams_guard = hotpath::HotpathGuardBuilder::new("main")
+            .with_sections(vec![hotpath::Section::Streams])
+            .build();
 
         // Example 1: Basic stream from iterator
         let stream = hotpath::stream!(stream::iter(1..=5), label = "number-stream");

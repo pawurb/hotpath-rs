@@ -13,10 +13,8 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-pub mod guard;
 pub(crate) mod wrapper;
 
-pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
 pub use crate::json::{FutureLog, FutureLogsList, FutureState};
@@ -364,7 +362,7 @@ pub(crate) fn get_sorted_future_stats() -> Vec<FutureEntry> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub fn get_futures_json() -> JsonFuturesList {
-    let futures = get_sorted_future_stats()
+    let data = get_sorted_future_stats()
         .iter()
         .map(JsonFutureEntry::from)
         .collect();
@@ -376,7 +374,7 @@ pub fn get_futures_json() -> JsonFuturesList {
 
     JsonFuturesList {
         current_elapsed_ns,
-        futures,
+        data,
     }
 }
 

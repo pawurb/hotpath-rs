@@ -126,8 +126,6 @@ where
 pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<FunctionsState>>> =
     OnceLock::new();
 
-pub mod guard;
-
 /// Query request sent from TUI HTTP server to profiler worker thread
 #[derive(Debug)]
 pub(crate) enum FunctionsQuery {

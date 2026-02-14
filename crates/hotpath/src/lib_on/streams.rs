@@ -10,9 +10,6 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-pub mod guard;
-pub use guard::{StreamsGuard, StreamsGuardBuilder};
-
 pub(crate) mod wrapper;
 
 use crate::channels::resolve_label;
@@ -356,7 +353,7 @@ pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub fn get_streams_json() -> JsonStreamsList {
-    let streams = get_sorted_stream_stats()
+    let data = get_sorted_stream_stats()
         .iter()
         .map(JsonStreamEntry::from)
         .collect();
@@ -369,7 +366,7 @@ pub fn get_streams_json() -> JsonStreamsList {
 
     JsonStreamsList {
         current_elapsed_ns,
-        streams,
+        data,
     }
 }
 

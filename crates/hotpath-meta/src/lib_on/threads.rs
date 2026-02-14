@@ -13,9 +13,6 @@ mod collector;
 #[path = "threads/collector_linux.rs"]
 mod collector;
 
-pub mod guard;
-pub use guard::{ThreadsGuard, ThreadsGuardBuilder};
-
 pub use crate::json::ThreadMetrics;
 use crate::json::{format_bytes_signed, JsonThreadEntry, JsonThreadsList};
 use crate::output::format_bytes;
@@ -191,7 +188,7 @@ pub fn get_threads_json() -> JsonThreadsList {
             return JsonThreadsList {
                 current_elapsed_ns,
                 sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
-                threads: state_guard
+                data: state_guard
                     .current_metrics
                     .iter()
                     .map(JsonThreadEntry::from)
@@ -208,7 +205,7 @@ pub fn get_threads_json() -> JsonThreadsList {
     JsonThreadsList {
         current_elapsed_ns: 0,
         sample_interval_ms: DEFAULT_SAMPLE_INTERVAL_MS,
-        threads: Vec::new(),
+        data: Vec::new(),
         thread_count: 0,
         rss_bytes: rss_bytes.map(format_bytes),
         total_alloc_bytes: None,

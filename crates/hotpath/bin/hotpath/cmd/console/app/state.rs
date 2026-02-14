@@ -392,7 +392,7 @@ impl App {
     // Threads tab state management
 
     pub(crate) fn select_previous_thread(&mut self) {
-        let count = self.threads.threads.len();
+        let count = self.threads.data.len();
         if count == 0 {
             return;
         }
@@ -405,7 +405,7 @@ impl App {
     }
 
     pub(crate) fn select_next_thread(&mut self) {
-        let count = self.threads.threads.len();
+        let count = self.threads.data.len();
         if count == 0 {
             return;
         }

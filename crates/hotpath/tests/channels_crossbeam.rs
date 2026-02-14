@@ -150,9 +150,9 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         let sep = path_sep();
-        let iter_path = format!("examples{sep}iter_crossbeam.rs:12");
-        let iter_path_2 = format!("examples{sep}iter_crossbeam.rs:12-2");
-        let iter_path_3 = format!("examples{sep}iter_crossbeam.rs:12-3");
+        let iter_path = format!("examples{sep}iter_crossbeam.rs:14");
+        let iter_path_2 = format!("examples{sep}iter_crossbeam.rs:14-2");
+        let iter_path_3 = format!("examples{sep}iter_crossbeam.rs:14-3");
         let all_expected = [
             "bounded",
             "bounded-2",

@@ -63,12 +63,12 @@ pub mod tests {
 
         assert_eq!(
             threads_response.thread_count,
-            threads_response.threads.len(),
-            "thread_count should match threads.len()"
+            threads_response.data.len(),
+            "thread_count should match data.len()"
         );
 
         let hp_threads: Vec<_> = threads_response
-            .threads
+            .data
             .iter()
             .filter(|t| t.name.starts_with("hp-"))
             .collect();
@@ -77,13 +77,13 @@ pub mod tests {
             !hp_threads.is_empty(),
             "Expected at least one hp- thread, found none. Threads: {:?}",
             threads_response
-                .threads
+                .data
                 .iter()
                 .map(|t| &t.name)
                 .collect::<Vec<_>>()
         );
 
-        for thread in &threads_response.threads {
+        for thread in &threads_response.data {
             assert!(thread.os_tid > 0, "Thread should have valid os_tid");
             // cpu_total is now a formatted string like "0.083s"
             assert!(

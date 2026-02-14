@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 fn main() {
-    hotpath::threads::ThreadsGuardBuilder::new().build_with_timeout(Duration::from_secs(2));
+    hotpath::HotpathGuardBuilder::new("guard_timeout_threads")
+        .with_sections(vec![hotpath::Section::Threads])
+        .build_with_timeout(Duration::from_secs(2));
 
     loop {
         std::hint::black_box(0u64.wrapping_add(1));

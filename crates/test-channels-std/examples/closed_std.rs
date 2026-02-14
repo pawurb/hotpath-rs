@@ -3,7 +3,9 @@ use std::time::Duration;
 
 #[allow(unused_mut)]
 fn main() {
-    let _channels_guard = hotpath::channels::ChannelsGuard::new();
+    let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
+        .with_sections(vec![hotpath::Section::Channels])
+        .build();
 
     let (txa, rxa) = hotpath::channel!(std::sync::mpsc::channel::<i32>(), label = "unbounded");
 

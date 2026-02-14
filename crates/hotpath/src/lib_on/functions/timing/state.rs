@@ -250,7 +250,7 @@ pub fn send_duration_measurement_with_log(
 ) {
     if FUNCTIONS_STATE.get().is_none() {
         panic!(
-            "FunctionsGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath is enabled"
+            "HotpathGuardBuilder::new(\"main\").build() or #[hotpath::main] must be used when --features hotpath is enabled"
         );
     }
 

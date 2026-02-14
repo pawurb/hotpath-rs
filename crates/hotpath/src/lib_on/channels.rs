@@ -10,9 +10,6 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-pub mod guard;
-pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
-
 mod wrapper;
 
 use std::mem;
@@ -651,7 +648,7 @@ pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub fn get_channels_json() -> JsonChannelsList {
-    let channels = get_sorted_channel_entries()
+    let data = get_sorted_channel_entries()
         .iter()
         .map(JsonChannelEntry::from)
         .collect();
@@ -664,7 +661,7 @@ pub fn get_channels_json() -> JsonChannelsList {
 
     JsonChannelsList {
         current_elapsed_ns,
-        channels,
+        data,
     }
 }
 

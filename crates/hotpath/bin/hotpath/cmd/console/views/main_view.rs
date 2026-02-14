@@ -38,7 +38,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         SelectedTab::Timing => !app.timing_functions.data.is_empty(),
         SelectedTab::Memory => !app.memory_functions.data.is_empty(),
         SelectedTab::DataFlow => !app.data_flow.entries.is_empty(),
-        SelectedTab::Threads => !app.threads.threads.is_empty(),
+        SelectedTab::Threads => !app.threads.data.is_empty(),
         SelectedTab::Debug => !app.debug_stats.is_empty(),
         SelectedTab::Runtime => app.tokio_runtime.is_some(),
     };
@@ -264,7 +264,7 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
 #[hotpath::measure]
 fn render_threads_view(frame: &mut Frame, app: &mut App, area: Rect) {
-    let thread_list = &app.threads.threads;
+    let thread_list = &app.threads.data;
 
     if let Some(ref error_msg) = app.error_message {
         if thread_list.is_empty() {

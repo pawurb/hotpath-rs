@@ -13,10 +13,8 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-pub mod guard;
 pub(crate) mod wrapper;
 
-pub use guard::{FuturesGuard, FuturesGuardBuilder};
 pub use wrapper::{InstrumentedFuture, InstrumentedFutureLog};
 
 pub use crate::json::{FutureLog, FutureLogsList, FutureState};

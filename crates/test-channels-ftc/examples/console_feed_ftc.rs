@@ -5,7 +5,9 @@ use std::time::Duration;
 #[allow(unused_mut)]
 fn main() {
     smol::block_on(async {
-        let _channels_guard = hotpath::channels::ChannelsGuard::new();
+        let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
+            .with_sections(vec![hotpath::Section::Channels])
+            .build();
 
         println!("Open the TUI console to watch live updates!");
         println!("   Run: cargo run -p channels-console --features tui -- console\n");

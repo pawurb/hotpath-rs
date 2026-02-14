@@ -10,9 +10,6 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-pub mod guard;
-pub use guard::{ChannelsGuard, ChannelsGuardBuilder};
-
 mod wrapper;
 
 use std::mem;

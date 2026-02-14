@@ -15,97 +15,38 @@ use crate::output::{
 };
 use crate::output_on::{display_no_measurements_message_to, display_table_to};
 
-use super::{FunctionsQuery, FUNCTIONS_STATE};
+use crate::functions::{FunctionsQuery, FUNCTIONS_STATE};
+use crate::lib_on::report;
+use crate::shared::Section;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc-meta")] {
-        use super::alloc::{
+        use crate::functions::alloc::{
             report::{StatsData, TimingStatsData},
             state::{FunctionStats, FunctionsState, Measurement, process_measurement, flush_batch},
         };
     } else {
-        use super::timing::{
+        use crate::functions::timing::{
             report::StatsData,
             state::{FunctionStats, FunctionsState, Measurement, process_measurement, flush_batch},
         };
     }
 }
 
-use super::MeasurementGuard;
+use crate::functions::MeasurementGuard;
 use crate::Format;
 
-/// Builder for creating a functions profiling guard with custom configuration.
-///
-/// `FunctionsGuardBuilder` provides manual control over the profiling lifecycle, allowing you to
-/// start and stop profiling at specific points in your code. The profiling report is
-/// generated when the guard is dropped.
-///
-/// # Examples
-///
-/// Basic usage with default settings:
-///
-/// ```rust
-/// # #[cfg(feature = "hotpath-meta")]
-/// # {
-/// use hotpath_meta::FunctionsGuardBuilder;
-///
-/// let _guard = FunctionsGuardBuilder::new("my_program").build();
-/// // Your code here - measurements will be collected
-/// // Report is printed when _guard goes out of scope
-/// # }
-/// ```
-///
-/// Custom configuration:
-///
-/// ```rust
-/// # #[cfg(feature = "hotpath-meta")]
-/// # {
-/// use hotpath_meta::{FunctionsGuardBuilder, Format};
-///
-/// let _guard = FunctionsGuardBuilder::new("benchmark")
-///     .percentiles(&[50, 90, 95, 99])
-///     .format(Format::JsonPretty)
-///     .build();
-/// # }
-/// ```
-///
-/// # Limitations
-///
-/// Only one hotpath guard can be active at a time. Creating a second guard (either via
-/// `FunctionsGuardBuilder` or via the `#[hotpath_meta::main]` macro) will cause a panic.
-///
-/// # See Also
-///
-/// * `#[hotpath_meta::main]` - Attribute macro for automatic initialization
-/// * [`Format`] - Output format options
 #[must_use = "builder is discarded without creating a guard"]
-pub struct FunctionsGuardBuilder {
+pub struct HotpathGuardBuilder {
     caller_name: &'static str,
     percentiles: Vec<u8>,
     format: Format,
     limit: usize,
     output_path: Option<PathBuf>,
+    sections: Option<Vec<Section>>,
 }
 
-impl FunctionsGuardBuilder {
-    /// Creates a new `FunctionsGuardBuilder` with the specified caller name.
-    ///
-    /// The caller name is used to identify the profiling session in the report.
-    ///
-    /// # Arguments
-    ///
-    /// * `caller_name` - A string identifier for this profiling session (e.g., "main", "benchmark")
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath-meta")]
-    /// # {
-    /// use hotpath_meta::FunctionsGuardBuilder;
-    ///
-    /// let _guard = FunctionsGuardBuilder::new("my_program").build();
-    /// # }
-    /// ```
+impl HotpathGuardBuilder {
     pub fn new(caller_name: &'static str) -> Self {
         Self {
             caller_name,
@@ -113,205 +54,104 @@ impl FunctionsGuardBuilder {
             format: Format::Table,
             limit: 15,
             output_path: None,
+            sections: None,
         }
     }
 
-    /// Sets the percentiles to display in the profiling report.
-    ///
-    /// Percentiles help identify performance distribution patterns across multiple
-    /// measurements of the same function. Valid values are 0-100, where 0 represents
-    /// the minimum value and 100 represents the maximum.
-    ///
-    /// Default: `[95]`
-    ///
-    /// # Arguments
-    ///
-    /// * `percentiles` - Slice of percentile values (0-100) to display
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath-meta")]
-    /// # {
-    /// use hotpath_meta::FunctionsGuardBuilder;
-    ///
-    /// let _guard = FunctionsGuardBuilder::new("main")
-    ///     .percentiles(&[50, 90, 95, 99])
-    ///     .build();
-    /// # }
-    /// ```
     pub fn percentiles(mut self, percentiles: &[u8]) -> Self {
         self.percentiles = percentiles.to_vec();
         self
     }
 
-    /// Sets the maximum number of functions to display in the profiling report.
-    ///
-    /// The report will show only the top N functions sorted by total execution time
-    /// (or total allocations when using allocation profiling features).
-    ///
-    /// Default: `15`
-    ///
-    /// # Arguments
-    ///
-    /// * `limit` - Maximum number of functions to display (0 means show all)
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath-meta")]
-    /// # {
-    /// use hotpath_meta::FunctionsGuardBuilder;
-    ///
-    /// let _guard = FunctionsGuardBuilder::new("main")
-    ///     .limit(20)
-    ///     .build();
-    /// # }
-    /// ```
     pub fn limit(mut self, limit: usize) -> Self {
         self.limit = limit;
         self
     }
 
-    /// Sets the output format for the profiling report.
-    ///
-    /// # Arguments
-    ///
-    /// * `format` - The output format (Table, Json, or JsonPretty)
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath-meta")]
-    /// # {
-    /// use hotpath_meta::{FunctionsGuardBuilder, Format};
-    ///
-    /// let _guard = FunctionsGuardBuilder::new("main")
-    ///     .format(Format::JsonPretty)
-    ///     .build();
-    /// # }
-    /// ```
-    ///
-    /// # See Also
-    ///
-    /// * [`Format`] - Available output formats
     pub fn format(mut self, format: Format) -> Self {
         self.format = format;
         self
     }
 
-    /// Sets the output file path for the profiling report.
-    ///
-    /// The file will be created or truncated if it already exists.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - Path to the output file
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath-meta")]
-    /// # {
-    /// use hotpath_meta::{FunctionsGuardBuilder, Format};
-    ///
-    /// // Write JSON output to a file
-    /// let _guard = FunctionsGuardBuilder::new("main")
-    ///     .format(Format::Json)
-    ///     .output_path("profile.json")
-    ///     .build();
-    /// # }
-    /// ```
     pub fn output_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
         self.output_path = Some(resolve_output_path(path));
         self
     }
 
-    /// Builds and initializes the functions profiling guard.
-    ///
-    /// This method initializes the background profiling thread and returns a guard
-    /// that will generate the functions profiling report when dropped.
-    ///
-    /// # Panics
-    ///
-    /// Panics if another functions guard is already active. Only one guard can be
-    /// active at a time.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath-meta")]
-    /// # {
-    /// use hotpath_meta::FunctionsGuardBuilder;
-    ///
-    /// let _guard = FunctionsGuardBuilder::new("main").build();
-    /// // Profiling is active until _guard is dropped
-    /// # }
-    /// ```
-    pub fn build(self) -> FunctionsGuard {
+    pub fn with_sections(mut self, sections: Vec<Section>) -> Self {
+        self.sections = Some(sections);
+        self
+    }
+
+    fn resolve_sections(&self) -> Vec<Section> {
+        if let Some(env_sections) = Section::from_env() {
+            return env_sections;
+        }
+
+        if let Some(ref sections) = self.sections {
+            return sections.clone();
+        }
+
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "hotpath-alloc-meta")] {
+                vec![Section::FunctionsAlloc]
+            } else {
+                vec![Section::FunctionsTiming]
+            }
+        }
+    }
+
+    pub fn build(self) -> HotpathGuard {
         let recent_logs_limit = std::env::var("HOTPATH_META_RECENT_LOGS")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(50);
 
-        FunctionsGuard::new(
+        let sections = self.resolve_sections();
+
+        HotpathGuard::new(
             self.caller_name,
             &self.percentiles,
             self.limit,
             self.format,
             recent_logs_limit,
             self.output_path,
+            sections,
         )
     }
 
-    /// Builds the functions profiling guard and automatically drops it after the specified duration and exits the program.
-    ///
-    /// If used in memory profiling mode, it disables the top level measurement. To support timeout guard is moved between threads making accurate memory measurements impossible.
-    /// # Arguments
-    ///
-    /// * `duration` - The duration to wait before dropping the guard and generating the report
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(feature = "hotpath-meta")]
-    /// # {
-    /// use std::time::Duration;
-    /// use hotpath_meta::FunctionsGuardBuilder;
-    ///
-    /// // Profile for 1 second then exit
-    /// FunctionsGuardBuilder::new("timed_benchmark")
-    ///     .build_with_timeout(Duration::from_secs(1));
-    ///
-    /// // Your code here - will be profiled for 1 second
-    /// loop {
-    ///     // Work...
-    /// }
-    /// # }
-    /// ```
     pub fn build_with_timeout(self, duration: std::time::Duration) {
         let guard = self.build();
-        thread::spawn(move || {
-            thread::sleep(duration);
-            drop(guard);
-            std::process::exit(0);
-        });
+        if let Some(timeout) =
+            crate::shared::resolve_timeout_duration(duration, "HOTPATH_META_TIMEOUT_MS")
+        {
+            thread::spawn(move || {
+                thread::sleep(timeout);
+                drop(guard);
+                std::process::exit(0);
+            });
+        } else {
+            thread::spawn(move || {
+                let _guard = guard;
+                loop {
+                    thread::park();
+                }
+            });
+        }
     }
 }
 
-/// RAII guard that manages the profiling lifecycle and generates a report on drop.
-///
-/// Created via [`FunctionsGuardBuilder::build`]. When dropped, it stops the background
-/// worker, aggregates statistics, and outputs the profiling report.
 #[must_use = "guard is dropped immediately without generating a report"]
-pub struct FunctionsGuard {
+pub struct HotpathGuard {
     state: Arc<RwLock<FunctionsState>>,
     format: Format,
     wrapper_guard: Option<MeasurementGuard>,
     output_path: Option<PathBuf>,
+    sections: Vec<Section>,
+    start_time: Instant,
 }
 
-impl FunctionsGuard {
+impl HotpathGuard {
     pub fn new(
         caller_name: &'static str,
         percentiles: &[u8],
@@ -319,15 +159,14 @@ impl FunctionsGuard {
         format: Format,
         recent_logs_limit: usize,
         output_path: Option<PathBuf>,
+        sections: Vec<Section>,
     ) -> Self {
-        // Disable allocation tracking during infrastructure initialization
-        // to prevent profiling overhead from being included in measurements
         #[cfg(feature = "hotpath-alloc-meta")]
         {
-            super::alloc::core::ALLOCATIONS.with(|stack| {
+            crate::functions::alloc::core::ALLOCATIONS.with(|stack| {
                 stack.tracking_enabled.set(false);
             });
-            super::alloc::core::init_thread_alloc_tracking();
+            crate::functions::alloc::core::init_thread_alloc_tracking();
         }
 
         let percentiles = percentiles.to_vec();
@@ -373,11 +212,10 @@ impl FunctionsGuard {
                                 Ok(measurement) => {
                                     process_measurement(&mut local_stats, measurement, worker_recent_logs_limit, worker_start_time);
                                 }
-                                Err(_) => break, // Channel disconnected
+                                Err(_) => break,
                             }
                         }
                         recv(shutdown_rx) -> _ => {
-                            // Process remaining messages after shutdown signal
                             while let Ok(measurement) = rx.try_recv() {
                                 process_measurement(&mut local_stats, measurement, worker_recent_logs_limit, worker_start_time);
                             }
@@ -469,7 +307,6 @@ impl FunctionsGuard {
                                                 count: stats.count as usize,
                                             })
                                         } else {
-                                            // Function not found
                                             None
                                         };
                                         let _ = response_tx.send(response);
@@ -492,14 +329,13 @@ impl FunctionsGuard {
                                                     Some(FunctionLogsList {
                                                         function_name,
                                                         logs,
-                                                        count: stats.count as usize, // Total invocations, not just recent logs
+                                                        count: stats.count as usize,
                                                     })
                                                 } else {
                                                     None
                                                 };
                                                 let _ = response_tx.send(response);
                                             } else {
-                                                // Return None if hotpath-alloc-meta feature is not enabled
                                                 let _ = function_name;
                                                 let _ = response_tx.send(None);
                                             }
@@ -511,14 +347,12 @@ impl FunctionsGuard {
                     }
                 }
 
-                // Send stats via completion channel
                 let _ = completion_tx.send(local_stats);
             })
-            .expect("Failed to spawn hotpath-worker thread");
+            .expect("Failed to spawn hotpath-meta-worker thread");
 
         arc_swap.store(Some(Arc::clone(&state_arc)));
 
-        // Initialize START_TIME for channels/streams (required before HTTP server starts)
         #[cfg(target_os = "linux")]
         crate::lib_on::START_TIME.get_or_init(quanta::Instant::now);
         #[cfg(not(target_os = "linux"))]
@@ -529,11 +363,21 @@ impl FunctionsGuard {
         #[cfg(feature = "hotpath-meta-mcp")]
         crate::mcp_server::start_mcp_server_once();
 
+        if sections.contains(&Section::Futures) {
+            crate::futures::init_futures_state();
+        }
+
+        #[cfg(feature = "threads")]
+        if sections.contains(&Section::Threads) {
+            crate::threads::init_threads_monitoring();
+            #[cfg(feature = "hotpath-alloc-meta")]
+            crate::functions::alloc::core::init_thread_alloc_tracking();
+        }
+
         let wrapper_guard = MeasurementGuard::build(caller_name, true, false);
 
-        // Re-enable allocation tracking after infrastructure is initialized
         #[cfg(feature = "hotpath-alloc-meta")]
-        super::alloc::core::ALLOCATIONS.with(|stack| {
+        crate::functions::alloc::core::ALLOCATIONS.with(|stack| {
             stack.tracking_enabled.set(true);
         });
 
@@ -542,11 +386,13 @@ impl FunctionsGuard {
             format,
             wrapper_guard: Some(wrapper_guard),
             output_path,
+            sections,
+            start_time,
         }
     }
 }
 
-impl Drop for FunctionsGuard {
+impl Drop for HotpathGuard {
     fn drop(&mut self) {
         let wrapper_guard = self.wrapper_guard.take().unwrap();
         drop(wrapper_guard);
@@ -554,8 +400,8 @@ impl Drop for FunctionsGuard {
         flush_batch();
 
         let state: Arc<RwLock<FunctionsState>> = Arc::clone(&self.state);
+        let elapsed = self.start_time.elapsed();
 
-        // Signal shutdown and wait for processing thread to complete
         let (shutdown_tx, completion_rx, end_time) = {
             let Ok(mut state_guard) = state.write() else {
                 return;
@@ -573,73 +419,269 @@ impl Drop for FunctionsGuard {
             let _ = tx.send(());
         }
 
-        if let Some(rx_mutex) = completion_rx {
-            if let Ok(rx) = rx_mutex.lock() {
-                if let Ok(stats) = rx.recv() {
-                    if let Ok(state_guard) = state.read() {
-                        let total_elapsed = end_time.duration_since(state_guard.start_time);
-                        let elapsed_ns = total_elapsed.as_nanos() as u64;
-                        let metrics_provider = StatsData::new(
-                            &stats,
-                            total_elapsed,
-                            state_guard.percentiles.clone(),
-                            state_guard.caller_name,
-                            state_guard.limit,
-                        );
+        let functions_stats =
+            completion_rx.and_then(|rx_mutex| rx_mutex.lock().ok().and_then(|rx| rx.recv().ok()));
 
-                        let output = OutputDestination::from_path(self.output_path.take());
-                        let format = if std::env::var("HOTPATH_META_OUTPUT_FORMAT").is_ok() {
-                            Format::from_env()
-                        } else {
-                            self.format
-                        };
+        let channels_data = if self.sections.contains(&Section::Channels) {
+            report::shutdown_channels()
+        } else {
+            Vec::new()
+        };
 
-                        let mut writer = match output.writer() {
-                            Ok(w) => w,
-                            Err(e) => {
-                                eprintln!("Failed to create output writer: {}", e);
-                                return;
+        let streams_data = if self.sections.contains(&Section::Streams) {
+            report::shutdown_streams()
+        } else {
+            Vec::new()
+        };
+
+        let futures_data = if self.sections.contains(&Section::Futures) {
+            report::shutdown_futures()
+        } else {
+            Vec::new()
+        };
+
+        let output = OutputDestination::from_path(self.output_path.take());
+        let format = if std::env::var("HOTPATH_META_OUTPUT_FORMAT").is_ok() {
+            Format::from_env()
+        } else {
+            self.format
+        };
+
+        let mut writer = match output.writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("Failed to create output writer: {}", e);
+                return;
+            }
+        };
+
+        let is_file = matches!(output, OutputDestination::File(_));
+        let is_json = matches!(format, Format::Json | Format::JsonPretty);
+
+        if is_json {
+            let mut json_map = serde_json::Map::new();
+
+            for section in &self.sections {
+                match section {
+                    Section::FunctionsTiming => {
+                        if let Some(ref stats) = functions_stats {
+                            if let Ok(state_guard) = state.read() {
+                                let total_elapsed = end_time.duration_since(state_guard.start_time);
+                                let elapsed_ns = total_elapsed.as_nanos() as u64;
+
+                                cfg_if::cfg_if! {
+                                    if #[cfg(feature = "hotpath-alloc-meta")] {
+                                        let provider = TimingStatsData::new(
+                                            stats,
+                                            total_elapsed,
+                                            state_guard.percentiles.clone(),
+                                            state_guard.caller_name,
+                                            state_guard.limit,
+                                        );
+                                    } else {
+                                        let provider = StatsData::new(
+                                            stats,
+                                            total_elapsed,
+                                            state_guard.percentiles.clone(),
+                                            state_guard.caller_name,
+                                            state_guard.limit,
+                                        );
+                                    }
+                                }
+
+                                let json = JsonFunctionsList::from_provider_with_raw(
+                                    &provider, elapsed_ns,
+                                );
+                                if let Ok(val) = serde_json::to_value(&json) {
+                                    json_map.insert("functions_timing".to_string(), val);
+                                }
                             }
-                        };
-
-                        let is_file = matches!(output, OutputDestination::File(_));
-
-                        if metrics_provider.metric_data().is_empty() {
-                            display_no_measurements_message_to(
-                                &mut writer,
-                                total_elapsed,
-                                state_guard.caller_name,
-                                !is_file,
-                            );
-                        } else {
-                            match format {
-                                Format::Table => {
-                                    display_table_to(&mut writer, &metrics_provider, !is_file)
+                        }
+                    }
+                    Section::FunctionsAlloc => {
+                        cfg_if::cfg_if! {
+                            if #[cfg(feature = "hotpath-alloc-meta")] {
+                                if let Some(ref stats) = functions_stats {
+                                    if let Ok(state_guard) = state.read() {
+                                        let total_elapsed = end_time.duration_since(state_guard.start_time);
+                                        let elapsed_ns = total_elapsed.as_nanos() as u64;
+                                        let provider = StatsData::new(
+                                            stats,
+                                            total_elapsed,
+                                            state_guard.percentiles.clone(),
+                                            state_guard.caller_name,
+                                            state_guard.limit,
+                                        );
+                                        let json = JsonFunctionsList::from_provider_with_raw(
+                                            &provider,
+                                            elapsed_ns,
+                                        );
+                                        if let Ok(val) = serde_json::to_value(&json) {
+                                            json_map.insert("functions_alloc".to_string(), val);
+                                        }
+                                    }
                                 }
-                                Format::Json => {
-                                    let json = JsonFunctionsList::from_provider_with_raw(
-                                        &metrics_provider,
-                                        elapsed_ns,
-                                    );
-                                    let _ = writeln!(
-                                        writer,
-                                        "{}",
-                                        serde_json::to_string(&json).unwrap_or_default()
-                                    );
-                                }
-                                Format::JsonPretty => {
-                                    let json = JsonFunctionsList::from_provider_with_raw(
-                                        &metrics_provider,
-                                        elapsed_ns,
-                                    );
-                                    let _ = writeln!(
-                                        writer,
-                                        "{}",
-                                        serde_json::to_string_pretty(&json).unwrap_or_default()
-                                    );
-                                }
-                                Format::None => {}
                             }
+                        }
+                    }
+                    Section::Channels => {
+                        if !channels_data.is_empty() {
+                            let json = report::collect_channels_json(&channels_data, elapsed);
+                            if let Ok(val) = serde_json::to_value(&json) {
+                                json_map.insert("channels".to_string(), val);
+                            }
+                        }
+                    }
+                    Section::Streams => {
+                        if !streams_data.is_empty() {
+                            let json = report::collect_streams_json(&streams_data, elapsed);
+                            if let Ok(val) = serde_json::to_value(&json) {
+                                json_map.insert("streams".to_string(), val);
+                            }
+                        }
+                    }
+                    Section::Futures => {
+                        if !futures_data.is_empty() {
+                            let json = report::collect_futures_json(&futures_data, elapsed);
+                            if let Ok(val) = serde_json::to_value(&json) {
+                                json_map.insert("futures".to_string(), val);
+                            }
+                        }
+                    }
+                    Section::Threads => {
+                        #[cfg(feature = "threads")]
+                        {
+                            let json = report::collect_threads_json();
+                            if !json.data.is_empty() {
+                                if let Ok(val) = serde_json::to_value(&json) {
+                                    json_map.insert("threads".to_string(), val);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let combined = serde_json::Value::Object(json_map);
+            match format {
+                Format::Json => {
+                    let _ = writeln!(
+                        writer,
+                        "{}",
+                        serde_json::to_string(&combined).unwrap_or_default()
+                    );
+                }
+                Format::JsonPretty => {
+                    let _ = writeln!(
+                        writer,
+                        "{}",
+                        serde_json::to_string_pretty(&combined).unwrap_or_default()
+                    );
+                }
+                _ => {}
+            }
+        } else {
+            for section in &self.sections {
+                match section {
+                    Section::FunctionsTiming => {
+                        if let Some(ref stats) = functions_stats {
+                            if let Ok(state_guard) = state.read() {
+                                let total_elapsed = end_time.duration_since(state_guard.start_time);
+
+                                cfg_if::cfg_if! {
+                                    if #[cfg(feature = "hotpath-alloc-meta")] {
+                                        let provider = TimingStatsData::new(
+                                            stats,
+                                            total_elapsed,
+                                            state_guard.percentiles.clone(),
+                                            state_guard.caller_name,
+                                            state_guard.limit,
+                                        );
+                                    } else {
+                                        let provider = StatsData::new(
+                                            stats,
+                                            total_elapsed,
+                                            state_guard.percentiles.clone(),
+                                            state_guard.caller_name,
+                                            state_guard.limit,
+                                        );
+                                    }
+                                }
+
+                                match format {
+                                    Format::Table => {
+                                        if provider.metric_data().is_empty() {
+                                            display_no_measurements_message_to(
+                                                &mut writer,
+                                                total_elapsed,
+                                                state_guard.caller_name,
+                                                !is_file,
+                                            );
+                                        } else {
+                                            display_table_to(&mut writer, &provider, !is_file);
+                                        }
+                                    }
+                                    Format::None => {}
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    Section::FunctionsAlloc => {
+                        cfg_if::cfg_if! {
+                            if #[cfg(feature = "hotpath-alloc-meta")] {
+                                if let Some(ref stats) = functions_stats {
+                                    if let Ok(state_guard) = state.read() {
+                                        let total_elapsed = end_time.duration_since(state_guard.start_time);
+                                        let provider = StatsData::new(
+                                            stats,
+                                            total_elapsed,
+                                            state_guard.percentiles.clone(),
+                                            state_guard.caller_name,
+                                            state_guard.limit,
+                                        );
+
+                                        match format {
+                                            Format::Table => {
+                                                if provider.metric_data().is_empty() {
+                                                    display_no_measurements_message_to(
+                                                        &mut writer,
+                                                        total_elapsed,
+                                                        state_guard.caller_name,
+                                                        !is_file,
+                                                    );
+                                                } else {
+                                                    display_table_to(&mut writer, &provider, !is_file);
+                                                }
+                                            }
+                                            Format::None => {}
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Section::Channels => {
+                        if matches!(format, Format::Table) {
+                            report::report_channels_table(&channels_data, elapsed, &mut writer);
+                        }
+                    }
+                    Section::Streams => {
+                        if matches!(format, Format::Table) {
+                            report::report_streams_table(&streams_data, elapsed, &mut writer);
+                        }
+                    }
+                    Section::Futures => {
+                        if matches!(format, Format::Table) {
+                            report::report_futures_table(&futures_data, elapsed, &mut writer);
+                        }
+                    }
+                    Section::Threads =>
+                    {
+                        #[cfg(feature = "threads")]
+                        if matches!(format, Format::Table) {
+                            report::report_threads_table(elapsed, &mut writer);
                         }
                     }
                 }
