@@ -250,6 +250,39 @@ pub mod tests {
         );
     }
 
+    // cargo run -p test-channels-tokio --example guard_timeout_channels --features hotpath
+    #[test]
+    fn test_guard_timeout_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-channels-tokio",
+                "--example",
+                "guard_timeout_channels",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let expected_content = ["Channel Statistics", "timeout-channel"];
+
+        for expected in expected_content {
+            assert!(
+                stdout.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+    }
+
     // HOTPATH_METRICS_PORT=6773 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-tokio --example basic_tokio --features hotpath
     #[test]
     fn test_data_endpoints() {

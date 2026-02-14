@@ -194,6 +194,39 @@ pub mod tests {
         let _ = child.wait();
     }
 
+    // cargo run -p test-futures --example guard_timeout_futures --features hotpath
+    #[test]
+    fn test_guard_timeout_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-futures",
+                "--example",
+                "guard_timeout_futures",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let expected_content = ["Future Statistics", "guard_timeout_futures::timeout_worker"];
+
+        for expected in expected_content {
+            assert!(
+                stdout.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+    }
+
     // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-futures --example basic_futures --features hotpath
     #[test]
     fn test_format_none_suppresses_output() {

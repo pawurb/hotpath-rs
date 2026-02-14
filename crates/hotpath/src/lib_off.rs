@@ -270,6 +270,7 @@ pub mod channels {
         pub fn build(self) -> ChannelsGuard {
             ChannelsGuard
         }
+        pub fn build_with_timeout(self, _duration: std::time::Duration) {}
     }
 
     impl Default for ChannelsGuardBuilder {
@@ -321,6 +322,7 @@ pub mod streams {
         pub fn build(self) -> StreamsGuard {
             StreamsGuard
         }
+        pub fn build_with_timeout(self, _duration: std::time::Duration) {}
     }
 
     impl Default for StreamsGuardBuilder {
@@ -372,6 +374,7 @@ pub mod futures {
         pub fn build(self) -> FuturesGuard {
             FuturesGuard
         }
+        pub fn build_with_timeout(self, _duration: std::time::Duration) {}
     }
 
     impl Default for FuturesGuardBuilder {

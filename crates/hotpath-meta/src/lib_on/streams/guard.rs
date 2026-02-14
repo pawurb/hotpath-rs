@@ -8,6 +8,7 @@ use prettytable::{Cell, Row, Table};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
+use std::thread;
 
 use crate::channels::resolve_label;
 use crate::json::{JsonStreamEntry, JsonStreamsList};
@@ -72,6 +73,20 @@ impl StreamsGuardBuilder {
             format: self.format,
             output_path: self.output_path,
         }
+    }
+
+    /// Builds the streams guard and automatically drops it after the specified duration and exits the program.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - The duration to wait before dropping the guard and generating the report
+    pub fn build_with_timeout(self, duration: std::time::Duration) {
+        let guard = self.build();
+        thread::spawn(move || {
+            thread::sleep(duration);
+            drop(guard);
+            std::process::exit(0);
+        });
     }
 }
 
