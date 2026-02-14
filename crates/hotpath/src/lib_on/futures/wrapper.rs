@@ -1,6 +1,6 @@
 //! Instrumented Future wrapper that tracks lifecycle events.
 
-use crate::functions::truncate_result;
+use crate::output::format_debug_truncated;
 
 use super::{
     get_or_create_future_id, send_future_event, FutureEvent, PollResult, FUTURE_CALL_ID_COUNTER,
@@ -212,10 +212,7 @@ where
             Poll::Pending => (PollResult::Pending, None),
             Poll::Ready(value) => {
                 *this.completed = true;
-                (
-                    PollResult::Ready,
-                    Some(truncate_result(format!("{:?}", value))),
-                )
+                (PollResult::Ready, Some(format_debug_truncated(value)))
             }
         };
 

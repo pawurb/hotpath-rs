@@ -64,7 +64,7 @@ pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
     capacity: usize,
 ) -> (Sender<T>, Receiver<T>) {
     wrap_bounded_impl(inner, source, label, capacity, |msg| {
-        Some(format!("{:?}", msg))
+        Some(crate::output::format_debug_truncated(msg))
     })
 }
 
@@ -127,7 +127,9 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_unbounded_impl(inner, source, label, |msg| Some(format!("{:?}", msg)))
+    wrap_unbounded_impl(inner, source, label, |msg| {
+        Some(crate::output::format_debug_truncated(msg))
+    })
 }
 
 use crate::channels::InstrumentChannel;

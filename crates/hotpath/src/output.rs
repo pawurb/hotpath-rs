@@ -188,35 +188,79 @@ impl<'de> Deserialize<'de> for ProfilingMode {
     }
 }
 
-/// Find the nearest valid char boundary at or before `index`.
-/// Used to safely truncate UTF-8 strings from the right.
 pub fn floor_char_boundary(s: &str, index: usize) -> usize {
-    s.char_indices()
-        .map(|(i, _)| i)
-        .take_while(|&i| i <= index)
-        .last()
-        .unwrap_or(0)
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
-/// Find the nearest valid char boundary at or after `index`.
-/// Used to safely truncate UTF-8 strings from the left.
 pub fn ceil_char_boundary(s: &str, index: usize) -> usize {
-    s.char_indices()
-        .map(|(i, _)| i)
-        .find(|&i| i >= index)
-        .unwrap_or(s.len())
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
 }
 
 pub const MAX_RESULT_LEN: usize = 1536;
 
-/// Truncate a result string to MAX_RESULT_LEN, respecting UTF-8 char boundaries.
-pub fn truncate_result(s: String) -> String {
-    if s.len() <= MAX_RESULT_LEN {
-        s
-    } else {
-        let end = floor_char_boundary(&s, MAX_RESULT_LEN.saturating_sub(3));
-        format!("{}...", &s[..end])
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
+struct TruncatingWriter {
+    buf: String,
+    limit: usize,
+    truncated: bool,
+}
+
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
+impl std::fmt::Write for TruncatingWriter {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        if self.truncated {
+            return Ok(());
+        }
+
+        let remaining = self.limit.saturating_sub(self.buf.len());
+        if remaining == 0 {
+            if !s.is_empty() {
+                self.truncated = true;
+            }
+            return Ok(());
+        }
+
+        let end = floor_char_boundary(s, s.len().min(remaining));
+
+        if end < s.len() {
+            self.truncated = true;
+        }
+
+        self.buf.push_str(&s[..end]);
+        Ok(())
     }
+}
+
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
+pub fn format_debug_truncated(value: &impl std::fmt::Debug) -> String {
+    use std::fmt::Write;
+    let limit = MAX_RESULT_LEN.saturating_sub(3);
+    let mut writer = TruncatingWriter {
+        buf: String::with_capacity(MAX_RESULT_LEN),
+        limit,
+        truncated: false,
+    };
+    let _ = write!(writer, "{:?}", value);
+
+    if writer.truncated {
+        writer.buf.push_str("...");
+    }
+
+    writer.buf
 }
 
 pub fn shorten_function_name(function_name: &str) -> String {
@@ -329,7 +373,7 @@ mod truncation_tests {
     use super::*;
 
     #[test]
-    fn test_truncate_result() {
+    fn test_format_debug_truncated() {
         let truncate_point = MAX_RESULT_LEN.saturating_sub(3);
 
         let test_cases: Vec<(&str, String)> = vec![
@@ -346,7 +390,7 @@ mod truncation_tests {
         ];
 
         for (name, input) in test_cases {
-            let result = truncate_result(input.clone());
+            let result = format_debug_truncated(&input);
             assert!(
                 result.chars().count() > 0,
                 "{}: result should have chars",

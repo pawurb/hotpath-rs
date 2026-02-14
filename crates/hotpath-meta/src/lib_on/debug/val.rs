@@ -14,7 +14,7 @@ use crate::debug::{
     DebugEvent, ValEntry,
 };
 use crate::json::{format_time_ago, JsonDebugEntry, JsonDebugList, JsonDebugLog, JsonDebugValLogs};
-use crate::output::{format_duration, truncate_result};
+use crate::output::format_duration;
 
 fn get_thread_id() -> Option<u64> {
     Some(crate::tid::current_tid())
@@ -37,7 +37,7 @@ impl ValHandle {
 
     #[inline]
     pub fn set<T: Debug>(&self, value: &T) {
-        let value_str = truncate_result(format!("{:?}", value));
+        let value_str = crate::output::format_debug_truncated(value);
         let timestamp = Instant::now();
         let tid = get_thread_id();
 

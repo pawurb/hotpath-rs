@@ -64,7 +64,7 @@ pub(crate) fn wrap_sync_channel_log<T: Send + std::fmt::Debug + 'static>(
     capacity: usize,
 ) -> (SyncSender<T>, Receiver<T>) {
     wrap_sync_channel_impl(inner, source, label, capacity, |msg| {
-        Some(format!("{:?}", msg))
+        Some(crate::output::format_debug_truncated(msg))
     })
 }
 
@@ -126,7 +126,9 @@ pub(crate) fn wrap_channel_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_channel_impl(inner, source, label, |msg| Some(format!("{:?}", msg)))
+    wrap_channel_impl(inner, source, label, |msg| {
+        Some(crate::output::format_debug_truncated(msg))
+    })
 }
 
 use crate::channels::InstrumentChannel;

@@ -4,7 +4,7 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-use super::super::truncate_result;
+use crate::output::format_debug_truncated;
 
 #[doc(hidden)]
 #[must_use = "guard is dropped immediately without measuring anything"]
@@ -67,7 +67,7 @@ impl MeasurementGuardWithLog {
         let dur = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
-        let result_str = truncate_result(format!("{:?}", result));
+        let result_str = format_debug_truncated(result);
         super::state::send_duration_measurement_with_log(
             self.name,
             dur,

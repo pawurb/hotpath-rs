@@ -36,8 +36,8 @@ pub(crate) mod output;
 #[cfg(any(feature = "hotpath-meta", feature = "ci", feature = "tui"))]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_duration, shorten_function_name,
-    truncate_result, FunctionLogsList, FunctionsData, MetricType, MetricsProvider,
-    OutputDestination, ProfilingMode, MAX_RESULT_LEN,
+    FunctionLogsList, FunctionsData, MetricType, MetricsProvider, OutputDestination, ProfilingMode,
+    MAX_RESULT_LEN,
 };
 
 #[cfg(all(feature = "hotpath-meta", not(feature = "hotpath-off-meta")))]

@@ -25,11 +25,13 @@ pub use lib_on::tokio_runtime;
 
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
 pub(crate) mod output;
+#[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
+pub use output::format_debug_truncated;
 #[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_duration, shorten_function_name,
-    truncate_result, FunctionLogsList, FunctionsData, MetricType, MetricsProvider,
-    OutputDestination, ProfilingMode, MAX_RESULT_LEN,
+    FunctionLogsList, FunctionsData, MetricType, MetricsProvider, OutputDestination, ProfilingMode,
+    MAX_RESULT_LEN,
 };
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]

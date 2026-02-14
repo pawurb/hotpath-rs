@@ -1,5 +1,5 @@
 use crate::data_flow::next_data_flow_id;
-use crate::output::truncate_result;
+use crate::output::format_debug_truncated;
 use crate::streams::{init_streams_state, StreamEvent};
 use crossbeam_channel::Sender as CbSender;
 use futures_util::Stream;
@@ -121,7 +121,7 @@ where
 
         match this.inner.poll_next(cx) {
             Poll::Ready(Some(item)) => {
-                let log_msg = truncate_result(format!("{:?}", item));
+                let log_msg = format_debug_truncated(&item);
                 let _ = this.stats_tx.send(StreamEvent::Yielded {
                     id: *this.id,
                     log: Some(log_msg),

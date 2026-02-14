@@ -19,7 +19,6 @@ use crate::json::{format_queue_status, JsonChannelEntry, JsonChannelsList};
 pub use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::format_bytes;
-use crate::output::truncate_result;
 
 pub use crate::Format;
 
@@ -267,7 +266,7 @@ fn process_channel_event(stats: &mut HashMap<u64, ChannelEntry>, event: ChannelE
                 channel_stats.sent_logs.push_back(DataFlowLogEntry::new(
                     channel_stats.sent_count,
                     timestamp_nanos(timestamp),
-                    log.map(truncate_result),
+                    log,
                     None,
                 ));
             }

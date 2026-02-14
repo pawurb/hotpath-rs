@@ -78,7 +78,9 @@ pub(crate) fn wrap_channel_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_channel_impl(inner, source, label, |msg| Some(format!("{:?}", msg)))
+    wrap_channel_impl(inner, source, label, |msg| {
+        Some(crate::output::format_debug_truncated(msg))
+    })
 }
 
 /// Internal implementation for wrapping unbounded Tokio channels with optional logging.
@@ -152,7 +154,9 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    wrap_unbounded_impl(inner, source, label, |msg| Some(format!("{:?}", msg)))
+    wrap_unbounded_impl(inner, source, label, |msg| {
+        Some(crate::output::format_debug_truncated(msg))
+    })
 }
 
 /// Internal implementation for wrapping oneshot Tokio channels with optional logging.
@@ -231,7 +235,9 @@ pub(crate) fn wrap_oneshot_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
 ) -> (oneshot::Sender<T>, oneshot::Receiver<T>) {
-    wrap_oneshot_impl(inner, source, label, |msg| Some(format!("{:?}", msg)))
+    wrap_oneshot_impl(inner, source, label, |msg| {
+        Some(crate::output::format_debug_truncated(msg))
+    })
 }
 
 use crate::channels::InstrumentChannel;

@@ -25,8 +25,6 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use crate::output::truncate_result;
-
 #[inline]
 pub(crate) fn is_exclude_wrapper_enabled() -> bool {
     std::env::var("HOTPATH_META_EXCLUDE_WRAPPER")

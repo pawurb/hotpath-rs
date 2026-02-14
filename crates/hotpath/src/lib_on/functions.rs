@@ -25,8 +25,6 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use crate::output::truncate_result;
-
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 #[inline]
 pub(crate) fn is_exclude_wrapper_enabled() -> bool {

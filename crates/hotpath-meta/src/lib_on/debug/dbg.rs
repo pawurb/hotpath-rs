@@ -14,7 +14,7 @@ use crate::debug::{
     init_debug_state, send_debug_event, DbgEntry, DebugEvent,
 };
 use crate::json::{format_time_ago, JsonDebugDbgLogs, JsonDebugEntry, JsonDebugList, JsonDebugLog};
-use crate::output::{format_duration, truncate_result};
+use crate::output::format_duration;
 
 fn get_thread_id() -> Option<u64> {
     Some(crate::tid::current_tid())
@@ -25,7 +25,7 @@ fn get_thread_id() -> Option<u64> {
 pub fn log_dbg<T: Debug>(id: u64, source: &'static str, expression: &'static str, value: &T) {
     init_debug_state();
 
-    let value_str = truncate_result(format!("{:?}", value));
+    let value_str = crate::output::format_debug_truncated(value);
     let timestamp = Instant::now();
     let tid = get_thread_id();
 

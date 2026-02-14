@@ -4,8 +4,6 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
-use super::super::truncate_result;
-
 #[must_use = "guard is dropped immediately without measuring anything"]
 pub struct MeasurementGuard {
     name: &'static str,
@@ -135,7 +133,7 @@ impl MeasurementGuardWithLog {
     #[inline]
     pub fn finish_with_result<T: std::fmt::Debug>(mut self, result: &T) {
         self.finished = true;
-        let result_str = truncate_result(format!("{:?}", result));
+        let result_str = crate::output::format_debug_truncated(result);
 
         let duration = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
