@@ -5,7 +5,8 @@ use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonDataFlowList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
     JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonRuntimeSnapshot, JsonStreamLogsList, JsonThreadsList,
+    JsonFutureLogsList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonStreamLogsList,
+    JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -33,6 +34,7 @@ enum RequestKey {
     DebugDbgLogs,
     DebugValLogs,
     DebugGaugeLogs,
+    ProfilerStatus,
 }
 
 impl DataRequest {
@@ -52,6 +54,7 @@ impl DataRequest {
             DataRequest::FetchDebugDbgLogs(_) => RequestKey::DebugDbgLogs,
             DataRequest::FetchDebugValLogs(_) => RequestKey::DebugValLogs,
             DataRequest::FetchDebugGaugeLogs(_) => RequestKey::DebugGaugeLogs,
+            DataRequest::FetchProfilerStatus => RequestKey::ProfilerStatus,
         }
     }
 }
@@ -175,6 +178,9 @@ impl RouteExt for Route {
             Route::DebugDbgLogs { id }
             | Route::DebugValLogs { id }
             | Route::DebugGaugeLogs { id } => Some(DataResponse::DebugLogsNotFound { id: *id }),
+            Route::ProfilerStatus => Some(DataResponse::ProfilerStatus(JsonProfilerStatus {
+                uptime: String::new(),
+            })),
             _ => None,
         }
     }
@@ -247,6 +253,9 @@ impl RouteExt for Route {
             }
             Route::TokioRuntime => {
                 parse_json::<JsonRuntimeSnapshot>(bytes).map(DataResponse::TokioRuntime)
+            }
+            Route::ProfilerStatus => {
+                parse_json::<JsonProfilerStatus>(bytes).map(DataResponse::ProfilerStatus)
             }
         }
         .unwrap_or_else(|e| DataResponse::Error(format!("JSON parse error: {}", e)))

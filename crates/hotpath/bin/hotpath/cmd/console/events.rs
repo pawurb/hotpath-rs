@@ -4,8 +4,8 @@ use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonDataFlowList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
-    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonRuntimeSnapshot,
-    JsonStreamLogsList, JsonThreadsList,
+    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonProfilerStatus,
+    JsonRuntimeSnapshot, JsonStreamLogsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
@@ -24,6 +24,7 @@ pub(crate) enum DataRequest {
     FetchDebugDbgLogs(u64),
     FetchDebugValLogs(u64),
     FetchDebugGaugeLogs(u64),
+    FetchProfilerStatus,
 }
 
 impl DataRequest {
@@ -53,6 +54,7 @@ impl DataRequest {
             DataRequest::FetchDebugDbgLogs(id) => Route::DebugDbgLogs { id: *id },
             DataRequest::FetchDebugValLogs(id) => Route::DebugValLogs { id: *id },
             DataRequest::FetchDebugGaugeLogs(id) => Route::DebugGaugeLogs { id: *id },
+            DataRequest::FetchProfilerStatus => Route::ProfilerStatus,
         }
     }
 }
@@ -107,6 +109,7 @@ pub(crate) enum DataResponse {
         id: u64,
     },
     TokioRuntime(JsonRuntimeSnapshot),
+    ProfilerStatus(JsonProfilerStatus),
     Error(String),
 }
 

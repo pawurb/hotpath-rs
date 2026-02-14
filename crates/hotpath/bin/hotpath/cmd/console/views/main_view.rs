@@ -50,6 +50,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         app.last_successful_fetch,
         app.error_message.is_some(),
         has_data,
+        app.program_uptime.as_deref(),
     );
 
     render_tabs(frame, main_chunks[0], app.selected_tab);

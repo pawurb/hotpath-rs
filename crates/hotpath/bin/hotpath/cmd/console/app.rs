@@ -164,6 +164,8 @@ pub(crate) struct App {
     pub(crate) tokio_runtime: Option<JsonRuntimeSnapshot>,
     pub(crate) runtime_table_state: TableState,
     pub(crate) loading_runtime: bool,
+
+    pub(crate) program_uptime: Option<String>,
 }
 
 #[hotpath::measure_all]
@@ -252,6 +254,8 @@ impl App {
             tokio_runtime: None,
             runtime_table_state: TableState::default().with_selected(0),
             loading_runtime: false,
+
+            program_uptime: None,
         }
     }
 

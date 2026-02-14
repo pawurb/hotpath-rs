@@ -6,9 +6,10 @@ use crate::functions::{
 use crate::json::Route;
 use crate::json::{
     JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFutureLogsList,
-    JsonStreamLogsList,
+    JsonProfilerStatus, JsonStreamLogsList,
 };
 use crate::lib_on::START_TIME;
+use crate::output::format_duration;
 use std::sync::LazyLock;
 
 pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
@@ -189,6 +190,12 @@ fn handle_request(request: Request) {
             }
             #[cfg(not(feature = "tokio"))]
             respond_error(request, 404, TOKIO_RUNTIME_HINT);
+        }
+        Ok(Route::ProfilerStatus) => {
+            let status = JsonProfilerStatus {
+                uptime: format_duration(get_current_elapsed_ns()),
+            };
+            respond_json(request, &status);
         }
         Err(_) => respond_error(request, 404, "Not found"),
     }

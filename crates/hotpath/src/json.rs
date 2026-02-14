@@ -266,6 +266,8 @@ pub enum Route {
     DataFlowFutureLogs { future_id: u64 },
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
+    /// GET /profiler_status - Returns profiler uptime
+    ProfilerStatus,
 }
 
 impl Route {
@@ -301,6 +303,7 @@ impl Route {
                 format!("/data_flow/future/{}/logs", future_id)
             }
             Route::TokioRuntime => "/tokio_runtime".to_string(),
+            Route::ProfilerStatus => "/profiler_status".to_string(),
         }
     }
 
@@ -350,6 +353,7 @@ impl FromStr for Route {
             "/debug" => return Ok(Route::Debug),
             "/data_flow" => return Ok(Route::DataFlow),
             "/tokio_runtime" => return Ok(Route::TokioRuntime),
+            "/profiler_status" => return Ok(Route::ProfilerStatus),
             _ => {}
         }
 

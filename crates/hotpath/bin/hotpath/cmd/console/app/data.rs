@@ -335,6 +335,7 @@ impl App {
         };
         trace!("Requesting refresh for tab: {}", self.selected_tab.name());
         let _ = self.request_tx.send(request);
+        let _ = self.request_tx.send(DataRequest::FetchProfilerStatus);
         self.last_refresh = Instant::now();
     }
 
@@ -441,6 +442,10 @@ impl App {
                 self.tokio_runtime = Some(snapshot);
                 self.last_successful_fetch = Some(Instant::now());
                 self.error_message = None;
+            }
+            DataResponse::ProfilerStatus(status) => {
+                trace!("Received profiler status: uptime={}", status.uptime);
+                self.program_uptime = Some(status.uptime);
             }
             DataResponse::Error(e) => {
                 warn!("Data fetch error: {}", e);

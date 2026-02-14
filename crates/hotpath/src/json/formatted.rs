@@ -779,6 +779,11 @@ pub struct JsonRuntimeWorker {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonProfilerStatus {
+    pub uptime: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRuntimeSnapshot {
     pub num_workers: usize,
     pub num_alive_tasks: usize,
