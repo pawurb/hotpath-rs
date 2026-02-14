@@ -143,7 +143,16 @@ macro_rules! future {
     ($fut:expr) => {
         $fut
     };
+    ($fut:expr, label = $label:expr) => {
+        $fut
+    };
     ($fut:expr, log = true) => {
+        $fut
+    };
+    ($fut:expr, label = $label:expr, log = true) => {
+        $fut
+    };
+    ($fut:expr, log = true, label = $label:expr) => {
         $fut
     };
 }

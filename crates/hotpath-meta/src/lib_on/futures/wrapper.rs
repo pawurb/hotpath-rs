@@ -80,7 +80,7 @@ pin_project! {
 
 impl<F: Future> InstrumentedFuture<F> {
     /// Create a new instrumented future.
-    pub fn new(inner: F, location: &'static str) -> Self {
+    pub fn new(inner: F, location: &'static str, label: Option<String>) -> Self {
         let (future_id, is_new) = get_or_create_future_id(location);
         let call_id = FUTURE_CALL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
@@ -88,7 +88,7 @@ impl<F: Future> InstrumentedFuture<F> {
             send_future_event(FutureEvent::Created {
                 future_id,
                 source: location,
-                display_label: None,
+                display_label: label,
             });
         }
 
@@ -167,7 +167,7 @@ pin_project! {
 
 impl<F: Future> InstrumentedFutureLog<F> {
     /// Create a new instrumented future with logging.
-    pub fn new(inner: F, location: &'static str) -> Self {
+    pub fn new(inner: F, location: &'static str, label: Option<String>) -> Self {
         let (future_id, is_new) = get_or_create_future_id(location);
         let call_id = FUTURE_CALL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
@@ -175,7 +175,7 @@ impl<F: Future> InstrumentedFutureLog<F> {
             send_future_event(FutureEvent::Created {
                 future_id,
                 source: location,
-                display_label: None,
+                display_label: label,
             });
         }
 

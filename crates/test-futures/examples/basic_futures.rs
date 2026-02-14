@@ -46,6 +46,10 @@ async fn main() {
     println!("=== Futures Instrumentation Demo ===\n");
 
     let _result = future!(returns_no_debug()).await;
+
+    let _result = future!(slow_operation(), label = "my_labeled_future").await;
+    let _result = future!(slow_operation(), label = "labeled_with_log", log = true).await;
+
     println!();
 
     let result = future!(slow_operation()).await;

@@ -298,7 +298,7 @@ pub(crate) fn send_future_event(event: FutureEvent) {
 #[doc(hidden)]
 pub trait InstrumentFuture {
     type Output;
-    fn instrument_future(self, source: &'static str) -> Self::Output;
+    fn instrument_future(self, source: &'static str, label: Option<String>) -> Self::Output;
 }
 
 /// Trait for instrumenting futures with output logging (requires Debug).
@@ -307,14 +307,14 @@ pub trait InstrumentFuture {
 #[doc(hidden)]
 pub trait InstrumentFutureLog {
     type Output;
-    fn instrument_future_log(self, source: &'static str) -> Self::Output;
+    fn instrument_future_log(self, source: &'static str, label: Option<String>) -> Self::Output;
 }
 
 impl<F: std::future::Future> InstrumentFuture for F {
     type Output = InstrumentedFuture<F>;
 
-    fn instrument_future(self, source: &'static str) -> Self::Output {
-        InstrumentedFuture::new(self, source)
+    fn instrument_future(self, source: &'static str, label: Option<String>) -> Self::Output {
+        InstrumentedFuture::new(self, source, label)
     }
 }
 
@@ -324,8 +324,8 @@ where
 {
     type Output = InstrumentedFutureLog<F>;
 
-    fn instrument_future_log(self, source: &'static str) -> Self::Output {
-        InstrumentedFutureLog::new(self, source)
+    fn instrument_future_log(self, source: &'static str, label: Option<String>) -> Self::Output {
+        InstrumentedFutureLog::new(self, source, label)
     }
 }
 
@@ -407,17 +407,41 @@ pub fn get_future_logs_list(future_id: u64) -> Option<FutureLogsList> {
 /// ```
 #[macro_export]
 macro_rules! future {
-    // Basic: no Debug requirement
     ($fut:expr) => {{
         const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
         $crate::futures::init_futures_state();
-        $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC)
+        $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC, None)
     }};
 
-    // With logging: requires Debug
+    ($fut:expr, label = $label:expr) => {{
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        $crate::futures::init_futures_state();
+        $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC, Some($label.to_string()))
+    }};
+
     ($fut:expr, log = true) => {{
         const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
         $crate::futures::init_futures_state();
-        $crate::InstrumentFutureLog::instrument_future_log($fut, FUTURE_LOC)
+        $crate::InstrumentFutureLog::instrument_future_log($fut, FUTURE_LOC, None)
+    }};
+
+    ($fut:expr, label = $label:expr, log = true) => {{
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        $crate::futures::init_futures_state();
+        $crate::InstrumentFutureLog::instrument_future_log(
+            $fut,
+            FUTURE_LOC,
+            Some($label.to_string()),
+        )
+    }};
+
+    ($fut:expr, log = true, label = $label:expr) => {{
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        $crate::futures::init_futures_state();
+        $crate::InstrumentFutureLog::instrument_future_log(
+            $fut,
+            FUTURE_LOC,
+            Some($label.to_string()),
+        )
     }};
 }

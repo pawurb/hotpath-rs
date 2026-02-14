@@ -35,8 +35,10 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         let sep = path_sep();
-        let futures_path = format!("| examples{sep}basic_futures.rs:48");
+        let futures_path = format!("| examples{sep}basic_futures.rs:");
         let all_expected = [
+            "| labeled_with_log",
+            "| my_labeled_future",
             "| basic_futures::attributed_no_log   | 2     | 4     |",
             "| basic_futures::attributed_with_log | 2     | 4     |",
             futures_path.as_str(),

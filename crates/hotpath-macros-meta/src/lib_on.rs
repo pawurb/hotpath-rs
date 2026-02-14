@@ -497,7 +497,8 @@ pub fn future_fn_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 hotpath_meta::futures::init_futures_state();
                 hotpath_meta::InstrumentFutureLog::instrument_future_log(
                     async #block,
-                    FUTURE_LOC
+                    FUTURE_LOC,
+                    None
                 ).await
             }
         }
@@ -508,7 +509,8 @@ pub fn future_fn_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 hotpath_meta::futures::init_futures_state();
                 hotpath_meta::InstrumentFuture::instrument_future(
                     async #block,
-                    FUTURE_LOC
+                    FUTURE_LOC,
+                    None
                 ).await
             }
         }
