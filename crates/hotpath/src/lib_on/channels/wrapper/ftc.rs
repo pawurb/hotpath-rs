@@ -19,6 +19,7 @@ where
     T: Send + 'static,
     F: FnMut(&T) -> Option<String> + Send + 'static + Clone,
 {
+    #[allow(unused_mut)]
     let (inner_tx, mut inner_rx) = inner;
     #[cfg(feature = "hotpath-meta")]
     let mut inner_rx = hotpath_meta::stream!(inner_rx, label = "hp-ftc-bounded-rx");
@@ -89,6 +90,7 @@ where
     T: Send + 'static,
     F: FnMut(&T) -> Option<String> + Send + 'static + Clone,
 {
+    #[allow(unused_mut)]
     let (inner_tx, mut inner_rx) = inner;
     #[cfg(feature = "hotpath-meta")]
     let mut inner_rx = hotpath_meta::stream!(inner_rx, label = "hp-ftc-unbounded-rx");

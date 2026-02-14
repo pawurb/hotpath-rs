@@ -2,7 +2,7 @@
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -212,7 +212,7 @@ pub(crate) struct ChannelsState {
     pub(crate) event_tx: CbSender<ChannelEvent>,
     pub(crate) stats_map: Arc<RwLock<HashMap<u64, ChannelEntry>>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
-    pub(crate) completion_rx: Mutex<Option<CbReceiver<HashMap<u64, ChannelEntry>>>>,
+    pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
 
 type ChannelStatsState = ChannelsState;
@@ -222,13 +222,12 @@ pub(crate) static CHANNELS_STATE: OnceLock<ChannelStatsState> = OnceLock::new();
 pub(crate) use crate::lib_on::START_TIME;
 
 const DEFAULT_LOG_LIMIT: usize = 50;
-
-pub(crate) fn get_log_limit() -> usize {
+pub(crate) static LOG_LIMIT: LazyLock<usize> = LazyLock::new(|| {
     std::env::var("HOTPATH_META_LOGS_LIMIT")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_LOG_LIMIT)
-}
+});
 
 fn process_channel_event(stats: &mut HashMap<u64, ChannelEntry>, event: ChannelEvent) {
     match event {
@@ -259,7 +258,7 @@ fn process_channel_event(stats: &mut HashMap<u64, ChannelEntry>, event: ChannelE
                 channel_stats.sent_count += 1;
                 channel_stats.update_state();
 
-                let limit = get_log_limit();
+                let limit = *LOG_LIMIT;
                 if channel_stats.sent_logs.len() >= limit {
                     channel_stats.sent_logs.pop_front();
                 }
@@ -276,7 +275,7 @@ fn process_channel_event(stats: &mut HashMap<u64, ChannelEntry>, event: ChannelE
                 channel_stats.received_count += 1;
                 channel_stats.update_state();
 
-                let limit = get_log_limit();
+                let limit = *LOG_LIMIT;
                 if channel_stats.received_logs.len() >= limit {
                     channel_stats.received_logs.pop_front();
                 }
@@ -308,38 +307,37 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
 
         let (event_tx, event_rx) = unbounded::<ChannelEvent>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
-        let (completion_tx, completion_rx) = bounded::<HashMap<u64, ChannelEntry>>(1);
+        let (completion_tx, completion_rx) = bounded::<()>(1);
         let stats_map = Arc::new(RwLock::new(HashMap::<u64, ChannelEntry>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
             .name("hp-meta-channels".into())
             .spawn(move || {
-                let mut local_stats = HashMap::<u64, ChannelEntry>::new();
-
                 loop {
                     select! {
                         recv(event_rx) -> result => {
                             match result {
                                 Ok(event) => {
-                                    process_channel_event(&mut local_stats, event);
                                     if let Ok(mut shared) = stats_map_clone.write() {
-                                        *shared = local_stats.clone();
+                                        process_channel_event(&mut shared, event);
                                     }
                                 }
                                 Err(_) => break,
                             }
                         }
                         recv(shutdown_rx) -> _ => {
-                            while let Ok(event) = event_rx.try_recv() {
-                                process_channel_event(&mut local_stats, event);
+                            if let Ok(mut shared) = stats_map_clone.write() {
+                                while let Ok(event) = event_rx.try_recv() {
+                                    process_channel_event(&mut shared, event);
+                                }
                             }
                             break;
                         }
                     }
                 }
 
-                let _ = completion_tx.send(local_stats);
+                let _ = completion_tx.send(());
             })
             .expect("Failed to spawn channel-stats-collector thread");
 
@@ -414,7 +412,6 @@ pub trait InstrumentChannelLog {
 
 cfg_if::cfg_if! {
     if #[cfg(any(feature = "tokio", feature = "futures"))] {
-        use std::sync::LazyLock;
         pub static RT: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
             tokio::runtime::Builder::new_multi_thread()
                 .enable_time()

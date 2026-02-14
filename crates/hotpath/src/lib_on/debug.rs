@@ -1,6 +1,6 @@
 //! Debug subsystem - value logging, debug logging, and gauges.
 
-use crate::channels::{get_log_limit, START_TIME};
+use crate::channels::{LOG_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
@@ -246,7 +246,7 @@ fn process_dbg_event(stats_map: &mut HashMap<u64, DbgEntry>, event: DebugEvent) 
         tid,
     };
 
-    let limit = get_log_limit();
+    let limit = *LOG_LIMIT;
     if stats.logs.len() >= limit {
         stats.logs.pop_front();
     }
@@ -281,7 +281,7 @@ fn process_val_event(stats_map: &mut HashMap<u64, ValEntry>, event: DebugEvent) 
         tid,
     };
 
-    let limit = get_log_limit();
+    let limit = *LOG_LIMIT;
     if stats.logs.len() >= limit {
         stats.logs.pop_front();
     }
@@ -340,7 +340,7 @@ fn process_gauge_event(stats_map: &mut HashMap<u64, GaugeEntry>, event: DebugEve
         tid,
     };
 
-    let limit = get_log_limit();
+    let limit = *LOG_LIMIT;
     if stats.logs.len() >= limit {
         stats.logs.pop_front();
     }

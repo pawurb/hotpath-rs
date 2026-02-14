@@ -128,7 +128,7 @@ fn process_stream_event(stats: &mut HashMap<u64, StreamStats>, event: StreamEven
             if let Some(stream_stats) = stats.get_mut(&id) {
                 stream_stats.items_yielded += 1;
 
-                let limit = crate::channels::get_log_limit();
+                let limit = *crate::channels::LOG_LIMIT;
                 if stream_stats.logs.len() >= limit {
                     stream_stats.logs.pop_front();
                 }

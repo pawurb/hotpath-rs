@@ -1,6 +1,6 @@
 //! Futures instrumentation module - tracks async Future lifecycle and poll statistics.
 
-use crate::channels::{get_log_limit, resolve_label, START_TIME};
+use crate::channels::{resolve_label, LOG_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
@@ -217,7 +217,7 @@ fn process_future_event(stats_map: &mut HashMap<u64, FutureEntry>, event: Future
         FutureEvent::CallCreated { future_id, call_id } => {
             if let Some(future_stats) = stats_map.get_mut(&future_id) {
                 future_stats.logs_count += 1;
-                let limit = get_log_limit();
+                let limit = *LOG_LIMIT;
                 if future_stats.logs.len() >= limit {
                     future_stats.logs.pop_front();
                 }

@@ -165,7 +165,8 @@ impl Drop for ChannelsGuard {
                     .lock()
                     .ok()
                     .and_then(|mut guard| guard.take())
-                    .and_then(|rx| rx.recv().ok())
+                    .and_then(|rx| rx.recv().ok())?;
+                state.stats_map.read().ok().map(|stats| stats.clone())
             })
             .map(get_sorted_channels)
             .unwrap_or_default();
