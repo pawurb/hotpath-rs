@@ -12,6 +12,34 @@ use tracing::{trace, warn};
 
 #[hotpath::measure_all]
 impl App {
+    fn try_auto_expand_logs(&mut self) {
+        if !self.auto_expand_logs {
+            return;
+        }
+        match self.selected_tab {
+            SelectedTab::Timing if !self.timing_functions.data.is_empty() => {
+                self.auto_expand_logs = false;
+                self.toggle_function_logs();
+            }
+            SelectedTab::Memory if !self.memory_functions.data.is_empty() => {
+                self.auto_expand_logs = false;
+                self.toggle_function_logs();
+            }
+            SelectedTab::DataFlow if !self.data_flow.entries.is_empty() => {
+                self.auto_expand_logs = false;
+                self.toggle_data_flow_logs();
+            }
+            SelectedTab::Debug if !self.debug_stats.is_empty() => {
+                self.auto_expand_logs = false;
+                self.toggle_debug_logs();
+            }
+            SelectedTab::Threads | SelectedTab::Runtime => {
+                self.auto_expand_logs = false;
+            }
+            _ => {}
+        }
+    }
+
     pub(crate) fn update_timing_metrics(&mut self, metrics: JsonFunctionsList) {
         let selected_function_name = self.selected_function_name();
 
@@ -34,6 +62,8 @@ impl App {
         } else if !entries.is_empty() {
             self.timing_table_state.select(Some(0));
         }
+
+        self.try_auto_expand_logs();
     }
 
     pub(crate) fn update_memory_metrics(&mut self, metrics: JsonFunctionsList) {
@@ -58,6 +88,8 @@ impl App {
         } else if !entries.is_empty() {
             self.memory_table_state.select(Some(0));
         }
+
+        self.try_auto_expand_logs();
     }
 
     pub(crate) fn set_error(&mut self, error: String) {
@@ -159,6 +191,8 @@ impl App {
         if self.show_data_flow_logs {
             self.request_data_flow_logs();
         }
+
+        self.try_auto_expand_logs();
     }
 
     pub(crate) fn request_data_flow_logs(&self) {
@@ -239,6 +273,8 @@ impl App {
                     .select(Some(self.threads.data.len() - 1));
             }
         }
+
+        self.try_auto_expand_logs();
     }
 
     // Debug methods
@@ -271,6 +307,8 @@ impl App {
         if self.show_debug_logs {
             self.request_debug_logs();
         }
+
+        self.try_auto_expand_logs();
     }
 
     pub(crate) fn request_debug_logs(&self) {
@@ -442,6 +480,7 @@ impl App {
                 self.tokio_runtime = Some(snapshot);
                 self.last_successful_fetch = Some(Instant::now());
                 self.error_message = None;
+                self.try_auto_expand_logs();
             }
             DataResponse::ProfilerStatus(status) => {
                 trace!("Received profiler status: uptime={}", status.uptime);

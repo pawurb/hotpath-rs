@@ -48,6 +48,19 @@ impl SelectedTab {
             SelectedTab::Runtime => "Tokio",
         }
     }
+
+    pub(crate) fn from_env_str(s: &str) -> Option<Self> {
+        let n: u8 = s.trim().parse().ok()?;
+        match n {
+            1 => Some(SelectedTab::Timing),
+            2 => Some(SelectedTab::Memory),
+            3 => Some(SelectedTab::DataFlow),
+            4 => Some(SelectedTab::Threads),
+            5 => Some(SelectedTab::Debug),
+            6 => Some(SelectedTab::Runtime),
+            _ => None,
+        }
+    }
 }
 
 /// Represents which UI component has focus in the Functions tab
@@ -166,6 +179,7 @@ pub(crate) struct App {
     pub(crate) loading_runtime: bool,
 
     pub(crate) program_uptime: Option<String>,
+    pub(crate) auto_expand_logs: bool,
 }
 
 #[hotpath::measure_all]
@@ -181,6 +195,14 @@ impl App {
         let base_url = format!("{}:{}", metrics_host.trim_end_matches('/'), metrics_port);
         super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), base_url.clone());
         super::input::spawn_input_reader(event_tx);
+
+        let (initial_tab, auto_expand_logs) = match std::env::var("HOTPATH_TUI_TAB") {
+            Ok(val) => match SelectedTab::from_env_str(&val) {
+                Some(tab) => (tab, true),
+                None => (SelectedTab::default(), false),
+            },
+            Err(_) => (SelectedTab::default(), false),
+        };
 
         let empty_functions = JsonFunctionsList {
             hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
@@ -201,7 +223,7 @@ impl App {
             memory_available: true,
             timing_table_state: TableState::default().with_selected(0),
             memory_table_state: TableState::default().with_selected(0),
-            selected_tab: SelectedTab::default(),
+            selected_tab: initial_tab,
             paused: false,
             last_refresh: Instant::now(),
             last_successful_fetch: None,
@@ -256,6 +278,7 @@ impl App {
             loading_runtime: false,
 
             program_uptime: None,
+            auto_expand_logs,
         }
     }
 
