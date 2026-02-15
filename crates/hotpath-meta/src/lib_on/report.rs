@@ -38,6 +38,7 @@ pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
 
 pub(crate) fn report_channels_table(
     channels: &[ChannelEntry],
+    total_count: usize,
     elapsed: std::time::Duration,
     writer: &mut dyn Write,
 ) {
@@ -81,7 +82,12 @@ pub(crate) fn report_channels_table(
         ]));
     }
 
-    let _ = writeln!(writer, "\nChannels:");
+    let header = if channels.len() < total_count {
+        format!("\nChannels ({}/{}):", channels.len(), total_count)
+    } else {
+        "\nChannels:".to_string()
+    };
+    let _ = writeln!(writer, "{header}");
     let _ = table.print(writer);
 }
 
@@ -122,6 +128,7 @@ pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
 
 pub(crate) fn report_streams_table(
     streams: &[StreamStats],
+    total_count: usize,
     elapsed: std::time::Duration,
     writer: &mut dyn Write,
 ) {
@@ -155,7 +162,12 @@ pub(crate) fn report_streams_table(
         ]));
     }
 
-    let _ = writeln!(writer, "\nStreams:");
+    let header = if streams.len() < total_count {
+        format!("\nStreams ({}/{}):", streams.len(), total_count)
+    } else {
+        "\nStreams:".to_string()
+    };
+    let _ = writeln!(writer, "{header}");
     let _ = table.print(writer);
 }
 
@@ -196,6 +208,7 @@ pub(crate) fn shutdown_futures() -> Vec<FutureEntry> {
 
 pub(crate) fn report_futures_table(
     futures: &[FutureEntry],
+    total_count: usize,
     elapsed: std::time::Duration,
     writer: &mut dyn Write,
 ) {
@@ -225,7 +238,12 @@ pub(crate) fn report_futures_table(
         ]));
     }
 
-    let _ = writeln!(writer, "\nFutures:");
+    let header = if futures.len() < total_count {
+        format!("\nFutures ({}/{}):", futures.len(), total_count)
+    } else {
+        "\nFutures:".to_string()
+    };
+    let _ = writeln!(writer, "{header}");
     let _ = table.print(writer);
 }
 
@@ -240,11 +258,20 @@ pub(crate) fn collect_futures_json(
 }
 
 #[cfg(feature = "threads")]
-pub(crate) fn report_threads_table(elapsed: std::time::Duration, writer: &mut dyn Write) {
-    let threads_json = crate::threads::get_threads_json();
+pub(crate) fn report_threads_table(
+    elapsed: std::time::Duration,
+    writer: &mut dyn Write,
+    limit: usize,
+) {
+    let mut threads_json = crate::threads::get_threads_json();
 
     if threads_json.data.is_empty() {
         return;
+    }
+
+    let total_count = threads_json.data.len();
+    if limit > 0 && limit < total_count {
+        threads_json.data.truncate(limit);
     }
 
     let _ = writeln!(
@@ -310,15 +337,26 @@ pub(crate) fn report_threads_table(elapsed: std::time::Duration, writer: &mut dy
         format!(", {}", summary_parts.join(", "))
     };
 
+    let displayed = threads_json.data.len();
+    let truncation = if displayed < total_count {
+        format!(", {}/{} shown", displayed, total_count)
+    } else {
+        String::new()
+    };
+
     let _ = writeln!(
         writer,
-        "\nThreads ({}{}):",
-        threads_json.thread_count, summary
+        "\nThreads ({}{}{}):",
+        threads_json.thread_count, summary, truncation
     );
     let _ = table.print(writer);
 }
 
 #[cfg(feature = "threads")]
-pub(crate) fn collect_threads_json() -> crate::json::JsonThreadsList {
-    crate::threads::get_threads_json()
+pub(crate) fn collect_threads_json(limit: usize) -> crate::json::JsonThreadsList {
+    let mut json = crate::threads::get_threads_json();
+    if limit > 0 && limit < json.data.len() {
+        json.data.truncate(limit);
+    }
+    json
 }

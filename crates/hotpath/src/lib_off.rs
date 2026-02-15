@@ -233,7 +233,23 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn limit(self, _limit: usize) -> Self {
+    pub fn with_functions_limit(self, _limit: usize) -> Self {
+        self
+    }
+
+    pub fn with_channels_limit(self, _limit: usize) -> Self {
+        self
+    }
+
+    pub fn with_streams_limit(self, _limit: usize) -> Self {
+        self
+    }
+
+    pub fn with_futures_limit(self, _limit: usize) -> Self {
+        self
+    }
+
+    pub fn with_threads_limit(self, _limit: usize) -> Self {
         self
     }
 

@@ -41,7 +41,11 @@ pub struct HotpathGuardBuilder {
     caller_name: &'static str,
     percentiles: Vec<u8>,
     format: Format,
-    limit: usize,
+    functions_limit: usize,
+    channels_limit: usize,
+    streams_limit: usize,
+    futures_limit: usize,
+    threads_limit: usize,
     output_path: Option<PathBuf>,
     sections: Option<Vec<Section>>,
     before_report: Option<Box<dyn FnOnce() + Send + Sync>>,
@@ -53,7 +57,11 @@ impl HotpathGuardBuilder {
             caller_name,
             percentiles: vec![95],
             format: Format::Table,
-            limit: 15,
+            functions_limit: 15,
+            channels_limit: 0,
+            streams_limit: 0,
+            futures_limit: 0,
+            threads_limit: 0,
             output_path: None,
             sections: None,
             before_report: None,
@@ -65,8 +73,28 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn limit(mut self, limit: usize) -> Self {
-        self.limit = limit;
+    pub fn with_functions_limit(mut self, limit: usize) -> Self {
+        self.functions_limit = limit;
+        self
+    }
+
+    pub fn with_channels_limit(mut self, limit: usize) -> Self {
+        self.channels_limit = limit;
+        self
+    }
+
+    pub fn with_streams_limit(mut self, limit: usize) -> Self {
+        self.streams_limit = limit;
+        self
+    }
+
+    pub fn with_futures_limit(mut self, limit: usize) -> Self {
+        self.futures_limit = limit;
+        self
+    }
+
+    pub fn with_threads_limit(mut self, limit: usize) -> Self {
+        self.threads_limit = limit;
         self
     }
 
@@ -119,12 +147,16 @@ impl HotpathGuardBuilder {
         HotpathGuard::new(
             self.caller_name,
             &self.percentiles,
-            self.limit,
+            self.functions_limit,
             self.format,
             recent_logs_limit,
             self.output_path,
             sections,
             self.before_report,
+            self.channels_limit,
+            self.streams_limit,
+            self.futures_limit,
+            self.threads_limit,
         )
     }
 
@@ -158,6 +190,10 @@ pub struct HotpathGuard {
     sections: Vec<Section>,
     start_time: Instant,
     before_report: Option<Box<dyn FnOnce() + Send + Sync>>,
+    channels_limit: usize,
+    streams_limit: usize,
+    futures_limit: usize,
+    threads_limit: usize,
 }
 
 impl HotpathGuard {
@@ -171,6 +207,10 @@ impl HotpathGuard {
         output_path: Option<PathBuf>,
         sections: Vec<Section>,
         before_report: Option<Box<dyn FnOnce() + Send + Sync>>,
+        channels_limit: usize,
+        streams_limit: usize,
+        futures_limit: usize,
+        threads_limit: usize,
     ) -> Self {
         #[cfg(feature = "hotpath-alloc")]
         {
@@ -233,7 +273,7 @@ impl HotpathGuard {
             .spawn(move || {
                 #[cfg(feature = "hotpath-meta")]
                 {
-                    let builder = hotpath_meta::HotpathGuardBuilder::new("hotpath-meta").limit(20);
+                    let builder = hotpath_meta::HotpathGuardBuilder::new("hotpath-meta").with_functions_limit(10).with_threads_limit(5);
                     #[cfg(feature = "tui")]
                     let builder = builder.before_report(ratatui::restore);
                     builder.build_with_timeout(std::time::Duration::from_secs(0));
@@ -425,7 +465,19 @@ impl HotpathGuard {
             sections,
             start_time,
             before_report,
+            channels_limit,
+            streams_limit,
+            futures_limit,
+            threads_limit,
         }
+    }
+}
+
+fn apply_limit(len: usize, limit: usize) -> usize {
+    if limit > 0 && limit < len {
+        limit
+    } else {
+        len
     }
 }
 
@@ -567,7 +619,9 @@ impl Drop for HotpathGuard {
                     }
                     Section::Channels => {
                         if !channels_data.is_empty() {
-                            let json = report::collect_channels_json(&channels_data, elapsed);
+                            let limit = apply_limit(channels_data.len(), self.channels_limit);
+                            let json =
+                                report::collect_channels_json(&channels_data[..limit], elapsed);
                             if let Ok(val) = serde_json::to_value(&json) {
                                 json_map.insert("channels".to_string(), val);
                             }
@@ -575,7 +629,9 @@ impl Drop for HotpathGuard {
                     }
                     Section::Streams => {
                         if !streams_data.is_empty() {
-                            let json = report::collect_streams_json(&streams_data, elapsed);
+                            let limit = apply_limit(streams_data.len(), self.streams_limit);
+                            let json =
+                                report::collect_streams_json(&streams_data[..limit], elapsed);
                             if let Ok(val) = serde_json::to_value(&json) {
                                 json_map.insert("streams".to_string(), val);
                             }
@@ -583,7 +639,9 @@ impl Drop for HotpathGuard {
                     }
                     Section::Futures => {
                         if !futures_data.is_empty() {
-                            let json = report::collect_futures_json(&futures_data, elapsed);
+                            let limit = apply_limit(futures_data.len(), self.futures_limit);
+                            let json =
+                                report::collect_futures_json(&futures_data[..limit], elapsed);
                             if let Ok(val) = serde_json::to_value(&json) {
                                 json_map.insert("futures".to_string(), val);
                             }
@@ -592,7 +650,7 @@ impl Drop for HotpathGuard {
                     Section::Threads => {
                         #[cfg(feature = "threads")]
                         {
-                            let json = report::collect_threads_json();
+                            let json = report::collect_threads_json(self.threads_limit);
                             if !json.data.is_empty() {
                                 if let Ok(val) = serde_json::to_value(&json) {
                                     json_map.insert("threads".to_string(), val);
@@ -705,24 +763,45 @@ impl Drop for HotpathGuard {
                     }
                     Section::Channels => {
                         if matches!(format, Format::Table) {
-                            report::report_channels_table(&channels_data, elapsed, &mut writer);
+                            let total = channels_data.len();
+                            let limit = apply_limit(total, self.channels_limit);
+                            report::report_channels_table(
+                                &channels_data[..limit],
+                                total,
+                                elapsed,
+                                &mut writer,
+                            );
                         }
                     }
                     Section::Streams => {
                         if matches!(format, Format::Table) {
-                            report::report_streams_table(&streams_data, elapsed, &mut writer);
+                            let total = streams_data.len();
+                            let limit = apply_limit(total, self.streams_limit);
+                            report::report_streams_table(
+                                &streams_data[..limit],
+                                total,
+                                elapsed,
+                                &mut writer,
+                            );
                         }
                     }
                     Section::Futures => {
                         if matches!(format, Format::Table) {
-                            report::report_futures_table(&futures_data, elapsed, &mut writer);
+                            let total = futures_data.len();
+                            let limit = apply_limit(total, self.futures_limit);
+                            report::report_futures_table(
+                                &futures_data[..limit],
+                                total,
+                                elapsed,
+                                &mut writer,
+                            );
                         }
                     }
                     Section::Threads =>
                     {
                         #[cfg(feature = "threads")]
                         if matches!(format, Format::Table) {
-                            report::report_threads_table(elapsed, &mut writer);
+                            report::report_threads_table(elapsed, &mut writer, self.threads_limit);
                         }
                     }
                 }

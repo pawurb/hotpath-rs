@@ -113,7 +113,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Defaults
     let mut percentiles: Vec<u8> = vec![95];
     let mut format = Format::Table;
-    let mut limit: usize = 15;
+    let mut functions_limit: usize = 15;
     let mut timeout: Option<u64> = None;
     let mut output_path: Option<String> = None;
     let mut report_sections: Option<String> = None;
@@ -165,7 +165,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             if meta.path.is_ident("limit") {
                 meta.input.parse::<syn::Token![=]>()?;
                 let li: LitInt = meta.input.parse()?;
-                limit = li.base10_parse()?;
+                functions_limit = li.base10_parse()?;
                 return Ok(());
             }
 
@@ -249,7 +249,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         hotpath_meta::HotpathGuardBuilder::new(caller_name)
             .percentiles(#percentiles_array)
-            .limit(#limit)
+            .with_functions_limit(#functions_limit)
             .format(#format_token)
             #output_path_call
             #sections_call
