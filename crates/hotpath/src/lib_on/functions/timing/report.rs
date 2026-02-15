@@ -44,7 +44,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
-        let reference_total = if crate::functions::is_exclude_wrapper_enabled() {
+        let reference_total = if *crate::functions::EXCLUDE_WRAPPER {
             self.stats
                 .iter()
                 .filter(|(_, s)| !s.wrapper && s.has_data)
@@ -59,7 +59,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             wrapper_total.unwrap_or(self.total_elapsed.as_nanos() as u64)
         };
 
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let mut entries: Vec<_> = self
             .stats
             .iter()
@@ -114,7 +114,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn entry_counts(&self) -> (usize, usize) {
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let total_count = self
             .stats
             .iter()

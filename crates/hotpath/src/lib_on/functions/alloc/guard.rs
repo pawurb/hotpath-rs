@@ -1,8 +1,16 @@
+use std::sync::LazyLock;
+
 #[cfg(target_os = "linux")]
 use quanta::Instant;
 
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
+
+pub(crate) static ALLOC_SELF: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("HOTPATH_ALLOC_SELF")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+});
 
 #[must_use = "guard is dropped immediately without measuring anything"]
 pub struct MeasurementGuard {
@@ -56,7 +64,7 @@ impl Drop for MeasurementGuard {
 
                     stack.depth.set(stack.depth.get() - 1);
 
-                    if !super::shared::is_alloc_self_enabled() {
+                    if !*ALLOC_SELF {
                         let parent = stack.depth.get() as usize;
                         stack.elements[parent]
                             .bytes_total
@@ -150,7 +158,7 @@ impl MeasurementGuardWithLog {
 
                     stack.depth.set(stack.depth.get() - 1);
 
-                    if !super::shared::is_alloc_self_enabled() {
+                    if !*ALLOC_SELF {
                         let parent = stack.depth.get() as usize;
                         stack.elements[parent]
                             .bytes_total
@@ -209,7 +217,7 @@ impl Drop for MeasurementGuardWithLog {
 
                         stack.depth.set(stack.depth.get() - 1);
 
-                        if !super::shared::is_alloc_self_enabled() {
+                        if !*ALLOC_SELF {
                             let parent = stack.depth.get() as usize;
                             stack.elements[parent]
                                 .bytes_total

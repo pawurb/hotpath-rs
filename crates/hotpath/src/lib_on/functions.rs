@@ -1,6 +1,6 @@
 //! Function profiling module - measures execution time and memory allocations per function.
 
-use std::{sync::OnceLock, sync::RwLock, time::Duration};
+use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
 
 use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
@@ -25,13 +25,11 @@ cfg_if::cfg_if! {
     }
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-#[inline]
-pub(crate) fn is_exclude_wrapper_enabled() -> bool {
+pub(crate) static EXCLUDE_WRAPPER: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("HOTPATH_EXCLUDE_WRAPPER")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false)
-}
+});
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl MeasurementGuard {

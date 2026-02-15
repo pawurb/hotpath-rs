@@ -43,7 +43,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn description(&self) -> String {
-        if super::shared::is_alloc_self_enabled() {
+        if *super::guard::ALLOC_SELF {
             "Exclusive allocations by each function (excluding nested calls).".to_string()
         } else {
             "Cumulative allocations during each function call (including nested calls).".to_string()
@@ -59,7 +59,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let mut filtered_stats: Vec<_> = self
             .stats
             .iter()
@@ -83,13 +83,13 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             filtered_stats
         };
 
-        let grand_total_bytes: u64 = if crate::functions::is_exclude_wrapper_enabled() {
+        let grand_total_bytes: u64 = if *crate::functions::EXCLUDE_WRAPPER {
             self.stats
                 .iter()
                 .filter(|(_, s)| !s.wrapper && s.has_data)
                 .map(|(_, stats)| stats.total_bytes())
                 .sum()
-        } else if super::shared::is_alloc_self_enabled() {
+        } else if *super::guard::ALLOC_SELF {
             self.stats
                 .iter()
                 .filter(|(_, s)| s.has_data)
@@ -171,7 +171,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn entry_counts(&self) -> (usize, usize) {
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let total_count = self
             .stats
             .iter()
@@ -224,7 +224,7 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
     }
 
     fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let mut filtered_stats: Vec<_> = self
             .stats
             .iter()
@@ -297,7 +297,7 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
     }
 
     fn entry_counts(&self) -> (usize, usize) {
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let total_count = self
             .stats
             .iter()
