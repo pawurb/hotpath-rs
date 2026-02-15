@@ -407,6 +407,7 @@ pub struct JsonChannelEntry {
     pub sent_count: u64,
     pub received_count: u64,
     pub queued: u64,
+    pub max_queued: u64,
     pub queue_status: String,
     pub type_name: String,
     pub type_size: usize,
@@ -602,6 +603,8 @@ pub struct JsonDataFlowEntry {
     pub queue: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub queue_mem: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_queue: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub type_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

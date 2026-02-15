@@ -59,6 +59,7 @@ pub(crate) fn report_channels_table(
         Cell::new("Sent"),
         Cell::new("Received"),
         Cell::new("Queued"),
+        Cell::new("Max Q"),
         Cell::new("Mem"),
     ]));
 
@@ -75,6 +76,7 @@ pub(crate) fn report_channels_table(
             Cell::new(&channel_stats.sent_count.to_string()),
             Cell::new(&channel_stats.received_count.to_string()),
             Cell::new(&channel_stats.queued().to_string()),
+            Cell::new(&channel_stats.max_queued.to_string()),
             Cell::new(&format_bytes(channel_stats.queued_bytes())),
         ]));
     }

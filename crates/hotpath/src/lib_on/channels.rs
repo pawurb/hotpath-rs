@@ -87,6 +87,7 @@ pub(crate) struct ChannelEntry {
     pub(crate) received_count: u64,
     pub(crate) type_name: &'static str,
     pub(crate) type_size: usize,
+    pub(crate) max_queued: u64,
     pub(crate) sent_logs: VecDeque<DataFlowLogEntry>,
     pub(crate) received_logs: VecDeque<DataFlowLogEntry>,
     pub(crate) iter: u32,
@@ -124,6 +125,7 @@ impl From<&ChannelEntry> for JsonChannelEntry {
             sent_count: stats.sent_count,
             received_count: stats.received_count,
             queued,
+            max_queued: stats.max_queued,
             queue_status: format_queue_status(queued, capacity.copied()),
             type_name: stats.type_name.to_string(),
             type_size: stats.type_size,
@@ -154,6 +156,7 @@ impl ChannelEntry {
             received_count: 0,
             type_name,
             type_size,
+            max_queued: 0,
             sent_logs: VecDeque::new(),
             received_logs: VecDeque::new(),
             iter,
@@ -161,11 +164,13 @@ impl ChannelEntry {
     }
 
     fn update_state(&mut self) {
+        let queued = self.queued();
+        self.max_queued = self.max_queued.max(queued);
+
         if self.state == ChannelState::Closed || self.state == ChannelState::Notified {
             return;
         }
 
-        let queued = self.queued();
         let is_full = match self.channel_type {
             ChannelType::Bounded(cap) => queued >= cap as u64,
             ChannelType::Oneshot => queued >= 1,

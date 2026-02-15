@@ -86,6 +86,10 @@ fn format_queue_mem(entry: &JsonDataFlowEntry) -> &str {
     entry.queue_mem.as_deref().unwrap_or("-")
 }
 
+fn format_max_queue(entry: &JsonDataFlowEntry) -> &str {
+    entry.max_queue.as_deref().unwrap_or("-")
+}
+
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_data_flow_panel(
@@ -106,6 +110,7 @@ pub(crate) fn render_data_flow_panel(
         Cell::from("Label"),
         Cell::from("State"),
         Cell::from("Queue"),
+        Cell::from("Max Q"),
         Cell::from("Mem"),
         Cell::from("Count"),
     ])
@@ -130,6 +135,7 @@ pub(crate) fn render_data_flow_panel(
                 Cell::from(truncate_left(&entry.label, label_width)),
                 Cell::from(state_text).style(state_style(&entry.state)),
                 Cell::from(format_queue(entry)),
+                Cell::from(format_max_queue(entry)),
                 Cell::from(format_queue_mem(entry)),
                 Cell::from(format_counts(entry)),
             ])
@@ -141,6 +147,7 @@ pub(crate) fn render_data_flow_panel(
         Constraint::Percentage(40), // Label
         Constraint::Length(10),     // State
         Constraint::Length(8),      // Queue
+        Constraint::Length(8),      // Max Q
         Constraint::Length(8),      // Mem
         Constraint::Length(12),     // Count
     ];

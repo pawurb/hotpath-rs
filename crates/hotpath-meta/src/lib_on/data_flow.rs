@@ -24,10 +24,19 @@ fn format_queue(channel_type: &ChannelType, queued: u64) -> Option<String> {
     }
 }
 
+fn format_max_queue(channel_type: &ChannelType, max_queued: u64) -> Option<String> {
+    match channel_type {
+        ChannelType::Unbounded => None,
+        ChannelType::Oneshot => Some(format!("{}/1", max_queued)),
+        ChannelType::Bounded(capacity) => Some(format!("{}/{}", max_queued, capacity)),
+    }
+}
+
 impl From<&ChannelEntry> for JsonDataFlowEntry {
     fn from(stats: &ChannelEntry) -> Self {
         let entry: JsonChannelEntry = stats.into();
         let queue = format_queue(&stats.channel_type, entry.queued);
+        let max_queue = format_max_queue(&stats.channel_type, entry.max_queued);
         let queue_mem = if queue.is_some() {
             Some(entry.queued_bytes)
         } else {
@@ -45,6 +54,7 @@ impl From<&ChannelEntry> for JsonDataFlowEntry {
             secondary_count: Some(entry.received_count),
             queue,
             queue_mem,
+            max_queue,
             type_name: Some(entry.type_name),
             type_size: Some(entry.type_size),
             iter: Some(entry.iter),
@@ -67,6 +77,7 @@ impl From<&StreamStats> for JsonDataFlowEntry {
             secondary_count: None,
             queue: None,
             queue_mem: None,
+            max_queue: None,
             type_name: Some(entry.type_name),
             type_size: Some(entry.type_size),
             iter: Some(entry.iter),
@@ -89,6 +100,7 @@ impl From<&FutureEntry> for JsonDataFlowEntry {
             secondary_count: None,
             queue: None,
             queue_mem: None,
+            max_queue: None,
             type_name: None,
             type_size: None,
             iter: None,
