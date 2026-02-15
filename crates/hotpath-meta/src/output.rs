@@ -250,7 +250,7 @@ pub fn format_debug_truncated(value: &impl std::fmt::Debug) -> String {
     use std::fmt::Write;
     let limit = MAX_RESULT_LEN.saturating_sub(3);
     let mut writer = TruncatingWriter {
-        buf: String::with_capacity(MAX_RESULT_LEN),
+        buf: String::with_capacity(64),
         limit,
         truncated: false,
     };
