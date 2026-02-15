@@ -16,8 +16,8 @@ pub(crate) enum DataRequest {
     RefreshThreads,
     RefreshDebug,
     RefreshTokioRuntime,
-    FetchFunctionLogsTiming(String),
-    FetchFunctionLogsAlloc(String),
+    FetchFunctionLogsTiming(u64),
+    FetchFunctionLogsAlloc(u64),
     FetchDataFlowChannelLogs(u64),
     FetchDataFlowStreamLogs(u64),
     FetchDataFlowFutureLogs(u64),
@@ -36,12 +36,12 @@ impl DataRequest {
             DataRequest::RefreshThreads => Route::Threads,
             DataRequest::RefreshDebug => Route::Debug,
             DataRequest::RefreshTokioRuntime => Route::TokioRuntime,
-            DataRequest::FetchFunctionLogsTiming(name) => Route::FunctionTimingLogs {
-                function_name: name.clone(),
-            },
-            DataRequest::FetchFunctionLogsAlloc(name) => Route::FunctionAllocLogs {
-                function_name: name.clone(),
-            },
+            DataRequest::FetchFunctionLogsTiming(id) => {
+                Route::FunctionTimingLogs { function_id: *id }
+            }
+            DataRequest::FetchFunctionLogsAlloc(id) => {
+                Route::FunctionAllocLogs { function_id: *id }
+            }
             DataRequest::FetchDataFlowChannelLogs(id) => {
                 Route::DataFlowChannelLogs { channel_id: *id }
             }
@@ -66,15 +66,15 @@ pub(crate) enum DataResponse {
     FunctionsAlloc(JsonFunctionsList),
     FunctionsAllocUnavailable,
     FunctionLogsTiming {
-        function_name: String,
+        function_id: u64,
         logs: JsonFunctionTimingLogsList,
     },
-    FunctionLogsTimingNotFound(String),
+    FunctionLogsTimingNotFound(u64),
     FunctionLogsAlloc {
-        function_name: String,
+        function_id: u64,
         logs: JsonFunctionAllocLogsList,
     },
-    FunctionLogsAllocNotFound(String),
+    FunctionLogsAllocNotFound(u64),
     DataFlow(JsonDataFlowList),
     DataFlowChannelLogs {
         id: u64,

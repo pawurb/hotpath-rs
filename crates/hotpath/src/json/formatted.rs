@@ -52,6 +52,7 @@ pub fn format_bytes_signed(bytes: i64) -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionEntry {
+    pub id: u64,
     pub name: String,
     pub calls: u64,
     pub avg: String,
@@ -96,7 +97,8 @@ impl JsonFunctionsList {
         let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
-        let data = format_metric_data(&metric_data, &percentiles_config, false);
+        let name_to_id = provider.function_ids();
+        let data = format_metric_data(&metric_data, &percentiles_config, false, &name_to_id);
         let total_elapsed = provider.total_elapsed();
 
         let (time_elapsed, total_allocated) = if is_alloc {
@@ -130,7 +132,8 @@ impl JsonFunctionsList {
         let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
-        let data = format_metric_data(&metric_data, &percentiles_config, true);
+        let name_to_id = provider.function_ids();
+        let data = format_metric_data(&metric_data, &percentiles_config, true, &name_to_id);
         let total_elapsed = provider.total_elapsed();
 
         let (time_elapsed, total_allocated, total_allocated_raw) = if is_alloc {
@@ -187,6 +190,7 @@ fn format_metric_data(
     data: &[(String, Vec<MetricType>)],
     percentiles_config: &[u8],
     include_raw: bool,
+    name_to_id: &HashMap<String, u64>,
 ) -> Vec<JsonFunctionEntry> {
     let format_value = |metric: &MetricType| -> String {
         match metric {
@@ -246,7 +250,10 @@ fn format_metric_data(
                 None
             };
 
+            let id = name_to_id.get(name).copied().unwrap_or(0);
+
             JsonFunctionEntry {
+                id,
                 name: name.clone(),
                 calls,
                 avg,

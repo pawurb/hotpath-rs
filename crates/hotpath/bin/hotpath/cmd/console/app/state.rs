@@ -49,9 +49,11 @@ impl App {
     pub(crate) fn toggle_function_logs(&mut self) {
         self.show_function_logs = !self.show_function_logs;
         if self.show_function_logs {
+            self.pinned_function_id = self.selected_function_id();
             self.pinned_function = self.selected_function_name();
         } else {
             self.pinned_function = None;
+            self.pinned_function_id = None;
             self.function_logs_table_state.select(None);
             self.functions_focus = FunctionsFocus::Functions;
         }

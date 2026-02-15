@@ -6,10 +6,8 @@
 mod formatted;
 pub use formatted::*;
 
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use std::sync::LazyLock;
 
 use crate::channels::ChannelType;
 pub use crate::output::FunctionLogsList;
@@ -244,10 +242,10 @@ pub enum Route {
     FunctionsAlloc,
     /// GET /threads - Returns thread metrics
     Threads,
-    /// GET /functions_timing/{base64_name}/logs - Returns timing logs for a function
-    FunctionTimingLogs { function_name: String },
-    /// GET /functions_alloc/{base64_name}/logs - Returns allocation logs for a function
-    FunctionAllocLogs { function_name: String },
+    /// GET /functions_timing/{id}/logs - Returns timing logs for a function
+    FunctionTimingLogs { function_id: u64 },
+    /// GET /functions_alloc/{id}/logs - Returns allocation logs for a function
+    FunctionAllocLogs { function_id: u64 },
     /// GET /debug - Returns all debug log statistics
     Debug,
     /// GET /debug/dbg/{id}/logs - Returns logs for a dbg! entry
@@ -273,20 +271,15 @@ pub enum Route {
 impl Route {
     /// Returns the path portion of the URL for this route.
     pub fn to_path(&self) -> String {
-        use base64::Engine;
         match self {
             Route::FunctionsTiming => "/functions_timing".to_string(),
             Route::FunctionsAlloc => "/functions_alloc".to_string(),
             Route::Threads => "/threads".to_string(),
-            Route::FunctionTimingLogs { function_name } => {
-                let encoded =
-                    base64::engine::general_purpose::STANDARD.encode(function_name.as_bytes());
-                format!("/functions_timing/{}/logs", encoded)
+            Route::FunctionTimingLogs { function_id } => {
+                format!("/functions_timing/{}/logs", function_id)
             }
-            Route::FunctionAllocLogs { function_name } => {
-                let encoded =
-                    base64::engine::general_purpose::STANDARD.encode(function_name.as_bytes());
-                format!("/functions_alloc/{}/logs", encoded)
+            Route::FunctionAllocLogs { function_id } => {
+                format!("/functions_alloc/{}/logs", function_id)
             }
             Route::Debug => "/debug".to_string(),
             Route::DebugDbgLogs { id } => format!("/debug/dbg/{}/logs", id),
@@ -313,36 +306,15 @@ impl Route {
     }
 }
 
-static RE_FUNCTION_LOGS_TIMING: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/functions_timing/([^/]+)/logs$").unwrap());
-static RE_FUNCTION_LOGS_ALLOC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/functions_alloc/([^/]+)/logs$").unwrap());
-static RE_DEBUG_DBG_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/debug/dbg/(\d+)/logs$").unwrap());
-static RE_DEBUG_VAL_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/debug/val/(\d+)/logs$").unwrap());
-static RE_DEBUG_GAUGE_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/debug/gauge/(\d+)/logs$").unwrap());
-static RE_DATA_FLOW_CHANNEL_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/data_flow/channel/(\d+)/logs$").unwrap());
-static RE_DATA_FLOW_STREAM_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/data_flow/stream/(\d+)/logs$").unwrap());
-static RE_DATA_FLOW_FUTURE_LOGS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/data_flow/future/(\d+)/logs$").unwrap());
-
-fn base64_decode(encoded: &str) -> Result<String, String> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|e| e.to_string())?;
-    String::from_utf8(bytes).map_err(|e| e.to_string())
+fn parse_id_from_path(path: &str, prefix: &str) -> Option<u64> {
+    let rest = path.strip_prefix(prefix)?;
+    let id_str = rest.strip_suffix("/logs")?;
+    id_str.parse().ok()
 }
 
 impl FromStr for Route {
     type Err = ();
 
-    /// Parses a URL path into a Route using regex patterns.
-    /// Returns Err(()) if the path doesn't match any known route.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let path = s.split('?').next().unwrap_or(s);
 
@@ -357,43 +329,35 @@ impl FromStr for Route {
             _ => {}
         }
 
-        if let Some(caps) = RE_FUNCTION_LOGS_TIMING.captures(path) {
-            let function_name = base64_decode(&caps[1]).map_err(|_| ())?;
-            return Ok(Route::FunctionTimingLogs { function_name });
+        if let Some(function_id) = parse_id_from_path(path, "/functions_timing/") {
+            return Ok(Route::FunctionTimingLogs { function_id });
         }
 
-        if let Some(caps) = RE_FUNCTION_LOGS_ALLOC.captures(path) {
-            let function_name = base64_decode(&caps[1]).map_err(|_| ())?;
-            return Ok(Route::FunctionAllocLogs { function_name });
+        if let Some(function_id) = parse_id_from_path(path, "/functions_alloc/") {
+            return Ok(Route::FunctionAllocLogs { function_id });
         }
 
-        if let Some(caps) = RE_DEBUG_DBG_LOGS.captures(path) {
-            let id = caps[1].parse().map_err(|_| ())?;
+        if let Some(id) = parse_id_from_path(path, "/debug/dbg/") {
             return Ok(Route::DebugDbgLogs { id });
         }
 
-        if let Some(caps) = RE_DEBUG_VAL_LOGS.captures(path) {
-            let id = caps[1].parse().map_err(|_| ())?;
+        if let Some(id) = parse_id_from_path(path, "/debug/val/") {
             return Ok(Route::DebugValLogs { id });
         }
 
-        if let Some(caps) = RE_DEBUG_GAUGE_LOGS.captures(path) {
-            let id = caps[1].parse().map_err(|_| ())?;
+        if let Some(id) = parse_id_from_path(path, "/debug/gauge/") {
             return Ok(Route::DebugGaugeLogs { id });
         }
 
-        if let Some(caps) = RE_DATA_FLOW_CHANNEL_LOGS.captures(path) {
-            let channel_id = caps[1].parse().map_err(|_| ())?;
+        if let Some(channel_id) = parse_id_from_path(path, "/data_flow/channel/") {
             return Ok(Route::DataFlowChannelLogs { channel_id });
         }
 
-        if let Some(caps) = RE_DATA_FLOW_STREAM_LOGS.captures(path) {
-            let stream_id = caps[1].parse().map_err(|_| ())?;
+        if let Some(stream_id) = parse_id_from_path(path, "/data_flow/stream/") {
             return Ok(Route::DataFlowStreamLogs { stream_id });
         }
 
-        if let Some(caps) = RE_DATA_FLOW_FUTURE_LOGS.captures(path) {
-            let future_id = caps[1].parse().map_err(|_| ())?;
+        if let Some(future_id) = parse_id_from_path(path, "/data_flow/future/") {
             return Ok(Route::DataFlowFutureLogs { future_id });
         }
 

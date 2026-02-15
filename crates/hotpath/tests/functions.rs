@@ -671,38 +671,34 @@ pub mod tests {
             serde_json::from_str(&alloc_json).expect("Failed to parse alloc JSON");
 
         if let Some(first) = timing_response.data.first() {
-            use base64::Engine;
-            let encoded_name =
-                base64::engine::general_purpose::STANDARD.encode(first.name.as_bytes());
+            let function_id = first.id;
 
             // Test timing logs endpoint
             let timing_logs_url = format!(
                 "http://localhost:6775/functions_timing/{}/logs",
-                encoded_name
+                function_id
             );
             let timing_logs_response = ureq::get(&timing_logs_url)
                 .call()
-                .expect("Failed to call /functions_timing/:name/logs endpoint");
+                .expect("Failed to call /functions_timing/:id/logs endpoint");
 
             assert_eq!(
                 timing_logs_response.status(),
                 200,
-                "Expected status 200 for /functions_timing/:name/logs endpoint"
+                "Expected status 200 for /functions_timing/:id/logs endpoint"
             );
 
             // Test alloc logs endpoint
-            let alloc_logs_url = format!(
-                "http://localhost:6775/functions_alloc/{}/logs",
-                encoded_name
-            );
+            let alloc_logs_url =
+                format!("http://localhost:6775/functions_alloc/{}/logs", function_id);
             let alloc_logs_response = ureq::get(&alloc_logs_url)
                 .call()
-                .expect("Failed to call /functions_alloc/:name/logs endpoint");
+                .expect("Failed to call /functions_alloc/:id/logs endpoint");
 
             assert_eq!(
                 alloc_logs_response.status(),
                 200,
-                "Expected status 200 for /functions_alloc/:name/logs endpoint"
+                "Expected status 200 for /functions_alloc/:id/logs endpoint"
             );
         }
 

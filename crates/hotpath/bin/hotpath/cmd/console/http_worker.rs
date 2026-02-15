@@ -160,12 +160,12 @@ impl RouteExt for Route {
     fn not_found_response(&self) -> Option<DataResponse> {
         match self {
             Route::FunctionsAlloc => Some(DataResponse::FunctionsAllocUnavailable),
-            Route::FunctionTimingLogs { function_name } => Some(
-                DataResponse::FunctionLogsTimingNotFound(function_name.clone()),
-            ),
-            Route::FunctionAllocLogs { function_name } => Some(
-                DataResponse::FunctionLogsAllocNotFound(function_name.clone()),
-            ),
+            Route::FunctionTimingLogs { function_id } => {
+                Some(DataResponse::FunctionLogsTimingNotFound(*function_id))
+            }
+            Route::FunctionAllocLogs { function_id } => {
+                Some(DataResponse::FunctionLogsAllocNotFound(*function_id))
+            }
             Route::DataFlowChannelLogs { channel_id } => {
                 Some(DataResponse::DataFlowLogsNotFound { id: *channel_id })
             }
@@ -195,18 +195,18 @@ impl RouteExt for Route {
             }
             Route::DataFlow => parse_json::<JsonDataFlowList>(bytes).map(DataResponse::DataFlow),
             Route::Threads => parse_json::<JsonThreadsList>(bytes).map(DataResponse::Threads),
-            Route::FunctionTimingLogs { function_name } => {
+            Route::FunctionTimingLogs { function_id } => {
                 parse_json::<JsonFunctionTimingLogsList>(bytes).map(|logs| {
                     DataResponse::FunctionLogsTiming {
-                        function_name: function_name.clone(),
+                        function_id: *function_id,
                         logs,
                     }
                 })
             }
-            Route::FunctionAllocLogs { function_name } => {
+            Route::FunctionAllocLogs { function_id } => {
                 parse_json::<JsonFunctionAllocLogsList>(bytes).map(|logs| {
                     DataResponse::FunctionLogsAlloc {
-                        function_name: function_name.clone(),
+                        function_id: *function_id,
                         logs,
                     }
                 })

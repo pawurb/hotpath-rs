@@ -1,6 +1,5 @@
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "hotpath")]
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -354,7 +353,7 @@ pub trait MetricsProvider<'a> {
 
     #[cfg(feature = "hotpath")]
     fn new(
-        stats: &'a HashMap<&'static str, FunctionStats>,
+        stats: &'a HashMap<u64, FunctionStats>,
         total_elapsed: Duration,
         percentiles: Vec<u8>,
         caller_name: &'static str,
@@ -362,6 +361,10 @@ pub trait MetricsProvider<'a> {
     ) -> Self
     where
         Self: Sized;
+
+    fn function_ids(&self) -> HashMap<String, u64> {
+        HashMap::new()
+    }
 
     fn total_elapsed(&self) -> u64;
 

@@ -29,9 +29,9 @@ use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
 
 #[derive(Debug, Deserialize, JsonSchema)]
-struct FunctionNameParam {
-    #[schemars(description = "Fully qualified function name (e.g. \"my_app::db::query\")")]
-    function_name: String,
+struct FunctionIdParam {
+    #[schemars(description = "Function ID from the functions_timing or functions_alloc response")]
+    function_id: u64,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -198,18 +198,18 @@ Sampled at configurable interval (HOTPATH_THREADS_INTERVAL env var, default 1000
 
     #[tool(description = r#"Get detailed timing logs for a specific function.
 
-Returns JSON array of recent execution logs with timestamps and duration. Use functions_timing first to get function names, then use this tool to get detailed logs."#)]
+Returns JSON array of recent execution logs with timestamps and duration. Use functions_timing first to get function IDs, then use this tool to get detailed logs."#)]
     async fn function_timing_logs(
         &self,
-        params: Parameters<FunctionNameParam>,
+        params: Parameters<FunctionIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let function_name = &params.0.function_name;
+        let function_id = params.0.function_id;
         log_debug(&format!(
             "Tool called: function_timing_logs({})",
-            function_name
+            function_id
         ));
 
-        match get_function_logs_timing(function_name) {
+        match get_function_logs_timing(function_id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonFunctionTimingLogsList::from_logs(&logs, current_elapsed_ns);
@@ -218,8 +218,8 @@ Returns JSON array of recent execution logs with timestamps and duration. Use fu
                 )?)]))
             }
             None => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Function '{}' not found",
-                function_name
+                "Function with id {} not found",
+                function_id
             ))])),
         }
     }
@@ -227,19 +227,19 @@ Returns JSON array of recent execution logs with timestamps and duration. Use fu
     #[tool(
         description = r#"Get detailed allocation logs for a specific function (requires hotpath-alloc feature).
 
-Returns JSON array of recent allocation logs. Use functions_alloc first to get function names, then use this tool to get detailed logs."#
+Returns JSON array of recent allocation logs. Use functions_alloc first to get function IDs, then use this tool to get detailed logs."#
     )]
     async fn function_alloc_logs(
         &self,
-        params: Parameters<FunctionNameParam>,
+        params: Parameters<FunctionIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let function_name = &params.0.function_name;
+        let function_id = params.0.function_id;
         log_debug(&format!(
             "Tool called: function_alloc_logs({})",
-            function_name
+            function_id
         ));
 
-        match get_function_logs_alloc(function_name) {
+        match get_function_logs_alloc(function_id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonFunctionAllocLogsList::from_logs(&logs, current_elapsed_ns);

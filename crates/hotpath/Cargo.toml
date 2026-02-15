@@ -28,7 +28,6 @@ default = ["threads"]
 hotpath = [
   "hotpath-macros/hotpath",
   "dep:arc-swap",
-  "dep:base64",
   "dep:cfg-if",
   "dep:clap",
   "dep:colored",
@@ -42,7 +41,6 @@ hotpath = [
   "dep:tiny_http",
   "dep:futures-util",
   "dep:pin-project-lite",
-  "dep:regex",
   "dep:libc",
   "dep:mach2",
 ]
@@ -51,8 +49,8 @@ hotpath-alloc-meta = ["hotpath-meta/hotpath-alloc-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta"]
 hotpath-alloc = ["dep:tokio"]
 hotpath-off = ["hotpath-macros/hotpath-off"]
-ci = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "dep:base64", "dep:regex"]
-tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:chrono", "dep:base64", "dep:regex", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "dep:tracing", "dep:tracing-subscriber", "dep:time", "crossbeam"]
+ci = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq"]
+tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:chrono", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "dep:tracing", "dep:tracing-subscriber", "dep:time", "crossbeam"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
 crossbeam = []
@@ -62,7 +60,6 @@ hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep
 
 [dependencies]
 arc-swap = { version = "1.7", optional = true }
-base64 = { version = "0.22", optional = true }
 cfg-if = { version = "1.0", optional = true }
 clap = { version = "4.5", features = ["derive"], optional = true }
 colored = { version = "3", optional = true }
@@ -83,7 +80,6 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 futures-channel = { version = "0.3", features = ["sink"], optional = true }
 futures-util = { version = "0.3", features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2", optional = true }
-regex = { version = "1", optional = true }
 chrono = { version = "0.4", optional = true }
 libc = { version = "0.2", optional = true }
 tracing = { version = "0.1", optional = true }
@@ -104,5 +100,4 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 [dev-dependencies]
 serde_json = "1.0"
 ureq = { version = "3.1", features = ["json"] }
-base64 = "0.22"
 

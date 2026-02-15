@@ -41,7 +41,7 @@ impl App {
     }
 
     pub(crate) fn update_timing_metrics(&mut self, metrics: JsonFunctionsList) {
-        let selected_function_name = self.selected_function_name();
+        let selected_function_id = self.selected_function_id();
 
         self.timing_functions = metrics;
         self.last_successful_fetch = Some(Instant::now());
@@ -49,8 +49,8 @@ impl App {
 
         let entries = &self.timing_functions.data;
 
-        if let Some(function_name) = selected_function_name {
-            if let Some(new_idx) = entries.iter().position(|f| f.name == function_name) {
+        if let Some(function_id) = selected_function_id {
+            if let Some(new_idx) = entries.iter().position(|f| f.id == function_id) {
                 self.timing_table_state.select(Some(new_idx));
             } else if !entries.is_empty() {
                 self.timing_table_state.select(Some(entries.len() - 1));
@@ -67,7 +67,7 @@ impl App {
     }
 
     pub(crate) fn update_memory_metrics(&mut self, metrics: JsonFunctionsList) {
-        let selected_function_name = self.selected_function_name();
+        let selected_function_id = self.selected_function_id();
 
         self.memory_functions = metrics;
         self.last_successful_fetch = Some(Instant::now());
@@ -75,8 +75,8 @@ impl App {
 
         let entries = &self.memory_functions.data;
 
-        if let Some(function_name) = selected_function_name {
-            if let Some(new_idx) = entries.iter().position(|f| f.name == function_name) {
+        if let Some(function_id) = selected_function_id {
+            if let Some(new_idx) = entries.iter().position(|f| f.id == function_id) {
                 self.memory_table_state.select(Some(new_idx));
             } else if !entries.is_empty() {
                 self.memory_table_state.select(Some(entries.len() - 1));
@@ -107,6 +107,17 @@ impl App {
     }
 
     #[hotpath::measure(log = true)]
+    pub(crate) fn selected_function_id(&self) -> Option<u64> {
+        let (entries, table_state) = match self.selected_tab {
+            SelectedTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
+            SelectedTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
+            _ => return None,
+        };
+        table_state
+            .selected()
+            .and_then(|idx| entries.get(idx).map(|f| f.id))
+    }
+
     pub(crate) fn selected_function_name(&self) -> Option<String> {
         let (entries, table_state) = match self.selected_tab {
             SelectedTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
@@ -128,27 +139,24 @@ impl App {
 
     pub(crate) fn update_pinned_function(&mut self) {
         if self.show_function_logs {
+            self.pinned_function_id = self.selected_function_id();
             self.pinned_function = self.selected_function_name();
         }
     }
 
-    pub(crate) fn logs_function_name(&self) -> Option<&str> {
-        self.pinned_function.as_deref()
-    }
-
     pub(crate) fn request_function_logs_if_open(&self) {
         if self.show_function_logs {
-            if let Some(function_name) = self.logs_function_name() {
+            if let Some(function_id) = self.pinned_function_id {
                 match self.selected_tab {
                     SelectedTab::Timing => {
-                        let _ = self.request_tx.send(DataRequest::FetchFunctionLogsTiming(
-                            function_name.to_string(),
-                        ));
+                        let _ = self
+                            .request_tx
+                            .send(DataRequest::FetchFunctionLogsTiming(function_id));
                     }
                     SelectedTab::Memory => {
-                        let _ = self.request_tx.send(DataRequest::FetchFunctionLogsAlloc(
-                            function_name.to_string(),
-                        ));
+                        let _ = self
+                            .request_tx
+                            .send(DataRequest::FetchFunctionLogsAlloc(function_id));
                     }
                     _ => {}
                 }
@@ -401,7 +409,7 @@ impl App {
                 );
             }
             DataResponse::FunctionLogsTiming {
-                function_name: _,
+                function_id: _,
                 logs,
             } => {
                 trace!("Received function timing logs: {} entries", logs.logs.len());
@@ -411,7 +419,7 @@ impl App {
                 self.current_timing_logs = None;
             }
             DataResponse::FunctionLogsAlloc {
-                function_name: _,
+                function_id: _,
                 logs,
             } => {
                 trace!("Received function alloc logs: {} entries", logs.logs.len());

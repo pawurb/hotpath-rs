@@ -131,6 +131,8 @@ type LogEntry = (
 
 #[derive(Debug, Clone)]
 pub struct FunctionStats {
+    pub id: u64,
+    pub name: &'static str,
     pub count: u64,
     bytes_total_hist: Option<Histogram<u64>>,
     count_total_hist: Option<Histogram<u64>>,
@@ -154,6 +156,8 @@ impl FunctionStats {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new_alloc(
+        id: u64,
+        name: &'static str,
         bytes_total: u64,
         count_total: u64,
         duration: Duration,
@@ -189,6 +193,8 @@ impl FunctionStats {
         recent_logs.push_back((bytes_opt, count_opt, duration_ns, elapsed, tid, result_log));
 
         let mut s = Self {
+            id,
+            name,
             count: 1,
             bytes_total_hist: Some(bytes_total_hist),
             count_total_hist: Some(count_total_hist),
@@ -347,8 +353,9 @@ impl FunctionStats {
 pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
-    pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
+    pub completion_rx: Option<Mutex<Receiver<HashMap<u64, FunctionStats>>>>,
     pub query_tx: Option<Sender<super::super::FunctionsQuery>>,
+
     pub start_time: Instant,
     pub caller_name: &'static str,
     pub percentiles: Vec<u8>,
@@ -356,26 +363,33 @@ pub(crate) struct FunctionsState {
 }
 
 pub(crate) fn process_measurement(
-    stats: &mut HashMap<&'static str, FunctionStats>,
+    stats: &mut HashMap<u64, FunctionStats>,
+    name_to_id: &mut HashMap<&'static str, u64>,
     m: Measurement,
     start_time: Instant,
 ) {
     let elapsed = m.measurement_time.duration_since(start_time);
-    if let Some(s) = stats.get_mut(m.name) {
-        s.update_alloc(
-            m.bytes_total,
-            m.count_total,
-            m.duration,
-            elapsed,
-            m.unsupported_async,
-            m.cross_thread,
-            m.tid,
-            m.result_log,
-        );
+    if let Some(&id) = name_to_id.get(m.name) {
+        if let Some(s) = stats.get_mut(&id) {
+            s.update_alloc(
+                m.bytes_total,
+                m.count_total,
+                m.duration,
+                elapsed,
+                m.unsupported_async,
+                m.cross_thread,
+                m.tid,
+                m.result_log,
+            );
+        }
     } else {
+        let id = crate::functions::next_function_id();
+        name_to_id.insert(m.name, id);
         stats.insert(
-            m.name,
+            id,
             FunctionStats::new_alloc(
+                id,
+                m.name,
                 m.bytes_total,
                 m.count_total,
                 m.duration,

@@ -239,7 +239,7 @@ impl HotpathGuard {
             label = "hp-fn-shutdown",
             log = true
         );
-        let (completion_tx, completion_rx) = bounded::<HashMap<&'static str, FunctionStats>>(1);
+        let (completion_tx, completion_rx) = bounded::<HashMap<u64, FunctionStats>>(1);
         #[cfg(feature = "hotpath-meta")]
         let (completion_tx, completion_rx) = hotpath_meta::channel!(
             (completion_tx, completion_rx),
@@ -278,21 +278,22 @@ impl HotpathGuard {
                     builder.build_with_timeout(std::time::Duration::from_secs(0));
                 }
 
-                let mut local_stats = HashMap::<&'static str, FunctionStats>::new();
+                let mut local_stats = HashMap::<u64, FunctionStats>::new();
+                let mut name_to_id = HashMap::<&'static str, u64>::new();
 
                 loop {
                     select! {
                         recv(rx) -> result => {
                             match result {
                                 Ok(measurement) => {
-                                    process_measurement(&mut local_stats, measurement, worker_start_time);
+                                    process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
                                 }
                                 Err(_) => break,
                             }
                         }
                         recv(shutdown_rx) -> _ => {
                             while let Ok(measurement) = rx.try_recv() {
-                                process_measurement(&mut local_stats, measurement, worker_start_time);
+                                process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
                             }
                             break;
                         }
@@ -347,71 +348,69 @@ impl HotpathGuard {
                                             }
                                         }
                                     }
-                                    FunctionsQuery::LogsTiming { function_name, response_tx } => {
-                                        let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
-                                            cfg_if::cfg_if! {
-                                                if #[cfg(feature = "hotpath-alloc")] {
-                                                    let logs: Vec<FunctionLog> = stats.recent_logs
-                                                        .iter()
-                                                        .rev()
-                                                        .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| FunctionLog {
-                                                            value: Some(*duration_ns),
-                                                            elapsed_nanos: elapsed.as_nanos() as u64,
-                                                            alloc_count: None,
-                                                            tid: *tid,
-                                                            result: result_log.clone(),
-                                                        })
-                                                        .collect();
-                                                } else {
-                                                    let logs: Vec<FunctionLog> = stats.recent_logs
-                                                        .iter()
-                                                        .rev()
-                                                        .map(|(duration_ns, elapsed, tid, result_log)| FunctionLog {
-                                                            value: Some(*duration_ns),
-                                                            elapsed_nanos: elapsed.as_nanos() as u64,
-                                                            alloc_count: None,
-                                                            tid: *tid,
-                                                            result: result_log.clone(),
-                                                        })
-                                                        .collect();
+                                    FunctionsQuery::LogsTiming { function_id, response_tx } => {
+                                        let response = local_stats.get(&function_id)
+                                            .map(|stats| {
+                                                cfg_if::cfg_if! {
+                                                    if #[cfg(feature = "hotpath-alloc")] {
+                                                        let logs: Vec<FunctionLog> = stats.recent_logs
+                                                            .iter()
+                                                            .rev()
+                                                            .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| FunctionLog {
+                                                                value: Some(*duration_ns),
+                                                                elapsed_nanos: elapsed.as_nanos() as u64,
+                                                                alloc_count: None,
+                                                                tid: *tid,
+                                                                result: result_log.clone(),
+                                                            })
+                                                            .collect();
+                                                    } else {
+                                                        let logs: Vec<FunctionLog> = stats.recent_logs
+                                                            .iter()
+                                                            .rev()
+                                                            .map(|(duration_ns, elapsed, tid, result_log)| FunctionLog {
+                                                                value: Some(*duration_ns),
+                                                                elapsed_nanos: elapsed.as_nanos() as u64,
+                                                                alloc_count: None,
+                                                                tid: *tid,
+                                                                result: result_log.clone(),
+                                                            })
+                                                            .collect();
+                                                    }
                                                 }
-                                            }
-                                            Some(FunctionLogsList {
-                                                function_name: function_name.clone(),
-                                                logs,
-                                                count: stats.count as usize,
-                                            })
-                                        } else {
-                                            None
-                                        };
+                                                FunctionLogsList {
+                                                    function_name: stats.name.to_string(),
+                                                    logs,
+                                                    count: stats.count as usize,
+                                                }
+                                            });
                                         let _ = response_tx.send(response);
                                     }
-                                    FunctionsQuery::LogsAlloc { function_name, response_tx } => {
+                                    FunctionsQuery::LogsAlloc { function_id, response_tx } => {
                                         cfg_if::cfg_if! {
                                             if #[cfg(feature = "hotpath-alloc")] {
-                                                let response = if let Some(stats) = local_stats.get(function_name.as_str()) {
-                                                    let logs: Vec<FunctionLog> = stats.recent_logs
-                                                        .iter()
-                                                        .rev()
-                                                        .map(|(bytes, count, _duration_ns, elapsed, tid, result_log)| FunctionLog {
-                                                            value: *bytes,
-                                                            elapsed_nanos: elapsed.as_nanos() as u64,
-                                                            alloc_count: *count,
-                                                            tid: *tid,
-                                                            result: result_log.clone(),
-                                                        })
-                                                        .collect();
-                                                    Some(FunctionLogsList {
-                                                        function_name,
-                                                        logs,
-                                                        count: stats.count as usize,
-                                                    })
-                                                } else {
-                                                    None
-                                                };
+                                                let response = local_stats.get(&function_id)
+                                                    .map(|stats| {
+                                                        let logs: Vec<FunctionLog> = stats.recent_logs
+                                                            .iter()
+                                                            .rev()
+                                                            .map(|(bytes, count, _duration_ns, elapsed, tid, result_log)| FunctionLog {
+                                                                value: *bytes,
+                                                                elapsed_nanos: elapsed.as_nanos() as u64,
+                                                                alloc_count: *count,
+                                                                tid: *tid,
+                                                                result: result_log.clone(),
+                                                            })
+                                                            .collect();
+                                                        FunctionLogsList {
+                                                            function_name: stats.name.to_string(),
+                                                            logs,
+                                                            count: stats.count as usize,
+                                                        }
+                                                    });
                                                 let _ = response_tx.send(response);
                                             } else {
-                                                let _ = function_name;
+                                                let _ = function_id;
                                                 let _ = response_tx.send(None);
                                             }
                                         }
