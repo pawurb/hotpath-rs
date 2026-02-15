@@ -189,13 +189,22 @@ pub fn get_threads_json() -> JsonThreadsList {
                 (None, None, None)
             };
 
+            let mut sorted_metrics: Vec<&ThreadMetrics> =
+                state_guard.current_metrics.iter().collect();
+
+            #[cfg(feature = "hotpath-alloc")]
+            sorted_metrics
+                .sort_by(|a, b| b.alloc_bytes.unwrap_or(0).cmp(&a.alloc_bytes.unwrap_or(0)));
+
+            #[cfg(not(feature = "hotpath-alloc"))]
+            sorted_metrics.sort_by_key(|m| m.os_tid);
+
             return JsonThreadsList {
                 current_elapsed_ns,
                 sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
-                data: state_guard
-                    .current_metrics
+                data: sorted_metrics
                     .iter()
-                    .map(JsonThreadEntry::from)
+                    .map(|m| JsonThreadEntry::from(*m))
                     .collect(),
                 thread_count: state_guard.current_metrics.len(),
                 rss_bytes: rss_bytes.map(format_bytes),
