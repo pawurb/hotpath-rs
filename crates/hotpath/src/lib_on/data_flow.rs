@@ -1,6 +1,6 @@
 //! Unified data flow module - provides shared counter and types for channels, streams, and futures.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::channels::{get_sorted_channel_entries, ChannelEntry, ChannelType, START_TIME};
 use crate::futures::{get_sorted_future_stats, FutureEntry};
@@ -10,10 +10,10 @@ use crate::json::{
 };
 use crate::streams::{get_sorted_stream_stats, StreamStats};
 
-pub static DATA_FLOW_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+pub static DATA_FLOW_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub fn next_data_flow_id() -> u64 {
+pub fn next_data_flow_id() -> u32 {
     DATA_FLOW_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 

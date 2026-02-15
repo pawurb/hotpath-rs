@@ -107,7 +107,7 @@ impl App {
     }
 
     #[hotpath::measure(log = true)]
-    pub(crate) fn selected_function_id(&self) -> Option<u64> {
+    pub(crate) fn selected_function_id(&self) -> Option<u32> {
         let (entries, table_state) = match self.selected_tab {
             SelectedTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
             SelectedTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
@@ -220,17 +220,17 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_data_flow_channel_logs(&mut self, _id: u64, logs: JsonChannelLogsList) {
+    pub(crate) fn handle_data_flow_channel_logs(&mut self, _id: u32, logs: JsonChannelLogsList) {
         self.data_flow_logs = Some(DataFlowLogs::Channel(logs));
         self.ensure_data_flow_logs_selection_valid();
     }
 
-    pub(crate) fn handle_data_flow_stream_logs(&mut self, _id: u64, logs: JsonStreamLogsList) {
+    pub(crate) fn handle_data_flow_stream_logs(&mut self, _id: u32, logs: JsonStreamLogsList) {
         self.data_flow_logs = Some(DataFlowLogs::Stream(logs));
         self.ensure_data_flow_logs_selection_valid();
     }
 
-    pub(crate) fn handle_data_flow_future_logs(&mut self, _id: u64, calls: JsonFutureLogsList) {
+    pub(crate) fn handle_data_flow_future_logs(&mut self, _id: u32, calls: JsonFutureLogsList) {
         self.data_flow_logs = Some(DataFlowLogs::Future(calls));
         self.ensure_data_flow_logs_selection_valid();
     }

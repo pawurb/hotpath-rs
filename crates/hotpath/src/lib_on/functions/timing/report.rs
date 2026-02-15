@@ -7,7 +7,7 @@ use crate::ProfilingMode;
 use super::state::FunctionStats;
 
 pub struct StatsData<'a> {
-    pub stats: &'a HashMap<u64, FunctionStats>,
+    pub stats: &'a HashMap<u32, FunctionStats>,
     pub total_elapsed: Duration,
     pub percentiles: Vec<u8>,
     pub caller_name: &'static str,
@@ -16,7 +16,7 @@ pub struct StatsData<'a> {
 
 impl<'a> MetricsProvider<'a> for StatsData<'a> {
     fn new(
-        stats: &'a HashMap<u64, FunctionStats>,
+        stats: &'a HashMap<u32, FunctionStats>,
         total_elapsed: Duration,
         percentiles: Vec<u8>,
         caller_name: &'static str,
@@ -43,7 +43,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
         ProfilingMode::Timing
     }
 
-    fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
+    fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)> {
         let reference_total = if *crate::functions::EXCLUDE_WRAPPER {
             self.stats
                 .values()
@@ -100,15 +100,15 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                 metrics.push(MetricType::DurationNs(stats.total_duration_ns));
                 metrics.push(MetricType::Percentage((percentage * 100.0) as u64));
 
-                (stats.name.to_string(), metrics)
+                (stats.name, metrics)
             })
             .collect()
     }
 
-    fn function_ids(&self) -> HashMap<String, u64> {
+    fn function_ids(&self) -> HashMap<&'static str, u32> {
         self.stats
             .values()
-            .map(|stat| (stat.name.to_string(), stat.id))
+            .map(|stat| (stat.name, stat.id))
             .collect()
     }
 

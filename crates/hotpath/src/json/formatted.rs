@@ -52,7 +52,7 @@ pub fn format_bytes_signed(bytes: i64) -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionEntry {
-    pub id: u64,
+    pub id: u32,
     pub name: String,
     pub calls: u64,
     pub avg: String,
@@ -187,10 +187,10 @@ fn extract_raw_value(metric: &MetricType) -> Option<u64> {
 }
 
 fn format_metric_data(
-    data: &[(String, Vec<MetricType>)],
+    data: &[(&'static str, Vec<MetricType>)],
     percentiles_config: &[u8],
     include_raw: bool,
-    name_to_id: &HashMap<String, u64>,
+    name_to_id: &HashMap<&'static str, u32>,
 ) -> Vec<JsonFunctionEntry> {
     let format_value = |metric: &MetricType| -> String {
         match metric {
@@ -254,7 +254,7 @@ fn format_metric_data(
 
             JsonFunctionEntry {
                 id,
-                name: name.clone(),
+                name: name.to_string(),
                 calls,
                 avg,
                 avg_raw,
@@ -405,7 +405,7 @@ pub struct JsonChannelsList {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: String,
     pub label: String,
     pub has_custom_label: bool,
@@ -508,7 +508,7 @@ pub struct JsonStreamsList {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonStreamEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: String,
     pub label: String,
     pub has_custom_label: bool,
@@ -546,7 +546,7 @@ pub struct JsonFuturesList {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFutureEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: String,
     pub label: String,
     pub has_custom_label: bool,
@@ -556,8 +556,8 @@ pub struct JsonFutureEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFutureLog {
-    pub id: u64,
-    pub future_id: u64,
+    pub id: u32,
+    pub future_id: u32,
     pub state: String,
     pub poll_count: u64,
     pub result: Option<String>,
@@ -595,7 +595,7 @@ pub struct JsonDataFlowList {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonDataFlowEntry {
-    pub id: u64,
+    pub id: u32,
     pub data_flow_type: DataFlowType,
     pub source: String,
     pub label: String,
@@ -726,7 +726,7 @@ pub struct JsonDebugList {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonDebugEntry {
-    pub id: u64,
+    pub id: u32,
     #[serde(default)]
     pub entry_type: DebugEntryType,
     pub source: String,

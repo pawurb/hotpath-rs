@@ -6,7 +6,7 @@ use super::state::FunctionStats;
 use crate::output::{MetricType, MetricsProvider};
 
 pub struct StatsData<'a> {
-    pub stats: &'a HashMap<u64, FunctionStats>,
+    pub stats: &'a HashMap<u32, FunctionStats>,
     pub total_elapsed: Duration,
     pub percentiles: Vec<u8>,
     pub caller_name: &'static str,
@@ -14,7 +14,7 @@ pub struct StatsData<'a> {
 }
 
 pub struct TimingStatsData<'a> {
-    pub stats: &'a HashMap<u64, FunctionStats>,
+    pub stats: &'a HashMap<u32, FunctionStats>,
     pub total_elapsed: Duration,
     pub percentiles: Vec<u8>,
     pub caller_name: &'static str,
@@ -23,7 +23,7 @@ pub struct TimingStatsData<'a> {
 
 impl<'a> MetricsProvider<'a> for StatsData<'a> {
     fn new(
-        stats: &'a HashMap<u64, FunctionStats>,
+        stats: &'a HashMap<u32, FunctionStats>,
         total_elapsed: Duration,
         percentiles: Vec<u8>,
         caller_name: &'static str,
@@ -58,14 +58,14 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
         self.stats.values().any(|s| s.has_unsupported_async)
     }
 
-    fn function_ids(&self) -> HashMap<String, u64> {
+    fn function_ids(&self) -> HashMap<&'static str, u32> {
         self.stats
             .values()
-            .map(|stat| (stat.name.to_string(), stat.id))
+            .map(|stat| (stat.name, stat.id))
             .collect()
     }
 
-    fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
+    fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)> {
         let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let mut entries: Vec<_> = self
             .stats
@@ -155,7 +155,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                     metrics.push(MetricType::Percentage((percentage * 100.0) as u64));
                 }
 
-                (stats.name.to_string(), metrics)
+                (stats.name, metrics)
             })
             .collect()
     }
@@ -190,7 +190,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
 
 impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
     fn new(
-        stats: &'a HashMap<u64, FunctionStats>,
+        stats: &'a HashMap<u32, FunctionStats>,
         total_elapsed: Duration,
         percentiles: Vec<u8>,
         caller_name: &'static str,
@@ -221,14 +221,14 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
         false
     }
 
-    fn function_ids(&self) -> HashMap<String, u64> {
+    fn function_ids(&self) -> HashMap<&'static str, u32> {
         self.stats
             .values()
-            .map(|stat| (stat.name.to_string(), stat.id))
+            .map(|stat| (stat.name, stat.id))
             .collect()
     }
 
-    fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
+    fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)> {
         let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let mut entries: Vec<_> = self
             .stats
@@ -285,7 +285,7 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
                 metrics.push(MetricType::DurationNs(stats.total_duration_ns));
                 metrics.push(MetricType::Percentage((percentage * 100.0) as u64));
 
-                (stats.name.to_string(), metrics)
+                (stats.name, metrics)
             })
             .collect()
     }

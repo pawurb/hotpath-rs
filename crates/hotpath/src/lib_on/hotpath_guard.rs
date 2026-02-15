@@ -239,7 +239,7 @@ impl HotpathGuard {
             label = "hp-fn-shutdown",
             log = true
         );
-        let (completion_tx, completion_rx) = bounded::<HashMap<u64, FunctionStats>>(1);
+        let (completion_tx, completion_rx) = bounded::<HashMap<u32, FunctionStats>>(1);
         #[cfg(feature = "hotpath-meta")]
         let (completion_tx, completion_rx) = hotpath_meta::channel!(
             (completion_tx, completion_rx),
@@ -278,8 +278,8 @@ impl HotpathGuard {
                     builder.build_with_timeout(std::time::Duration::from_secs(0));
                 }
 
-                let mut local_stats = HashMap::<u64, FunctionStats>::new();
-                let mut name_to_id = HashMap::<&'static str, u64>::new();
+                let mut local_stats = HashMap::<u32, FunctionStats>::new();
+                let mut name_to_id = HashMap::<&'static str, u32>::new();
 
                 loop {
                     select! {

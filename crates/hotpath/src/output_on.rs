@@ -6,10 +6,11 @@ use std::time::Duration;
 
 pub(crate) fn get_sorted_measurements(
     metrics_provider: &dyn MetricsProvider<'_>,
-) -> Vec<(String, Vec<MetricType>)> {
+) -> Vec<(&'static str, Vec<MetricType>)> {
     let metric_data = metrics_provider.metric_data();
 
-    let mut sorted_entries: Vec<(String, Vec<MetricType>)> = metric_data.into_iter().collect();
+    let mut sorted_entries: Vec<(&'static str, Vec<MetricType>)> =
+        metric_data.into_iter().collect();
     sorted_entries.sort_by(|(name_a, metrics_a), (name_b, metrics_b)| {
         let key_a = metrics_provider.sort_key(metrics_a);
         let key_b = metrics_provider.sort_key(metrics_b);
@@ -53,7 +54,7 @@ pub(crate) fn display_table_to<W: Write>(
     for (function_name, metrics) in sorted_entries {
         let mut row_cells = Vec::new();
 
-        let short_name = shorten_function_name(&function_name);
+        let short_name = shorten_function_name(function_name);
         row_cells.push(Cell::new(&short_name));
 
         for metric in &metrics {

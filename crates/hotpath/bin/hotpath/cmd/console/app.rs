@@ -142,7 +142,7 @@ pub(crate) struct App {
     pub(crate) current_timing_logs: Option<JsonFunctionTimingLogsList>,
     pub(crate) current_alloc_logs: Option<JsonFunctionAllocLogsList>,
     pub(crate) pinned_function: Option<String>,
-    pub(crate) pinned_function_id: Option<u64>,
+    pub(crate) pinned_function_id: Option<u32>,
     pub(crate) inspected_function_log: Option<InspectedFunctionLog>,
 
     pub(crate) request_tx: Sender<DataRequest>,

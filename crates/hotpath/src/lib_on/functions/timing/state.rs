@@ -109,7 +109,7 @@ pub struct Measurement {
 
 #[derive(Debug)]
 pub struct FunctionStats {
-    pub id: u64,
+    pub id: u32,
     pub name: &'static str,
     pub total_duration_ns: u64,
     pub count: u64,
@@ -125,7 +125,7 @@ impl FunctionStats {
     const SIGFIGS: u8 = 3;
 
     pub fn new_duration(
-        id: u64,
+        id: u32,
         name: &'static str,
         first_ns: u64,
         elapsed: Duration,
@@ -202,7 +202,7 @@ impl FunctionStats {
 pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
-    pub completion_rx: Option<Mutex<Receiver<HashMap<u64, FunctionStats>>>>,
+    pub completion_rx: Option<Mutex<Receiver<HashMap<u32, FunctionStats>>>>,
     pub query_tx: Option<Sender<FunctionsQuery>>,
 
     pub start_time: Instant,
@@ -212,8 +212,8 @@ pub(crate) struct FunctionsState {
 }
 
 pub(crate) fn process_measurement(
-    stats: &mut HashMap<u64, FunctionStats>,
-    name_to_id: &mut HashMap<&'static str, u64>,
+    stats: &mut HashMap<u32, FunctionStats>,
+    name_to_id: &mut HashMap<&'static str, u32>,
     m: Measurement,
     start_time: Instant,
 ) {

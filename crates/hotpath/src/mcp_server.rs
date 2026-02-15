@@ -31,7 +31,7 @@ use crate::threads::get_threads_json;
 #[derive(Debug, Deserialize, JsonSchema)]
 struct FunctionIdParam {
     #[schemars(description = "Function ID from the functions_timing or functions_alloc response")]
-    function_id: u64,
+    function_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -311,7 +311,7 @@ Returns JSON array of poll events and completion status. Use futures first to ge
         let future_id = &params.0.future_id;
         log_debug(&format!("Tool called: future_logs({})", future_id));
 
-        let id: u64 = future_id.parse().map_err(|_| {
+        let id: u32 = future_id.parse().map_err(|_| {
             McpError::invalid_params(format!("Invalid future_id: {}", future_id), None)
         })?;
 
@@ -358,7 +358,7 @@ Returns JSON array of recent value updates with timestamps. Use gauges first to 
         let gauge_id = &params.0.gauge_id;
         log_debug(&format!("Tool called: gauge_logs({})", gauge_id));
 
-        let id: u64 = gauge_id.parse().map_err(|_| {
+        let id: u32 = gauge_id.parse().map_err(|_| {
             McpError::invalid_params(format!("Invalid gauge_id: {}", gauge_id), None)
         })?;
 

@@ -22,7 +22,7 @@ pin_project! {
         #[pin]
         inner: S,
         stats_tx: CbSender<StreamEvent>,
-        id: u64,
+        id: u32,
     }
 }
 
@@ -83,7 +83,7 @@ pin_project! {
         #[pin]
         inner: S,
         stats_tx: CbSender<StreamEvent>,
-        id: u64,
+        id: u32,
     }
 }
 

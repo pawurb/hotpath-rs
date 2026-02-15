@@ -1,6 +1,6 @@
 //! Function profiling module - measures execution time and memory allocations per function.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
 
 use arc_swap::ArcSwapOption;
@@ -26,9 +26,9 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-pub(crate) fn next_function_id() -> u64 {
+pub(crate) fn next_function_id() -> u32 {
     FUNCTIONS_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
@@ -138,12 +138,12 @@ pub(crate) enum FunctionsQuery {
     Alloc(Sender<Option<JsonFunctionsList>>),
     /// Request timing function logs for a specific function by ID
     LogsTiming {
-        function_id: u64,
+        function_id: u32,
         response_tx: Sender<Option<FunctionLogsList>>,
     },
     /// Request allocation function logs for a specific function by ID
     LogsAlloc {
-        function_id: u64,
+        function_id: u32,
         response_tx: Sender<Option<FunctionLogsList>>,
     },
 }
@@ -189,7 +189,7 @@ pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_function_logs_timing(function_id: u64) -> Option<FunctionLogsList> {
+pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsList> {
     query_functions_state(|response_tx| FunctionsQuery::LogsTiming {
         function_id,
         response_tx,
@@ -203,7 +203,7 @@ pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_function_logs_alloc(function_id: u64) -> Option<FunctionLogsList> {
+pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<FunctionLogsList> {
     query_functions_state(|response_tx| FunctionsQuery::LogsAlloc {
         function_id,
         response_tx,

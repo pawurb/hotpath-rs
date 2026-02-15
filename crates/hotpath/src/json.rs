@@ -151,15 +151,15 @@ impl std::fmt::Display for FutureState {
 /// A single invocation/call of a future.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FutureLog {
-    pub id: u64,
-    pub future_id: u64,
+    pub id: u32,
+    pub future_id: u32,
     pub state: FutureState,
     pub poll_count: u64,
     pub result: Option<String>,
 }
 
 impl FutureLog {
-    pub fn new(id: u64, future_id: u64) -> Self {
+    pub fn new(id: u32, future_id: u32) -> Self {
         Self {
             id,
             future_id,
@@ -243,25 +243,25 @@ pub enum Route {
     /// GET /threads - Returns thread metrics
     Threads,
     /// GET /functions_timing/{id}/logs - Returns timing logs for a function
-    FunctionTimingLogs { function_id: u64 },
+    FunctionTimingLogs { function_id: u32 },
     /// GET /functions_alloc/{id}/logs - Returns allocation logs for a function
-    FunctionAllocLogs { function_id: u64 },
+    FunctionAllocLogs { function_id: u32 },
     /// GET /debug - Returns all debug log statistics
     Debug,
     /// GET /debug/dbg/{id}/logs - Returns logs for a dbg! entry
-    DebugDbgLogs { id: u64 },
+    DebugDbgLogs { id: u32 },
     /// GET /debug/val/{id}/logs - Returns logs for a val! entry
-    DebugValLogs { id: u64 },
+    DebugValLogs { id: u32 },
     /// GET /debug/gauge/{id}/logs - Returns logs for a gauge! entry
-    DebugGaugeLogs { id: u64 },
+    DebugGaugeLogs { id: u32 },
     /// GET /data_flow - Returns unified channels, streams, and futures statistics
     DataFlow,
     /// GET /data_flow/channel/{id}/logs - Returns logs for a specific channel
-    DataFlowChannelLogs { channel_id: u64 },
+    DataFlowChannelLogs { channel_id: u32 },
     /// GET /data_flow/stream/{id}/logs - Returns logs for a specific stream
-    DataFlowStreamLogs { stream_id: u64 },
+    DataFlowStreamLogs { stream_id: u32 },
     /// GET /data_flow/future/{id}/logs - Returns calls for a specific future
-    DataFlowFutureLogs { future_id: u64 },
+    DataFlowFutureLogs { future_id: u32 },
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
     /// GET /profiler_status - Returns profiler uptime
@@ -306,7 +306,7 @@ impl Route {
     }
 }
 
-fn parse_id_from_path(path: &str, prefix: &str) -> Option<u64> {
+fn parse_id_from_path(path: &str, prefix: &str) -> Option<u32> {
     let rest = path.strip_prefix(prefix)?;
     let id_str = rest.strip_suffix("/logs")?;
     id_str.parse().ok()
