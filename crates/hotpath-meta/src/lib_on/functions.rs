@@ -32,6 +32,31 @@ pub(crate) fn next_function_id() -> u32 {
     FUNCTIONS_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
+enum Focus {
+    Text(String),
+    Regex(regex::Regex),
+}
+
+static FOCUS_FILTER: LazyLock<Option<Focus>> = LazyLock::new(|| {
+    let val = std::env::var("HOTPATH_META_FOCUS").ok()?;
+    if let Some(pattern) = val.strip_prefix('/').and_then(|s| s.strip_suffix('/')) {
+        Some(Focus::Regex(
+            regex::Regex::new(pattern).expect("Invalid HOTPATH_META_FOCUS regex pattern"),
+        ))
+    } else {
+        Some(Focus::Text(val))
+    }
+});
+
+#[inline]
+fn is_focused(name: &str) -> bool {
+    match &*FOCUS_FILTER {
+        None => true,
+        Some(Focus::Text(filter)) => name.contains(filter.as_str()),
+        Some(Focus::Regex(re)) => re.is_match(name),
+    }
+}
+
 pub(crate) static EXCLUDE_WRAPPER: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("HOTPATH_META_EXCLUDE_WRAPPER")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
@@ -63,7 +88,8 @@ impl MeasurementGuard {
             }
         };
 
-        MeasurementGuard::new(measurement_name, wrapper, unsupported_async)
+        let skipped = !wrapper && !is_focused(measurement_name);
+        MeasurementGuard::new(measurement_name, wrapper, unsupported_async, skipped)
     }
 }
 
@@ -89,7 +115,8 @@ impl MeasurementGuardWithLog {
             }
         };
 
-        MeasurementGuardWithLog::new(measurement_name, wrapper, unsupported_async)
+        let skipped = !wrapper && !is_focused(measurement_name);
+        MeasurementGuardWithLog::new(measurement_name, wrapper, unsupported_async, skipped)
     }
 }
 

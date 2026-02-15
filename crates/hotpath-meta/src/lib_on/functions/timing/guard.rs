@@ -13,16 +13,22 @@ pub struct MeasurementGuard {
     start: Instant,
     wrapper: bool,
     tid: u64,
+    skipped: bool,
 }
 
 impl MeasurementGuard {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, _unsupported_sync: bool) -> Self {
+    pub fn new(name: &'static str, wrapper: bool, _unsupported_sync: bool, skipped: bool) -> Self {
         Self {
             name,
             start: Instant::now(),
             wrapper,
-            tid: crate::tid::current_tid(),
+            tid: if skipped {
+                0
+            } else {
+                crate::tid::current_tid()
+            },
+            skipped,
         }
     }
 }
@@ -30,6 +36,9 @@ impl MeasurementGuard {
 impl Drop for MeasurementGuard {
     #[inline]
     fn drop(&mut self) {
+        if self.skipped {
+            return;
+        }
         let dur = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
@@ -45,23 +54,32 @@ pub struct MeasurementGuardWithLog {
     wrapper: bool,
     tid: u64,
     finished: bool,
+    skipped: bool,
 }
 
 impl MeasurementGuardWithLog {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, _unsupported_sync: bool) -> Self {
+    pub fn new(name: &'static str, wrapper: bool, _unsupported_sync: bool, skipped: bool) -> Self {
         Self {
             name,
             start: Instant::now(),
             wrapper,
-            tid: crate::tid::current_tid(),
+            tid: if skipped {
+                0
+            } else {
+                crate::tid::current_tid()
+            },
             finished: false,
+            skipped,
         }
     }
 
     #[inline]
     pub fn finish_with_result<T: std::fmt::Debug>(mut self, result: &T) {
         self.finished = true;
+        if self.skipped {
+            return;
+        }
         let dur = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
@@ -79,17 +97,12 @@ impl MeasurementGuardWithLog {
 impl Drop for MeasurementGuardWithLog {
     #[inline]
     fn drop(&mut self) {
-        if !self.finished {
-            let dur = self.start.elapsed();
-            let cross_thread = crate::tid::current_tid() != self.tid;
-            let tid = if cross_thread { None } else { Some(self.tid) };
-            super::state::send_duration_measurement_with_log(
-                self.name,
-                dur,
-                self.wrapper,
-                tid,
-                None,
-            );
+        if self.skipped || self.finished {
+            return;
         }
+        let dur = self.start.elapsed();
+        let cross_thread = crate::tid::current_tid() != self.tid;
+        let tid = if cross_thread { None } else { Some(self.tid) };
+        super::state::send_duration_measurement_with_log(self.name, dur, self.wrapper, tid, None);
     }
 }

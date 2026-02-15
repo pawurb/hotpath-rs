@@ -85,7 +85,7 @@ cfg_if::cfg_if! {
 #[macro_export]
 macro_rules! measure_block {
     ($label:expr, $expr:expr) => {{
-        let _guard = hotpath::functions::MeasurementGuard::new($label, false, false);
+        let _guard = hotpath::functions::MeasurementGuard::build($label, false, false);
 
         $expr
     }};

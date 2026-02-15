@@ -1011,4 +1011,90 @@ pub mod tests {
 
         fs::remove_file(env_override_path).ok();
     }
+
+    // HOTPATH_OUTPUT_FORMAT=table HOTPATH_FOCUS=basic cargo run -p test-tokio-async --example basic --features hotpath
+    #[test]
+    fn test_focus_substring_filter() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "basic",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_OUTPUT_FORMAT", "table")
+            .env("HOTPATH_FOCUS", "basic")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let expected_content = [
+            "basic::sync_function",
+            "basic::async_function",
+            "basic::main",
+        ];
+
+        for expected in expected_content {
+            assert!(
+                stdout.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+
+        assert!(
+            !stdout.contains("| custom_block"),
+            "custom_block should be filtered out by HOTPATH_FOCUS=basic\n\nGot:\n{stdout}"
+        );
+    }
+
+    // HOTPATH_OUTPUT_FORMAT=table HOTPATH_FOCUS='/(custom)/' cargo run -p test-tokio-async --example basic --features hotpath
+    #[test]
+    fn test_focus_regex_filter() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "basic",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_OUTPUT_FORMAT", "table")
+            .env("HOTPATH_FOCUS", "/(custom)/")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("| custom_block"),
+            "Expected custom_block in profiling output\n\nGot:\n{stdout}",
+        );
+
+        let not_expected = ["| basic::sync_function", "| basic::async_function"];
+
+        for not_exp in not_expected {
+            assert!(
+                !stdout.contains(not_exp),
+                "{not_exp} should be filtered out by HOTPATH_FOCUS=/(custom)/\n\nGot:\n{stdout}"
+            );
+        }
+    }
 }
