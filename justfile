@@ -4,6 +4,10 @@
 default:
     @just --list
 
+# Run benchmarks comparing two git refs
+bench before after:
+    bash scripts/bench.sh {{before}} {{after}}
+
 # Run all tests
 test_all:
     cargo test --features hotpath --test functions -- --nocapture --test-threads=1

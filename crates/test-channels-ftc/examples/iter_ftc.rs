@@ -30,7 +30,7 @@ fn main() {
 
             smol::spawn(async move {
                 tx.unbounded_send(i).expect("Failed to send");
-                let _ = rx.try_next();
+                let _ = rx.try_recv();
             })
             .detach();
         }
@@ -47,7 +47,7 @@ fn main() {
 
             smol::spawn(async move {
                 tx.try_send(i).expect("Failed to send");
-                let _ = rx.try_next();
+                let _ = rx.try_recv();
             })
             .detach();
         }
