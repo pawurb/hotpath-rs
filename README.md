@@ -697,7 +697,7 @@ Macro that instruments streams to track items yielded. Wraps stream creation wit
 - `.output_path(path)` - Write report to file instead of stdout (`HOTPATH_OUTPUT_PATH` env var takes precedence)
 - `.reporter(Box<dyn Reporter>)` - Set custom reporter (overrides format)
 - `.build()` - Build and return the FunctionsGuard
-- `.build_with_timeout(Duration)` - Build guard that automatically drops after duration and exits the program (useful for profiling long-running programs like HTTP servers)
+- `.build_with_shutdown(Duration)` - Build guard that automatically drops after duration and exits the program (useful for profiling long-running programs like HTTP servers)
 
 ### ChannelsGuard API (Channel Monitoring)
 
@@ -757,7 +757,7 @@ fn work_function() {
 fn main() {
     // Profile for 1 second, then generate report and exit
     hotpath::FunctionsGuardBuilder::new("timed_benchmark")
-        .build_with_timeout(Duration::from_secs(1));
+        .build_with_shutdown(Duration::from_secs(1));
 
     loop {
         work_function();

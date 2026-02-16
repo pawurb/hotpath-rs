@@ -56,7 +56,7 @@ pub struct HotpathGuardBuilder {
     threads_limit: usize,
     output_path: Option<PathBuf>,
     sections: Option<Vec<Section>>,
-    before_report: Option<Box<dyn FnOnce() + Send>>,
+    before_shutdown: Option<Box<dyn FnOnce() + Send>>,
 }
 
 impl HotpathGuardBuilder {
@@ -72,7 +72,7 @@ impl HotpathGuardBuilder {
             threads_limit: 0,
             output_path: None,
             sections: None,
-            before_report: None,
+            before_shutdown: None,
         }
     }
 
@@ -121,8 +121,8 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn before_report(mut self, f: impl FnOnce() + Send + 'static) -> Self {
-        self.before_report = Some(Box::new(f));
+    pub fn before_shutdown(mut self, f: impl FnOnce() + Send + 'static) -> Self {
+        self.before_shutdown = Some(Box::new(f));
         self
     }
 
@@ -154,7 +154,7 @@ impl HotpathGuardBuilder {
             self.format,
             self.output_path,
             sections,
-            self.before_report,
+            self.before_shutdown,
             self.channels_limit,
             self.streams_limit,
             self.futures_limit,
@@ -162,10 +162,10 @@ impl HotpathGuardBuilder {
         )
     }
 
-    pub fn build_with_timeout(self, duration: std::time::Duration) {
+    pub fn build_with_shutdown(self, duration: std::time::Duration) {
         let guard = self.build();
         if let Some(timeout) =
-            crate::shared::resolve_timeout_duration(duration, "HOTPATH_META_TIMEOUT_MS")
+            crate::shared::resolve_timeout_duration(duration, "HOTPATH_META_SHUTDOWN_MS")
         {
             thread::spawn(move || {
                 thread::sleep(timeout);
@@ -191,7 +191,7 @@ pub struct HotpathGuard {
     output_path: Option<PathBuf>,
     sections: Vec<Section>,
     start_time: Instant,
-    before_report: Option<Box<dyn FnOnce() + Send>>,
+    before_shutdown: Option<Box<dyn FnOnce() + Send>>,
     channels_limit: usize,
     streams_limit: usize,
     futures_limit: usize,
@@ -207,7 +207,7 @@ impl HotpathGuard {
         format: Format,
         output_path: Option<PathBuf>,
         sections: Vec<Section>,
-        before_report: Option<Box<dyn FnOnce() + Send>>,
+        before_shutdown: Option<Box<dyn FnOnce() + Send>>,
         channels_limit: usize,
         streams_limit: usize,
         futures_limit: usize,
@@ -438,7 +438,7 @@ impl HotpathGuard {
             output_path,
             sections,
             start_time,
-            before_report,
+            before_shutdown,
             channels_limit,
             streams_limit,
             futures_limit,
@@ -457,7 +457,7 @@ fn apply_limit(len: usize, limit: usize) -> usize {
 
 impl Drop for HotpathGuard {
     fn drop(&mut self) {
-        if let Some(f) = self.before_report.take() {
+        if let Some(f) = self.before_shutdown.take() {
             f();
         }
 

@@ -4,7 +4,7 @@ use std::time::Duration;
 async fn main() {
     hotpath::HotpathGuardBuilder::new("guard_timeout_channels")
         .with_sections(vec![hotpath::Section::Channels])
-        .build_with_timeout(Duration::from_secs(1));
+        .build_with_shutdown(Duration::from_secs(1));
 
     let (tx, mut rx) = hotpath::channel!(
         tokio::sync::mpsc::channel::<u64>(32),

@@ -261,7 +261,7 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn before_report(self, _f: impl FnOnce() + Send + 'static) -> Self {
+    pub fn before_shutdown(self, _f: impl FnOnce() + Send + 'static) -> Self {
         self
     }
 
@@ -269,7 +269,7 @@ impl HotpathGuardBuilder {
         HotpathGuard
     }
 
-    pub fn build_with_timeout(self, _duration: std::time::Duration) {}
+    pub fn build_with_shutdown(self, _duration: std::time::Duration) {}
 }
 
 #[derive(Debug, Clone)]

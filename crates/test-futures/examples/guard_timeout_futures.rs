@@ -10,7 +10,7 @@ async fn timeout_worker() -> u64 {
 async fn main() {
     hotpath::HotpathGuardBuilder::new("guard_timeout_futures")
         .with_sections(vec![hotpath::Section::Futures])
-        .build_with_timeout(Duration::from_secs(1));
+        .build_with_shutdown(Duration::from_secs(1));
 
     loop {
         let _ = timeout_worker().await;

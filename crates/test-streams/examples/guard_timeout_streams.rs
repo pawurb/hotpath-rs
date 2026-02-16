@@ -6,7 +6,7 @@ fn main() {
     smol::block_on(async {
         hotpath::HotpathGuardBuilder::new("guard_timeout_streams")
             .with_sections(vec![hotpath::Section::Streams])
-            .build_with_timeout(Duration::from_secs(1));
+            .build_with_shutdown(Duration::from_secs(1));
 
         loop {
             let stream = hotpath::stream!(stream::iter(0..32), label = "timeout-stream");

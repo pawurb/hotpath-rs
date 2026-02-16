@@ -259,7 +259,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {
             let _hotpath = {
                 #base_builder
-                    .build_with_timeout(std::time::Duration::from_millis(#timeout_ms))
+                    .build_with_shutdown(std::time::Duration::from_millis(#timeout_ms))
             };
         }
     } else {
