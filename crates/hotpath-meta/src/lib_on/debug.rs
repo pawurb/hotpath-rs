@@ -4,15 +4,15 @@ use crate::channels::{LOGS_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{unbounded, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
-pub static DEBUG_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+pub static DEBUG_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-static VAL_ID_REGISTRY: OnceLock<RwLock<HashMap<String, u64>>> = OnceLock::new();
-static GAUGE_ID_REGISTRY: OnceLock<RwLock<HashMap<String, u64>>> = OnceLock::new();
+static VAL_ID_REGISTRY: OnceLock<RwLock<HashMap<String, u32>>> = OnceLock::new();
+static GAUGE_ID_REGISTRY: OnceLock<RwLock<HashMap<String, u32>>> = OnceLock::new();
 
-pub(crate) fn get_or_create_val_id(key: &str) -> u64 {
+pub(crate) fn get_or_create_val_id(key: &str) -> u32 {
     let registry = VAL_ID_REGISTRY.get_or_init(|| RwLock::new(HashMap::new()));
     if let Some(&id) = registry.read().unwrap().get(key) {
         return id;
@@ -23,7 +23,7 @@ pub(crate) fn get_or_create_val_id(key: &str) -> u64 {
         .or_insert_with(|| DEBUG_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
 }
 
-pub(crate) fn get_or_create_gauge_id(key: &str) -> u64 {
+pub(crate) fn get_or_create_gauge_id(key: &str) -> u32 {
     let registry = GAUGE_ID_REGISTRY.get_or_init(|| RwLock::new(HashMap::new()));
     if let Some(&id) = registry.read().unwrap().get(key) {
         return id;
@@ -50,7 +50,7 @@ pub use val::{get_val_logs, ValHandle};
 
 #[derive(Debug, Clone)]
 pub struct DbgEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: &'static str,
     pub expression: &'static str,
     pub log_count: u64,
@@ -66,7 +66,7 @@ pub struct DbgLog {
 }
 
 impl DbgEntry {
-    fn new(id: u64, source: &'static str, expression: &'static str) -> Self {
+    fn new(id: u32, source: &'static str, expression: &'static str) -> Self {
         Self {
             id,
             source,
@@ -79,7 +79,7 @@ impl DbgEntry {
 
 #[derive(Debug, Clone)]
 pub struct ValEntry {
-    pub id: u64,
+    pub id: u32,
     pub key: String,
     pub log_count: u64,
     pub logs: VecDeque<ValLog>,
@@ -95,7 +95,7 @@ pub struct ValLog {
 }
 
 impl ValEntry {
-    fn new(id: u64, key: String) -> Self {
+    fn new(id: u32, key: String) -> Self {
         Self {
             id,
             key,
@@ -108,7 +108,7 @@ impl ValEntry {
 #[derive(Debug)]
 pub(crate) enum DebugEvent {
     Dbg {
-        id: u64,
+        id: u32,
         source: &'static str,
         expression: &'static str,
         value: String,
@@ -116,7 +116,7 @@ pub(crate) enum DebugEvent {
         tid: Option<u64>,
     },
     Val {
-        id: u64,
+        id: u32,
         key: String,
         source: &'static str,
         value: String,
@@ -124,7 +124,7 @@ pub(crate) enum DebugEvent {
         tid: Option<u64>,
     },
     Gauge {
-        id: u64,
+        id: u32,
         key: String,
         source: &'static str,
         value: f64,
@@ -132,7 +132,7 @@ pub(crate) enum DebugEvent {
         tid: Option<u64>,
     },
     GaugeInc {
-        id: u64,
+        id: u32,
         key: String,
         source: &'static str,
         delta: f64,
@@ -140,7 +140,7 @@ pub(crate) enum DebugEvent {
         tid: Option<u64>,
     },
     GaugeDec {
-        id: u64,
+        id: u32,
         key: String,
         source: &'static str,
         delta: f64,
@@ -153,9 +153,9 @@ use gauge::{GaugeEntry, GaugeLog};
 
 struct DebugState {
     event_tx: CbSender<DebugEvent>,
-    dbg: Arc<RwLock<HashMap<u64, DbgEntry>>>,
-    val: Arc<RwLock<HashMap<u64, ValEntry>>>,
-    gauge: Arc<RwLock<HashMap<u64, GaugeEntry>>>,
+    dbg: Arc<RwLock<HashMap<u32, DbgEntry>>>,
+    val: Arc<RwLock<HashMap<u32, ValEntry>>>,
+    gauge: Arc<RwLock<HashMap<u32, GaugeEntry>>>,
 }
 
 static DEBUG_STATE: OnceLock<DebugState> = OnceLock::new();
@@ -167,9 +167,9 @@ pub(crate) fn init_debug_state() {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         let (event_tx, event_rx) = unbounded::<DebugEvent>();
-        let dbg = Arc::new(RwLock::new(HashMap::<u64, DbgEntry>::new()));
-        let val = Arc::new(RwLock::new(HashMap::<u64, ValEntry>::new()));
-        let gauge = Arc::new(RwLock::new(HashMap::<u64, GaugeEntry>::new()));
+        let dbg = Arc::new(RwLock::new(HashMap::<u32, DbgEntry>::new()));
+        let val = Arc::new(RwLock::new(HashMap::<u32, ValEntry>::new()));
+        let gauge = Arc::new(RwLock::new(HashMap::<u32, GaugeEntry>::new()));
         let dbg_clone = Arc::clone(&dbg);
         let val_clone = Arc::clone(&val);
         let gauge_clone = Arc::clone(&gauge);
@@ -212,7 +212,7 @@ fn timestamp_nanos(timestamp: Instant) -> u64 {
     timestamp.duration_since(start_time).as_nanos() as u64
 }
 
-fn process_dbg_event(stats_map: &mut HashMap<u64, DbgEntry>, event: DebugEvent) {
+fn process_dbg_event(stats_map: &mut HashMap<u32, DbgEntry>, event: DebugEvent) {
     let DebugEvent::Dbg {
         id,
         source,
@@ -245,7 +245,7 @@ fn process_dbg_event(stats_map: &mut HashMap<u64, DbgEntry>, event: DebugEvent) 
     stats.logs.push_back(entry);
 }
 
-fn process_val_event(stats_map: &mut HashMap<u64, ValEntry>, event: DebugEvent) {
+fn process_val_event(stats_map: &mut HashMap<u32, ValEntry>, event: DebugEvent) {
     let DebugEvent::Val {
         id,
         key,
@@ -279,7 +279,7 @@ fn process_val_event(stats_map: &mut HashMap<u64, ValEntry>, event: DebugEvent) 
     stats.logs.push_back(entry);
 }
 
-fn process_gauge_event(stats_map: &mut HashMap<u64, GaugeEntry>, event: DebugEvent) {
+fn process_gauge_event(stats_map: &mut HashMap<u32, GaugeEntry>, event: DebugEvent) {
     let (id, key, source, new_value, timestamp, tid) = match event {
         DebugEvent::Gauge {
             id,
@@ -349,7 +349,7 @@ pub(crate) fn get_sorted_debug_dbg_entries() -> Vec<DbgEntry> {
     stats
 }
 
-fn get_all_debug_dbg_entries() -> HashMap<u64, DbgEntry> {
+fn get_all_debug_dbg_entries() -> HashMap<u32, DbgEntry> {
     if let Some(state) = DEBUG_STATE.get() {
         state.dbg.read().unwrap().clone()
     } else {
@@ -363,7 +363,7 @@ pub(crate) fn get_sorted_debug_val_entries() -> Vec<ValEntry> {
     stats
 }
 
-fn get_all_debug_val_entries() -> HashMap<u64, ValEntry> {
+fn get_all_debug_val_entries() -> HashMap<u32, ValEntry> {
     if let Some(state) = DEBUG_STATE.get() {
         state.val.read().unwrap().clone()
     } else {
@@ -371,14 +371,14 @@ fn get_all_debug_val_entries() -> HashMap<u64, ValEntry> {
     }
 }
 
-pub(crate) fn get_debug_dbg_entries_by_id(id: u64) -> Option<DbgEntry> {
+pub(crate) fn get_debug_dbg_entries_by_id(id: u32) -> Option<DbgEntry> {
     DEBUG_STATE
         .get()
         .and_then(|state| state.dbg.read().ok())
         .and_then(|map| map.get(&id).cloned())
 }
 
-pub(crate) fn get_debug_val_entries_by_id(id: u64) -> Option<ValEntry> {
+pub(crate) fn get_debug_val_entries_by_id(id: u32) -> Option<ValEntry> {
     DEBUG_STATE
         .get()
         .and_then(|state| state.val.read().ok())
@@ -391,7 +391,7 @@ pub(crate) fn get_sorted_debug_gauge_entries() -> Vec<GaugeEntry> {
     stats
 }
 
-fn get_all_debug_gauge_entries() -> HashMap<u64, GaugeEntry> {
+fn get_all_debug_gauge_entries() -> HashMap<u32, GaugeEntry> {
     if let Some(state) = DEBUG_STATE.get() {
         state.gauge.read().unwrap().clone()
     } else {
@@ -399,7 +399,7 @@ fn get_all_debug_gauge_entries() -> HashMap<u64, GaugeEntry> {
     }
 }
 
-pub(crate) fn get_debug_gauge_entries_by_id(id: u64) -> Option<GaugeEntry> {
+pub(crate) fn get_debug_gauge_entries_by_id(id: u32) -> Option<GaugeEntry> {
     DEBUG_STATE
         .get()
         .and_then(|state| state.gauge.read().ok())

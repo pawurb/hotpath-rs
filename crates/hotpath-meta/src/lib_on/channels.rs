@@ -2,7 +2,7 @@
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, LazyLock, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -25,7 +25,7 @@ pub use crate::Format;
 /// Handle returned by [`register_channel`] that gives wrappers the channel's
 /// unique id and a sender to emit [`ChannelEvent`]s to the background worker.
 pub struct RegisteredChannel {
-    pub id: u64,
+    pub id: u32,
     pub stats_tx: CbSender<ChannelEvent>,
 }
 
@@ -75,7 +75,7 @@ pub(crate) fn timestamp_nanos(timestamp: Instant) -> u64 {
 /// Statistics for a single instrumented channel.
 #[derive(Debug, Clone)]
 pub(crate) struct ChannelEntry {
-    pub(crate) id: u64,
+    pub(crate) id: u32,
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) channel_type: ChannelType,
@@ -133,7 +133,7 @@ impl From<&ChannelEntry> for JsonChannelEntry {
 
 impl ChannelEntry {
     fn new(
-        id: u64,
+        id: u32,
         source: &'static str,
         label: Option<String>,
         channel_type: ChannelType,
@@ -184,7 +184,7 @@ impl ChannelEntry {
 #[derive(Debug)]
 pub enum ChannelEvent {
     Created {
-        id: u64,
+        id: u32,
         source: &'static str,
         display_label: Option<String>,
         channel_type: ChannelType,
@@ -192,26 +192,26 @@ pub enum ChannelEvent {
         type_size: usize,
     },
     MessageSent {
-        id: u64,
+        id: u32,
         log: Option<String>,
         timestamp: Instant,
     },
     MessageReceived {
-        id: u64,
+        id: u32,
         timestamp: Instant,
     },
     Closed {
-        id: u64,
+        id: u32,
     },
     #[allow(dead_code)]
     Notified {
-        id: u64,
+        id: u32,
     },
 }
 
 pub(crate) struct ChannelsState {
     pub(crate) event_tx: CbSender<ChannelEvent>,
-    pub(crate) stats_map: Arc<RwLock<HashMap<u64, ChannelEntry>>>,
+    pub(crate) stats_map: Arc<RwLock<HashMap<u32, ChannelEntry>>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -224,7 +224,7 @@ pub(crate) use crate::lib_on::START_TIME;
 
 pub(crate) use crate::lib_on::hotpath_guard::LOGS_LIMIT;
 
-fn process_channel_event(stats: &mut HashMap<u64, ChannelEntry>, event: ChannelEvent) {
+fn process_channel_event(stats: &mut HashMap<u32, ChannelEntry>, event: ChannelEvent) {
     match event {
         ChannelEvent::Created {
             id,
@@ -303,7 +303,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
         let (event_tx, event_rx) = unbounded::<ChannelEvent>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
-        let stats_map = Arc::new(RwLock::new(HashMap::<u64, ChannelEntry>::new()));
+        let stats_map = Arc::new(RwLock::new(HashMap::<u32, ChannelEntry>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
@@ -585,7 +585,7 @@ macro_rules! channel {
     }};
 }
 
-fn get_all_channel_stats() -> HashMap<u64, ChannelEntry> {
+fn get_all_channel_stats() -> HashMap<u32, ChannelEntry> {
     if let Some(state) = CHANNELS_STATE.get() {
         state.stats_map.read().unwrap().clone()
     } else {
@@ -619,7 +619,7 @@ pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
 }
 
 pub fn get_channels_json() -> JsonChannelsList {
-    let channels = get_sorted_channel_entries()
+    let data = get_sorted_channel_entries()
         .iter()
         .map(JsonChannelEntry::from)
         .collect();
@@ -632,12 +632,12 @@ pub fn get_channels_json() -> JsonChannelsList {
 
     JsonChannelsList {
         current_elapsed_ns,
-        channels,
+        data,
     }
 }
 
 pub fn get_channel_logs(channel_id: &str) -> Option<ChannelLogs> {
-    let id = channel_id.parse::<u64>().ok()?;
+    let id = channel_id.parse::<u32>().ok()?;
     let stats = get_all_channel_stats();
     stats.get(&id).map(|channel_stats| ChannelLogs {
         id: channel_id.to_string(),

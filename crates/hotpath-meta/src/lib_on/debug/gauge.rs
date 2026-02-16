@@ -21,7 +21,7 @@ fn get_thread_id() -> Option<u64> {
 
 #[derive(Debug, Clone)]
 pub struct GaugeEntry {
-    pub id: u64,
+    pub id: u32,
     pub key: String,
     pub source: &'static str,
     pub current_value: f64,
@@ -40,7 +40,7 @@ pub struct GaugeLog {
 }
 
 impl GaugeEntry {
-    pub fn new(id: u64, key: String, source: &'static str, initial_value: f64) -> Self {
+    pub fn new(id: u32, key: String, source: &'static str, initial_value: f64) -> Self {
         Self {
             id,
             key,
@@ -55,7 +55,7 @@ impl GaugeEntry {
 }
 
 pub struct GaugeHandle {
-    id: u64,
+    id: u32,
     key: String,
     source: &'static str,
 }
@@ -125,7 +125,7 @@ pub fn get_debug_gauge_entries_json() -> Vec<JsonDebugEntry> {
         .collect()
 }
 
-pub fn get_debug_gauge_logs(id: u64) -> Option<JsonDebugGaugeLogs> {
+pub fn get_debug_gauge_logs(id: u32) -> Option<JsonDebugGaugeLogs> {
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)

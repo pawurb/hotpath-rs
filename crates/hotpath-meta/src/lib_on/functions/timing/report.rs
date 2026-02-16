@@ -7,7 +7,7 @@ use super::state::FunctionStats;
 use crate::output::{MetricType, MetricsProvider};
 
 pub struct StatsData<'a> {
-    pub stats: &'a HashMap<&'static str, FunctionStats>,
+    pub stats: &'a HashMap<u32, FunctionStats>,
     pub total_elapsed: Duration,
     pub percentiles: Vec<u8>,
     pub caller_name: &'static str,
@@ -16,7 +16,7 @@ pub struct StatsData<'a> {
 
 impl<'a> MetricsProvider<'a> for StatsData<'a> {
     fn new(
-        stats: &'a HashMap<&'static str, FunctionStats>,
+        stats: &'a HashMap<u32, FunctionStats>,
         total_elapsed: Duration,
         percentiles: Vec<u8>,
         caller_name: &'static str,
@@ -43,33 +43,33 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
         ProfilingMode::Timing
     }
 
-    fn metric_data(&self) -> Vec<(String, Vec<MetricType>)> {
-        let reference_total = if crate::functions::is_exclude_wrapper_enabled() {
+    fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)> {
+        let reference_total = if *crate::functions::EXCLUDE_WRAPPER {
             self.stats
-                .iter()
-                .filter(|(_, s)| !s.wrapper && s.has_data)
-                .map(|(_, s)| s.total_duration_ns)
+                .values()
+                .filter(|s| !s.wrapper && s.has_data)
+                .map(|s| s.total_duration_ns)
                 .sum::<u64>()
         } else {
             let wrapper_total = self
                 .stats
-                .iter()
-                .find(|(_, s)| s.wrapper)
-                .map(|(_, s)| s.total_duration_ns);
+                .values()
+                .find(|s| s.wrapper)
+                .map(|s| s.total_duration_ns);
             wrapper_total.unwrap_or(self.total_elapsed.as_nanos() as u64)
         };
 
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let mut entries: Vec<_> = self
             .stats
-            .iter()
-            .filter(|(_, s)| s.has_data && !(exclude_wrapper && s.wrapper))
+            .values()
+            .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
             .collect();
 
         entries.sort_by(|a, b| {
-            b.1.total_duration_ns
-                .cmp(&a.1.total_duration_ns)
-                .then_with(|| a.0.cmp(b.0))
+            b.total_duration_ns
+                .cmp(&a.total_duration_ns)
+                .then_with(|| a.name.cmp(b.name))
         });
 
         let entries = if self.limit > 0 {
@@ -80,7 +80,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
 
         entries
             .into_iter()
-            .map(|(function_name, stats)| {
+            .map(|stats| {
                 let percentage = if reference_total > 0 {
                     (stats.total_duration_ns as f64 / reference_total as f64) * 100.0
                 } else {
@@ -100,8 +100,15 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                 metrics.push(MetricType::DurationNs(stats.total_duration_ns));
                 metrics.push(MetricType::Percentage((percentage * 100.0) as u64));
 
-                (function_name.to_string(), metrics)
+                (stats.name, metrics)
             })
+            .collect()
+    }
+
+    fn function_ids(&self) -> HashMap<&'static str, u32> {
+        self.stats
+            .values()
+            .map(|stat| (stat.name, stat.id))
             .collect()
     }
 
@@ -114,7 +121,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn entry_counts(&self) -> (usize, usize) {
-        let exclude_wrapper = crate::functions::is_exclude_wrapper_enabled();
+        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
         let total_count = self
             .stats
             .iter()

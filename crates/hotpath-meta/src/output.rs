@@ -1,6 +1,5 @@
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "hotpath-meta")]
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -303,7 +302,7 @@ pub struct FunctionLogsList {
 }
 
 /// Structured per-function profiling metrics data as an ordered list.
-pub type FunctionsData = Vec<(String, Vec<MetricType>)>;
+pub type FunctionsData = Vec<(&'static str, Vec<MetricType>)>;
 
 /// Trait for accessing profiling metrics data from custom reporters.
 ///
@@ -336,7 +335,7 @@ pub trait MetricsProvider<'a> {
     }
     fn percentiles(&self) -> Vec<u8>;
 
-    fn metric_data(&self) -> Vec<(String, Vec<MetricType>)>;
+    fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)>;
 
     fn sort_key(&self, metrics: &[MetricType]) -> f64 {
         if let Some(MetricType::Percentage(basis_points)) = metrics.last() {
@@ -354,7 +353,7 @@ pub trait MetricsProvider<'a> {
 
     #[cfg(feature = "hotpath-meta")]
     fn new(
-        stats: &'a HashMap<&'static str, FunctionStats>,
+        stats: &'a HashMap<u32, FunctionStats>,
         total_elapsed: Duration,
         percentiles: Vec<u8>,
         caller_name: &'static str,
@@ -362,6 +361,10 @@ pub trait MetricsProvider<'a> {
     ) -> Self
     where
         Self: Sized;
+
+    fn function_ids(&self) -> HashMap<&'static str, u32> {
+        HashMap::new()
+    }
 
     fn total_elapsed(&self) -> u64;
 

@@ -97,7 +97,7 @@ pub(crate) fn collect_channels_json(
 ) -> JsonChannelsList {
     JsonChannelsList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
-        channels: channels.iter().map(JsonChannelEntry::from).collect(),
+        data: channels.iter().map(JsonChannelEntry::from).collect(),
     }
 }
 
@@ -177,7 +177,7 @@ pub(crate) fn collect_streams_json(
 ) -> JsonStreamsList {
     JsonStreamsList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
-        streams: streams.iter().map(JsonStreamEntry::from).collect(),
+        data: streams.iter().map(JsonStreamEntry::from).collect(),
     }
 }
 
@@ -253,7 +253,7 @@ pub(crate) fn collect_futures_json(
 ) -> JsonFuturesList {
     JsonFuturesList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
-        futures: futures.iter().map(JsonFutureEntry::from).collect(),
+        data: futures.iter().map(JsonFutureEntry::from).collect(),
     }
 }
 

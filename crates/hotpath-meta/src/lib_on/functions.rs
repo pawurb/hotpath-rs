@@ -1,6 +1,7 @@
 //! Function profiling module - measures execution time and memory allocations per function.
 
-use std::{sync::OnceLock, sync::RwLock, time::Duration};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
 
 use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
@@ -25,12 +26,17 @@ cfg_if::cfg_if! {
     }
 }
 
-#[inline]
-pub(crate) fn is_exclude_wrapper_enabled() -> bool {
+pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+pub(crate) fn next_function_id() -> u32 {
+    FUNCTIONS_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
+pub(crate) static EXCLUDE_WRAPPER: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("HOTPATH_META_EXCLUDE_WRAPPER")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false)
-}
+});
 
 impl MeasurementGuard {
     pub fn build(measurement_name: &'static str, wrapper: bool, _is_async: bool) -> Self {
@@ -119,19 +125,20 @@ pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<FunctionsState>
     OnceLock::new();
 
 /// Query request sent from TUI HTTP server to profiler worker thread
+#[derive(Debug)]
 pub(crate) enum FunctionsQuery {
     /// Request timing metrics snapshot
     Timing(Sender<JsonFunctionsList>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc-meta not enabled
     Alloc(Sender<Option<JsonFunctionsList>>),
-    /// Request timing function logs for a specific function (returns None if function not found)
+    /// Request timing function logs for a specific function by ID
     LogsTiming {
-        function_name: String,
+        function_id: u32,
         response_tx: Sender<Option<FunctionLogsList>>,
     },
-    /// Request allocation function logs for a specific function (returns None if hotpath-alloc-meta not enabled or function not found)
+    /// Request allocation function logs for a specific function by ID
     LogsAlloc {
-        function_name: String,
+        function_id: u32,
         response_tx: Sender<Option<FunctionLogsList>>,
     },
 }
@@ -173,10 +180,9 @@ pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
     JsonFunctionsList::empty_fallback(get_current_elapsed_ns())
 }
 
-pub(crate) fn get_function_logs_timing(function_name: &str) -> Option<FunctionLogsList> {
-    let name = function_name.to_string();
+pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsList> {
     query_functions_state(|response_tx| FunctionsQuery::LogsTiming {
-        function_name: name,
+        function_id,
         response_tx,
     })
     .flatten()
@@ -186,12 +192,9 @@ pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
     query_functions_state(FunctionsQuery::Alloc).flatten()
 }
 
-// Get instrumented function calls information
-// Will return None unless hotpath-alloc-meta is enabled
-pub(crate) fn get_function_logs_alloc(function_name: &str) -> Option<FunctionLogsList> {
-    let name = function_name.to_string();
+pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<FunctionLogsList> {
     query_functions_state(|response_tx| FunctionsQuery::LogsAlloc {
-        function_name: name,
+        function_id,
         response_tx,
     })
     .flatten()

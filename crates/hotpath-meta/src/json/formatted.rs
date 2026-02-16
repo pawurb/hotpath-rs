@@ -52,6 +52,7 @@ pub fn format_bytes_signed(bytes: i64) -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionEntry {
+    pub id: u32,
     pub name: String,
     pub calls: u64,
     pub avg: String,
@@ -96,7 +97,8 @@ impl JsonFunctionsList {
         let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
-        let data = format_metric_data(&metric_data, &percentiles_config, false);
+        let name_to_id = provider.function_ids();
+        let data = format_metric_data(&metric_data, &percentiles_config, false, &name_to_id);
         let total_elapsed = provider.total_elapsed();
 
         let (time_elapsed, total_allocated) = if is_alloc {
@@ -130,7 +132,8 @@ impl JsonFunctionsList {
         let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
-        let data = format_metric_data(&metric_data, &percentiles_config, true);
+        let name_to_id = provider.function_ids();
+        let data = format_metric_data(&metric_data, &percentiles_config, true, &name_to_id);
         let total_elapsed = provider.total_elapsed();
 
         let (time_elapsed, total_allocated, total_allocated_raw) = if is_alloc {
@@ -184,9 +187,10 @@ fn extract_raw_value(metric: &MetricType) -> Option<u64> {
 }
 
 fn format_metric_data(
-    data: &[(String, Vec<MetricType>)],
+    data: &[(&'static str, Vec<MetricType>)],
     percentiles_config: &[u8],
     include_raw: bool,
+    name_to_id: &HashMap<&'static str, u32>,
 ) -> Vec<JsonFunctionEntry> {
     let format_value = |metric: &MetricType| -> String {
         match metric {
@@ -246,8 +250,11 @@ fn format_metric_data(
                 None
             };
 
+            let id = name_to_id.get(name).copied().unwrap_or(0);
+
             JsonFunctionEntry {
-                name: name.clone(),
+                id,
+                name: name.to_string(),
                 calls,
                 avg,
                 avg_raw,
@@ -393,12 +400,12 @@ fn format_alloc_log_entry(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelsList {
     pub current_elapsed_ns: u64,
-    pub channels: Vec<JsonChannelEntry>,
+    pub data: Vec<JsonChannelEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: String,
     pub label: String,
     pub has_custom_label: bool,
@@ -496,12 +503,12 @@ fn format_received_log_entry(entry: &DataFlowLogEntry, current_elapsed_ns: u64) 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonStreamsList {
     pub current_elapsed_ns: u64,
-    pub streams: Vec<JsonStreamEntry>,
+    pub data: Vec<JsonStreamEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonStreamEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: String,
     pub label: String,
     pub has_custom_label: bool,
@@ -534,12 +541,12 @@ impl JsonStreamLogsList {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFuturesList {
     pub current_elapsed_ns: u64,
-    pub futures: Vec<JsonFutureEntry>,
+    pub data: Vec<JsonFutureEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFutureEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: String,
     pub label: String,
     pub has_custom_label: bool,
@@ -549,8 +556,8 @@ pub struct JsonFutureEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFutureLog {
-    pub id: u64,
-    pub future_id: u64,
+    pub id: u32,
+    pub future_id: u32,
     pub state: String,
     pub poll_count: u64,
     pub result: Option<String>,
@@ -588,7 +595,7 @@ pub struct JsonDataFlowList {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonDataFlowEntry {
-    pub id: u64,
+    pub id: u32,
     pub data_flow_type: DataFlowType,
     pub source: String,
     pub label: String,
@@ -719,7 +726,7 @@ pub struct JsonDebugList {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonDebugEntry {
-    pub id: u64,
+    pub id: u32,
     #[serde(default)]
     pub entry_type: DebugEntryType,
     pub source: String,

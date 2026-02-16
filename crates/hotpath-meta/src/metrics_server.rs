@@ -93,8 +93,8 @@ fn handle_request(request: Request) {
                 "Memory profiling not available - enable hotpath-alloc-meta feature",
             ),
         },
-        Ok(Route::FunctionTimingLogs { function_name }) => {
-            match get_function_logs_timing(&function_name) {
+        Ok(Route::FunctionTimingLogs { function_id }) => {
+            match get_function_logs_timing(function_id) {
                 Some(logs) => {
                     let formatted =
                         JsonFunctionTimingLogsList::from_logs(&logs, get_current_elapsed_ns());
@@ -103,12 +103,12 @@ fn handle_request(request: Request) {
                 None => respond_error(
                     request,
                     404,
-                    &format!("Function '{}' not found", function_name),
+                    &format!("Function with id {} not found", function_id),
                 ),
             }
         }
-        Ok(Route::FunctionAllocLogs { function_name }) => {
-            match get_function_logs_alloc(&function_name) {
+        Ok(Route::FunctionAllocLogs { function_id }) => {
+            match get_function_logs_alloc(function_id) {
                 Some(logs) => {
                     let formatted =
                         JsonFunctionAllocLogsList::from_logs(&logs, get_current_elapsed_ns());

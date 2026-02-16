@@ -97,6 +97,7 @@ pub(crate) fn flush_batch() {
     });
 }
 
+#[derive(Debug)]
 pub struct Measurement {
     pub duration_ns: u64,
     pub measurement_time: Instant,
@@ -108,6 +109,8 @@ pub struct Measurement {
 
 #[derive(Debug)]
 pub struct FunctionStats {
+    pub id: u32,
+    pub name: &'static str,
     pub total_duration_ns: u64,
     pub count: u64,
     hist: Option<Histogram<u64>>,
@@ -122,6 +125,8 @@ impl FunctionStats {
     const SIGFIGS: u8 = 3;
 
     pub fn new_duration(
+        id: u32,
+        name: &'static str,
         first_ns: u64,
         elapsed: Duration,
         wrapper: bool,
@@ -135,6 +140,8 @@ impl FunctionStats {
         recent_logs.push_back((first_ns, elapsed, tid, result_log));
 
         let mut s = Self {
+            id,
+            name,
             total_duration_ns: first_ns,
             count: 1,
             hist: Some(hist),
@@ -195,7 +202,7 @@ impl FunctionStats {
 pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
-    pub completion_rx: Option<Mutex<Receiver<HashMap<&'static str, FunctionStats>>>>,
+    pub completion_rx: Option<Mutex<Receiver<HashMap<u32, FunctionStats>>>>,
     pub query_tx: Option<Sender<FunctionsQuery>>,
     pub start_time: Instant,
     pub caller_name: &'static str,
@@ -204,17 +211,30 @@ pub(crate) struct FunctionsState {
 }
 
 pub(crate) fn process_measurement(
-    stats: &mut HashMap<&'static str, FunctionStats>,
+    stats: &mut HashMap<u32, FunctionStats>,
+    name_to_id: &mut HashMap<&'static str, u32>,
     m: Measurement,
     start_time: Instant,
 ) {
     let elapsed = m.measurement_time.duration_since(start_time);
-    if let Some(s) = stats.get_mut(m.name) {
-        s.update_duration(m.duration_ns, elapsed, m.tid, m.result_log);
+    if let Some(&id) = name_to_id.get(m.name) {
+        if let Some(s) = stats.get_mut(&id) {
+            s.update_duration(m.duration_ns, elapsed, m.tid, m.result_log);
+        }
     } else {
+        let id = crate::functions::next_function_id();
+        name_to_id.insert(m.name, id);
         stats.insert(
-            m.name,
-            FunctionStats::new_duration(m.duration_ns, elapsed, m.wrapper, m.tid, m.result_log),
+            id,
+            FunctionStats::new_duration(
+                id,
+                m.name,
+                m.duration_ns,
+                elapsed,
+                m.wrapper,
+                m.tid,
+                m.result_log,
+            ),
         );
     }
 }

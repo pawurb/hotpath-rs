@@ -4,7 +4,7 @@ use crate::channels::{resolve_label, LOGS_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 #[cfg(target_os = "linux")]
@@ -21,17 +21,17 @@ pub use crate::json::{FutureLog, FutureLogsList, FutureState};
 use crate::json::{JsonFutureEntry, JsonFuturesList};
 pub use crate::Format;
 
-pub(crate) static FUTURE_CALL_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+pub(crate) static FUTURE_CALL_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 use std::sync::LazyLock;
 
 /// Thread-safe map from source location to future_id
-static SOURCE_TO_FUTURE_ID: LazyLock<RwLock<HashMap<&'static str, u64>>> =
+static SOURCE_TO_FUTURE_ID: LazyLock<RwLock<HashMap<&'static str, u32>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Get or create a future_id for a source location.
 /// Returns (future_id, is_new) where is_new indicates if this is a newly created future.
-pub(crate) fn get_or_create_future_id(source: &'static str) -> (u64, bool) {
+pub(crate) fn get_or_create_future_id(source: &'static str) -> (u32, bool) {
     let map = &*SOURCE_TO_FUTURE_ID;
 
     {
@@ -55,7 +55,7 @@ pub(crate) fn get_or_create_future_id(source: &'static str) -> (u64, bool) {
 /// Aggregated statistics for a source location.
 #[derive(Debug, Clone)]
 pub struct FutureEntry {
-    pub id: u64,
+    pub id: u32,
     pub source: &'static str,
     pub label: Option<String>,
     pub logs: VecDeque<FutureLog>,
@@ -63,7 +63,7 @@ pub struct FutureEntry {
 }
 
 impl FutureEntry {
-    fn new(id: u64, source: &'static str, label: Option<String>) -> Self {
+    fn new(id: u32, source: &'static str, label: Option<String>) -> Self {
         Self {
             id,
             source,
@@ -79,7 +79,7 @@ impl FutureEntry {
     }
 
     /// Find a call by ID
-    fn find_call_mut(&mut self, id: u64) -> Option<&mut FutureLog> {
+    fn find_call_mut(&mut self, id: u32) -> Option<&mut FutureLog> {
         self.logs.iter_mut().find(|c| c.id == id)
     }
 }
@@ -110,33 +110,33 @@ pub(crate) enum PollResult {
 #[derive(Debug)]
 pub(crate) enum FutureEvent {
     Created {
-        future_id: u64,
+        future_id: u32,
         source: &'static str,
         display_label: Option<String>,
     },
     CallCreated {
-        future_id: u64,
-        call_id: u64,
+        future_id: u32,
+        call_id: u32,
     },
     Polled {
-        future_id: u64,
-        call_id: u64,
+        future_id: u32,
+        call_id: u32,
         result: PollResult,
         log_message: Option<String>,
     },
     Completed {
-        future_id: u64,
-        call_id: u64,
+        future_id: u32,
+        call_id: u32,
     },
     Cancelled {
-        future_id: u64,
-        call_id: u64,
+        future_id: u32,
+        call_id: u32,
     },
 }
 
 pub(crate) struct FuturesState {
     pub(crate) event_tx: CbSender<FutureEvent>,
-    pub(crate) stats_map: Arc<RwLock<HashMap<u64, FutureEntry>>>,
+    pub(crate) stats_map: Arc<RwLock<HashMap<u32, FutureEntry>>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -156,7 +156,7 @@ pub fn init_futures_state() {
         let (event_tx, event_rx) = unbounded::<FutureEvent>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
-        let stats_map = Arc::new(RwLock::new(HashMap::<u64, FutureEntry>::new()));
+        let stats_map = Arc::new(RwLock::new(HashMap::<u32, FutureEntry>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
@@ -199,7 +199,7 @@ pub fn init_futures_state() {
 }
 
 /// Process a future event and update stats.
-fn process_future_event(stats_map: &mut HashMap<u64, FutureEntry>, event: FutureEvent) {
+fn process_future_event(stats_map: &mut HashMap<u32, FutureEntry>, event: FutureEvent) {
     match event {
         FutureEvent::Created {
             future_id,
@@ -323,7 +323,7 @@ pub(crate) fn compare_future_stats(a: &FutureEntry, b: &FutureEntry) -> std::cmp
     }
 }
 
-fn get_all_future_stats() -> HashMap<u64, FutureEntry> {
+fn get_all_future_stats() -> HashMap<u32, FutureEntry> {
     if let Some(state) = FUTURES_STATE.get() {
         state.stats_map.read().unwrap().clone()
     } else {
@@ -350,11 +350,11 @@ pub fn get_futures_json() -> JsonFuturesList {
 
     JsonFuturesList {
         current_elapsed_ns,
-        futures,
+        data: futures,
     }
 }
 
-pub fn get_future_logs_list(future_id: u64) -> Option<FutureLogsList> {
+pub fn get_future_logs_list(future_id: u32) -> Option<FutureLogsList> {
     let stats = get_all_future_stats();
     stats.get(&future_id).map(|s| FutureLogsList {
         id: future_id.to_string(),

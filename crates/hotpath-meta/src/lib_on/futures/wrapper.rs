@@ -64,8 +64,8 @@ pin_project! {
     pub struct InstrumentedFuture<F: Future> {
         #[pin]
         inner: F,
-        future_id: u64,
-        call_id: u64,
+        future_id: u32,
+        call_id: u32,
         completed: bool,
     }
 
@@ -151,8 +151,8 @@ pin_project! {
     pub struct InstrumentedFutureLog<F: Future> {
         #[pin]
         inner: F,
-        future_id: u64,
-        call_id: u64,
+        future_id: u32,
+        call_id: u32,
         completed: bool,
     }
 

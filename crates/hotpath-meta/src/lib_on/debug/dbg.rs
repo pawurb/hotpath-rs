@@ -22,7 +22,7 @@ fn get_thread_id() -> Option<u64> {
 
 #[doc(hidden)]
 #[inline]
-pub fn log_dbg<T: Debug>(id: u64, source: &'static str, expression: &'static str, value: &T) {
+pub fn log_dbg<T: Debug>(id: u32, source: &'static str, expression: &'static str, value: &T) {
     init_debug_state();
 
     let value_str = crate::output::format_debug_truncated(value);
@@ -67,7 +67,7 @@ pub fn get_debug_entries_json() -> JsonDebugList {
     }
 }
 
-pub fn get_dbg_logs(id: u64) -> Option<JsonDebugDbgLogs> {
+pub fn get_dbg_logs(id: u32) -> Option<JsonDebugDbgLogs> {
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)

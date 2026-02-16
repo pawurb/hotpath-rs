@@ -21,7 +21,7 @@ fn get_thread_id() -> Option<u64> {
 }
 
 pub struct ValHandle {
-    id: u64,
+    id: u32,
     key: String,
     source: &'static str,
 }
@@ -67,7 +67,7 @@ pub fn get_val_stats_json() -> JsonDebugList {
     }
 }
 
-pub fn get_val_logs(id: u64) -> Option<JsonDebugValLogs> {
+pub fn get_val_logs(id: u32) -> Option<JsonDebugValLogs> {
     let current_elapsed_ns = START_TIME
         .get()
         .map(|t| t.elapsed().as_nanos() as u64)

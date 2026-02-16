@@ -21,7 +21,7 @@ pub use crate::Format;
 /// Statistics for a single instrumented stream.
 #[derive(Debug, Clone)]
 pub(crate) struct StreamStats {
-    pub(crate) id: u64,
+    pub(crate) id: u32,
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) state: ChannelState, // Only Active or Closed
@@ -34,7 +34,7 @@ pub(crate) struct StreamStats {
 
 impl StreamStats {
     fn new(
-        id: u64,
+        id: u32,
         source: &'static str,
         label: Option<String>,
         type_name: &'static str,
@@ -77,25 +77,25 @@ impl From<&StreamStats> for JsonStreamEntry {
 #[derive(Debug)]
 pub(crate) enum StreamEvent {
     Created {
-        id: u64,
+        id: u32,
         source: &'static str,
         display_label: Option<String>,
         type_name: &'static str,
         type_size: usize,
     },
     Yielded {
-        id: u64,
+        id: u32,
         log: Option<String>,
         timestamp: Instant,
     },
     Completed {
-        id: u64,
+        id: u32,
     },
 }
 
 pub(crate) struct StreamsState {
     pub(crate) event_tx: CbSender<StreamEvent>,
-    pub(crate) stats_map: Arc<RwLock<HashMap<u64, StreamStats>>>,
+    pub(crate) stats_map: Arc<RwLock<HashMap<u32, StreamStats>>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -104,7 +104,7 @@ pub(crate) type StreamStatsState = StreamsState;
 
 pub(crate) static STREAMS_STATE: OnceLock<StreamStatsState> = OnceLock::new();
 
-fn process_stream_event(stats: &mut HashMap<u64, StreamStats>, event: StreamEvent) {
+fn process_stream_event(stats: &mut HashMap<u32, StreamStats>, event: StreamEvent) {
     match event {
         StreamEvent::Created {
             id,
@@ -152,7 +152,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
         let (event_tx, event_rx) = unbounded::<StreamEvent>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
-        let stats_map = Arc::new(RwLock::new(HashMap::<u64, StreamStats>::new()));
+        let stats_map = Arc::new(RwLock::new(HashMap::<u32, StreamStats>::new()));
         let stats_map_clone = Arc::clone(&stats_map);
 
         std::thread::Builder::new()
@@ -297,7 +297,7 @@ macro_rules! stream {
     }};
 }
 
-fn get_all_stream_stats() -> HashMap<u64, StreamStats> {
+fn get_all_stream_stats() -> HashMap<u32, StreamStats> {
     if let Some(state) = STREAMS_STATE.get() {
         state.stats_map.read().unwrap().clone()
     } else {
@@ -344,12 +344,12 @@ pub fn get_streams_json() -> JsonStreamsList {
 
     JsonStreamsList {
         current_elapsed_ns,
-        streams,
+        data: streams,
     }
 }
 
 pub fn get_stream_logs(stream_id: &str) -> Option<StreamLogs> {
-    let id = stream_id.parse::<u64>().ok()?;
+    let id = stream_id.parse::<u32>().ok()?;
     let stats = get_all_stream_stats();
     stats.get(&id).map(|stream_stats| {
         let mut yielded_logs: Vec<DataFlowLogEntry> = stream_stats.logs.iter().cloned().collect();
