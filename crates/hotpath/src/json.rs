@@ -197,6 +197,8 @@ pub struct ThreadMetrics {
     /// CPU usage percentage (based on delta from previous sample)
     /// None if this is the first sample
     pub cpu_percent: Option<f64>,
+    /// Peak CPU usage percentage ever observed for this thread
+    pub cpu_percent_max: Option<f64>,
     /// Total bytes allocated by this thread (only with hotpath-alloc)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alloc_bytes: Option<u64>,
@@ -226,6 +228,7 @@ impl ThreadMetrics {
             cpu_sys,
             cpu_total: cpu_user + cpu_sys,
             cpu_percent: None,
+            cpu_percent_max: None,
             alloc_bytes: None,
             dealloc_bytes: None,
             mem_diff: None,

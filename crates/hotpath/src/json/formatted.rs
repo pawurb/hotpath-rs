@@ -657,6 +657,7 @@ pub struct JsonThreadEntry {
     pub cpu_sys: String,
     pub cpu_total: String,
     pub cpu_percent: Option<String>,
+    pub cpu_percent_max: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alloc_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -676,6 +677,7 @@ impl From<&ThreadMetrics> for JsonThreadEntry {
             cpu_sys: format!("{:.3}s", metrics.cpu_sys),
             cpu_total: format!("{:.3}s", metrics.cpu_total),
             cpu_percent: metrics.cpu_percent.map(|p| format!("{:.1}%", p)),
+            cpu_percent_max: metrics.cpu_percent_max.map(|p| format!("{:.1}%", p)),
             alloc_bytes: metrics.alloc_bytes.map(format_bytes),
             dealloc_bytes: metrics.dealloc_bytes.map(format_bytes),
             mem_diff: metrics.mem_diff.map(format_bytes_signed),

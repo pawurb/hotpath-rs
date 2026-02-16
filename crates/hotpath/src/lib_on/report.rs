@@ -286,6 +286,7 @@ pub(crate) fn report_threads_table(
         Cell::new("Thread"),
         Cell::new("Status"),
         Cell::new("CPU%"),
+        Cell::new("Max%"),
         Cell::new("CPU User"),
         Cell::new("CPU Sys"),
         Cell::new("CPU Total"),
@@ -301,10 +302,12 @@ pub(crate) fn report_threads_table(
 
     for thread in &threads_json.data {
         let cpu_pct = thread.cpu_percent.as_deref().unwrap_or("-");
+        let cpu_pct_max = thread.cpu_percent_max.as_deref().unwrap_or("-");
         let mut row = vec![
             Cell::new(&thread.name),
             Cell::new(&thread.status),
             Cell::new(cpu_pct),
+            Cell::new(cpu_pct_max),
             Cell::new(&thread.cpu_user),
             Cell::new(&thread.cpu_sys),
             Cell::new(&thread.cpu_total),
