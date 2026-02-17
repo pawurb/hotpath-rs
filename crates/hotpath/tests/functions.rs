@@ -1089,7 +1089,6 @@ pub mod tests {
             "Expected custom_block in profiling output\n\nGot:\n{stdout}",
         );
 
-        // Wrapper functions must never be excluded by HOTPATH_FOCUS
         assert!(
             stdout.contains("basic::main"),
             "Wrapper function basic::main should never be excluded by HOTPATH_FOCUS\n\nGot:\n{stdout}",

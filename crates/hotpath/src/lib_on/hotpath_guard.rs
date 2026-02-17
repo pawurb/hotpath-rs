@@ -23,7 +23,7 @@ use crate::output::{
 };
 use crate::output_on::{display_no_measurements_message_to, display_table_to};
 
-use crate::functions::{FunctionsQuery, FUNCTIONS_STATE};
+use crate::functions::{FunctionsQuery, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
 use crate::lib_on::report;
 use crate::shared::Section;
 
@@ -250,13 +250,13 @@ impl HotpathGuard {
         #[cfg(feature = "hotpath-meta")]
         let (query_tx, query_rx) =
             hotpath_meta::channel!((query_tx, query_rx), label = "hp-fn-queries", log = true);
+        let _ = FUNCTIONS_QUERY_TX.set(query_tx);
         let start_time = Instant::now();
 
         let state_arc = Arc::new(RwLock::new(FunctionsState {
             sender: Some(tx),
             shutdown_tx: Some(shutdown_tx),
             completion_rx: Some(Mutex::new(completion_rx)),
-            query_tx: Some(query_tx),
             start_time,
             caller_name,
             percentiles: percentiles.clone(),

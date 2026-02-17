@@ -354,7 +354,6 @@ pub(crate) struct FunctionsState {
     pub sender: Option<Sender<Measurement>>,
     pub shutdown_tx: Option<Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<u32, FunctionStats>>>>,
-    pub query_tx: Option<Sender<super::super::FunctionsQuery>>,
 
     pub start_time: Instant,
     pub caller_name: &'static str,

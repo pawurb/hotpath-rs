@@ -1,5 +1,5 @@
 use arc_swap::ArcSwapOption;
-use crossbeam_channel::{bounded, select, unbounded};
+use crossbeam_channel::{bounded, select_biased, unbounded};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
@@ -23,7 +23,7 @@ use crate::output::{
 };
 use crate::output_on::{display_no_measurements_message_to, display_table_to};
 
-use crate::functions::{FunctionsQuery, FUNCTIONS_STATE};
+use crate::functions::{FunctionsQuery, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
 use crate::lib_on::report;
 use crate::shared::Section;
 
@@ -233,13 +233,13 @@ impl HotpathGuard {
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<HashMap<u32, FunctionStats>>(1);
         let (query_tx, query_rx) = unbounded::<FunctionsQuery>();
+        let _ = FUNCTIONS_QUERY_TX.set(query_tx);
         let start_time = Instant::now();
 
         let state_arc = Arc::new(RwLock::new(FunctionsState {
             sender: Some(tx),
             shutdown_tx: Some(shutdown_tx),
             completion_rx: Some(Mutex::new(completion_rx)),
-            query_tx: Some(query_tx),
             start_time,
             caller_name,
             percentiles: percentiles.clone(),
@@ -257,15 +257,7 @@ impl HotpathGuard {
                 let mut name_to_id = HashMap::<&'static str, u32>::new();
 
                 loop {
-                    select! {
-                        recv(rx) -> result => {
-                            match result {
-                                Ok(measurement) => {
-                                    process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
-                                }
-                                Err(_) => break,
-                            }
-                        }
+                    select_biased! {
                         recv(shutdown_rx) -> _ => {
                             while let Ok(measurement) = rx.try_recv() {
                                 process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
@@ -391,6 +383,14 @@ impl HotpathGuard {
                                         }
                                     }
                                 }
+                            }
+                        }
+                        recv(rx) -> result => {
+                            match result {
+                                Ok(measurement) => {
+                                    process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
+                                }
+                                Err(_) => break,
                             }
                         }
                     }
