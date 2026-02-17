@@ -26,7 +26,7 @@ test_all:
 
 # Start the dev server
 server: docs
-    cd crates/hotpath-backend && source .envrc && cargo run --bin server
+    cd crates/hotpath-backend && cargo run --bin server
 
 # Build mdbook docs and clean .html links
 docs:

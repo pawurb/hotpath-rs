@@ -9,7 +9,7 @@ Try the TUI demo via SSH - no installation required:
 ssh demo.hotpath.rs
 ```
 
-Explore the full documentation at [hotpath.rs](https://hotpath.rs).
+Explore the full documentation at [hotpath.rs](https://hotpath.rs). See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 You can use it to produce one-off performance (timing or memory) reports:
 
