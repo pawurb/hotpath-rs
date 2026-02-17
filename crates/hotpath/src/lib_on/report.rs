@@ -26,7 +26,7 @@ pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state.stats_map.read().ok().map(|stats| stats.clone())
+            Some(state.stats_map.read().clone())
         })
         .map(|stats| {
             let mut channels: Vec<ChannelEntry> = stats.into_values().collect();
@@ -116,7 +116,7 @@ pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state.stats_map.read().ok().map(|stats| stats.clone())
+            Some(state.stats_map.read().clone())
         })
         .map(|stats| {
             let mut streams: Vec<StreamStats> = stats.into_values().collect();

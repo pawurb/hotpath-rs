@@ -2,7 +2,9 @@
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use parking_lot::RwLock;
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -181,18 +183,16 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
                         recv(event_rx) -> result => {
                             match result {
                                 Ok(event) => {
-                                    if let Ok(mut shared) = stats_map_clone.write() {
-                                        process_stream_event(&mut shared, event);
-                                    }
+                                    let mut shared = stats_map_clone.write();
+                                    process_stream_event(&mut shared, event);
                                 }
                                 Err(_) => break,
                             }
                         }
                         recv(shutdown_rx) -> _ => {
-                            if let Ok(mut shared) = stats_map_clone.write() {
-                                while let Ok(event) = event_rx.try_recv() {
-                                    process_stream_event(&mut shared, event);
-                                }
+                            let mut shared = stats_map_clone.write();
+                            while let Ok(event) = event_rx.try_recv() {
+                                process_stream_event(&mut shared, event);
                             }
                             break;
                         }
@@ -318,7 +318,7 @@ macro_rules! stream {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn get_all_stream_stats() -> HashMap<u32, StreamStats> {
     if let Some(state) = STREAMS_STATE.get() {
-        state.stats_map.read().unwrap().clone()
+        state.stats_map.read().clone()
     } else {
         HashMap::new()
     }
@@ -374,7 +374,7 @@ pub fn get_streams_json() -> JsonStreamsList {
 pub fn get_stream_logs(stream_id: &str) -> Option<StreamLogs> {
     let id = stream_id.parse::<u32>().ok()?;
     let state = STREAMS_STATE.get()?;
-    let streams_data = state.stats_map.read().unwrap();
+    let streams_data = state.stats_map.read();
     streams_data.get(&id).map(|stream_stats| {
         let mut yielded_logs: Vec<DataFlowLogEntry> = stream_stats.logs.iter().cloned().collect();
 

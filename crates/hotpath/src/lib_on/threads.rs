@@ -2,7 +2,9 @@
 //! CPU usage statistics for all threads in the current process.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
+
+use parking_lot::RwLock;
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]
@@ -96,10 +98,7 @@ fn collector_loop(state: ThreadsStateRef, interval: Duration) {
     loop {
         match collector::collect_thread_metrics() {
             Ok(raw_metrics) => {
-                let mut state_guard = match state.write() {
-                    Ok(guard) => guard,
-                    Err(_) => continue,
-                };
+                let mut state_guard = state.write();
                 let elapsed_secs = state_guard.last_sample_time.elapsed().as_secs_f64();
 
                 // Calculate CPU percentages by comparing with previous sample
@@ -177,64 +176,61 @@ pub fn get_threads_json() -> JsonThreadsList {
     let rss_bytes = get_rss_bytes();
 
     if let Some(state) = THREADS_STATE.get() {
-        if let Ok(state_guard) = state.read() {
-            let current_elapsed_ns = state_guard.start_time.elapsed().as_nanos() as u64;
+        let state_guard = state.read();
+        let current_elapsed_ns = state_guard.start_time.elapsed().as_nanos() as u64;
 
-            let (total_alloc, total_dealloc) =
-                state_guard
-                    .current_metrics
-                    .iter()
-                    .fold((0u64, 0u64), |(alloc, dealloc), m| {
-                        (
-                            alloc + m.alloc_bytes.unwrap_or(0),
-                            dealloc + m.dealloc_bytes.unwrap_or(0),
-                        )
-                    });
-
-            let has_alloc_data = state_guard
+        let (total_alloc, total_dealloc) =
+            state_guard
                 .current_metrics
                 .iter()
-                .any(|m| m.alloc_bytes.is_some());
+                .fold((0u64, 0u64), |(alloc, dealloc), m| {
+                    (
+                        alloc + m.alloc_bytes.unwrap_or(0),
+                        dealloc + m.dealloc_bytes.unwrap_or(0),
+                    )
+                });
 
-            let (total_alloc_bytes, total_dealloc_bytes, alloc_dealloc_diff) = if has_alloc_data {
-                let diff = total_alloc as i64 - total_dealloc as i64;
-                (
-                    Some(format_bytes(total_alloc)),
-                    Some(format_bytes(total_dealloc)),
-                    Some(format_bytes_signed(diff)),
-                )
-            } else {
-                (None, None, None)
-            };
+        let has_alloc_data = state_guard
+            .current_metrics
+            .iter()
+            .any(|m| m.alloc_bytes.is_some());
 
-            let mut sorted_metrics: Vec<&ThreadMetrics> =
-                state_guard.current_metrics.iter().collect();
+        let (total_alloc_bytes, total_dealloc_bytes, alloc_dealloc_diff) = if has_alloc_data {
+            let diff = total_alloc as i64 - total_dealloc as i64;
+            (
+                Some(format_bytes(total_alloc)),
+                Some(format_bytes(total_dealloc)),
+                Some(format_bytes_signed(diff)),
+            )
+        } else {
+            (None, None, None)
+        };
 
-            #[cfg(feature = "hotpath-alloc")]
-            sorted_metrics
-                .sort_by(|a, b| b.alloc_bytes.unwrap_or(0).cmp(&a.alloc_bytes.unwrap_or(0)));
+        let mut sorted_metrics: Vec<&ThreadMetrics> = state_guard.current_metrics.iter().collect();
 
-            #[cfg(not(feature = "hotpath-alloc"))]
-            sorted_metrics.sort_by(|a, b| {
-                b.cpu_percent_max
-                    .unwrap_or(0.0)
-                    .total_cmp(&a.cpu_percent_max.unwrap_or(0.0))
-            });
+        #[cfg(feature = "hotpath-alloc")]
+        sorted_metrics.sort_by(|a, b| b.alloc_bytes.unwrap_or(0).cmp(&a.alloc_bytes.unwrap_or(0)));
 
-            return JsonThreadsList {
-                current_elapsed_ns,
-                sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
-                data: sorted_metrics
-                    .iter()
-                    .map(|m| JsonThreadEntry::from(*m))
-                    .collect(),
-                thread_count: state_guard.current_metrics.len(),
-                rss_bytes: rss_bytes.map(format_bytes),
-                total_alloc_bytes,
-                total_dealloc_bytes,
-                alloc_dealloc_diff,
-            };
-        }
+        #[cfg(not(feature = "hotpath-alloc"))]
+        sorted_metrics.sort_by(|a, b| {
+            b.cpu_percent_max
+                .unwrap_or(0.0)
+                .total_cmp(&a.cpu_percent_max.unwrap_or(0.0))
+        });
+
+        return JsonThreadsList {
+            current_elapsed_ns,
+            sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
+            data: sorted_metrics
+                .iter()
+                .map(|m| JsonThreadEntry::from(*m))
+                .collect(),
+            thread_count: state_guard.current_metrics.len(),
+            rss_bytes: rss_bytes.map(format_bytes),
+            total_alloc_bytes,
+            total_dealloc_bytes,
+            alloc_dealloc_diff,
+        };
     }
 
     JsonThreadsList {

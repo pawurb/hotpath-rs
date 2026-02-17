@@ -2,7 +2,9 @@
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use parking_lot::RwLock;
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -335,18 +337,16 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
                         recv(event_rx) -> result => {
                             match result {
                                 Ok(event) => {
-                                    if let Ok(mut shared) = stats_map_clone.write() {
-                                        process_channel_event(&mut shared, event);
-                                    }
+                                    let mut shared = stats_map_clone.write();
+                                    process_channel_event(&mut shared, event);
                                 }
                                 Err(_) => break,
                             }
                         }
                         recv(shutdown_rx) -> _ => {
-                            if let Ok(mut shared) = stats_map_clone.write() {
-                                while let Ok(event) = event_rx.try_recv() {
-                                    process_channel_event(&mut shared, event);
-                                }
+                            let mut shared = stats_map_clone.write();
+                            while let Ok(event) = event_rx.try_recv() {
+                                process_channel_event(&mut shared, event);
                             }
                             break;
                         }
@@ -611,7 +611,7 @@ macro_rules! channel {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn get_all_channel_stats() -> HashMap<u32, ChannelEntry> {
     if let Some(state) = CHANNELS_STATE.get() {
-        state.stats_map.read().unwrap().clone()
+        state.stats_map.read().clone()
     } else {
         HashMap::new()
     }
@@ -667,7 +667,7 @@ pub fn get_channels_json() -> JsonChannelsList {
 pub fn get_channel_logs(channel_id: &str) -> Option<ChannelLogs> {
     let id = channel_id.parse::<u32>().ok()?;
     let state = CHANNELS_STATE.get()?;
-    let channels_data = state.stats_map.read().unwrap();
+    let channels_data = state.stats_map.read();
     channels_data.get(&id).map(|channel_stats| ChannelLogs {
         id: channel_id.to_string(),
         sent_logs: channel_stats.sent_logs.iter().rev().cloned().collect(),
