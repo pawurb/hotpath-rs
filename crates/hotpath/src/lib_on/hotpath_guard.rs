@@ -1,5 +1,5 @@
 use arc_swap::ArcSwapOption;
-use crossbeam_channel::{bounded, select, unbounded};
+use crossbeam_channel::{bounded, select_biased, unbounded};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
@@ -282,15 +282,7 @@ impl HotpathGuard {
                 let mut name_to_id = HashMap::<&'static str, u32>::new();
 
                 loop {
-                    select! {
-                        recv(rx) -> result => {
-                            match result {
-                                Ok(measurement) => {
-                                    process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
-                                }
-                                Err(_) => break,
-                            }
-                        }
+                    select_biased! {
                         recv(shutdown_rx) -> _ => {
                             while let Ok(measurement) = rx.try_recv() {
                                 process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
@@ -416,6 +408,14 @@ impl HotpathGuard {
                                         }
                                     }
                                 }
+                            }
+                        }
+                        recv(rx) -> result => {
+                            match result {
+                                Ok(measurement) => {
+                                    process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
+                                }
+                                Err(_) => break,
                             }
                         }
                     }
