@@ -9,7 +9,9 @@
 
 Project maintains a complete copy of `hotpath` -> `hotpath-meta` and `hotpath-macros` -> `hotpath-macros-meta` crates to enable profiling the library itself. A full copy is needed because a crate cannot depend on itself. Extracting shared core is also impractical, because `hotpath` uses a custom instrumentation logic (like `#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]` calls). 
 
-All changes applied to `hotpath` and `hotpath-macros` should be mirrored to their meta versions. It's a significant development overhead but it allows to benchmark the library using itself. Let me know if you can think of a better way to handle it.
+All changes made to `hotpath` and `hotpath-macros` must also be mirrored in their corresponding `-meta` crates. This adds some maintenance overhead, but it allows to benchmark the library using itself, which is an invaluable source of performance data and optimization insights.
+
+If you have ideas for a cleaner or less repetitive way to achieve self-profiling without full crate duplication, I'm open to suggestions.
 
 ### Benchmarking `hotpath` 
 
@@ -27,7 +29,9 @@ just compare main feature_branch
 
 Benchmarks two versions of the library (branch names or commit SHAs are supported) and saves performance reports in `tmp/before.txt` and `tmp/after.txt`. If contributing any performance-related change please include both reports in the PR.
 
-`HOTPATH_TUI_TAB` - set values from 1 to 6, to open a different TUI tab and execute different codepaths in the benchmark.
+`HOTPATH_TUI_TAB` - set values from 1 to 6, to open a different TUI tab and execute different codepaths in the benchmark (default `1`)
+`HOTPATH_BENCH_RELEASE` - set to `true` to run benchmarks with a `release` profile (default `false`)
+`HOTPATH_TUI_REFRESH_INTERVAL_MS` - configure data refresh interval, lower values will produce more data (default `10`)
 
 ## Running documentation server
 
