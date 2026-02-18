@@ -19,7 +19,8 @@ use std::io::Write;
 use crate::json::JsonFunctionsList;
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{
-    resolve_output_path, FunctionLog, FunctionLogsList, MetricsProvider, OutputDestination,
+    format_duration, resolve_output_path, FunctionLog, FunctionLogsList, MetricsProvider,
+    OutputDestination,
 };
 use crate::output_on::{display_no_measurements_message_to, display_table_to};
 
@@ -423,6 +424,8 @@ impl HotpathGuard {
             crate::functions::alloc::core::init_thread_alloc_tracking();
         }
 
+        crate::cpu_baseline::init_cpu_baseline();
+
         let wrapper_guard = MeasurementGuard::build(caller_name, true, false);
 
         #[cfg(feature = "hotpath-alloc-meta")]
@@ -464,6 +467,8 @@ impl Drop for HotpathGuard {
         drop(wrapper_guard);
 
         flush_batch();
+
+        let cpu_baseline = crate::cpu_baseline::shutdown_cpu_baseline();
 
         let state: Arc<RwLock<FunctionsState>> = Arc::clone(&self.state);
         let elapsed = self.start_time.elapsed();
@@ -634,6 +639,13 @@ impl Drop for HotpathGuard {
                 }
             }
 
+            if let Some(ref baseline) = cpu_baseline {
+                let baseline_json = serde_json::json!({
+                    "avg": format_duration(baseline.avg_ns),
+                });
+                json_map.insert("cpu_baseline".to_string(), baseline_json);
+            }
+
             let combined = serde_json::Value::Object(json_map);
             match format {
                 Format::Json => {
@@ -777,6 +789,16 @@ impl Drop for HotpathGuard {
                             report::report_threads_table(elapsed, &mut writer, self.threads_limit);
                         }
                     }
+                }
+            }
+
+            if matches!(format, Format::Table) {
+                if let Some(ref baseline) = cpu_baseline {
+                    let _ = writeln!(
+                        writer,
+                        "[hotpath] cpu baseline: {}",
+                        format_duration(baseline.avg_ns),
+                    );
                 }
             }
         }

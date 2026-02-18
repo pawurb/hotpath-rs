@@ -13,6 +13,7 @@ use std::time::Instant;
 pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
 
 pub mod channels;
+pub mod cpu_baseline;
 pub mod data_flow;
 pub mod debug;
 pub mod futures;
