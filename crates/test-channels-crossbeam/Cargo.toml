@@ -13,5 +13,5 @@ crossbeam-channel = "0.5"
 hotpath = ["hotpath/hotpath"]
 
 [dev-dependencies]
-ureq = { version = "2", features = ["json"] }
+ureq = { version = "3", features = ["json"] }
 serde_json = "1.0"
