@@ -21,6 +21,14 @@ pub struct TimingStatsData<'a> {
     pub limit: usize,
 }
 
+struct AllocComputed<'a> {
+    stats: &'a FunctionStats,
+    total_bytes: u64,
+    total_count: u64,
+    avg_bytes: u64,
+    avg_count: u64,
+}
+
 impl<'a> MetricsProvider<'a> for StatsData<'a> {
     fn new(
         stats: &'a HashMap<u32, FunctionStats>,
@@ -67,18 +75,54 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
 
     fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)> {
         let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
-        let mut entries: Vec<_> = self
+
+        let bytes_cache: HashMap<u32, u64> = self
+            .stats
+            .iter()
+            .filter(|(_, s)| s.has_data)
+            .map(|(&id, s)| (id, s.total_bytes()))
+            .collect();
+
+        let count_cache: HashMap<u32, u64> = self
+            .stats
+            .iter()
+            .filter(|(_, s)| s.has_data)
+            .map(|(&id, s)| (id, s.total_count()))
+            .collect();
+
+        let mut entries: Vec<AllocComputed> = self
             .stats
             .values()
             .filter(|s| {
                 s.has_data && !(s.wrapper && s.cross_thread) && !(exclude_wrapper && s.wrapper)
             })
+            .map(|s| {
+                let total_bytes = bytes_cache.get(&s.id).copied().unwrap_or(0);
+                let total_count = count_cache.get(&s.id).copied().unwrap_or(0);
+                let avg_bytes = if s.count > 0 {
+                    total_bytes / s.count
+                } else {
+                    0
+                };
+                let avg_count = if s.count > 0 {
+                    total_count / s.count
+                } else {
+                    0
+                };
+                AllocComputed {
+                    stats: s,
+                    total_bytes,
+                    total_count,
+                    avg_bytes,
+                    avg_count,
+                }
+            })
             .collect();
 
         entries.sort_by(|a, b| {
-            b.total_bytes()
-                .cmp(&a.total_bytes())
-                .then_with(|| a.name.cmp(b.name))
+            b.total_bytes
+                .cmp(&a.total_bytes)
+                .then_with(|| a.stats.name.cmp(b.stats.name))
         });
 
         let entries = if self.limit > 0 {
@@ -91,39 +135,46 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             self.stats
                 .values()
                 .filter(|s| !s.wrapper && s.has_data)
-                .map(|s| s.total_bytes())
+                .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
                 .sum()
         } else if *super::guard::ALLOC_SELF {
             self.stats
                 .values()
                 .filter(|s| s.has_data)
-                .map(|s| s.total_bytes())
+                .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
                 .sum()
         } else {
             let has_cross_thread_wrapper = self.stats.values().any(|s| s.wrapper && s.cross_thread);
 
             if has_cross_thread_wrapper {
-                entries
-                    .iter()
-                    .filter(|s| !s.wrapper)
-                    .map(|s| s.total_bytes())
+                self.stats
+                    .values()
+                    .filter(|s| !s.wrapper && s.has_data)
+                    .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
                     .sum()
             } else {
                 let wrapper_total_bytes = self
                     .stats
                     .values()
-                    .find(|s| s.wrapper)
-                    .map(|s| s.total_bytes());
+                    .find(|s| s.wrapper && s.has_data)
+                    .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0));
 
-                wrapper_total_bytes.unwrap_or_else(|| entries.iter().map(|s| s.total_bytes()).sum())
+                wrapper_total_bytes.unwrap_or_else(|| {
+                    self.stats
+                        .values()
+                        .filter(|s| s.has_data)
+                        .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
+                        .sum()
+                })
             }
         };
 
         entries
             .into_iter()
-            .map(|stats| {
+            .map(|entry| {
+                let stats = entry.stats;
                 let percentage = if grand_total_bytes > 0 {
-                    (stats.total_bytes() as f64 / grand_total_bytes as f64) * 100.0
+                    (entry.total_bytes as f64 / grand_total_bytes as f64) * 100.0
                 } else {
                     0.0
                 };
@@ -133,7 +184,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                 } else {
                     vec![
                         MetricType::CallsCount(stats.count),
-                        MetricType::Alloc(stats.avg_bytes(), stats.avg_count()),
+                        MetricType::Alloc(entry.avg_bytes, entry.avg_count),
                     ]
                 };
 
@@ -151,7 +202,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                     metrics.push(MetricType::Unsupported);
                     metrics.push(MetricType::Unsupported);
                 } else {
-                    metrics.push(MetricType::Alloc(stats.total_bytes(), stats.total_count()));
+                    metrics.push(MetricType::Alloc(entry.total_bytes, entry.total_count));
                     metrics.push(MetricType::Percentage((percentage * 100.0) as u64));
                 }
 
