@@ -31,7 +31,7 @@ pub mod tests {
             "text-stream",
             "repeat-stream",
             "Stream example completed!",
-            "Streams:",
+            "Stream yield statistics",
             "5", // number-stream yielded 5 items
             "4", // text-stream yielded 4 items
             "3", // repeat-stream yielded 3 items
@@ -186,7 +186,7 @@ pub mod tests {
         );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let expected_content = ["Stream Statistics", "timeout-stream"];
+        let expected_content = ["[hotpath]", "| streams", "timeout-stream"];
 
         for expected in expected_content {
             assert!(
@@ -227,10 +227,10 @@ pub mod tests {
         );
 
         let not_expected = [
-            "Stream Statistics",
+            "[hotpath]",
             "number-stream",
             "text-stream",
-            "Streams:",
+            "Stream yield statistics",
         ];
 
         for not_exp in not_expected {

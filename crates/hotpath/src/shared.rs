@@ -22,6 +22,17 @@ impl Section {
         ]
     }
 
+    pub fn short_name(&self) -> &'static str {
+        match self {
+            Section::FunctionsTiming => "timing",
+            Section::FunctionsAlloc => "alloc",
+            Section::Channels => "channels",
+            Section::Streams => "streams",
+            Section::Futures => "futures",
+            Section::Threads => "threads",
+        }
+    }
+
     pub fn from_name(s: &str) -> Option<Section> {
         match s.trim() {
             "functions-timing" => Some(Section::FunctionsTiming),

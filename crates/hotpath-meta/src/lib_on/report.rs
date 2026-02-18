@@ -9,6 +9,7 @@ use crate::json::{
     JsonStreamsList,
 };
 use crate::output::format_bytes;
+use crate::output_on::write_section_header;
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
 
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
@@ -39,17 +40,16 @@ pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
 pub(crate) fn report_channels_table(
     channels: &[ChannelEntry],
     total_count: usize,
-    elapsed: std::time::Duration,
     writer: &mut dyn Write,
 ) {
     if channels.is_empty() {
         return;
     }
 
-    let _ = writeln!(
+    write_section_header(
         writer,
-        "\n=== Channel Statistics (runtime: {:.2}s) ===",
-        elapsed.as_secs_f64()
+        "channels",
+        "Channel throughput and queue statistics.",
     );
 
     let mut table = Table::new();
@@ -82,13 +82,12 @@ pub(crate) fn report_channels_table(
         ]));
     }
 
-    let header = if channels.len() < total_count {
-        format!("\nChannels ({}/{}):", channels.len(), total_count)
-    } else {
-        "\nChannels:".to_string()
-    };
-    let _ = writeln!(writer, "{header}");
+    if channels.len() < total_count {
+        let _ = write!(writer, " ({}/{})", channels.len(), total_count);
+    }
+    let _ = writeln!(writer);
     let _ = table.print(writer);
+    let _ = writeln!(writer);
 }
 
 pub(crate) fn collect_channels_json(
@@ -129,18 +128,13 @@ pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
 pub(crate) fn report_streams_table(
     streams: &[StreamStats],
     total_count: usize,
-    elapsed: std::time::Duration,
     writer: &mut dyn Write,
 ) {
     if streams.is_empty() {
         return;
     }
 
-    let _ = writeln!(
-        writer,
-        "\n=== Stream Statistics (runtime: {:.2}s) ===",
-        elapsed.as_secs_f64()
-    );
+    write_section_header(writer, "streams", "Stream yield statistics.");
 
     let mut table = Table::new();
     table.add_row(Row::new(vec![
@@ -162,13 +156,12 @@ pub(crate) fn report_streams_table(
         ]));
     }
 
-    let header = if streams.len() < total_count {
-        format!("\nStreams ({}/{}):", streams.len(), total_count)
-    } else {
-        "\nStreams:".to_string()
-    };
-    let _ = writeln!(writer, "{header}");
+    if streams.len() < total_count {
+        let _ = write!(writer, " ({}/{})", streams.len(), total_count);
+    }
+    let _ = writeln!(writer);
     let _ = table.print(writer);
+    let _ = writeln!(writer);
 }
 
 pub(crate) fn collect_streams_json(
@@ -209,18 +202,13 @@ pub(crate) fn shutdown_futures() -> Vec<FutureEntry> {
 pub(crate) fn report_futures_table(
     futures: &[FutureEntry],
     total_count: usize,
-    elapsed: std::time::Duration,
     writer: &mut dyn Write,
 ) {
     if futures.is_empty() {
         return;
     }
 
-    let _ = writeln!(
-        writer,
-        "\n=== Future Statistics (runtime: {:.2}s) ===",
-        elapsed.as_secs_f64()
-    );
+    write_section_header(writer, "futures", "Future poll and lifecycle statistics.");
 
     let mut table = Table::new();
     table.add_row(Row::new(vec![
@@ -238,13 +226,12 @@ pub(crate) fn report_futures_table(
         ]));
     }
 
-    let header = if futures.len() < total_count {
-        format!("\nFutures ({}/{}):", futures.len(), total_count)
-    } else {
-        "\nFutures:".to_string()
-    };
-    let _ = writeln!(writer, "{header}");
+    if futures.len() < total_count {
+        let _ = write!(writer, " ({}/{})", futures.len(), total_count);
+    }
+    let _ = writeln!(writer);
     let _ = table.print(writer);
+    let _ = writeln!(writer);
 }
 
 pub(crate) fn collect_futures_json(
@@ -258,11 +245,7 @@ pub(crate) fn collect_futures_json(
 }
 
 #[cfg(feature = "threads")]
-pub(crate) fn report_threads_table(
-    elapsed: std::time::Duration,
-    writer: &mut dyn Write,
-    limit: usize,
-) {
+pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
     let mut threads_json = crate::threads::get_threads_json();
 
     if threads_json.data.is_empty() {
@@ -274,11 +257,7 @@ pub(crate) fn report_threads_table(
         threads_json.data.truncate(limit);
     }
 
-    let _ = writeln!(
-        writer,
-        "\n=== Thread Statistics (runtime: {:.2}s) ===",
-        elapsed.as_secs_f64()
-    );
+    write_section_header(writer, "threads", "Thread CPU and memory statistics.");
 
     let has_alloc = threads_json.data.iter().any(|t| t.alloc_bytes.is_some());
 
@@ -320,39 +299,31 @@ pub(crate) fn report_threads_table(
         table.add_row(Row::new(row));
     }
 
-    let mut summary_parts = Vec::new();
+    let mut info_parts = Vec::new();
     if let Some(rss) = &threads_json.rss_bytes {
-        summary_parts.push(format!("RSS: {}", rss));
+        info_parts.push(format!("RSS: {}", rss));
     }
     if let Some(alloc) = &threads_json.total_alloc_bytes {
-        summary_parts.push(format!("Alloc: {}", alloc));
+        info_parts.push(format!("Alloc: {}", alloc));
     }
     if let Some(dealloc) = &threads_json.total_dealloc_bytes {
-        summary_parts.push(format!("Dealloc: {}", dealloc));
+        info_parts.push(format!("Dealloc: {}", dealloc));
     }
     if let Some(diff) = &threads_json.alloc_dealloc_diff {
-        summary_parts.push(format!("Diff: {}", diff));
+        info_parts.push(format!("Diff: {}", diff));
     }
 
-    let summary = if summary_parts.is_empty() {
-        String::new()
-    } else {
-        format!(", {}", summary_parts.join(", "))
-    };
-
     let displayed = threads_json.data.len();
-    let truncation = if displayed < total_count {
-        format!(", {}/{} shown", displayed, total_count)
-    } else {
-        String::new()
-    };
+    if displayed < total_count {
+        info_parts.push(format!("{}/{}", displayed, total_count));
+    }
 
-    let _ = writeln!(
-        writer,
-        "\nThreads ({}{}{}):",
-        threads_json.thread_count, summary, truncation
-    );
+    if !info_parts.is_empty() {
+        let _ = write!(writer, " ({})", info_parts.join(", "));
+    }
+    let _ = writeln!(writer);
     let _ = table.print(writer);
+    let _ = writeln!(writer);
 }
 
 #[cfg(feature = "threads")]

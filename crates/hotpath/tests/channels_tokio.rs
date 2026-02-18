@@ -273,7 +273,7 @@ pub mod tests {
         );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let expected_content = ["Channel Statistics", "timeout-channel"];
+        let expected_content = ["[hotpath]", "| channels", "timeout-channel"];
 
         for expected in expected_content {
             assert!(
@@ -400,10 +400,10 @@ pub mod tests {
         );
 
         let not_expected = [
-            "Channel Statistics",
+            "[hotpath]",
             "bounded-channel",
             "hello-there",
-            "Channels:",
+            "Channel throughput",
         ];
 
         for not_exp in not_expected {

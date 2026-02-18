@@ -123,7 +123,12 @@ pub mod tests {
         );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let expected_content = ["Thread Statistics", "Threads (", "RSS:"];
+        let expected_content = [
+            "[hotpath]",
+            "| threads",
+            "Thread CPU and memory statistics.",
+            "RSS:",
+        ];
 
         for expected in expected_content {
             assert!(

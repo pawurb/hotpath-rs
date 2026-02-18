@@ -222,7 +222,11 @@ pub mod tests {
         );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let expected_content = ["Future Statistics", "guard_timeout_futures::timeout_worker"];
+        let expected_content = [
+            "[hotpath]",
+            "| futures",
+            "guard_timeout_futures::timeout_worker",
+        ];
 
         for expected in expected_content {
             assert!(
@@ -258,8 +262,8 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         let not_expected = [
-            "Future Statistics",
-            "Futures:",
+            "[hotpath]",
+            "Future poll",
             "attributed_no_log",
             "attributed_with_log",
         ];

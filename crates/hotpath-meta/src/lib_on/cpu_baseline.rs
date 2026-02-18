@@ -43,7 +43,7 @@ pub fn init_cpu_baseline() {
         let (completion_tx, completion_rx) = bounded::<CpuBaselineResult>(1);
 
         std::thread::Builder::new()
-            .name("hp-cpu-baseline".into())
+            .name("hp-meta-cpu-baseline".into())
             .spawn(move || {
                 let mut total_duration = Duration::ZERO;
                 let mut count: u128 = 0;

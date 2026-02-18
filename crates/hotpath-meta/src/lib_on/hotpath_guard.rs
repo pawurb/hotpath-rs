@@ -22,7 +22,7 @@ use crate::output::{
     format_duration, resolve_output_path, FunctionLog, FunctionLogsList, MetricsProvider,
     OutputDestination,
 };
-use crate::output_on::{display_no_measurements_message_to, display_table_to};
+use crate::output_on::{display_no_measurements_message_to, display_table_to, write_report_header};
 
 use crate::functions::{FunctionsQuery, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
 use crate::lib_on::report;
@@ -526,7 +526,6 @@ impl Drop for HotpathGuard {
             }
         };
 
-        let is_file = matches!(output, OutputDestination::File(_));
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
 
         if is_json {
@@ -665,6 +664,11 @@ impl Drop for HotpathGuard {
                 _ => {}
             }
         } else {
+            let baseline_ns = cpu_baseline.as_ref().map(|b| b.avg_ns);
+            if matches!(format, Format::Table) {
+                write_report_header(&mut writer, elapsed, &self.sections, baseline_ns);
+            }
+
             for section in &self.sections {
                 match section {
                     Section::FunctionsTiming => {
@@ -699,10 +703,9 @@ impl Drop for HotpathGuard {
                                                 &mut writer,
                                                 total_elapsed,
                                                 state_guard.caller_name,
-                                                !is_file,
                                             );
                                         } else {
-                                            display_table_to(&mut writer, &provider, !is_file);
+                                            display_table_to(&mut writer, &provider);
                                         }
                                     }
                                     Format::None => {}
@@ -732,10 +735,9 @@ impl Drop for HotpathGuard {
                                                         &mut writer,
                                                         total_elapsed,
                                                         state_guard.caller_name,
-                                                        !is_file,
                                                     );
                                                 } else {
-                                                    display_table_to(&mut writer, &provider, !is_file);
+                                                    display_table_to(&mut writer, &provider);
                                                 }
                                             }
                                             Format::None => {}
@@ -753,7 +755,6 @@ impl Drop for HotpathGuard {
                             report::report_channels_table(
                                 &channels_data[..limit],
                                 total,
-                                elapsed,
                                 &mut writer,
                             );
                         }
@@ -765,7 +766,6 @@ impl Drop for HotpathGuard {
                             report::report_streams_table(
                                 &streams_data[..limit],
                                 total,
-                                elapsed,
                                 &mut writer,
                             );
                         }
@@ -777,7 +777,6 @@ impl Drop for HotpathGuard {
                             report::report_futures_table(
                                 &futures_data[..limit],
                                 total,
-                                elapsed,
                                 &mut writer,
                             );
                         }
@@ -786,19 +785,9 @@ impl Drop for HotpathGuard {
                     {
                         #[cfg(feature = "threads")]
                         if matches!(format, Format::Table) {
-                            report::report_threads_table(elapsed, &mut writer, self.threads_limit);
+                            report::report_threads_table(&mut writer, self.threads_limit);
                         }
                     }
-                }
-            }
-
-            if matches!(format, Format::Table) {
-                if let Some(ref baseline) = cpu_baseline {
-                    let _ = writeln!(
-                        writer,
-                        "[hotpath] cpu baseline: {}",
-                        format_duration(baseline.avg_ns),
-                    );
                 }
             }
         }
