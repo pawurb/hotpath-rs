@@ -1,3 +1,4 @@
+use std::mem::MaybeUninit;
 use std::sync::{LazyLock, OnceLock};
 
 use crossbeam_channel::{bounded, Receiver, Sender};
@@ -19,7 +20,7 @@ static CPU_BASELINE_HANDLE: OnceLock<CpuBaselineHandle> = OnceLock::new();
 
 #[cfg(unix)]
 fn thread_cpu_time_ns() -> Option<u64> {
-    let mut ts = std::mem::MaybeUninit::<libc::timespec>::uninit();
+    let mut ts = MaybeUninit::<libc::timespec>::uninit();
     let ret = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, ts.as_mut_ptr()) };
     if ret != 0 {
         return None;
@@ -65,6 +66,10 @@ pub fn init_cpu_baseline() {
                 let sample_interval = std::time::Duration::from_millis(50);
 
                 loop {
+                    if shutdown_rx.try_recv().is_ok() {
+                        break;
+                    }
+
                     let Some(start) = thread_cpu_time_ns() else {
                         continue;
                     };

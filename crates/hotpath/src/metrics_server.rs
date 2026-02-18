@@ -26,8 +26,6 @@ pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
         .unwrap_or(false)
 });
 
-pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
-
 const TOKIO_RUNTIME_HINT: &str =
     "Tokio runtime metrics not available - use hotpath::tokio_runtime!() to start collection";
 

@@ -1,14 +1,11 @@
 //! Function profiling module - measures execution time and memory allocations per function.
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
-
-use arc_swap::ArcSwapOption;
-use crossbeam_channel::{bounded, Sender};
+use std::sync::{LazyLock, OnceLock};
 
 use crate::json::JsonFunctionsList;
 use crate::lib_on::START_TIME;
-use crate::metrics_server::RECV_TIMEOUT_MS;
+use crate::output::MetricsProvider;
 use crate::FunctionLogsList;
 
 cfg_if::cfg_if! {
@@ -108,29 +105,7 @@ where
     result
 }
 
-pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<FunctionsState>>> =
-    OnceLock::new();
-
-pub(crate) static FUNCTIONS_QUERY_TX: OnceLock<Sender<FunctionsQuery>> = OnceLock::new();
-
-/// Query request sent from TUI HTTP server to profiler worker thread
-#[derive(Debug)]
-pub(crate) enum FunctionsQuery {
-    /// Request timing metrics snapshot
-    Timing(Sender<JsonFunctionsList>),
-    /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
-    Alloc(Sender<Option<JsonFunctionsList>>),
-    /// Request timing function logs for a specific function by ID
-    LogsTiming {
-        function_id: u32,
-        response_tx: Sender<Option<FunctionLogsList>>,
-    },
-    /// Request allocation function logs for a specific function by ID
-    LogsAlloc {
-        function_id: u32,
-        response_tx: Sender<Option<FunctionLogsList>>,
-    },
-}
+pub(crate) static FUNCTIONS_STATE: OnceLock<FunctionsState> = OnceLock::new();
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn get_current_elapsed_ns() -> u64 {
@@ -140,47 +115,96 @@ fn get_current_elapsed_ns() -> u64 {
         .unwrap_or(0)
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-fn query_functions_state<T, F>(make_query: F) -> Option<T>
-where
-    F: FnOnce(Sender<T>) -> FunctionsQuery,
-{
-    let query_tx = FUNCTIONS_QUERY_TX.get()?;
-    let (response_tx, response_rx) = bounded::<T>(1);
-    query_tx.send(make_query(response_tx)).ok()?;
-    response_rx
-        .recv_timeout(Duration::from_millis(RECV_TIMEOUT_MS))
-        .ok()
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-alloc")] {
+        use alloc::report::{StatsData, TimingStatsData};
+        use alloc::state::{build_alloc_function_logs, build_alloc_timing_logs};
+    } else {
+        use timing::report::StatsData;
+        use timing::state::build_timing_function_logs;
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
-    if let Some(formatted) = query_functions_state(FunctionsQuery::Timing) {
-        return formatted;
+    let Some(state) = FUNCTIONS_STATE.get() else {
+        return JsonFunctionsList::empty_fallback(get_current_elapsed_ns());
+    };
+    let Ok(stats) = state.stats_map.read() else {
+        return JsonFunctionsList::empty_fallback(get_current_elapsed_ns());
+    };
+    let total_elapsed = state.start_time.elapsed();
+    let current_elapsed_ns = total_elapsed.as_nanos() as u64;
+
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc")] {
+            let provider = TimingStatsData::new(
+                &stats,
+                total_elapsed,
+                state.percentiles.clone(),
+                state.caller_name,
+                state.limit,
+            );
+        } else {
+            let provider = StatsData::new(
+                &stats,
+                total_elapsed,
+                state.percentiles.clone(),
+                state.caller_name,
+                state.limit,
+            );
+        }
     }
 
-    JsonFunctionsList::empty_fallback(get_current_elapsed_ns())
+    JsonFunctionsList::from_provider(&provider, current_elapsed_ns)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsList> {
-    query_functions_state(|response_tx| FunctionsQuery::LogsTiming {
-        function_id,
-        response_tx,
-    })
-    .flatten()
+    let state = FUNCTIONS_STATE.get()?;
+    let stats = state.stats_map.read().ok()?;
+
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc")] {
+            build_alloc_timing_logs(&stats, function_id)
+        } else {
+            build_timing_function_logs(&stats, function_id)
+        }
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
-    query_functions_state(FunctionsQuery::Alloc).flatten()
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc")] {
+            let state = FUNCTIONS_STATE.get()?;
+            let stats = state.stats_map.read().ok()?;
+            let total_elapsed = state.start_time.elapsed();
+            let current_elapsed_ns = total_elapsed.as_nanos() as u64;
+            let provider = StatsData::new(
+                &stats,
+                total_elapsed,
+                state.percentiles.clone(),
+                state.caller_name,
+                state.limit,
+            );
+            Some(JsonFunctionsList::from_provider(&provider, current_elapsed_ns))
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<FunctionLogsList> {
-    query_functions_state(|response_tx| FunctionsQuery::LogsAlloc {
-        function_id,
-        response_tx,
-    })
-    .flatten()
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc")] {
+            let state = FUNCTIONS_STATE.get()?;
+            let stats = state.stats_map.read().ok()?;
+            build_alloc_function_logs(&stats, function_id)
+        } else {
+            let _ = function_id;
+            None
+        }
+    }
 }

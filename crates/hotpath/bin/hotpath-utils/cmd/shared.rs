@@ -9,8 +9,8 @@ use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub enum MetricDiff {
-    CallsCount(u64, u64), // (before, after)
-    DurationNs(u64, u64), // (before, after) - Duration in nanoseconds
+    CallsCount(u64, u64),  // (before, after)
+    DurationNs(u64, u64),  // (before, after) - Duration in nanoseconds
     Alloc(u64, u64),       // (before, after) - Bytes allocated
     AllocSigned(i64, i64), // (before, after) - Signed bytes
     Percentage(u64, u64),  // (before, after)
@@ -777,23 +777,17 @@ mod test {
         assert_eq!(alloc.function_diffs[0].function_name, "fn_a");
     }
 
-    fn make_thread_entry(
-        name: &str,
-        cpu_user: f64,
-        cpu_sys: f64,
-        cpu_total: f64,
-        cpu_percent: f64,
-    ) -> JsonThreadEntry {
+    fn make_thread_entry(name: &str, cpu_percent_max: f64) -> JsonThreadEntry {
         JsonThreadEntry {
             os_tid: 0,
             name: name.to_string(),
             status: "Running".to_string(),
             status_code: "1".to_string(),
-            cpu_user: format!("{:.3} s", cpu_user),
-            cpu_sys: format!("{:.3} s", cpu_sys),
-            cpu_total: format!("{:.3} s", cpu_total),
-            cpu_percent: Some(format!("{:.1}%", cpu_percent)),
-            cpu_percent_max: Some(format!("{:.1}%", cpu_percent)),
+            cpu_user: "0.000 s".to_string(),
+            cpu_sys: "0.000 s".to_string(),
+            cpu_total: "0.000 s".to_string(),
+            cpu_percent: None,
+            cpu_percent_max: Some(format!("{:.1}%", cpu_percent_max)),
             alloc_bytes: None,
             dealloc_bytes: None,
             mem_diff: None,
@@ -817,12 +811,12 @@ mod test {
     #[test]
     fn test_compare_threads_new_removed_unchanged() {
         let before = make_threads_list(vec![
-            make_thread_entry("main", 0.5, 0.1, 0.6, 30.0),
-            make_thread_entry("worker-1", 0.3, 0.05, 0.35, 17.5),
+            make_thread_entry("main", 30.0),
+            make_thread_entry("worker-1", 17.5),
         ]);
         let after = make_threads_list(vec![
-            make_thread_entry("main", 0.7, 0.15, 0.85, 42.5),
-            make_thread_entry("worker-2", 0.2, 0.03, 0.23, 11.5),
+            make_thread_entry("main", 42.5),
+            make_thread_entry("worker-2", 11.5),
         ]);
 
         let comparison = compare_threads(&before, &after);
@@ -867,9 +861,8 @@ mod test {
 
     #[test]
     fn test_compare_reports_with_threads() {
-        let before_threads =
-            make_threads_list(vec![make_thread_entry("main", 0.5, 0.1, 0.6, 30.0)]);
-        let after_threads = make_threads_list(vec![make_thread_entry("main", 0.8, 0.2, 1.0, 50.0)]);
+        let before_threads = make_threads_list(vec![make_thread_entry("main", 30.0)]);
+        let after_threads = make_threads_list(vec![make_thread_entry("main", 50.0)]);
 
         let before_timing = make_metrics(
             vec![make_function_data(

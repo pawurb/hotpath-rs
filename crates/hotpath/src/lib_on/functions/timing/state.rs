@@ -1,9 +1,11 @@
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Sender;
 use hdrhistogram::Histogram;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
+
+use crate::output::{FunctionLog, FunctionLogsList};
 
 const BATCH_SIZE: usize = 64;
 const FLUSH_INTERVAL_MS: u64 = 50;
@@ -34,13 +36,9 @@ impl MeasurementBatch {
         result_log: Option<String>,
     ) {
         if self.sender.is_none() {
-            if let Some(arc_swap) = super::super::FUNCTIONS_STATE.get() {
-                if let Some(state) = arc_swap.load_full() {
-                    if let Ok(state_guard) = state.read() {
-                        self.sender = state_guard.sender.clone();
-                        self.start_time = Some(state_guard.start_time);
-                    }
-                }
+            if let Some(state) = crate::functions::FUNCTIONS_STATE.get() {
+                self.sender = Some(state.sender.clone());
+                self.start_time = Some(state.start_time);
             }
         }
 
@@ -200,9 +198,10 @@ impl FunctionStats {
 }
 
 pub(crate) struct FunctionsState {
-    pub sender: Option<Sender<Measurement>>,
-    pub shutdown_tx: Option<Sender<()>>,
-    pub completion_rx: Option<Mutex<Receiver<HashMap<u32, FunctionStats>>>>,
+    pub sender: Sender<Measurement>,
+    pub stats_map: Arc<RwLock<HashMap<u32, FunctionStats>>>,
+    pub shutdown_tx: Mutex<Option<Sender<()>>>,
+    pub completion_rx: Mutex<Option<crossbeam_channel::Receiver<()>>>,
 
     pub start_time: Instant,
     pub caller_name: &'static str,
@@ -239,8 +238,6 @@ pub(crate) fn process_measurement(
     }
 }
 
-use super::super::FUNCTIONS_STATE;
-
 pub fn send_duration_measurement(
     name: &'static str,
     duration: Duration,
@@ -257,7 +254,7 @@ pub fn send_duration_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    if FUNCTIONS_STATE.get().is_none() {
+    if crate::functions::FUNCTIONS_STATE.get().is_none() {
         return;
     }
 
@@ -266,4 +263,29 @@ pub fn send_duration_measurement_with_log(
             .borrow_mut()
             .add(name, duration, wrapper, tid, result_log);
     });
+}
+
+pub(crate) fn build_timing_function_logs(
+    stats: &HashMap<u32, FunctionStats>,
+    function_id: u32,
+) -> Option<FunctionLogsList> {
+    stats.get(&function_id).map(|stats| {
+        let logs: Vec<FunctionLog> = stats
+            .recent_logs
+            .iter()
+            .rev()
+            .map(|(duration_ns, elapsed, tid, result_log)| FunctionLog {
+                value: Some(*duration_ns),
+                elapsed_nanos: elapsed.as_nanos() as u64,
+                alloc_count: None,
+                tid: *tid,
+                result: result_log.clone(),
+            })
+            .collect();
+        FunctionLogsList {
+            function_name: stats.name.to_string(),
+            logs,
+            count: stats.count as usize,
+        }
+    })
 }

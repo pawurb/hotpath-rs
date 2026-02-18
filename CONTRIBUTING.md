@@ -81,7 +81,6 @@ cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings
 cargo test --lib --features hotpath
 cargo test -p hotpath --bin hotpath --features=tui
 cargo test --features hotpath --test functions -- --nocapture --test-threads=1
-cargo test --example unit_test --features hotpath -- --nocapture --test-threads=1
 cargo run --example basic_std
 cargo test --features hotpath --test streams -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1

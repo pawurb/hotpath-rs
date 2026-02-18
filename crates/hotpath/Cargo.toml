@@ -27,7 +27,6 @@ required-features = ["tui", "hotpath", "hotpath-alloc"]
 default = ["threads"]
 hotpath = [
   "hotpath-macros/hotpath",
-  "dep:arc-swap",
   "dep:cfg-if",
   "dep:clap",
   "dep:colored",
@@ -60,7 +59,6 @@ dev = ["dep:chrono"]
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:chrono", "dep:schemars"]
 
 [dependencies]
-arc-swap = { version = "1.7", optional = true }
 cfg-if = { version = "1.0", optional = true }
 clap = { version = "4.5", features = ["derive"], optional = true }
 colored = { version = "3", optional = true }
