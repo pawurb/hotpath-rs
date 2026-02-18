@@ -1,6 +1,6 @@
 # Function performance profiling: timing and memory metrics
 
-To start profiling function performance you'll only need `#[hotpath::main]` and `#[hotpath::measure]` macros:
+To start profiling functions performance you'll only need `#[hotpath::main]` and `#[hotpath::measure]` macros:
 
 ```rust
 #[hotpath::measure]

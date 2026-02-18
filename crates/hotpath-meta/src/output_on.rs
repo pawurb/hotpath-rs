@@ -33,7 +33,7 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
     let section_names: Vec<&str> = sections.iter().map(|s| s.short_name()).collect();
     let sections_str = section_names.join(", ");
     let baseline_str = cpu_baseline_ns
-        .map(|ns| format!(" (cpu baseline avg: {})", format_duration(ns)))
+        .map(|ns| format!(" (CPU baseline avg: {})", format_duration(ns)))
         .unwrap_or_default();
 
     let _ = writeln!(
@@ -92,10 +92,8 @@ pub(crate) fn display_table_to<W: Write>(
     }
 
     let _ = table.print(writer);
-    let _ = writeln!(writer);
 
     if metrics_provider.has_unsupported_async() {
-        let _ = writeln!(writer);
         let _ = writeln!(
             writer,
             "* alloc profiling for async methods is currently only available for tokio current_thread runtime."
@@ -105,6 +103,8 @@ pub(crate) fn display_table_to<W: Write>(
             "  Please use #[tokio::main(flavor = \"current_thread\")] to enable it."
         );
     }
+
+    let _ = writeln!(writer);
 }
 
 pub(crate) fn display_no_measurements_message_to<W: Write>(
