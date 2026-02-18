@@ -1,5 +1,4 @@
 use std::sync::{LazyLock, OnceLock};
-use std::time::{Duration, Instant};
 
 use crossbeam_channel::{bounded, Receiver, Sender};
 
@@ -17,6 +16,22 @@ static CPU_BASELINE_OFF: LazyLock<bool> = LazyLock::new(|| {
 });
 
 static CPU_BASELINE_HANDLE: OnceLock<CpuBaselineHandle> = OnceLock::new();
+
+#[cfg(unix)]
+fn thread_cpu_time_ns() -> Option<u64> {
+    let mut ts = std::mem::MaybeUninit::<libc::timespec>::uninit();
+    let ret = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, ts.as_mut_ptr()) };
+    if ret != 0 {
+        return None;
+    }
+    let ts = unsafe { ts.assume_init() };
+    Some(ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64)
+}
+
+#[cfg(windows)]
+fn thread_cpu_time_ns() -> Option<u64> {
+    Some(0)
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct CpuBaselineResult {
@@ -45,22 +60,31 @@ pub fn init_cpu_baseline() {
         std::thread::Builder::new()
             .name("hp-meta-cpu-baseline".into())
             .spawn(move || {
-                let mut total_duration = Duration::ZERO;
+                let mut total_ns: u128 = 0;
                 let mut count: u128 = 0;
+                let sample_interval = std::time::Duration::from_millis(50);
 
                 loop {
-                    if shutdown_rx.try_recv().is_ok() {
-                        break;
-                    }
-
-                    let start = Instant::now();
+                    let Some(start) = thread_cpu_time_ns() else {
+                        continue;
+                    };
                     std::hint::black_box(baseline_workload());
-                    total_duration += start.elapsed();
+                    let Some(end) = thread_cpu_time_ns() else {
+                        continue;
+                    };
+
+                    total_ns += (end - start) as u128;
                     count += 1;
+
+                    match shutdown_rx.recv_timeout(sample_interval) {
+                        Ok(()) => break,
+                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                    }
                 }
 
                 if count > 0 {
-                    let avg_ns = (total_duration.as_nanos() / count) as u64;
+                    let avg_ns = (total_ns / count) as u64;
                     let _ = completion_tx.send(CpuBaselineResult { avg_ns });
                 }
             })
