@@ -44,8 +44,7 @@ pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
                 .lock()
                 .ok()
                 .and_then(|mut guard| guard.take())
-                .and_then(|rx| rx.recv().ok());
-            state.stats_map.read().ok().map(|stats| stats.clone())
+                .and_then(|rx| rx.recv().ok())
         })
         .map(|stats| {
             let mut channels: Vec<ChannelEntry> = stats.into_values().collect();
