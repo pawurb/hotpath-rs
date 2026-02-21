@@ -1,6 +1,6 @@
-# Async data flow monitoring: channels, streams, and futures
+# Rust async data flow monitoring: channels, streams, and futures
 
-`hotpath` lets you observe async data flow in real time - across channels, streams, and futures. You can analyze channel queues, slow consumers, and bottlenecks as they happen. It's designed for debugging live systems, helping you understand data flow bottlenecks. With minimal code changes, you get visibility into how data moves through app's async pipeline.
+`hotpath` lets you observe async data flow in real time - across Rust channels, streams, and futures. You can analyze channel queues, slow consumers, and bottlenecks as they happen. It's designed for debugging live systems, helping you understand data flow bottlenecks. With minimal code changes, you get visibility into how data moves through app's async pipeline.
 
 All monitoring macros are noop unless `hotpath` feature is activated.
 
