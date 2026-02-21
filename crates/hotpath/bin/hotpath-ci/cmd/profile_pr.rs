@@ -471,6 +471,7 @@ mod test {
         percentiles_raw.insert("p95".to_string(), p95);
 
         JsonFunctionEntry {
+            id: 0,
             name: name.to_string(),
             calls,
             avg: "formatted".to_string(),

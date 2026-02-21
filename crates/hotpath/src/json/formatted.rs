@@ -37,6 +37,12 @@ pub fn format_delay(nanos: u64) -> String {
     }
 }
 
+/// Parses a human-readable delay string back to nanoseconds.
+/// Inverse of [`format_delay`].
+pub fn parse_delay(s: &str) -> Option<u64> {
+    crate::output::parse_duration(s)
+}
+
 pub fn format_queue_status(queued: u64, capacity: Option<usize>) -> String {
     match capacity {
         Some(cap) => format!("{}/{}", queued, cap),
@@ -48,6 +54,17 @@ pub fn format_bytes_signed(bytes: i64) -> String {
     let sign = if bytes < 0 { "-" } else { "" };
     let abs_bytes = bytes.unsigned_abs();
     format!("{}{}", sign, format_bytes(abs_bytes))
+}
+
+/// Parses a human-readable signed byte string back to a byte count.
+/// Inverse of [`format_bytes_signed`].
+pub fn parse_bytes_signed(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if let Some(rest) = s.strip_prefix('-') {
+        crate::output::parse_bytes(rest).map(|v| -(v as i64))
+    } else {
+        crate::output::parse_bytes(s).map(|v| v as i64)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -817,4 +834,87 @@ pub struct JsonRuntimeSnapshot {
     pub io_driver_fd_deregistered_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub io_driver_ready_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct JsonReport {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub functions_timing: Option<JsonFunctionsList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub functions_alloc: Option<JsonFunctionsList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channels: Option<JsonChannelsList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streams: Option<JsonStreamsList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub futures: Option<JsonFuturesList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threads: Option<JsonThreadsList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_baseline: Option<JsonCpuBaseline>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonCpuBaseline {
+    pub avg: String,
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_delay_units() {
+        assert_eq!(parse_delay("123 ns"), Some(123));
+        assert_eq!(parse_delay("0 ns"), Some(0));
+        assert_eq!(parse_delay("1.5 µs"), Some(1500));
+        assert_eq!(parse_delay("1.5 ms"), Some(1500000));
+        assert_eq!(parse_delay("1.50 s"), Some(1500000000));
+    }
+
+    #[test]
+    fn test_parse_delay_invalid() {
+        assert_eq!(parse_delay(""), None);
+        assert_eq!(parse_delay("invalid"), None);
+    }
+
+    #[test]
+    fn test_parse_delay_roundtrip() {
+        for val in [0, 500, 1500, 1_500_000, 1_500_000_000] {
+            let formatted = format_delay(val);
+            let parsed = parse_delay(&formatted);
+            assert_eq!(
+                parsed,
+                Some(val),
+                "round-trip failed for {val}: formatted as '{formatted}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_bytes_signed_units() {
+        assert_eq!(parse_bytes_signed("0 B"), Some(0));
+        assert_eq!(parse_bytes_signed("123 B"), Some(123));
+        assert_eq!(parse_bytes_signed("-1.5 KB"), Some(-1536));
+        assert_eq!(parse_bytes_signed("2.0 MB"), Some(2097152));
+    }
+
+    #[test]
+    fn test_parse_bytes_signed_invalid() {
+        assert_eq!(parse_bytes_signed(""), None);
+        assert_eq!(parse_bytes_signed("invalid"), None);
+    }
+
+    #[test]
+    fn test_parse_bytes_signed_roundtrip() {
+        for val in [0i64, 100, 1536, -1024, -1536, 1048576, -1048576] {
+            let formatted = format_bytes_signed(val);
+            let parsed = parse_bytes_signed(&formatted);
+            assert_eq!(
+                parsed,
+                Some(val),
+                "round-trip failed for {val}: formatted as '{formatted}'"
+            );
+        }
+    }
 }

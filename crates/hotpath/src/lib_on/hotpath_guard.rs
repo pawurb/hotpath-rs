@@ -16,7 +16,7 @@ pub(crate) static LOGS_LIMIT: LazyLock<usize> = LazyLock::new(|| {
 
 use std::io::Write;
 
-use crate::json::JsonFunctionsList;
+use crate::json::{JsonCpuBaseline, JsonFunctionsList, JsonReport};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{
     format_duration, resolve_output_path, FunctionLog, FunctionLogsList, MetricsProvider,
@@ -554,7 +554,7 @@ impl Drop for HotpathGuard {
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
 
         if is_json {
-            let mut json_map = serde_json::Map::new();
+            let mut report = JsonReport::default();
 
             for section in &self.sections {
                 match section {
@@ -584,12 +584,10 @@ impl Drop for HotpathGuard {
                                     }
                                 }
 
-                                let json = JsonFunctionsList::from_provider_with_raw(
-                                    &provider, elapsed_ns,
-                                );
-                                if let Ok(val) = serde_json::to_value(&json) {
-                                    json_map.insert("functions_timing".to_string(), val);
-                                }
+                                report.functions_timing =
+                                    Some(JsonFunctionsList::from_provider_with_raw(
+                                        &provider, elapsed_ns,
+                                    ));
                             }
                         }
                     }
@@ -607,13 +605,9 @@ impl Drop for HotpathGuard {
                                             state_guard.caller_name,
                                             state_guard.limit,
                                         );
-                                        let json = JsonFunctionsList::from_provider_with_raw(
-                                            &provider,
-                                            elapsed_ns,
+                                        report.functions_alloc = Some(
+                                            JsonFunctionsList::from_provider_with_raw(&provider, elapsed_ns),
                                         );
-                                        if let Ok(val) = serde_json::to_value(&json) {
-                                            json_map.insert("functions_alloc".to_string(), val);
-                                        }
                                     }
                                 }
                             }
@@ -622,31 +616,28 @@ impl Drop for HotpathGuard {
                     Section::Channels => {
                         if !channels_data.is_empty() {
                             let limit = apply_limit(channels_data.len(), self.channels_limit);
-                            let json =
-                                report::collect_channels_json(&channels_data[..limit], elapsed);
-                            if let Ok(val) = serde_json::to_value(&json) {
-                                json_map.insert("channels".to_string(), val);
-                            }
+                            report.channels = Some(report::collect_channels_json(
+                                &channels_data[..limit],
+                                elapsed,
+                            ));
                         }
                     }
                     Section::Streams => {
                         if !streams_data.is_empty() {
                             let limit = apply_limit(streams_data.len(), self.streams_limit);
-                            let json =
-                                report::collect_streams_json(&streams_data[..limit], elapsed);
-                            if let Ok(val) = serde_json::to_value(&json) {
-                                json_map.insert("streams".to_string(), val);
-                            }
+                            report.streams = Some(report::collect_streams_json(
+                                &streams_data[..limit],
+                                elapsed,
+                            ));
                         }
                     }
                     Section::Futures => {
                         if !futures_data.is_empty() {
                             let limit = apply_limit(futures_data.len(), self.futures_limit);
-                            let json =
-                                report::collect_futures_json(&futures_data[..limit], elapsed);
-                            if let Ok(val) = serde_json::to_value(&json) {
-                                json_map.insert("futures".to_string(), val);
-                            }
+                            report.futures = Some(report::collect_futures_json(
+                                &futures_data[..limit],
+                                elapsed,
+                            ));
                         }
                     }
                     Section::Threads => {
@@ -654,9 +645,7 @@ impl Drop for HotpathGuard {
                         {
                             let json = report::collect_threads_json(self.threads_limit);
                             if !json.data.is_empty() {
-                                if let Ok(val) = serde_json::to_value(&json) {
-                                    json_map.insert("threads".to_string(), val);
-                                }
+                                report.threads = Some(json);
                             }
                         }
                     }
@@ -664,26 +653,24 @@ impl Drop for HotpathGuard {
             }
 
             if let Some(ref baseline) = cpu_baseline {
-                let baseline_json = serde_json::json!({
-                    "avg": format_duration(baseline.avg_ns),
+                report.cpu_baseline = Some(JsonCpuBaseline {
+                    avg: format_duration(baseline.avg_ns),
                 });
-                json_map.insert("cpu_baseline".to_string(), baseline_json);
             }
 
-            let combined = serde_json::Value::Object(json_map);
             match format {
                 Format::Json => {
                     let _ = writeln!(
                         writer,
                         "{}",
-                        serde_json::to_string(&combined).unwrap_or_default()
+                        serde_json::to_string(&report).unwrap_or_default()
                     );
                 }
                 Format::JsonPretty => {
                     let _ = writeln!(
                         writer,
                         "{}",
-                        serde_json::to_string_pretty(&combined).unwrap_or_default()
+                        serde_json::to_string_pretty(&report).unwrap_or_default()
                     );
                 }
                 _ => {}

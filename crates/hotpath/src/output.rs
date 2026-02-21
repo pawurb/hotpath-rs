@@ -32,6 +32,32 @@ pub fn format_duration(ns: u64) -> String {
     }
 }
 
+/// Parses a human-readable duration string back to nanoseconds.
+/// Inverse of [`format_duration`].
+pub fn parse_duration(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if let Some(num) = s.strip_suffix(" ns") {
+        num.trim().parse::<f64>().ok().map(|v| v.round() as u64)
+    } else if let Some(num) = s.strip_suffix(" µs") {
+        num.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|v| (v * 1_000.0).round() as u64)
+    } else if let Some(num) = s.strip_suffix(" ms") {
+        num.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|v| (v * 1_000_000.0).round() as u64)
+    } else if let Some(num) = s.strip_suffix(" s") {
+        num.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|v| (v * 1_000_000_000.0).round() as u64)
+    } else {
+        None
+    }
+}
+
 /// Formats a byte count into a human-readable string (e.g., "1.5 MB").
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
@@ -49,6 +75,37 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{} {}", bytes, UNITS[unit_index])
     } else {
         format!("{:.1} {}", unit_value, UNITS[unit_index])
+    }
+}
+
+/// Parses a human-readable byte string back to a byte count.
+/// Inverse of [`format_bytes`].
+pub fn parse_bytes(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if let Some(num) = s.strip_suffix(" TB") {
+        num.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|v| (v * 1024.0_f64.powi(4)).round() as u64)
+    } else if let Some(num) = s.strip_suffix(" GB") {
+        num.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|v| (v * 1024.0_f64.powi(3)).round() as u64)
+    } else if let Some(num) = s.strip_suffix(" MB") {
+        num.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|v| (v * 1024.0_f64.powi(2)).round() as u64)
+    } else if let Some(num) = s.strip_suffix(" KB") {
+        num.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|v| (v * 1024.0).round() as u64)
+    } else if let Some(num) = s.strip_suffix(" B") {
+        num.trim().parse::<u64>().ok()
+    } else {
+        None
     }
 }
 
@@ -406,6 +463,70 @@ mod truncation_tests {
                     name
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_duration_units() {
+        assert_eq!(parse_duration("123 ns"), Some(123));
+        assert_eq!(parse_duration("0 ns"), Some(0));
+        assert_eq!(parse_duration("1.23 µs"), Some(1230));
+        assert_eq!(parse_duration("1.23 ms"), Some(1230000));
+        assert_eq!(parse_duration("1.23 s"), Some(1230000000));
+    }
+
+    #[test]
+    fn test_parse_duration_invalid() {
+        assert_eq!(parse_duration(""), None);
+        assert_eq!(parse_duration("invalid"), None);
+        assert_eq!(parse_duration("abc ns"), None);
+    }
+
+    #[test]
+    fn test_parse_duration_roundtrip() {
+        for val in [0, 1, 500, 999, 1000, 50_000, 1_230_000, 1_230_000_000] {
+            let formatted = format_duration(val);
+            let parsed = parse_duration(&formatted);
+            assert_eq!(
+                parsed,
+                Some(val),
+                "round-trip failed for {val}: formatted as '{formatted}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_bytes_units() {
+        assert_eq!(parse_bytes("0 B"), Some(0));
+        assert_eq!(parse_bytes("123 B"), Some(123));
+        assert_eq!(parse_bytes("1.5 KB"), Some(1536));
+        assert_eq!(parse_bytes("1.0 MB"), Some(1048576));
+        assert_eq!(parse_bytes("1.0 GB"), Some(1073741824));
+        assert_eq!(parse_bytes("0.5 TB"), Some(549755813888));
+    }
+
+    #[test]
+    fn test_parse_bytes_invalid() {
+        assert_eq!(parse_bytes(""), None);
+        assert_eq!(parse_bytes("invalid"), None);
+        assert_eq!(parse_bytes("abc KB"), None);
+    }
+
+    #[test]
+    fn test_parse_bytes_roundtrip() {
+        for val in [0, 100, 1023, 1024, 1536, 1048576, 1073741824] {
+            let formatted = format_bytes(val);
+            let parsed = parse_bytes(&formatted);
+            assert_eq!(
+                parsed,
+                Some(val),
+                "round-trip failed for {val}: formatted as '{formatted}'"
+            );
         }
     }
 }
