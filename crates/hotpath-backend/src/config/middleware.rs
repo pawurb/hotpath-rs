@@ -136,6 +136,13 @@ const SEO_MAPPINGS: &[SeoConfig] = &[
         faqs: &[],
     },
     SeoConfig {
+        path: "/configuration",
+        title: "Rust Profiler Configuration: Environment Variables & Runtime Settings | hotpath-rs",
+        description: "Configure hotpath-rs profiling with environment variables. Control output format, metrics server ports, MCP integration, TUI refresh intervals, function filtering, memory tracking mode, and monitoring intervals.",
+        breadcrumb_label: "Configuration",
+        faqs: &[],
+    },
+    SeoConfig {
         path: "/mcp",
         title: "AI-Powered Rust Profiling: Query Performance Metrics with LLMs via MCP | hotpath-rs",
         description: "Connect LLM agents like Claude Code to live Rust performance metrics via MCP. Query runtime profiling data, memory usage, and async operations in natural language.",

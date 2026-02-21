@@ -7,15 +7,16 @@ use crate::json::{JsonRuntimeSnapshot, JsonRuntimeWorker};
 
 static RUNTIME_STATE: OnceLock<()> = OnceLock::new();
 
-const DEFAULT_INTERVAL_MS: u64 = 5000;
+const DEFAULT_RUNTIME_INTERVAL_MS: u64 = 1000;
 
 pub fn init_runtime_monitoring(handle: &Handle) {
     let handle = handle.clone();
     RUNTIME_STATE.get_or_init(|| {
-        let interval_ms = std::env::var("HOTPATH_META_RUNTIME_INTERVAL")
+        let interval_ms = std::env::var("HOTPATH_META_TOKIO_RUNTIME_INTERVAL")
+            .or_else(|_| std::env::var("HOTPATH_META_RUNTIME_INTERVAL"))
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(DEFAULT_INTERVAL_MS);
+            .unwrap_or(DEFAULT_RUNTIME_INTERVAL_MS);
 
         let interval = Duration::from_millis(interval_ms);
 

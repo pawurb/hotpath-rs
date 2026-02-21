@@ -75,4 +75,4 @@ The TUI dashboard includes a dedicated Tokio Runtime panel that displays per-wor
 
 ## Environment variables
 
-- `HOTPATH_RUNTIME_INTERVAL` - sampling interval in milliseconds (default: 5000)
+- `HOTPATH_TOKIO_RUNTIME_INTERVAL` - sampling interval in milliseconds (default: 5000)

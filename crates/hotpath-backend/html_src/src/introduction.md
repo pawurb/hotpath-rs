@@ -208,3 +208,4 @@ Explore the docs for customization options and advanced profiling features.
 - [Tokio Runtime](./tokio_runtime.html) - monitor Tokio runtime worker stats and task scheduling
 - [MCP Server](./mcp.html) - LLM integration via Model Context Protocol
 - [GitHub CI](./github_ci.html) - automated benchmarking and regression detection in CI
+- [Configuration](./configuration.html) - explore all config options

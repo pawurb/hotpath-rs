@@ -11,3 +11,4 @@
 - [Tokio Runtime](./tokio_runtime.md)
 - [MCP integration](./mcp.md)
 - [GitHub CI integration](./github_ci.md)
+- [Configuration](./configuration.md)
