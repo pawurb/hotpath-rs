@@ -28,6 +28,7 @@ run_bench() {
         HOTPATH_TUI_TAB=${HOTPATH_TUI_TAB:-1}
         HOTPATH_TUI_REFRESH_INTERVAL_MS=${HOTPATH_TUI_REFRESH_INTERVAL_MS:-10}
         HOTPATH_META_REPORT='functions-timing,functions-alloc,threads'
+        HOTPATH_META_OUTPUT_FORMAT=json
         HOTPATH_META_OUTPUT_PATH="$output"
         HOTPATH_META_SHUTDOWN_MS=5000
         HOTPATH_META_TIMEOUT_MS=5000
@@ -53,17 +54,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-run_bench "$BEFORE_REF" "tmp/before.txt"
-run_bench "$AFTER_REF" "tmp/after.txt"
+run_bench "$BEFORE_REF" "tmp/before.json"
+run_bench "$AFTER_REF" "tmp/after.json"
 
 reset
 
-echo ""
-echo "==> Before: $BEFORE_REF"
-echo ""
-cat "tmp/before.txt"
-echo ""
-echo ""
-echo "==> After: $AFTER_REF"
-echo ""
-cat "tmp/after.txt"
+cargo run $RELEASE_FLAG -p hotpath --features=utils --bin hotpath-utils -- \
+    compare --before-json-path tmp/before.json --after-json-path tmp/after.json \
+    | tee tmp/compare_result.txt
