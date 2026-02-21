@@ -19,23 +19,38 @@ struct SitemapConfig {
 
 const DOC_PAGES: &[SitemapConfig] = &[
     SitemapConfig {
-        page: "sampling_comparison",
-        priority: "0.9",
-        changefreq: "monthly",
-    },
-    SitemapConfig {
         page: "profiling_modes",
-        priority: "0.6",
-        changefreq: "monthly",
+        priority: "0.8",
+        changefreq: "weekly",
     },
     SitemapConfig {
         page: "functions",
         priority: "0.8",
-        changefreq: "monthly",
+        changefreq: "weekly",
     },
     SitemapConfig {
         page: "data_flow",
         priority: "0.8",
+        changefreq: "weekly",
+    },
+    SitemapConfig {
+        page: "mcp",
+        priority: "0.8",
+        changefreq: "weekly",
+    },
+    SitemapConfig {
+        page: "configuration",
+        priority: "0.7",
+        changefreq: "weekly",
+    },
+    SitemapConfig {
+        page: "sampling_comparison",
+        priority: "0.7",
+        changefreq: "monthly",
+    },
+    SitemapConfig {
+        page: "github_ci",
+        priority: "0.7",
         changefreq: "monthly",
     },
     SitemapConfig {
@@ -46,21 +61,6 @@ const DOC_PAGES: &[SitemapConfig] = &[
     SitemapConfig {
         page: "tokio_runtime",
         priority: "0.6",
-        changefreq: "monthly",
-    },
-    SitemapConfig {
-        page: "mcp",
-        priority: "0.6",
-        changefreq: "monthly",
-    },
-    SitemapConfig {
-        page: "github_ci",
-        priority: "0.6",
-        changefreq: "monthly",
-    },
-    SitemapConfig {
-        page: "configuration",
-        priority: "0.7",
         changefreq: "monthly",
     },
 ];
@@ -146,7 +146,31 @@ async fn health_check() -> impl IntoResponse {
 
 async fn robots_txt() -> impl IntoResponse {
     let content = format!(
-        "User-agent: *\nAllow: /\n\nSitemap: {}/sitemap.xml\n",
+        "User-agent: *\n\
+         Allow: /\n\
+         \n\
+         User-agent: GPTBot\n\
+         Allow: /\n\
+         \n\
+         User-agent: ChatGPT-User\n\
+         Allow: /\n\
+         \n\
+         User-agent: PerplexityBot\n\
+         Allow: /\n\
+         \n\
+         User-agent: ClaudeBot\n\
+         Allow: /\n\
+         \n\
+         User-agent: anthropic-ai\n\
+         Allow: /\n\
+         \n\
+         User-agent: Googlebot\n\
+         Allow: /\n\
+         \n\
+         User-agent: Bingbot\n\
+         Allow: /\n\
+         \n\
+         Sitemap: {}/sitemap.xml\n",
         BASE_URL
     );
     (
