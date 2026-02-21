@@ -181,6 +181,8 @@ pub(crate) struct App {
 
     pub(crate) program_uptime: Option<String>,
     pub(crate) auto_expand_logs: bool,
+
+    pub(crate) pending_g: Option<Instant>,
 }
 
 #[hotpath::measure_all]
@@ -281,6 +283,7 @@ impl App {
 
             program_uptime: None,
             auto_expand_logs,
+            pending_g: None,
         }
     }
 

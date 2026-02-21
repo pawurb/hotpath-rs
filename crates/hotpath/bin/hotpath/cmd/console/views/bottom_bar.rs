@@ -8,7 +8,7 @@ use ratatui::{
     Frame,
 };
 
-const NAV_KEYS_FULL: &str = " <←↑↓→/hjkl> ";
+const NAV_KEYS_FULL: &str = " <←↑↓→/hjkl> <gg,G> ";
 const TOGGLE_LOGS_LABEL: &str = " | Toggle Logs ";
 const TOGGLE_LOGS_KEY: &str = "<o> ";
 const PAUSE_LABEL: &str = " | Pause ";

@@ -2,6 +2,7 @@
 
 use crate::cmd::console::app::{App, DataFlowFocus, DebugFocus, FunctionsFocus, SelectedTab};
 use crossterm::event::KeyCode;
+use std::time::{Duration, Instant};
 
 #[hotpath::measure_all]
 impl App {
@@ -17,6 +18,17 @@ impl App {
             KeyCode::Char('6') => self.switch_to_tab(SelectedTab::Runtime),
             _ => self.handle_tab_specific_key(key_code),
         }
+    }
+
+    fn handle_g_key(&mut self) -> bool {
+        if let Some(last_g) = self.pending_g {
+            if last_g.elapsed() < Duration::from_millis(500) {
+                self.pending_g = None;
+                return true;
+            }
+        }
+        self.pending_g = Some(Instant::now());
+        false
     }
 
     fn handle_tab_specific_key(&mut self, key_code: KeyCode) {
@@ -50,6 +62,17 @@ impl App {
                     self.previous_function();
                     self.update_and_request_function_logs();
                 }
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_function();
+                    self.update_and_request_function_logs();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_function();
+                        self.update_and_request_function_logs();
+                    }
+                }
                 KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_function_logs(),
                 KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => self.focus_function_logs(),
                 _ => {}
@@ -57,6 +80,15 @@ impl App {
             FunctionsFocus::Logs => match key_code {
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_function_log(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_function_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_function_log();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_function_log();
+                    }
+                }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
                     self.toggle_function_inspect()
                 }
@@ -75,6 +107,15 @@ impl App {
                 }
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_function_log(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_function_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_function_log();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_function_log();
+                    }
+                }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
                     self.toggle_function_inspect()
                 }
@@ -88,6 +129,15 @@ impl App {
             DataFlowFocus::List => match key_code {
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_data_flow(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_data_flow(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_data_flow();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_data_flow();
+                    }
+                }
                 KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_data_flow_logs(),
                 KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => self.focus_data_flow_logs(),
                 _ => {}
@@ -95,6 +145,15 @@ impl App {
             DataFlowFocus::Logs => match key_code {
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_data_flow_log(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_data_flow_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_data_flow_log();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_data_flow_log();
+                    }
+                }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
                     self.toggle_data_flow_inspect()
                 }
@@ -115,6 +174,15 @@ impl App {
                 }
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_data_flow_log(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_data_flow_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_data_flow_log();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_data_flow_log();
+                    }
+                }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
                     self.toggle_data_flow_inspect()
                 }
@@ -127,6 +195,15 @@ impl App {
         match key_code {
             KeyCode::Down | KeyCode::Char('j') => self.select_next_thread(),
             KeyCode::Up | KeyCode::Char('k') => self.select_previous_thread(),
+            KeyCode::Char('G') => {
+                self.pending_g = None;
+                self.last_thread();
+            }
+            KeyCode::Char('g') => {
+                if self.handle_g_key() {
+                    self.first_thread();
+                }
+            }
             _ => {}
         }
     }
@@ -135,6 +212,15 @@ impl App {
         match key_code {
             KeyCode::Down | KeyCode::Char('j') => self.select_next_runtime_worker(),
             KeyCode::Up | KeyCode::Char('k') => self.select_previous_runtime_worker(),
+            KeyCode::Char('G') => {
+                self.pending_g = None;
+                self.last_runtime_worker();
+            }
+            KeyCode::Char('g') => {
+                if self.handle_g_key() {
+                    self.first_runtime_worker();
+                }
+            }
             _ => {}
         }
     }
@@ -144,6 +230,15 @@ impl App {
             DebugFocus::Debug => match key_code {
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_debug(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_debug(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_debug();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_debug();
+                    }
+                }
                 KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_debug_logs(),
                 KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => self.focus_debug_logs(),
                 _ => {}
@@ -151,6 +246,15 @@ impl App {
             DebugFocus::Logs => match key_code {
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_debug_log(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_debug_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_debug_log();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_debug_log();
+                    }
+                }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
                     self.toggle_debug_inspect()
                 }
@@ -167,6 +271,15 @@ impl App {
                 }
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_debug_log(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_debug_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_debug_log();
+                }
+                KeyCode::Char('g') => {
+                    if self.handle_g_key() {
+                        self.first_debug_log();
+                    }
+                }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
                     self.toggle_debug_inspect()
                 }

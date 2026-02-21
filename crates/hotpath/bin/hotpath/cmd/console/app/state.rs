@@ -35,6 +35,23 @@ impl App {
         table_state.select(Some(i));
     }
 
+    pub(crate) fn first_function(&mut self) {
+        let function_count = self.active_functions().data.len();
+        if function_count == 0 {
+            return;
+        }
+        self.active_table_state_mut().select(Some(0));
+    }
+
+    pub(crate) fn last_function(&mut self) {
+        let function_count = self.active_functions().data.len();
+        if function_count == 0 {
+            return;
+        }
+        self.active_table_state_mut()
+            .select(Some(function_count - 1));
+    }
+
     pub(crate) fn toggle_pause(&mut self) {
         self.paused = !self.paused;
         info!("Paused: {}", self.paused);
@@ -150,6 +167,26 @@ impl App {
         }
     }
 
+    pub(crate) fn first_function_log(&mut self) {
+        let log_count = self.function_logs_len();
+        if log_count > 0 {
+            self.function_logs_table_state.select(Some(0));
+            if self.functions_focus == FunctionsFocus::Inspect {
+                self.inspected_function_log = self.create_inspected_log_for_index(0);
+            }
+        }
+    }
+
+    pub(crate) fn last_function_log(&mut self) {
+        let log_count = self.function_logs_len();
+        if log_count > 0 {
+            self.function_logs_table_state.select(Some(log_count - 1));
+            if self.functions_focus == FunctionsFocus::Inspect {
+                self.inspected_function_log = self.create_inspected_log_for_index(log_count - 1);
+            }
+        }
+    }
+
     pub(crate) fn toggle_function_inspect(&mut self) {
         if self.functions_focus == FunctionsFocus::Inspect {
             self.functions_focus = FunctionsFocus::Logs;
@@ -210,6 +247,32 @@ impl App {
         };
         self.data_flow_table_state.select(Some(i));
 
+        if self.paused && self.show_data_flow_logs {
+            self.data_flow_logs = None;
+        } else if self.show_data_flow_logs {
+            self.request_data_flow_logs();
+        }
+    }
+
+    pub(crate) fn first_data_flow(&mut self) {
+        let count = self.data_flow.entries.len();
+        if count == 0 {
+            return;
+        }
+        self.data_flow_table_state.select(Some(0));
+        if self.paused && self.show_data_flow_logs {
+            self.data_flow_logs = None;
+        } else if self.show_data_flow_logs {
+            self.request_data_flow_logs();
+        }
+    }
+
+    pub(crate) fn last_data_flow(&mut self) {
+        let count = self.data_flow.entries.len();
+        if count == 0 {
+            return;
+        }
+        self.data_flow_table_state.select(Some(count - 1));
         if self.paused && self.show_data_flow_logs {
             self.data_flow_logs = None;
         } else if self.show_data_flow_logs {
@@ -309,6 +372,26 @@ impl App {
         }
     }
 
+    pub(crate) fn first_data_flow_log(&mut self) {
+        let log_count = self.data_flow_logs_len();
+        if log_count > 0 {
+            self.data_flow_logs_table_state.select(Some(0));
+            if self.data_flow_focus == DataFlowFocus::Inspect {
+                self.update_inspected_data_flow_log(0);
+            }
+        }
+    }
+
+    pub(crate) fn last_data_flow_log(&mut self) {
+        let log_count = self.data_flow_logs_len();
+        if log_count > 0 {
+            self.data_flow_logs_table_state.select(Some(log_count - 1));
+            if self.data_flow_focus == DataFlowFocus::Inspect {
+                self.update_inspected_data_flow_log(log_count - 1);
+            }
+        }
+    }
+
     fn update_inspected_data_flow_log(&mut self, i: usize) {
         use crate::cmd::console::app::{DataFlowLogs, InspectedDataFlowLog};
 
@@ -391,6 +474,30 @@ impl App {
         self.runtime_table_state.select(Some(i));
     }
 
+    pub(crate) fn first_runtime_worker(&mut self) {
+        let count = self
+            .tokio_runtime
+            .as_ref()
+            .map(|s| s.workers.len())
+            .unwrap_or(0);
+        if count == 0 {
+            return;
+        }
+        self.runtime_table_state.select(Some(0));
+    }
+
+    pub(crate) fn last_runtime_worker(&mut self) {
+        let count = self
+            .tokio_runtime
+            .as_ref()
+            .map(|s| s.workers.len())
+            .unwrap_or(0);
+        if count == 0 {
+            return;
+        }
+        self.runtime_table_state.select(Some(count - 1));
+    }
+
     // Threads tab state management
 
     pub(crate) fn select_previous_thread(&mut self) {
@@ -417,6 +524,22 @@ impl App {
             None => 0,
         };
         self.threads_table_state.select(Some(i));
+    }
+
+    pub(crate) fn first_thread(&mut self) {
+        let count = self.threads.data.len();
+        if count == 0 {
+            return;
+        }
+        self.threads_table_state.select(Some(0));
+    }
+
+    pub(crate) fn last_thread(&mut self) {
+        let count = self.threads.data.len();
+        if count == 0 {
+            return;
+        }
+        self.threads_table_state.select(Some(count - 1));
     }
 
     // Debug tab state management
@@ -452,6 +575,32 @@ impl App {
         };
         self.debug_table_state.select(Some(i));
 
+        if self.paused && self.show_debug_logs {
+            self.debug_logs = None;
+        } else if self.show_debug_logs {
+            self.request_debug_logs();
+        }
+    }
+
+    pub(crate) fn first_debug(&mut self) {
+        let count = self.debug_stats.len();
+        if count == 0 {
+            return;
+        }
+        self.debug_table_state.select(Some(0));
+        if self.paused && self.show_debug_logs {
+            self.debug_logs = None;
+        } else if self.show_debug_logs {
+            self.request_debug_logs();
+        }
+    }
+
+    pub(crate) fn last_debug(&mut self) {
+        let count = self.debug_stats.len();
+        if count == 0 {
+            return;
+        }
+        self.debug_table_state.select(Some(count - 1));
         if self.paused && self.show_debug_logs {
             self.debug_logs = None;
         } else if self.show_debug_logs {
@@ -540,6 +689,35 @@ impl App {
                 if self.debug_focus == DebugFocus::Inspect {
                     let actual_idx = log_count - 1 - i;
                     if let Some(entry) = cached_logs.get(actual_idx) {
+                        self.inspected_debug_log = Some(entry.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn first_debug_log(&mut self) {
+        if let Some(ref cached_logs) = self.debug_logs {
+            let log_count = cached_logs.len();
+            if log_count > 0 {
+                self.debug_logs_table_state.select(Some(0));
+                if self.debug_focus == DebugFocus::Inspect {
+                    let actual_idx = log_count - 1;
+                    if let Some(entry) = cached_logs.get(actual_idx) {
+                        self.inspected_debug_log = Some(entry.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn last_debug_log(&mut self) {
+        if let Some(ref cached_logs) = self.debug_logs {
+            let log_count = cached_logs.len();
+            if log_count > 0 {
+                self.debug_logs_table_state.select(Some(log_count - 1));
+                if self.debug_focus == DebugFocus::Inspect {
+                    if let Some(entry) = cached_logs.first() {
                         self.inspected_debug_log = Some(entry.clone());
                     }
                 }
