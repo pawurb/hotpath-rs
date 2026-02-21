@@ -747,6 +747,8 @@ pub struct JsonRuntimeSnapshot {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub functions_timing: Option<JsonFunctionsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub functions_alloc: Option<JsonFunctionsList>,

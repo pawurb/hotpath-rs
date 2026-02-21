@@ -529,7 +529,12 @@ impl Drop for HotpathGuard {
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
 
         if is_json {
-            let mut report = JsonReport::default();
+            let mut report = JsonReport {
+                label: std::env::var("HOTPATH_META_REPORT_LABEL")
+                    .ok()
+                    .filter(|s| !s.is_empty()),
+                ..Default::default()
+            };
 
             for section in &self.sections {
                 match section {
@@ -650,8 +655,17 @@ impl Drop for HotpathGuard {
             }
         } else {
             let baseline_ns = cpu_baseline.as_ref().map(|b| b.avg_ns);
+            let label = std::env::var("HOTPATH_META_REPORT_LABEL")
+                .ok()
+                .filter(|s| !s.is_empty());
             if matches!(format, Format::Table) {
-                write_report_header(&mut writer, elapsed, &self.sections, baseline_ns);
+                write_report_header(
+                    &mut writer,
+                    elapsed,
+                    &self.sections,
+                    baseline_ns,
+                    label.as_deref(),
+                );
             }
 
             for section in &self.sections {

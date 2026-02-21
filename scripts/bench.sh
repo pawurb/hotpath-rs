@@ -13,6 +13,7 @@ REF=$(git rev-parse --short HEAD)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 LABEL="$BRANCH ($REF)"
 OUTPUT="tmp/bench.txt"
+OUTPUT="${HOTPATH_META_OUTPUT_PATH:-$OUTPUT}"
 
 bench_env=(
     HOTPATH_TUI_TAB=${HOTPATH_TUI_TAB:-1}
@@ -22,17 +23,12 @@ bench_env=(
     HOTPATH_META_SHUTDOWN_MS=5000
     HOTPATH_META_TIMEOUT_MS=5000
     HOTPATH_META_EXCLUDE_WRAPPER=true
+    HOTPATH_META_REPORT_LABEL="$LABEL"
     RUSTFLAGS='--cfg tokio_unstable'
 )
 
 echo "==> Running: ${bench_env[*]} $BENCH_CMD"
 env "${bench_env[@]}" $BENCH_CMD
-
-tmp_header=$(mktemp)
-echo "Report generated for: $LABEL" > "$tmp_header"
-echo "" >> "$tmp_header"
-cat "$OUTPUT" >> "$tmp_header"
-mv "$tmp_header" "$OUTPUT"
 
 reset
 

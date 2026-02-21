@@ -29,17 +29,19 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
     elapsed: Duration,
     sections: &[Section],
     cpu_baseline_ns: Option<u64>,
+    label: Option<&str>,
 ) {
     let section_names: Vec<&str> = sections.iter().map(|s| s.short_name()).collect();
     let sections_str = section_names.join(", ");
     let baseline_str = cpu_baseline_ns
         .map(|ns| format!(" (CPU baseline avg: {})", format_duration(ns)))
         .unwrap_or_default();
+    let label_str = label.map(|l| format!(" | {}", l)).unwrap_or_default();
 
     let _ = writeln!(
         writer,
-        "[hotpath] {:.2?} | {}{}",
-        elapsed, sections_str, baseline_str,
+        "[hotpath] {:.2?} | {}{}{}",
+        elapsed, sections_str, baseline_str, label_str,
     );
     let _ = writeln!(writer);
 }

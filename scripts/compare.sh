@@ -32,16 +32,11 @@ run_bench() {
         HOTPATH_META_SHUTDOWN_MS=5000
         HOTPATH_META_TIMEOUT_MS=5000
         HOTPATH_META_EXCLUDE_WRAPPER=true
+        HOTPATH_META_REPORT_LABEL="$label"
         RUSTFLAGS='--cfg tokio_unstable'
     )
     echo "==> Running: ${bench_env[*]} $BENCH_CMD"
     env "${bench_env[@]}" $BENCH_CMD
-    local tmp_header
-    tmp_header=$(mktemp)
-    echo "Report generated for: $label" > "$tmp_header"
-    echo "" >> "$tmp_header"
-    cat "$output" >> "$tmp_header"
-    mv "$tmp_header" "$output"
     echo "==> Results saved to $output"
 }
 
