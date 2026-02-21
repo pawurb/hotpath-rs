@@ -78,7 +78,7 @@ jobs:
           cargo check --features='tui,hotpath,hotpath-meta,hotpath-alloc-meta,hotpath-mcp,hotpath-mcp-meta,dev' --bin hotpath
       - name: Check CI build
         run: |
-          cargo check -p hotpath --bin hotpath-ci --features=ci
+          cargo check -p hotpath --bin hotpath-utils --features=utils
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui

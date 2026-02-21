@@ -32,7 +32,7 @@ fn find_existing_comment(
     let response = ureq::get(&url)
         .header("Authorization", &format!("token {}", token))
         .header("Accept", "application/vnd.github.v3+json")
-        .header("User-Agent", "hotpath-ci-action")
+        .header("User-Agent", "hotpath-utils-action")
         .call();
 
     match response {
@@ -75,7 +75,7 @@ fn create_comment(repo: &str, pr_number: &str, token: &str, body: &str) -> Resul
     let response = ureq::post(&url)
         .header("Authorization", &format!("token {}", token))
         .header("Accept", "application/vnd.github.v3+json")
-        .header("User-Agent", "hotpath-ci-action")
+        .header("User-Agent", "hotpath-utils-action")
         .send_json(&comment_body)?;
 
     let status = response.status();
@@ -109,7 +109,7 @@ fn update_comment(repo: &str, comment_id: u64, token: &str, body: &str) -> Resul
     let response = ureq::patch(&url)
         .header("Authorization", &format!("token {}", token))
         .header("Accept", "application/vnd.github.v3+json")
-        .header("User-Agent", "hotpath-ci-action")
+        .header("User-Agent", "hotpath-utils-action")
         .send_json(&comment_body)?;
 
     let status = response.status();

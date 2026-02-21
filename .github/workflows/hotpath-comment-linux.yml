@@ -27,8 +27,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Install hotpath-ci CLI
-        run: cargo install --path crates/hotpath --bin hotpath-ci --features=ci
+      - name: Install hotpath-utils CLI
+        run: cargo install --path crates/hotpath --bin hotpath-utils --features=utils
 
       - name: Post PR comment - noop timing
         env:
@@ -40,7 +40,7 @@ jobs:
           PR_NUMBER=$(cat /tmp/metrics/pr_number.txt)
           export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
           export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
-          hotpath-ci profile-pr \
+          hotpath-utils profile-pr \
             --head-metrics "$HEAD_METRICS" \
             --base-metrics "$BASE_METRICS" \
             --github-token "$GH_TOKEN" \
@@ -57,7 +57,7 @@ jobs:
           PR_NUMBER=$(cat /tmp/metrics/pr_number.txt)
           export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
           export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
-          hotpath-ci profile-pr \
+          hotpath-utils profile-pr \
             --head-metrics "$HEAD_METRICS" \
             --base-metrics "$BASE_METRICS" \
             --github-token "$GH_TOKEN" \
@@ -74,7 +74,7 @@ jobs:
           PR_NUMBER=$(cat /tmp/metrics/pr_number.txt)
           export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
           export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
-          hotpath-ci profile-pr \
+          hotpath-utils profile-pr \
             --head-metrics "$HEAD_METRICS" \
             --base-metrics "$BASE_METRICS" \
             --github-token "$GH_TOKEN" \

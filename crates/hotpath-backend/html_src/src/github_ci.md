@@ -1,6 +1,6 @@
 # GitHub CI: automated performance benchmarking and regression detection
 
-Hotpath includes a `hotpath-ci` CLI that compares performance metrics between a PR branch and its base, then posts a profiling diff as a PR comment. This lets you catch runtime regressions before merging.
+Hotpath includes a `hotpath-utils` CLI that compares performance metrics between a PR branch and its base, then posts a profiling diff as a PR comment. This lets you catch runtime regressions before merging.
 
 <img loading="lazy" src="{{#asset-hash images/mevlog-enable-cache.png}}" alt="Hotpath CI PR comment showing performance comparison">
 
@@ -9,7 +9,7 @@ Hotpath includes a `hotpath-ci` CLI that compares performance metrics between a 
 The integration uses two GitHub Actions workflows:
 
 1. **Profile workflow** (`hotpath-profile`) - triggers on `pull_request`, runs your benchmarks on both the head and base commits, and uploads the metrics as an artifact.
-2. **Comment workflow** (`hotpath-comment`) - triggers when the profile workflow completes, downloads the artifact, installs `hotpath-ci`, and posts a comparison comment on the PR.
+2. **Comment workflow** (`hotpath-comment`) - triggers when the profile workflow completes, downloads the artifact, installs `hotpath-utils`, and posts a comparison comment on the PR.
 
 The two-workflow split is required for security because `pull_request` workflows from forks run with read-only permissions. The second workflow runs in the repository's context with `pull-requests: write` access to enable commenting.
 
@@ -132,9 +132,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Install hotpath-ci CLI
+      - name: Install hotpath-utils CLI
         run: cargo install --path crates/hotpath \
-          --bin hotpath-ci --features=ci
+          --bin hotpath-utils --features=utils
 
       - name: Post PR comment
         env:
@@ -146,7 +146,7 @@ jobs:
           PR=$(cat /tmp/metrics/pr_number.txt)
           export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
           export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
-          hotpath-ci profile-pr \
+          hotpath-utils profile-pr \
             --head-metrics "$HEAD" \
             --base-metrics "$BASE" \
             --github-token "$GH_TOKEN" \
@@ -154,7 +154,7 @@ jobs:
             --benchmark-id "timing"
 ```
 
-## `hotpath-ci profile-pr` CLI
+## `hotpath-utils profile-pr` CLI
 
 | Flag | Required | Description |
 |------|----------|-------------|
@@ -202,9 +202,9 @@ You can run several benchmarks in the same workflow by adding more step pairs (h
 Then in the comment workflow, post each with a different `--benchmark-id`:
 
 ```bash
-hotpath-ci profile-pr \
+hotpath-utils profile-pr \
   --benchmark-id "timing" ...
 
-hotpath-ci profile-pr \
+hotpath-utils profile-pr \
   --benchmark-id "alloc" ...
 ```

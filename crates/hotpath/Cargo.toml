@@ -14,9 +14,9 @@ path = "bin/hotpath/main.rs"
 required-features = ["tui"]
 
 [[bin]]
-name = "hotpath-ci"
-path = "bin/hotpath-ci/main.rs"
-required-features = ["ci"]
+name = "hotpath-utils"
+path = "bin/hotpath-utils/main.rs"
+required-features = ["utils"]
 
 [[bin]]
 name = "hotpath-crashtest"
@@ -50,7 +50,7 @@ hotpath-alloc-meta = ["hotpath-meta/hotpath-alloc-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta"]
 hotpath-alloc = ["dep:tokio"]
 hotpath-off = ["hotpath-macros/hotpath-off"]
-ci = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq"]
+utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq"]
 tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:chrono", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "dep:tracing", "dep:tracing-subscriber", "dep:time", "crossbeam"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]

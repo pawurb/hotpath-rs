@@ -23,11 +23,11 @@ pub use lib_on::threads;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off"), feature = "tokio"))]
 pub use lib_on::tokio_runtime;
 
-#[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
+#[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub(crate) mod output;
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
 pub use output::format_debug_truncated;
-#[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
+#[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_duration, parse_bytes,
     parse_duration, shorten_function_name, FunctionLogsList, FunctionsData, MetricType,
@@ -43,9 +43,9 @@ pub(crate) mod metrics_server;
 #[cfg(all(feature = "hotpath-mcp", not(feature = "hotpath-off")))]
 pub(crate) mod mcp_server;
 
-#[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
+#[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub mod json;
-#[cfg(any(feature = "hotpath", feature = "ci", feature = "tui"))]
+#[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub use json::Route;
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]
