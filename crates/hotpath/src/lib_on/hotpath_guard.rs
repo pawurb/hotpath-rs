@@ -585,9 +585,7 @@ impl Drop for HotpathGuard {
                                 }
 
                                 report.functions_timing =
-                                    Some(JsonFunctionsList::from_provider_with_raw(
-                                        &provider, elapsed_ns,
-                                    ));
+                                    Some(JsonFunctionsList::from_provider(&provider, elapsed_ns));
                             }
                         }
                     }
@@ -606,7 +604,7 @@ impl Drop for HotpathGuard {
                                             state_guard.limit,
                                         );
                                         report.functions_alloc = Some(
-                                            JsonFunctionsList::from_provider_with_raw(&provider, elapsed_ns),
+                                            JsonFunctionsList::from_provider(&provider, elapsed_ns),
                                         );
                                     }
                                 }

@@ -3,8 +3,8 @@ mod comment;
 use clap::Parser;
 use comment::upsert_pr_comment;
 use eyre::Result;
-use hotpath::format_bytes;
 use hotpath::json::{JsonFunctionEntry, JsonFunctionsList};
+use hotpath::{format_bytes, parse_bytes, parse_duration};
 use prettytable::{Cell, Row, Table};
 use std::env;
 use std::fmt;
@@ -193,53 +193,53 @@ fn find_function<'a>(data: &'a [JsonFunctionEntry], name: &str) -> Option<&'a Js
     data.iter().find(|f| f.name == name)
 }
 
+fn parse_value(s: &str, is_alloc: bool) -> Option<u64> {
+    if is_alloc {
+        parse_bytes(s)
+    } else {
+        parse_duration(s)
+    }
+}
+
+fn parse_percent(s: &str) -> Option<u64> {
+    let s = s.trim().trim_end_matches('%').trim();
+    let pct: f64 = s.parse().ok()?;
+    Some((pct * 100.0).round() as u64)
+}
+
 fn build_metrics_from_function(
     func: &JsonFunctionEntry,
     percentiles: &[u8],
     is_alloc: bool,
 ) -> Vec<(MetricKind, u64)> {
     let mut metrics = Vec::new();
+    let kind = if is_alloc {
+        MetricKind::Alloc
+    } else {
+        MetricKind::Duration
+    };
 
     metrics.push((MetricKind::Calls, func.calls));
 
-    if let Some(avg) = func.avg_raw {
-        metrics.push((
-            if is_alloc {
-                MetricKind::Alloc
-            } else {
-                MetricKind::Duration
-            },
-            avg,
-        ));
+    if let Some(val) = parse_value(&func.avg, is_alloc) {
+        metrics.push((kind, val));
     }
 
     for p in percentiles {
         let key = format!("p{}", p);
-        if let Some(&val) = func.percentiles_raw.get(&key) {
-            metrics.push((
-                if is_alloc {
-                    MetricKind::Alloc
-                } else {
-                    MetricKind::Duration
-                },
-                val,
-            ));
+        if let Some(formatted) = func.percentiles.get(&key) {
+            if let Some(val) = parse_value(formatted, is_alloc) {
+                metrics.push((kind, val));
+            }
         }
     }
 
-    if let Some(total) = func.total_raw {
-        metrics.push((
-            if is_alloc {
-                MetricKind::Alloc
-            } else {
-                MetricKind::Duration
-            },
-            total,
-        ));
+    if let Some(val) = parse_value(&func.total, is_alloc) {
+        metrics.push((kind, val));
     }
 
-    if let Some(percent) = func.percent_total_raw {
-        metrics.push((MetricKind::Percentage, percent));
+    if let Some(bp) = parse_percent(&func.percent_total) {
+        metrics.push((MetricKind::Percentage, bp));
     }
 
     metrics
@@ -261,10 +261,9 @@ fn compare_metrics(
 
     let is_alloc = matches!(before_metrics.hotpath_profiling_mode, ProfilingMode::Alloc);
 
-    let total_elapsed_diff = MetricDiff::DurationNs(
-        before_metrics.total_elapsed_raw,
-        after_metrics.total_elapsed_raw,
-    );
+    let before_elapsed = parse_duration(&before_metrics.time_elapsed).unwrap_or(0);
+    let after_elapsed = parse_duration(&after_metrics.time_elapsed).unwrap_or(0);
+    let total_elapsed_diff = MetricDiff::DurationNs(before_elapsed, after_elapsed);
 
     let mut function_diffs = Vec::new();
     let mut new_functions = Vec::new();
@@ -466,33 +465,25 @@ mod test {
         percent: u64,
     ) -> JsonFunctionEntry {
         let mut percentiles = HashMap::new();
-        percentiles.insert("p95".to_string(), "formatted".to_string());
-        let mut percentiles_raw = HashMap::new();
-        percentiles_raw.insert("p95".to_string(), p95);
+        percentiles.insert("p95".to_string(), hotpath::format_duration(p95));
 
         JsonFunctionEntry {
             id: 0,
             name: name.to_string(),
             calls,
-            avg: "formatted".to_string(),
-            avg_raw: Some(avg),
+            avg: hotpath::format_duration(avg),
             percentiles,
-            percentiles_raw,
-            total: "formatted".to_string(),
-            total_raw: Some(total),
-            percent_total: "formatted".to_string(),
-            percent_total_raw: Some(percent),
+            total: hotpath::format_duration(total),
+            percent_total: format!("{:.2}%", percent as f64 / 100.0),
         }
     }
 
-    fn make_metrics(data: Vec<JsonFunctionEntry>, total_elapsed_raw: u64) -> JsonFunctionsList {
+    fn make_metrics(data: Vec<JsonFunctionEntry>, total_elapsed_ns: u64) -> JsonFunctionsList {
         JsonFunctionsList {
             hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
-            time_elapsed: "formatted".to_string(),
-            total_elapsed_ns: total_elapsed_raw,
-            total_elapsed_raw,
+            time_elapsed: hotpath::format_duration(total_elapsed_ns),
+            total_elapsed_ns,
             total_allocated: None,
-            total_allocated_raw: None,
             description: "Time metrics".to_string(),
             caller_name: "test::main".to_string(),
             percentiles: vec![95],
