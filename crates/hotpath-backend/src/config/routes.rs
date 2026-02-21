@@ -34,18 +34,8 @@ const DOC_PAGES: &[SitemapConfig] = &[
         changefreq: "monthly",
     },
     SitemapConfig {
-        page: "futures",
-        priority: "0.6",
-        changefreq: "monthly",
-    },
-    SitemapConfig {
-        page: "channels",
-        priority: "0.6",
-        changefreq: "monthly",
-    },
-    SitemapConfig {
-        page: "streams",
-        priority: "0.6",
+        page: "data_flow",
+        priority: "0.8",
         changefreq: "monthly",
     },
     SitemapConfig {
@@ -107,6 +97,19 @@ pub fn app() -> Router {
             get(|| async { Redirect::permanent("/") }),
         )
         .route("/index.html", get(|| async { Redirect::permanent("/") }));
+
+    for old_page in &["channels", "streams", "futures"] {
+        let clean_path = format!("/{}", old_page);
+        let html_path = format!("/{}.html", old_page);
+        router = router.route(
+            &clean_path,
+            get(|| async { Redirect::permanent("/data_flow") }),
+        );
+        router = router.route(
+            &html_path,
+            get(|| async { Redirect::permanent("/data_flow") }),
+        );
+    }
 
     for entry in DOC_PAGES {
         let html_file = format!("{}.html", entry.page);

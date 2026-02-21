@@ -94,24 +94,10 @@ const SEO_MAPPINGS: &[SeoConfig] = &[
         ],
     },
     SeoConfig {
-        path: "/futures",
-        title: "Async Rust Performance Profiler: Future Monitoring & Poll Metrics | hotpath-rs",
-        description: "Monitor async Rust futures with poll counts, completion tracking, and performance metrics. Debug async bottlenecks and optimize future execution patterns with hotpath-rs.",
-        breadcrumb_label: "Futures",
-        faqs: &[],
-    },
-    SeoConfig {
-        path: "/channels",
-        title: "Rust Channels Performance Monitoring: Message Flow & Throughput Metrics | hotpath-rs",
-        description: "Monitor Rust channels performance with hotpath-rs. Track tokio, crossbeam, futures, and std channel metrics including send/receive counts, queue sizes, and throughput.",
-        breadcrumb_label: "Channels",
-        faqs: &[],
-    },
-    SeoConfig {
-        path: "/streams",
-        title: "Rust Async Stream Profiler: Performance Monitoring & Throughput Metrics | hotpath-rs",
-        description: "Profile async Rust streams with throughput metrics, item counts, and optional item logging. Monitor futures::Stream performance with the hotpath::stream! macro.",
-        breadcrumb_label: "Streams",
+        path: "/data_flow",
+        title: "Rust Data Flow Profiling: Functions, Channels & Streams Monitoring | hotpath-rs",
+        description: "Profile Rust data flow with hotpath-rs. Monitor function timing, memory allocations, channel throughput, and stream performance. Track message flow across your async Rust application.",
+        breadcrumb_label: "Data Flow",
         faqs: &[],
     },
     SeoConfig {
