@@ -1,8 +1,11 @@
 //! Channel instrumentation module - tracks message flow, queue sizes, and channel state.
 
-use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
+use crossbeam_channel::{
+    bounded, select_biased, unbounded, Receiver as CbReceiver, Sender as CbSender,
+};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 #[cfg(target_os = "linux")]
 use quanta::Instant;
@@ -14,10 +17,10 @@ mod wrapper;
 
 use std::mem;
 
-use crate::data_flow::{next_data_flow_id, WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS};
+use crate::data_flow::next_data_flow_id;
 use crate::json::{format_queue_status, JsonChannelEntry, JsonChannelsList};
 pub use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
-use crate::metrics_server::METRICS_SERVER_PORT;
+use crate::metrics_server::{METRICS_SERVER_PORT, RECV_TIMEOUT_MS};
 use crate::output::format_bytes;
 
 pub use crate::Format;
@@ -215,14 +218,73 @@ pub enum ChannelEvent {
 
 pub(crate) struct ChannelsState {
     pub(crate) event_tx: CbSender<ChannelEvent>,
-    pub(crate) stats_map: Arc<RwLock<HashMap<u32, ChannelEntry>>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
-    pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
+    pub(crate) completion_rx: Mutex<Option<CbReceiver<HashMap<u32, ChannelEntry>>>>,
 }
 
 type ChannelStatsState = ChannelsState;
 
 pub(crate) static CHANNELS_STATE: OnceLock<ChannelStatsState> = OnceLock::new();
+
+pub(crate) static CHANNELS_QUERY_TX: OnceLock<CbSender<ChannelsQuery>> = OnceLock::new();
+
+#[derive(Debug)]
+pub(crate) enum ChannelsQuery {
+    SortedEntries(CbSender<Vec<ChannelEntry>>),
+    Json(CbSender<JsonChannelsList>),
+    Logs {
+        channel_id: u32,
+        response_tx: CbSender<Option<ChannelLogs>>,
+    },
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
+fn query_channels_state<T, F>(make_query: F) -> Option<T>
+where
+    F: FnOnce(CbSender<T>) -> ChannelsQuery,
+{
+    let query_tx = CHANNELS_QUERY_TX.get()?;
+    let (response_tx, response_rx) = bounded::<T>(1);
+    query_tx.send(make_query(response_tx)).ok()?;
+    response_rx
+        .recv_timeout(Duration::from_millis(RECV_TIMEOUT_MS))
+        .ok()
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn handle_channel_query(query: ChannelsQuery, local_stats: &HashMap<u32, ChannelEntry>) {
+    match query {
+        ChannelsQuery::SortedEntries(response_tx) => {
+            let mut entries: Vec<ChannelEntry> = local_stats.values().cloned().collect();
+            entries.sort_by(compare_channel_entries);
+            let _ = response_tx.send(entries);
+        }
+        ChannelsQuery::Json(response_tx) => {
+            let mut entries: Vec<ChannelEntry> = local_stats.values().cloned().collect();
+            entries.sort_by(compare_channel_entries);
+            let data = entries.iter().map(JsonChannelEntry::from).collect();
+            let current_elapsed_ns = START_TIME
+                .get()
+                .map(|t| t.elapsed().as_nanos() as u64)
+                .unwrap_or(0);
+            let _ = response_tx.send(JsonChannelsList {
+                current_elapsed_ns,
+                data,
+            });
+        }
+        ChannelsQuery::Logs {
+            channel_id,
+            response_tx,
+        } => {
+            let result = local_stats.get(&channel_id).map(|stats| ChannelLogs {
+                id: channel_id.to_string(),
+                sent_logs: stats.sent_logs.iter().rev().cloned().collect(),
+                received_logs: stats.received_logs.iter().rev().cloned().collect(),
+            });
+            let _ = response_tx.send(result);
+        }
+    }
+}
 
 pub(crate) use crate::lib_on::START_TIME;
 
@@ -317,72 +379,49 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
             label = "hp-ch-shutdown",
             log = true
         );
-        let (completion_tx, completion_rx) = bounded::<()>(1);
+        let (completion_tx, completion_rx) = bounded::<HashMap<u32, ChannelEntry>>(1);
         #[cfg(feature = "hotpath-meta")]
         let (completion_tx, completion_rx) = hotpath_meta::channel!(
             (completion_tx, completion_rx),
             label = "hp-ch-completion",
             log = true
         );
-        let stats_map = Arc::new(RwLock::new(HashMap::<u32, ChannelEntry>::new()));
-        let stats_map_clone = Arc::clone(&stats_map);
+        let (query_tx, query_rx) = unbounded::<ChannelsQuery>();
+        #[cfg(feature = "hotpath-meta")]
+        let (query_tx, query_rx) =
+            hotpath_meta::channel!((query_tx, query_rx), label = "hp-ch-queries", log = true);
+        let _ = CHANNELS_QUERY_TX.set(query_tx);
 
         std::thread::Builder::new()
             .name("hp-channels".into())
             .spawn(move || {
-                let mut local_buffer: Vec<ChannelEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let mut local_stats = HashMap::<u32, ChannelEntry>::new();
 
                 loop {
-                    select! {
-                        recv(event_rx) -> result => {
-                            match result {
-                                Ok(event) => {
-                                    local_buffer.push(event);
-                                    if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = stats_map_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_channel_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(_) => {
-                                    if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = stats_map_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_channel_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
-                        }
+                    select_biased! {
                         recv(shutdown_rx) -> _ => {
-                            if let Ok(mut shared) = stats_map_clone.write() {
-                                for e in local_buffer.drain(..) {
-                                    process_channel_event(&mut shared, e);
-                                }
-                                while let Ok(event) = event_rx.try_recv() {
-                                    process_channel_event(&mut shared, event);
-                                }
+                            while let Ok(event) = event_rx.try_recv() {
+                                process_channel_event(&mut local_stats, event);
                             }
                             break;
                         }
-                        default(flush_interval) => {
-                            if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = stats_map_clone.write() {
-                                    for e in local_buffer.drain(..) {
-                                        process_channel_event(&mut shared, e);
-                                    }
+                        recv(query_rx) -> result => {
+                            if let Ok(query) = result {
+                                handle_channel_query(query, &local_stats);
+                            }
+                        }
+                        recv(event_rx) -> result => {
+                            match result {
+                                Ok(event) => {
+                                    process_channel_event(&mut local_stats, event);
                                 }
+                                Err(_) => break,
                             }
                         }
                     }
                 }
 
-                let _ = completion_tx.send(());
+                let _ = completion_tx.send(local_stats);
             })
             .expect("Failed to spawn channel-stats-collector thread");
 
@@ -390,7 +429,6 @@ pub(crate) fn init_channels_state() -> &'static ChannelStatsState {
 
         ChannelsState {
             event_tx,
-            stats_map,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),
         }
@@ -638,17 +676,6 @@ macro_rules! channel {
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn get_all_channel_stats() -> HashMap<u32, ChannelEntry> {
-    if let Some(state) = CHANNELS_STATE.get() {
-        state.stats_map.read().unwrap().clone()
-    } else {
-        HashMap::new()
-    }
-}
-
-/// Compare two channel stats for sorting.
-/// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn compare_channel_entries(a: &ChannelEntry, b: &ChannelEntry) -> std::cmp::Ordering {
     let a_has_label = a.label.is_some();
     let b_has_label = b.label.is_some();
@@ -668,38 +695,32 @@ pub(crate) fn compare_channel_entries(a: &ChannelEntry, b: &ChannelEntry) -> std
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
-    let mut stats: Vec<ChannelEntry> = get_all_channel_stats().into_values().collect();
-    stats.sort_by(compare_channel_entries);
-    stats
+    query_channels_state(ChannelsQuery::SortedEntries).unwrap_or_default()
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub fn get_channels_json() -> JsonChannelsList {
-    let data = get_sorted_channel_entries()
-        .iter()
-        .map(JsonChannelEntry::from)
-        .collect();
+    if let Some(json) = query_channels_state(ChannelsQuery::Json) {
+        return json;
+    }
 
     let current_elapsed_ns = START_TIME
         .get()
-        .expect("START_TIME must be initialized")
-        .elapsed()
-        .as_nanos() as u64;
+        .map(|t| t.elapsed().as_nanos() as u64)
+        .unwrap_or(0);
 
     JsonChannelsList {
         current_elapsed_ns,
-        data,
+        data: Vec::new(),
     }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub fn get_channel_logs(channel_id: &str) -> Option<ChannelLogs> {
     let id = channel_id.parse::<u32>().ok()?;
-    let state = CHANNELS_STATE.get()?;
-    let channels_data = state.stats_map.read().unwrap();
-    channels_data.get(&id).map(|channel_stats| ChannelLogs {
-        id: channel_id.to_string(),
-        sent_logs: channel_stats.sent_logs.iter().rev().cloned().collect(),
-        received_logs: channel_stats.received_logs.iter().rev().cloned().collect(),
+    query_channels_state(|response_tx| ChannelsQuery::Logs {
+        channel_id: id,
+        response_tx,
     })
+    .flatten()
 }
