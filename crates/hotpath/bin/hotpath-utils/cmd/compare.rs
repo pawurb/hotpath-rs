@@ -6,7 +6,7 @@ use std::fs;
 
 use hotpath::shorten_function_name;
 
-use crate::cmd::shared::{compare_reports, JsonReportDiff, MetricsComparison};
+use crate::cmd::shared::{compare_reports, FunctionsComparison, JsonReportDiff, ThreadsComparison};
 
 #[derive(Debug, Parser)]
 pub struct CompareArgs {
@@ -37,8 +37,8 @@ impl CompareArgs {
 }
 
 fn print_diff(diff: &JsonReportDiff) {
-    if diff.functions_timing.is_none() && diff.functions_alloc.is_none() {
-        println!("No comparable sections found in both reports.");
+    if diff.functions_timing.is_none() && diff.functions_alloc.is_none() && diff.threads.is_none() {
+        println!("No comparable sections found.");
         return;
     }
 
@@ -59,7 +59,7 @@ fn print_diff(diff: &JsonReportDiff) {
             "Functions Timing ({} - {})",
             comparison.profiling_mode, comparison.description
         );
-        print_comparison_table(comparison);
+        print_functions_diff(comparison);
         println!();
     }
 
@@ -68,12 +68,58 @@ fn print_diff(diff: &JsonReportDiff) {
             "Functions Alloc ({} - {})",
             comparison.profiling_mode, comparison.description
         );
-        print_comparison_table(comparison);
+        print_functions_diff(comparison);
+        println!();
+    }
+
+    if let Some(threads) = &diff.threads {
+        println!("Threads");
+        print_threads_diff(threads);
         println!();
     }
 }
 
-fn print_comparison_table(comparison: &MetricsComparison) {
+fn print_threads_diff(threads: &ThreadsComparison) {
+    if threads.thread_diffs.is_empty() {
+        println!("No threads to compare.");
+        return;
+    }
+
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+        Cell::new("Thread"),
+        Cell::new("CPU % Max"),
+        Cell::new("Alloc"),
+        Cell::new("Dealloc"),
+        Cell::new("Mem Diff"),
+    ]));
+
+    for diff in &threads.thread_diffs {
+        let name = if diff.is_removed {
+            format!("[removed] {}", diff.thread_name)
+        } else if diff.is_new {
+            format!("[new] {}", diff.thread_name)
+        } else {
+            diff.thread_name.clone()
+        };
+
+        let fmt = |m: &Option<crate::cmd::shared::MetricDiff>| {
+            m.as_ref().map(|d| format!("{}", d)).unwrap_or_default()
+        };
+
+        table.add_row(Row::new(vec![
+            Cell::new(&name),
+            Cell::new(&fmt(&diff.cpu_percent_max)),
+            Cell::new(&fmt(&diff.alloc_bytes)),
+            Cell::new(&fmt(&diff.dealloc_bytes)),
+            Cell::new(&fmt(&diff.mem_diff)),
+        ]));
+    }
+
+    table.printstd();
+}
+
+fn print_functions_diff(comparison: &FunctionsComparison) {
     if comparison.function_diffs.is_empty() {
         println!("No functions to compare.");
         return;

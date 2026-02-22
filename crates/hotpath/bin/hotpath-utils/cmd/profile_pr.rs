@@ -1,6 +1,6 @@
 mod comment;
 
-use crate::cmd::shared::{compare_metrics, MetricDiff, MetricsComparison};
+use crate::cmd::shared::{compare_metrics, FunctionsComparison, MetricDiff};
 use clap::Parser;
 use comment::upsert_pr_comment;
 use eyre::Result;
@@ -96,7 +96,7 @@ impl ProfilePrArgs {
 }
 
 fn format_comparison_markdown(
-    comparison: &MetricsComparison,
+    comparison: &FunctionsComparison,
     total_elapsed_diff: &MetricDiff,
     cpu_baseline_diff: Option<&MetricDiff>,
     emoji_threshold: Option<u32>,

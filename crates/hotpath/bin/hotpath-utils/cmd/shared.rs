@@ -1,14 +1,18 @@
-use hotpath::json::{JsonFunctionEntry, JsonFunctionsList, JsonReport};
+use hotpath::json::{
+    format_bytes_signed, parse_bytes_signed, JsonFunctionEntry, JsonFunctionsList, JsonReport,
+    JsonThreadEntry, JsonThreadsList,
+};
 use hotpath::{format_bytes, parse_bytes, parse_duration};
 use std::fmt;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub enum MetricDiff {
-    CallsCount(u64, u64), // (before, after)
-    DurationNs(u64, u64), // (before, after) - Duration in nanoseconds
-    Alloc(u64, u64),      // (before, after) - Bytes allocated
-    Percentage(u64, u64), // (before, after)
+    CallsCount(u64, u64),  // (before, after)
+    DurationNs(u64, u64),  // (before, after) - Duration in nanoseconds
+    Alloc(u64, u64),       // (before, after) - Bytes allocated
+    AllocSigned(i64, i64), // (before, after) - Signed bytes
+    Percentage(u64, u64),  // (before, after)
 }
 
 impl fmt::Display for MetricDiff {
@@ -46,6 +50,17 @@ impl MetricDiff {
                     emoji
                 )
             }
+            MetricDiff::AllocSigned(before, after) => {
+                let diff_percent = calculate_percentage_diff_signed(*before, *after);
+                let emoji = get_emoji_for_diff(diff_percent, emoji_threshold);
+                format!(
+                    "{} → {} ({:+.1}%){}",
+                    format_bytes_signed(*before),
+                    format_bytes_signed(*after),
+                    diff_percent,
+                    emoji
+                )
+            }
             MetricDiff::Percentage(before, after) => {
                 let diff_percent = calculate_percentage_diff(*before, *after);
                 let before_percent = *before as f64 / 100.0;
@@ -76,7 +91,7 @@ fn get_emoji_for_diff(diff_percent: f64, threshold: Option<u32>) -> &'static str
 }
 
 #[derive(Debug, Clone)]
-pub struct MetricsComparison {
+pub struct FunctionsComparison {
     pub profiling_mode: hotpath::ProfilingMode,
     pub description: String,
     pub percentiles: Vec<u8>,
@@ -92,13 +107,30 @@ pub struct FunctionMetricsDiff {
 }
 
 #[derive(Debug, Clone)]
+pub struct ThreadMetricsDiff {
+    pub thread_name: String,
+    pub cpu_percent_max: Option<MetricDiff>,
+    pub alloc_bytes: Option<MetricDiff>,
+    pub dealloc_bytes: Option<MetricDiff>,
+    pub mem_diff: Option<MetricDiff>,
+    pub is_removed: bool,
+    pub is_new: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ThreadsComparison {
+    pub thread_diffs: Vec<ThreadMetricsDiff>,
+}
+
+#[derive(Debug, Clone)]
 pub struct JsonReportDiff {
     pub before_label: Option<String>,
     pub after_label: Option<String>,
     pub total_elapsed_diff: MetricDiff,
     pub cpu_baseline_diff: Option<MetricDiff>,
-    pub functions_timing: Option<MetricsComparison>,
-    pub functions_alloc: Option<MetricsComparison>,
+    pub functions_timing: Option<FunctionsComparison>,
+    pub functions_alloc: Option<FunctionsComparison>,
+    pub threads: Option<ThreadsComparison>,
 }
 
 pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> JsonReportDiff {
@@ -136,6 +168,11 @@ pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> JsonReportDif
         _ => None,
     };
 
+    let threads = match (&before.threads, &after.threads) {
+        (Some(b), Some(a)) => Some(compare_threads(b, a)),
+        _ => None,
+    };
+
     JsonReportDiff {
         before_label: before.label.clone(),
         after_label: after.label.clone(),
@@ -143,6 +180,7 @@ pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> JsonReportDif
         cpu_baseline_diff,
         functions_timing,
         functions_alloc,
+        threads,
     }
 }
 
@@ -155,6 +193,18 @@ fn calculate_percentage_diff(before: u64, after: u64) -> f64 {
         }
     } else {
         ((after as f64 - before as f64) / before as f64) * 100.0
+    }
+}
+
+fn calculate_percentage_diff_signed(before: i64, after: i64) -> f64 {
+    if before == 0 {
+        if after == 0 {
+            0.0
+        } else {
+            100.0
+        }
+    } else {
+        ((after as f64 - before as f64) / (before as f64).abs()) * 100.0
     }
 }
 
@@ -225,7 +275,7 @@ fn build_metrics_from_function(
 pub fn compare_metrics(
     before_metrics: &JsonFunctionsList,
     after_metrics: &JsonFunctionsList,
-) -> MetricsComparison {
+) -> FunctionsComparison {
     use hotpath::ProfilingMode;
 
     let is_alloc = matches!(before_metrics.hotpath_profiling_mode, ProfilingMode::Alloc);
@@ -334,7 +384,7 @@ pub fn compare_metrics(
         b_percent.cmp(&a_percent)
     });
 
-    MetricsComparison {
+    FunctionsComparison {
         profiling_mode: before_metrics.hotpath_profiling_mode.clone(),
         description: before_metrics.description.clone(),
         percentiles: before_metrics.percentiles.clone(),
@@ -342,10 +392,102 @@ pub fn compare_metrics(
     }
 }
 
+fn parse_cpu_percent(s: &str) -> Option<u64> {
+    let s = s.trim().trim_end_matches('%').trim();
+    let pct: f64 = s.parse().ok()?;
+    Some((pct * 100.0).round() as u64)
+}
+
+fn find_thread(data: &[JsonThreadEntry], os_tid: u64) -> Option<&JsonThreadEntry> {
+    data.iter().find(|t| t.os_tid == os_tid)
+}
+
+fn make_percent_diff(before: &Option<String>, after: &Option<String>) -> Option<MetricDiff> {
+    let b = parse_cpu_percent(before.as_deref()?)?;
+    let a = parse_cpu_percent(after.as_deref()?)?;
+    Some(MetricDiff::Percentage(b, a))
+}
+
+fn make_alloc_diff(before: &Option<String>, after: &Option<String>) -> Option<MetricDiff> {
+    let b = parse_bytes(before.as_deref()?)?;
+    let a = parse_bytes(after.as_deref()?)?;
+    Some(MetricDiff::Alloc(b, a))
+}
+
+fn make_alloc_signed_diff(before: &Option<String>, after: &Option<String>) -> Option<MetricDiff> {
+    let b = parse_bytes_signed(before.as_deref()?)?;
+    let a = parse_bytes_signed(after.as_deref()?)?;
+    Some(MetricDiff::AllocSigned(b, a))
+}
+
+fn build_thread_diff(
+    before: &JsonThreadEntry,
+    after: &JsonThreadEntry,
+    is_new: bool,
+    is_removed: bool,
+) -> ThreadMetricsDiff {
+    ThreadMetricsDiff {
+        thread_name: if is_new {
+            after.name.clone()
+        } else {
+            before.name.clone()
+        },
+        cpu_percent_max: make_percent_diff(&before.cpu_percent_max, &after.cpu_percent_max),
+        alloc_bytes: make_alloc_diff(&before.alloc_bytes, &after.alloc_bytes),
+        dealloc_bytes: make_alloc_diff(&before.dealloc_bytes, &after.dealloc_bytes),
+        mem_diff: make_alloc_signed_diff(&before.mem_diff, &after.mem_diff),
+        is_removed,
+        is_new,
+    }
+}
+
+pub fn compare_threads(
+    before_threads: &JsonThreadsList,
+    after_threads: &JsonThreadsList,
+) -> ThreadsComparison {
+    let mut thread_diffs = Vec::new();
+    let mut new_threads = Vec::new();
+
+    let zero = JsonThreadEntry {
+        os_tid: 0,
+        name: String::new(),
+        status: String::new(),
+        status_code: String::new(),
+        cpu_user: String::new(),
+        cpu_sys: String::new(),
+        cpu_total: String::new(),
+        cpu_percent: None,
+        cpu_percent_max: Some("0.0%".to_string()),
+        alloc_bytes: Some("0 B".to_string()),
+        dealloc_bytes: Some("0 B".to_string()),
+        mem_diff: Some("0 B".to_string()),
+    };
+
+    for after_thread in &after_threads.data {
+        if let Some(before_thread) = find_thread(&before_threads.data, after_thread.os_tid) {
+            thread_diffs.push(build_thread_diff(before_thread, after_thread, false, false));
+        } else {
+            new_threads.push(build_thread_diff(&zero, after_thread, true, false));
+        }
+    }
+
+    for before_thread in &before_threads.data {
+        if find_thread(&after_threads.data, before_thread.os_tid).is_none() {
+            thread_diffs.push(build_thread_diff(before_thread, &zero, false, true));
+        }
+    }
+
+    thread_diffs.extend(new_threads);
+
+    ThreadsComparison { thread_diffs }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::cmd::shared::{compare_metrics, compare_reports};
-    use hotpath::json::{JsonFunctionEntry, JsonFunctionsList, JsonReport};
+    use crate::cmd::shared::{compare_metrics, compare_reports, compare_threads};
+    use hotpath::json::{
+        JsonFunctionEntry, JsonFunctionsList, JsonReport, JsonThreadEntry, JsonThreadsList,
+    };
     use std::collections::HashMap;
 
     fn make_function_data(
@@ -510,5 +652,64 @@ mod test {
         let alloc = diff.functions_alloc.unwrap();
         assert_eq!(alloc.function_diffs.len(), 1);
         assert_eq!(alloc.function_diffs[0].function_name, "fn_a");
+    }
+
+    fn make_thread_entry(os_tid: u64, name: &str, cpu_percent_max: f64) -> JsonThreadEntry {
+        JsonThreadEntry {
+            os_tid,
+            name: name.to_string(),
+            status: "Running".to_string(),
+            status_code: "1".to_string(),
+            cpu_user: "0.000 s".to_string(),
+            cpu_sys: "0.000 s".to_string(),
+            cpu_total: "0.000 s".to_string(),
+            cpu_percent: None,
+            cpu_percent_max: Some(format!("{:.1}%", cpu_percent_max)),
+            alloc_bytes: None,
+            dealloc_bytes: None,
+            mem_diff: None,
+        }
+    }
+
+    fn make_threads_list(data: Vec<JsonThreadEntry>) -> JsonThreadsList {
+        let thread_count = data.len();
+        JsonThreadsList {
+            current_elapsed_ns: 1_000_000_000,
+            sample_interval_ms: 1000,
+            thread_count,
+            rss_bytes: None,
+            total_alloc_bytes: None,
+            total_dealloc_bytes: None,
+            alloc_dealloc_diff: None,
+            data,
+        }
+    }
+
+    #[test]
+    fn test_compare_threads_new_removed_unchanged() {
+        let before = make_threads_list(vec![
+            make_thread_entry(1, "main", 30.0),
+            make_thread_entry(2, "worker-1", 17.5),
+        ]);
+        let after = make_threads_list(vec![
+            make_thread_entry(1, "main", 42.5),
+            make_thread_entry(3, "worker-2", 11.5),
+        ]);
+
+        let comparison = compare_threads(&before, &after);
+
+        assert_eq!(comparison.thread_diffs.len(), 3);
+        assert!(comparison
+            .thread_diffs
+            .iter()
+            .any(|t| t.thread_name == "main" && !t.is_new && !t.is_removed));
+        assert!(comparison
+            .thread_diffs
+            .iter()
+            .any(|t| t.thread_name == "worker-1" && t.is_removed));
+        assert!(comparison
+            .thread_diffs
+            .iter()
+            .any(|t| t.thread_name == "worker-2" && t.is_new));
     }
 }
