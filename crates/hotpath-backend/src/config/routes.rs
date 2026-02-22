@@ -144,6 +144,7 @@ async fn health_check() -> impl IntoResponse {
     "OK"
 }
 
+#[hotpath::measure]
 async fn robots_txt() -> impl IntoResponse {
     let content = format!(
         "User-agent: *\n\
@@ -180,6 +181,7 @@ async fn robots_txt() -> impl IntoResponse {
     )
 }
 
+#[hotpath::measure]
 async fn sitemap_xml() -> impl IntoResponse {
     let mut urls = vec![];
 

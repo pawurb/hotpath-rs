@@ -58,6 +58,10 @@ fetch-badges:
     fetch pawurb-hotpath-rs pawurb/hotpath-rs
     echo "Badges saved to ${DIR}/"
 
+# Benchmark the documentation server
+bench_docs: docs
+    bash scripts/bench_docs.sh
+
 # Purge Cloudflare cache
 clean-cache:
     #!/usr/bin/env bash
