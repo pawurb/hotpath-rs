@@ -402,8 +402,8 @@ fn parse_cpu_percent(s: &str) -> Option<u64> {
     Some((pct * 100.0).round() as u64)
 }
 
-fn find_thread(data: &[JsonThreadEntry], os_tid: u64) -> Option<&JsonThreadEntry> {
-    data.iter().find(|t| t.os_tid == os_tid)
+fn find_thread<'a>(data: &'a [JsonThreadEntry], name: &str) -> Option<&'a JsonThreadEntry> {
+    data.iter().find(|t| t.name == name)
 }
 
 fn make_percent_diff(before: &Option<String>, after: &Option<String>) -> Option<MetricDiff> {
@@ -467,16 +467,43 @@ pub fn compare_threads(
         mem_diff: Some("0 B".to_string()),
     };
 
-    for after_thread in &after_threads.data {
-        if let Some(before_thread) = find_thread(&before_threads.data, after_thread.os_tid) {
+    let duplicate_names = {
+        let mut dups = std::collections::HashSet::new();
+        for list in [&before_threads.data, &after_threads.data] {
+            let mut counts = std::collections::HashMap::<&str, usize>::new();
+            for t in list {
+                *counts.entry(&t.name).or_default() += 1;
+            }
+            for (name, count) in counts {
+                if count > 1 {
+                    dups.insert(name.to_string());
+                }
+            }
+        }
+        dups
+    };
+
+    let before_data: Vec<_> = before_threads
+        .data
+        .iter()
+        .filter(|t| !duplicate_names.contains(&t.name))
+        .collect();
+    let after_data: Vec<_> = after_threads
+        .data
+        .iter()
+        .filter(|t| !duplicate_names.contains(&t.name))
+        .collect();
+
+    for after_thread in &after_data {
+        if let Some(before_thread) = find_thread(&before_threads.data, &after_thread.name) {
             thread_diffs.push(build_thread_diff(before_thread, after_thread, false, false));
         } else {
             new_threads.push(build_thread_diff(&zero, after_thread, true, false));
         }
     }
 
-    for before_thread in &before_threads.data {
-        if find_thread(&after_threads.data, before_thread.os_tid).is_none() {
+    for before_thread in &before_data {
+        if find_thread(&after_threads.data, &before_thread.name).is_none() {
             thread_diffs.push(build_thread_diff(before_thread, &zero, false, true));
         }
     }
@@ -807,12 +834,12 @@ mod test {
     #[test]
     fn test_compare_threads_new_removed_unchanged() {
         let before = make_threads_list(vec![
-            make_thread_entry(1, "main", 30.0),
-            make_thread_entry(2, "worker-1", 17.5),
+            make_thread_entry(100, "main", 30.0),
+            make_thread_entry(101, "worker-1", 17.5),
         ]);
         let after = make_threads_list(vec![
-            make_thread_entry(1, "main", 42.5),
-            make_thread_entry(3, "worker-2", 11.5),
+            make_thread_entry(200, "main", 42.5),
+            make_thread_entry(201, "worker-2", 11.5),
         ]);
 
         let comparison = compare_threads(&before, &after);
@@ -838,12 +865,12 @@ mod test {
 
     #[test]
     fn test_compare_threads_global_alloc_diffs() {
-        let mut before = make_threads_list(vec![make_thread_entry(1, "main", 30.0)]);
+        let mut before = make_threads_list(vec![make_thread_entry(100, "main", 30.0)]);
         before.total_alloc_bytes = Some("1.00 MB".to_string());
         before.total_dealloc_bytes = Some("512.00 KB".to_string());
         before.alloc_dealloc_diff = Some("512.00 KB".to_string());
 
-        let mut after = make_threads_list(vec![make_thread_entry(1, "main", 42.5)]);
+        let mut after = make_threads_list(vec![make_thread_entry(200, "main", 42.5)]);
         after.total_alloc_bytes = Some("2.00 MB".to_string());
         after.total_dealloc_bytes = Some("1.00 MB".to_string());
         after.alloc_dealloc_diff = Some("1.00 MB".to_string());
@@ -853,5 +880,31 @@ mod test {
         assert!(comparison.total_alloc_diff.is_some());
         assert!(comparison.total_dealloc_diff.is_some());
         assert!(comparison.total_mem_diff_diff.is_some());
+    }
+
+    #[test]
+    fn test_compare_threads_duplicate_names_skipped() {
+        let before = make_threads_list(vec![
+            make_thread_entry(100, "main", 30.0),
+            make_thread_entry(101, "worker", 10.0),
+            make_thread_entry(102, "worker", 20.0),
+        ]);
+        let after = make_threads_list(vec![
+            make_thread_entry(200, "main", 42.5),
+            make_thread_entry(201, "worker", 15.0),
+            make_thread_entry(202, "worker", 25.0),
+        ]);
+
+        let comparison = compare_threads(&before, &after);
+
+        assert_eq!(comparison.thread_diffs.len(), 1);
+        assert!(comparison
+            .thread_diffs
+            .iter()
+            .any(|t| t.thread_name == "main" && !t.is_new && !t.is_removed));
+        assert!(!comparison
+            .thread_diffs
+            .iter()
+            .any(|t| t.thread_name == "worker"));
     }
 }
