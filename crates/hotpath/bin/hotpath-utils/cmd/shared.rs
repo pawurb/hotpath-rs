@@ -9,8 +9,8 @@ use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub enum MetricDiff {
-    CallsCount(u64, u64),  // (before, after)
-    DurationNs(u64, u64),  // (before, after) - Duration in nanoseconds
+    CallsCount(u64, u64), // (before, after)
+    DurationNs(u64, u64), // (before, after) - Duration in nanoseconds
     Alloc(u64, u64),       // (before, after) - Bytes allocated
     AllocSigned(i64, i64), // (before, after) - Signed bytes
     Percentage(u64, u64),  // (before, after)
@@ -402,8 +402,8 @@ fn parse_cpu_percent(s: &str) -> Option<u64> {
     Some((pct * 100.0).round() as u64)
 }
 
-fn find_thread(data: &[JsonThreadEntry], os_tid: u64) -> Option<&JsonThreadEntry> {
-    data.iter().find(|t| t.os_tid == os_tid)
+fn find_thread<'a>(data: &'a [JsonThreadEntry], name: &str) -> Option<&'a JsonThreadEntry> {
+    data.iter().find(|t| t.name == name)
 }
 
 fn make_percent_diff(before: &Option<String>, after: &Option<String>) -> Option<MetricDiff> {
@@ -468,7 +468,7 @@ pub fn compare_threads(
     };
 
     for after_thread in &after_threads.data {
-        if let Some(before_thread) = find_thread(&before_threads.data, after_thread.os_tid) {
+        if let Some(before_thread) = find_thread(&before_threads.data, &after_thread.name) {
             thread_diffs.push(build_thread_diff(before_thread, after_thread, false, false));
         } else {
             new_threads.push(build_thread_diff(&zero, after_thread, true, false));
@@ -476,7 +476,7 @@ pub fn compare_threads(
     }
 
     for before_thread in &before_threads.data {
-        if find_thread(&after_threads.data, before_thread.os_tid).is_none() {
+        if find_thread(&after_threads.data, &before_thread.name).is_none() {
             thread_diffs.push(build_thread_diff(before_thread, &zero, false, true));
         }
     }
@@ -773,9 +773,9 @@ mod test {
         assert_eq!(alloc.function_diffs[0].function_name, "fn_a");
     }
 
-    fn make_thread_entry(os_tid: u64, name: &str, cpu_percent_max: f64) -> JsonThreadEntry {
+    fn make_thread_entry(name: &str, cpu_percent_max: f64) -> JsonThreadEntry {
         JsonThreadEntry {
-            os_tid,
+            os_tid: 0,
             name: name.to_string(),
             status: "Running".to_string(),
             status_code: "1".to_string(),
@@ -807,12 +807,12 @@ mod test {
     #[test]
     fn test_compare_threads_new_removed_unchanged() {
         let before = make_threads_list(vec![
-            make_thread_entry(1, "main", 30.0),
-            make_thread_entry(2, "worker-1", 17.5),
+            make_thread_entry("main", 30.0),
+            make_thread_entry("worker-1", 17.5),
         ]);
         let after = make_threads_list(vec![
-            make_thread_entry(1, "main", 42.5),
-            make_thread_entry(3, "worker-2", 11.5),
+            make_thread_entry("main", 42.5),
+            make_thread_entry("worker-2", 11.5),
         ]);
 
         let comparison = compare_threads(&before, &after);
@@ -838,12 +838,12 @@ mod test {
 
     #[test]
     fn test_compare_threads_global_alloc_diffs() {
-        let mut before = make_threads_list(vec![make_thread_entry(1, "main", 30.0)]);
+        let mut before = make_threads_list(vec![make_thread_entry("main", 30.0)]);
         before.total_alloc_bytes = Some("1.00 MB".to_string());
         before.total_dealloc_bytes = Some("512.00 KB".to_string());
         before.alloc_dealloc_diff = Some("512.00 KB".to_string());
 
-        let mut after = make_threads_list(vec![make_thread_entry(1, "main", 42.5)]);
+        let mut after = make_threads_list(vec![make_thread_entry("main", 42.5)]);
         after.total_alloc_bytes = Some("2.00 MB".to_string());
         after.total_dealloc_bytes = Some("1.00 MB".to_string());
         after.alloc_dealloc_diff = Some("1.00 MB".to_string());
@@ -853,5 +853,37 @@ mod test {
         assert!(comparison.total_alloc_diff.is_some());
         assert!(comparison.total_dealloc_diff.is_some());
         assert!(comparison.total_mem_diff_diff.is_some());
+    }
+
+    #[test]
+    fn test_compare_reports_with_threads() {
+        let before_threads = make_threads_list(vec![make_thread_entry("main", 30.0)]);
+        let after_threads = make_threads_list(vec![make_thread_entry("main", 50.0)]);
+
+        let before_timing = make_metrics(
+            vec![make_function_data(
+                "fn_a", 100, 1000000, 1100000, 100000000, 10000,
+            )],
+            100000000,
+        );
+        let after_timing = make_metrics(
+            vec![make_function_data(
+                "fn_a", 100, 1000000, 1100000, 100000000, 10000,
+            )],
+            100000000,
+        );
+
+        let mut before = make_report(Some(before_timing), None);
+        before.threads = Some(before_threads);
+        let mut after = make_report(Some(after_timing), None);
+        after.threads = Some(after_threads);
+
+        let diff = compare_reports(&before, &after);
+
+        assert!(diff.threads.is_some());
+        let threads = diff.threads.unwrap();
+        assert_eq!(threads.thread_diffs.len(), 1);
+        assert_eq!(threads.thread_diffs[0].thread_name, "main");
+        assert!(threads.thread_diffs[0].cpu_percent_max.is_some());
     }
 }
