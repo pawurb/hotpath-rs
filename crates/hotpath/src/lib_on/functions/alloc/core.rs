@@ -92,7 +92,6 @@ fn get_or_create_slot(tid: u64) -> Option<&'static ThreadAllocStats> {
 pub struct AllocationInfo {
     pub bytes_total: Cell<u64>,
     pub count_total: Cell<u64>,
-    pub unsupported_async: Cell<bool>,
 }
 
 impl std::ops::AddAssign for AllocationInfo {
@@ -101,8 +100,6 @@ impl std::ops::AddAssign for AllocationInfo {
             .set(self.bytes_total.get() + other.bytes_total.get());
         self.count_total
             .set(self.count_total.get() + other.count_total.get());
-        self.unsupported_async
-            .set(self.unsupported_async.get() | other.unsupported_async.get());
     }
 }
 
@@ -118,7 +115,6 @@ thread_local! {
         elements: [const { AllocationInfo {
             bytes_total: Cell::new(0),
             count_total: Cell::new(0),
-            unsupported_async: Cell::new(false)
         } }; MAX_DEPTH],
         tracking_enabled: Cell::new(true),
     } };

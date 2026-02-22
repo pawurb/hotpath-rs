@@ -40,10 +40,6 @@ pub use hotpath_guard::{HotpathGuard, HotpathGuardBuilder};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
-        #[doc(hidden)]
-        pub use tokio::runtime::{Handle, RuntimeFlavor};
-
-        // Memory allocations profiling using a custom global allocator
         #[global_allocator]
         static GLOBAL: functions::alloc::allocator::CountingAllocator = functions::alloc::allocator::CountingAllocator {};
     }

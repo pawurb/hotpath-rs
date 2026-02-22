@@ -15,7 +15,6 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
         pub mod alloc;
         use alloc::state::FunctionsState;
-        use tokio::runtime::{Handle, RuntimeFlavor};
         pub use alloc::guard::{MeasurementGuard, MeasurementGuardWithLog};
         pub use alloc::state::FunctionStats;
     } else {
@@ -65,60 +64,17 @@ pub(crate) static EXCLUDE_WRAPPER: LazyLock<bool> = LazyLock::new(|| {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl MeasurementGuard {
-    pub fn build(measurement_name: &'static str, wrapper: bool, _is_async: bool) -> Self {
-        #[allow(clippy::needless_bool)]
-        let unsupported_async = if wrapper {
-            // Top wrapper functions are not inside a runtime
-            false
-        } else {
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "hotpath-alloc")] {
-                    // For allocation profiling: mark async as unsupported unless
-                    // running on Tokio CurrentThread. Non-Tokio runtimes are unsupported.
-                    if _is_async {
-                        match Handle::try_current() {
-                            Ok(h) => h.runtime_flavor() != RuntimeFlavor::CurrentThread,
-                            Err(_) => true,
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-        };
-
+    pub fn build(measurement_name: &'static str, wrapper: bool, is_async: bool) -> Self {
         let skipped = !wrapper && !is_focused(measurement_name);
-        MeasurementGuard::new(measurement_name, wrapper, unsupported_async, skipped)
+        MeasurementGuard::new(measurement_name, wrapper, skipped, is_async)
     }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl MeasurementGuardWithLog {
-    pub fn build(measurement_name: &'static str, wrapper: bool, _is_async: bool) -> Self {
-        #[allow(clippy::needless_bool)]
-        let unsupported_async = if wrapper {
-            false
-        } else {
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "hotpath-alloc")] {
-                    if _is_async {
-                        match Handle::try_current() {
-                            Ok(h) => h.runtime_flavor() != RuntimeFlavor::CurrentThread,
-                            Err(_) => true,
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-        };
-
+    pub fn build(measurement_name: &'static str, wrapper: bool, is_async: bool) -> Self {
         let skipped = !wrapper && !is_focused(measurement_name);
-        MeasurementGuardWithLog::new(measurement_name, wrapper, unsupported_async, skipped)
+        MeasurementGuardWithLog::new(measurement_name, wrapper, skipped, is_async)
     }
 }
 
@@ -129,10 +85,9 @@ impl MeasurementGuardWithLog {
 pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
     name: &'static str,
     wrapper: bool,
-    is_async: bool,
     f: F,
 ) -> T {
-    let guard = MeasurementGuardWithLog::build(name, wrapper, is_async);
+    let guard = MeasurementGuardWithLog::build(name, wrapper, false);
     let result = f();
     guard.finish_with_result(&result);
     result

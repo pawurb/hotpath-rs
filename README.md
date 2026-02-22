@@ -273,32 +273,9 @@ cargo run --features='hotpath,hotpath-alloc'
 
 ![Alloc report](hotpath-alloc-report.png)
 
-### Profiling memory allocations for async functions
+### Async functions
 
-To profile memory usage of `async` functions you have to use a similar config:
-
-```rust
-#[cfg(feature = "hotpath-alloc")]
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    _ = inner_main().await;
-}
-
-#[cfg(not(feature = "hotpath-alloc"))]
-#[tokio::main]
-async fn main() {
-    _ = inner_main().await;
-}
-
-#[hotpath::main]
-async fn inner_main() {
-    // ...
-}
-```
-
-It ensures that tokio runs in a `current_thread` runtime mode if the allocation profiling feature is enabled.
-
-**Why this limitation exists**: The allocation tracking uses thread-local storage to track memory usage. In multi-threaded runtimes, async tasks can migrate between threads, making it impossible to accurately attribute allocations to specific function calls.
+Allocation profiling uses thread-local storage to track memory usage. Since async tasks can migrate between threads, allocation counts for async functions would be inaccurate and it is currently not supported.
 
 ## Channels, Futures, and Streams, Monitoring
 

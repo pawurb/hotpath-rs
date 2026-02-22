@@ -133,7 +133,7 @@ impl fmt::Display for MetricType {
             MetricType::Percentage(basis_points) => {
                 write!(f, "{:.2}%", *basis_points as f64 / 100.0)
             }
-            MetricType::Unsupported => write!(f, "N/A*"),
+            MetricType::Unsupported => write!(f, "N/A"),
         }
     }
 }
@@ -413,10 +413,6 @@ pub trait MetricsProvider<'a> {
         } else {
             0.0
         }
-    }
-
-    fn has_unsupported_async(&self) -> bool {
-        false
     }
 
     fn entry_counts(&self) -> (usize, usize);

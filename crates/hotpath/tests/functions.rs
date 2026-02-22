@@ -98,33 +98,6 @@ pub mod tests {
         }
     }
 
-    // cargo run -p test-tokio-async --example unsupported_async --features hotpath,hotpath-alloc
-    #[test]
-    fn test_unsupported_async_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "unsupported_async",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .output()
-            .expect("Failed to execute command");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let all_expected = ["N/A*", "only available for tokio current_thread"];
-
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
-    }
-
     // cargo run -p test-tokio-async --example main_empty --features hotpath
     #[test]
     fn test_main_empty_params() {
@@ -297,15 +270,11 @@ pub mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let all_expected = ["N/A*", "only available for tokio current_thread"];
-
         let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert!(
+            stdout.contains("basic_smol::main"),
+            "Expected basic_smol::main in output\n\nGot:\n{stdout}",
+        );
     }
 
     // cargo run -p test-all-features --example basic_all_features --all-features

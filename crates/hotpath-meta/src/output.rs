@@ -133,7 +133,7 @@ impl fmt::Display for MetricType {
             MetricType::Percentage(basis_points) => {
                 write!(f, "{:.2}%", *basis_points as f64 / 100.0)
             }
-            MetricType::Unsupported => write!(f, "N/A*"),
+            MetricType::Unsupported => write!(f, "N/A"),
         }
     }
 }

@@ -19,7 +19,7 @@ pub struct MeasurementGuard {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl MeasurementGuard {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, _unsupported_sync: bool, skipped: bool) -> Self {
+    pub fn new(name: &'static str, wrapper: bool, skipped: bool, _is_async: bool) -> Self {
         Self {
             name,
             start: Instant::now(),
@@ -61,7 +61,7 @@ pub struct MeasurementGuardWithLog {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl MeasurementGuardWithLog {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, _unsupported_sync: bool, skipped: bool) -> Self {
+    pub fn new(name: &'static str, wrapper: bool, skipped: bool, _is_async: bool) -> Self {
         Self {
             name,
             start: Instant::now(),

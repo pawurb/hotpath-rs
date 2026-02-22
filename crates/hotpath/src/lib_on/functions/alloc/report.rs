@@ -62,10 +62,6 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
         self.percentiles.clone()
     }
 
-    fn has_unsupported_async(&self) -> bool {
-        self.stats.values().any(|s| s.has_unsupported_async)
-    }
-
     fn function_ids(&self) -> HashMap<&'static str, u32> {
         self.stats
             .values()
@@ -93,9 +89,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
         let mut entries: Vec<AllocComputed> = self
             .stats
             .values()
-            .filter(|s| {
-                s.has_data && !(s.wrapper && s.cross_thread) && !(exclude_wrapper && s.wrapper)
-            })
+            .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
             .map(|s| {
                 let total_bytes = bytes_cache.get(&s.id).copied().unwrap_or(0);
                 let total_count = count_cache.get(&s.id).copied().unwrap_or(0);
@@ -144,29 +138,19 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                 .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
                 .sum()
         } else {
-            let has_cross_thread_wrapper = self.stats.values().any(|s| s.wrapper && s.cross_thread);
+            let wrapper_total_bytes = self
+                .stats
+                .values()
+                .find(|s| s.wrapper && s.has_data)
+                .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0));
 
-            if has_cross_thread_wrapper {
+            wrapper_total_bytes.unwrap_or_else(|| {
                 self.stats
                     .values()
-                    .filter(|s| !s.wrapper && s.has_data)
+                    .filter(|s| s.has_data)
                     .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
                     .sum()
-            } else {
-                let wrapper_total_bytes = self
-                    .stats
-                    .values()
-                    .find(|s| s.wrapper && s.has_data)
-                    .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0));
-
-                wrapper_total_bytes.unwrap_or_else(|| {
-                    self.stats
-                        .values()
-                        .filter(|s| s.has_data)
-                        .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
-                        .sum()
-                })
-            }
+            })
         };
 
         entries
@@ -179,7 +163,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                     0.0
                 };
 
-                let mut metrics = if stats.has_unsupported_async || stats.cross_thread {
+                let mut metrics = if stats.is_async {
                     vec![MetricType::CallsCount(stats.count), MetricType::Unsupported]
                 } else {
                     vec![
@@ -189,7 +173,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                 };
 
                 for &p in &self.percentiles {
-                    if stats.has_unsupported_async || stats.cross_thread {
+                    if stats.is_async {
                         metrics.push(MetricType::Unsupported);
                     } else {
                         let bytes_total = stats.bytes_total_percentile(p as f64);
@@ -198,7 +182,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
                     }
                 }
 
-                if stats.has_unsupported_async || stats.cross_thread {
+                if stats.is_async {
                     metrics.push(MetricType::Unsupported);
                     metrics.push(MetricType::Unsupported);
                 } else {
@@ -224,9 +208,7 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
         let total_count = self
             .stats
             .values()
-            .filter(|s| {
-                s.has_data && !(s.wrapper && s.cross_thread) && !(exclude_wrapper && s.wrapper)
-            })
+            .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
             .count();
 
         let displayed_count = if self.limit > 0 && self.limit < total_count {
@@ -266,10 +248,6 @@ impl<'a> MetricsProvider<'a> for TimingStatsData<'a> {
 
     fn percentiles(&self) -> Vec<u8> {
         self.percentiles.clone()
-    }
-
-    fn has_unsupported_async(&self) -> bool {
-        false
     }
 
     fn function_ids(&self) -> HashMap<&'static str, u32> {

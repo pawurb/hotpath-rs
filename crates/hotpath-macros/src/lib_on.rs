@@ -314,22 +314,6 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///   - `hotpath-alloc` - Total bytes allocated
 ///   - `hotpath-alloc` - Total allocation count
 ///
-/// # Async Function Limitations
-///
-/// When using allocation profiling features with async functions, you must use the
-/// `tokio` runtime in `current_thread` mode:
-///
-/// ```rust,no_run
-/// #[tokio::main(flavor = "current_thread")]
-/// async fn main() {
-///     // Your async code here
-/// }
-/// ```
-///
-/// This limitation exists because allocation tracking uses thread-local storage. In multi-threaded
-/// runtimes, async tasks can migrate between threads, making it impossible to accurately
-/// attribute allocations to specific function calls. Time-based profiling works with any runtime flavor.
-///
 /// When the `hotpath` feature is disabled, this macro compiles to zero overhead (no instrumentation).
 ///
 /// # Parameters
@@ -391,7 +375,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         } else {
             quote! {
-                hotpath::functions::measure_with_log(#loc, false, false, || #block)
+                hotpath::functions::measure_with_log(#loc, false, || #block)
             }
         }
     } else {
@@ -399,7 +383,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             let _guard = hotpath::functions::MeasurementGuard::build(
                 concat!(module_path!(), "::", #name),
                 false,
-                #asyncness
+                #asyncness,
             );
             #block
         };
