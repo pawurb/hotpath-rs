@@ -1,27 +1,29 @@
 mod comment;
 
-use crate::cmd::shared::{compare_metrics, FunctionsComparison, MetricDiff};
+use crate::cmd::shared::{
+    build_functions_table, build_threads_table, compare_reports, format_threads_globals,
+    JsonReportDiff,
+};
 use clap::Parser;
 use comment::upsert_pr_comment;
 use eyre::Result;
-use hotpath::json::JsonFunctionsList;
-use hotpath::shorten_function_name;
-use prettytable::{Cell, Row, Table};
+use hotpath::json::JsonReport;
 use std::env;
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 pub struct ProfilePrArgs {
-    #[arg(long, help = "JSON metrics from head branch")]
-    head_metrics: String,
+    #[arg(long, help = "Path to JSON metrics file from head branch")]
+    head_metrics: PathBuf,
 
-    #[arg(long, help = "JSON metrics from base branch")]
-    base_metrics: String,
+    #[arg(long, help = "Path to JSON metrics file from base branch")]
+    base_metrics: PathBuf,
 
     #[arg(long, help = "GitHub token for API access")]
-    github_token: String,
+    github_token: Option<String>,
 
     #[arg(long, help = "Pull request number")]
-    pr_number: String,
+    pr_number: Option<String>,
 
     #[arg(
         long,
@@ -34,57 +36,75 @@ pub struct ProfilePrArgs {
         help = "Unique identifier for this benchmark to prevent comment collisions"
     )]
     benchmark_id: Option<String>,
+
+    #[arg(long, help = "Print the generated comment to stdout without posting")]
+    dry_run: bool,
+}
+
+fn read_report(path: &PathBuf) -> Result<JsonReport> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| eyre::eyre!("Failed to read {}: {}", path.display(), e))?;
+
+    serde_json::from_str(&content)
+        .map_err(|e| eyre::eyre!("Failed to parse {}: {}", path.display(), e))
 }
 
 impl ProfilePrArgs {
     pub fn run(&self) -> Result<()> {
-        let repo = env::var("GITHUB_REPOSITORY").unwrap_or_default();
-
-        if repo.is_empty() || self.pr_number.is_empty() {
-            println!("No PR context found, skipping comment posting");
-            return Ok(());
-        }
-
-        // Convert emoji_threshold: None -> Some(20), Some(0) -> None
         let emoji_threshold = if let Some(0) = self.emoji_threshold {
             None
         } else {
             Some(self.emoji_threshold.unwrap_or(20))
         };
 
-        let head_metrics_data: JsonFunctionsList = serde_json::from_str(&self.head_metrics)
-            .map_err(|e| eyre::eyre!("Failed to deserialize head metrics: {}", e))?;
-        let base_metrics_data: JsonFunctionsList = serde_json::from_str(&self.base_metrics)
-            .map_err(|e| eyre::eyre!("Failed to deserialize base metrics: {}", e))?;
+        let base_report = read_report(&self.base_metrics)?;
+        let head_report = read_report(&self.head_metrics)?;
 
-        let comparison = compare_metrics(&base_metrics_data, &head_metrics_data);
-        let total_elapsed_diff = MetricDiff::DurationNs(
-            base_metrics_data.total_elapsed_ns,
-            head_metrics_data.total_elapsed_ns,
-        );
-        let comparison_markdown = format_comparison_markdown(
-            &comparison,
-            &total_elapsed_diff,
-            None,
-            emoji_threshold,
-            self.benchmark_id.as_deref(),
-        );
+        let diff = compare_reports(&base_report, &head_report);
 
-        let mut body = String::new();
-        body.push_str(&comparison_markdown);
-        body.push_str("\n<details>\n<summary>📊 View Raw JSON Metrics</summary>\n\n");
-        body.push_str("### PR Metrics\n```json\n");
-        body.push_str(&serde_json::to_string_pretty(&head_metrics_data)?);
-        body.push_str("\n```\n\n### Main Branch Metrics\n```json\n");
-        body.push_str(&serde_json::to_string_pretty(&base_metrics_data)?);
-        body.push_str("\n```\n</details>\n");
+        if diff.functions_timing.is_none()
+            && diff.functions_alloc.is_none()
+            && diff.threads.is_none()
+        {
+            println!("No comparable sections found between head and base reports");
+            return Ok(());
+        }
+
+        let body = format_diff_markdown(&diff, emoji_threshold, self.benchmark_id.as_deref());
+
+        if self.dry_run {
+            print!("{}", body);
+            return Ok(());
+        }
+
+        let github_token = self
+            .github_token
+            .as_deref()
+            .ok_or_else(|| eyre::eyre!("--github-token is required when not using --dry-run"))?;
+        let pr_number = self
+            .pr_number
+            .as_deref()
+            .ok_or_else(|| eyre::eyre!("--pr-number is required when not using --dry-run"))?;
+        let repo = env::var("GITHUB_REPOSITORY").unwrap_or_default();
+
+        if repo.is_empty() || pr_number.is_empty() {
+            println!("No PR context found, skipping comment posting");
+            return Ok(());
+        }
+
+        let profiling_mode = diff
+            .functions_timing
+            .as_ref()
+            .or(diff.functions_alloc.as_ref())
+            .map(|c| c.profiling_mode.clone())
+            .unwrap();
 
         match upsert_pr_comment(
             &repo,
-            &self.pr_number,
-            &self.github_token,
+            pr_number,
+            github_token,
             &body,
-            &head_metrics_data.hotpath_profiling_mode,
+            &profiling_mode,
             self.benchmark_id.as_deref(),
         ) {
             Ok(_) => {}
@@ -95,10 +115,8 @@ impl ProfilePrArgs {
     }
 }
 
-fn format_comparison_markdown(
-    comparison: &FunctionsComparison,
-    total_elapsed_diff: &MetricDiff,
-    cpu_baseline_diff: Option<&MetricDiff>,
+fn format_diff_markdown(
+    diff: &JsonReportDiff,
     emoji_threshold: Option<u32>,
     benchmark_id: Option<&str>,
 ) -> String {
@@ -119,59 +137,64 @@ fn format_comparison_markdown(
     ));
     markdown.push_str(&format!(
         "**Total Elapsed Time:** {}\n",
-        total_elapsed_diff.format_with_emoji(emoji_threshold)
+        diff.total_elapsed_diff.format_with_emoji(emoji_threshold)
     ));
-    if let Some(cpu_baseline) = cpu_baseline_diff {
+    if let Some(cpu_baseline) = &diff.cpu_baseline_diff {
         markdown.push_str(&format!(
             "**CPU Baseline:** {}\n",
             cpu_baseline.format_with_emoji(emoji_threshold)
         ));
     }
-    markdown.push_str(&format!(
-        "**Profiling Mode:** {} - {}\n",
-        comparison.profiling_mode, comparison.description
-    ));
     if let Some(id) = benchmark_id {
         markdown.push_str(&format!("**Benchmark ID:** {}\n", id));
     }
 
-    if comparison.function_diffs.is_empty() {
-        markdown.push_str("*No functions to compare*\n");
-        return markdown;
-    }
-
-    let mut table = Table::new();
-
-    let mut header_cells = vec![Cell::new("Function"), Cell::new("Calls"), Cell::new("Avg")];
-    for &p in &comparison.percentiles {
-        header_cells.push(Cell::new(&format!("P{}", p)));
-    }
-    header_cells.push(Cell::new("Total"));
-    header_cells.push(Cell::new("% Total"));
-    table.add_row(Row::new(header_cells));
-
-    for func_diff in &comparison.function_diffs {
-        let short_name = shorten_function_name(&func_diff.function_name);
-        let function_display = if func_diff.is_removed {
-            format!("️🗑️ {}", short_name)
-        } else if func_diff.is_new {
-            format!("🆕 {}", short_name)
+    if let Some(comparison) = &diff.functions_timing {
+        markdown.push_str(&format!(
+            "\n#### Timing ({} - {})\n",
+            comparison.profiling_mode, comparison.description
+        ));
+        if comparison.function_diffs.is_empty() {
+            markdown.push_str("*No functions to compare*\n");
         } else {
-            short_name
-        };
-
-        let mut row_cells = vec![Cell::new(&function_display)];
-        for metric_diff in &func_diff.metrics {
-            row_cells.push(Cell::new(&metric_diff.format_with_emoji(emoji_threshold)));
+            markdown.push_str(&format!(
+                "```\n{}```\n",
+                build_functions_table(comparison, emoji_threshold)
+            ));
         }
-        table.add_row(Row::new(row_cells));
     }
 
-    markdown.push_str("```\n");
-    markdown.push_str(&table.to_string());
-    markdown.push_str("```\n\n");
+    if let Some(comparison) = &diff.functions_alloc {
+        markdown.push_str(&format!(
+            "\n#### Allocations ({} - {})\n",
+            comparison.profiling_mode, comparison.description
+        ));
+        if comparison.function_diffs.is_empty() {
+            markdown.push_str("*No functions to compare*\n");
+        } else {
+            markdown.push_str(&format!(
+                "```\n{}```\n",
+                build_functions_table(comparison, emoji_threshold)
+            ));
+        }
+    }
 
-    markdown.push_str("---\n");
+    if let Some(threads) = &diff.threads {
+        markdown.push_str("\n#### Threads\n");
+        if threads.thread_diffs.is_empty() {
+            markdown.push_str("*No threads to compare*\n");
+        } else {
+            if let Some(globals) = format_threads_globals(threads, emoji_threshold) {
+                markdown.push_str(&format!("**{}**\n", globals));
+            }
+            markdown.push_str(&format!(
+                "```\n{}```\n",
+                build_threads_table(threads, emoji_threshold)
+            ));
+        }
+    }
+
+    markdown.push_str("\n---\n");
     markdown.push_str("*Generated with [hotpath-rs](https://hotpath.rs)*\n");
 
     markdown

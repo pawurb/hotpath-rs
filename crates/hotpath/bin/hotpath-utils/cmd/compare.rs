@@ -1,12 +1,12 @@
 use clap::Parser;
 use eyre::Result;
 use hotpath::json::JsonReport;
-use prettytable::{Cell, Row, Table};
 use std::fs;
 
-use hotpath::shorten_function_name;
-
-use crate::cmd::shared::{compare_reports, FunctionsComparison, JsonReportDiff, ThreadsComparison};
+use crate::cmd::shared::{
+    build_functions_table, build_threads_table, compare_reports, format_threads_globals,
+    JsonReportDiff,
+};
 
 #[derive(Debug, Parser)]
 pub struct CompareArgs {
@@ -59,7 +59,11 @@ fn print_diff(diff: &JsonReportDiff) {
             "Functions Timing ({} - {})",
             comparison.profiling_mode, comparison.description
         );
-        print_functions_diff(comparison);
+        if comparison.function_diffs.is_empty() {
+            println!("No functions to compare.");
+        } else {
+            build_functions_table(comparison, None).printstd();
+        }
         println!();
     }
 
@@ -68,102 +72,24 @@ fn print_diff(diff: &JsonReportDiff) {
             "Functions Alloc ({} - {})",
             comparison.profiling_mode, comparison.description
         );
-        print_functions_diff(comparison);
+        if comparison.function_diffs.is_empty() {
+            println!("No functions to compare.");
+        } else {
+            build_functions_table(comparison, None).printstd();
+        }
         println!();
     }
 
     if let Some(threads) = &diff.threads {
         println!("Threads");
-        print_threads_diff(threads);
+        if threads.thread_diffs.is_empty() {
+            println!("No threads to compare.");
+        } else {
+            if let Some(globals) = format_threads_globals(threads, None) {
+                println!("{}", globals);
+            }
+            build_threads_table(threads, None).printstd();
+        }
         println!();
     }
-}
-
-fn print_threads_diff(threads: &ThreadsComparison) {
-    if threads.thread_diffs.is_empty() {
-        println!("No threads to compare.");
-        return;
-    }
-
-    let fmt = |m: &Option<crate::cmd::shared::MetricDiff>| {
-        m.as_ref().map(|d| format!("{}", d)).unwrap_or_default()
-    };
-
-    let has_globals = threads.total_alloc_diff.is_some()
-        || threads.total_dealloc_diff.is_some()
-        || threads.total_mem_diff_diff.is_some();
-
-    if has_globals {
-        println!(
-            "Total Alloc: {}  |  Total Dealloc: {}  |  Mem Diff: {}",
-            fmt(&threads.total_alloc_diff),
-            fmt(&threads.total_dealloc_diff),
-            fmt(&threads.total_mem_diff_diff),
-        );
-    }
-
-    let mut table = Table::new();
-    table.add_row(Row::new(vec![
-        Cell::new("Thread"),
-        Cell::new("CPU % Max"),
-        Cell::new("Alloc"),
-        Cell::new("Dealloc"),
-        Cell::new("Mem Diff"),
-    ]));
-
-    for diff in &threads.thread_diffs {
-        let name = if diff.is_removed {
-            format!("[removed] {}", diff.thread_name)
-        } else if diff.is_new {
-            format!("[new] {}", diff.thread_name)
-        } else {
-            diff.thread_name.clone()
-        };
-
-        table.add_row(Row::new(vec![
-            Cell::new(&name),
-            Cell::new(&fmt(&diff.cpu_percent_max)),
-            Cell::new(&fmt(&diff.alloc_bytes)),
-            Cell::new(&fmt(&diff.dealloc_bytes)),
-            Cell::new(&fmt(&diff.mem_diff)),
-        ]));
-    }
-
-    table.printstd();
-}
-
-fn print_functions_diff(comparison: &FunctionsComparison) {
-    if comparison.function_diffs.is_empty() {
-        println!("No functions to compare.");
-        return;
-    }
-
-    let mut table = Table::new();
-
-    let mut header_cells = vec![Cell::new("Function"), Cell::new("Calls"), Cell::new("Avg")];
-    for &p in &comparison.percentiles {
-        header_cells.push(Cell::new(&format!("P{}", p)));
-    }
-    header_cells.push(Cell::new("Total"));
-    header_cells.push(Cell::new("% Total"));
-    table.add_row(Row::new(header_cells));
-
-    for func_diff in &comparison.function_diffs {
-        let short_name = shorten_function_name(&func_diff.function_name);
-        let name = if func_diff.is_removed {
-            format!("[removed] {}", short_name)
-        } else if func_diff.is_new {
-            format!("[new] {}", short_name)
-        } else {
-            short_name
-        };
-
-        let mut row_cells = vec![Cell::new(&name)];
-        for metric in &func_diff.metrics {
-            row_cells.push(Cell::new(&format!("{}", metric)));
-        }
-        table.add_row(Row::new(row_cells));
-    }
-
-    table.printstd();
 }

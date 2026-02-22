@@ -2,7 +2,8 @@ use hotpath::json::{
     format_bytes_signed, parse_bytes_signed, JsonFunctionEntry, JsonFunctionsList, JsonReport,
     JsonThreadEntry, JsonThreadsList,
 };
-use hotpath::{format_bytes, parse_bytes, parse_duration};
+use hotpath::{format_bytes, parse_bytes, parse_duration, shorten_function_name};
+use prettytable::{Cell, Row, Table};
 use std::fmt;
 use std::time::Duration;
 
@@ -501,6 +502,103 @@ pub fn compare_threads(
         total_mem_diff_diff,
         thread_diffs,
     }
+}
+
+pub fn build_functions_table(
+    comparison: &FunctionsComparison,
+    emoji_threshold: Option<u32>,
+) -> Table {
+    let mut table = Table::new();
+
+    let mut header_cells = vec![Cell::new("Function"), Cell::new("Calls"), Cell::new("Avg")];
+    for &p in &comparison.percentiles {
+        header_cells.push(Cell::new(&format!("P{}", p)));
+    }
+    header_cells.push(Cell::new("Total"));
+    header_cells.push(Cell::new("% Total"));
+    table.add_row(Row::new(header_cells));
+
+    for func_diff in &comparison.function_diffs {
+        let short_name = shorten_function_name(&func_diff.function_name);
+        let function_display = if func_diff.is_removed {
+            format!("🗑️ {}", short_name)
+        } else if func_diff.is_new {
+            format!("🆕 {}", short_name)
+        } else {
+            short_name
+        };
+
+        let mut row_cells = vec![Cell::new(&function_display)];
+        for metric_diff in &func_diff.metrics {
+            row_cells.push(Cell::new(&metric_diff.format_with_emoji(emoji_threshold)));
+        }
+        table.add_row(Row::new(row_cells));
+    }
+
+    table
+}
+
+pub fn build_threads_table(threads: &ThreadsComparison, emoji_threshold: Option<u32>) -> Table {
+    let fmt = |m: &Option<MetricDiff>| {
+        m.as_ref()
+            .map(|d| d.format_with_emoji(emoji_threshold))
+            .unwrap_or_default()
+    };
+
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+        Cell::new("Thread"),
+        Cell::new("CPU % Max"),
+        Cell::new("Alloc"),
+        Cell::new("Dealloc"),
+        Cell::new("Mem Diff"),
+    ]));
+
+    for diff in &threads.thread_diffs {
+        let name = if diff.is_removed {
+            format!("🗑️ {}", diff.thread_name)
+        } else if diff.is_new {
+            format!("🆕 {}", diff.thread_name)
+        } else {
+            diff.thread_name.clone()
+        };
+
+        table.add_row(Row::new(vec![
+            Cell::new(&name),
+            Cell::new(&fmt(&diff.cpu_percent_max)),
+            Cell::new(&fmt(&diff.alloc_bytes)),
+            Cell::new(&fmt(&diff.dealloc_bytes)),
+            Cell::new(&fmt(&diff.mem_diff)),
+        ]));
+    }
+
+    table
+}
+
+pub fn format_threads_globals(
+    threads: &ThreadsComparison,
+    emoji_threshold: Option<u32>,
+) -> Option<String> {
+    let has_globals = threads.total_alloc_diff.is_some()
+        || threads.total_dealloc_diff.is_some()
+        || threads.total_mem_diff_diff.is_some();
+
+    if !has_globals {
+        return None;
+    }
+
+    let fmt = |m: &Option<MetricDiff>| {
+        m.as_ref()
+            .map(|d| d.format_with_emoji(emoji_threshold))
+            .unwrap_or_default()
+    };
+
+    Some(format!(
+        "Total Alloc: {}  |  Total Dealloc: {}  |  Mem Diff: {}",
+        fmt(&threads.total_alloc_diff),
+        fmt(&threads.total_dealloc_diff),
+        fmt(&threads.total_mem_diff_diff),
+    ))
 }
 
 #[cfg(test)]

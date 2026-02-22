@@ -24,19 +24,13 @@ jobs:
       - name: Head noop benchmark (timing)
         env:
           HOTPATH_OUTPUT_FORMAT: json
-          HOTPATH_OUTPUT_PATH: /tmp/metrics/head_noop_timing.json
+          HOTPATH_OUTPUT_PATH: /tmp/metrics/head_noop.json
         run: cargo run --release --example benchmark_noop --features='hotpath'
 
-      - name: Head alloc benchmark (timing)
+      - name: Head alloc benchmark (timing + alloc)
         env:
           HOTPATH_OUTPUT_FORMAT: json
-          HOTPATH_OUTPUT_PATH: /tmp/metrics/head_alloc_timing.json
-        run: cargo run --release --example benchmark_alloc --features='hotpath'
-
-      - name: Head alloc benchmark (alloc)
-        env:
-          HOTPATH_OUTPUT_FORMAT: json
-          HOTPATH_OUTPUT_PATH: /tmp/metrics/head_alloc_alloc.json
+          HOTPATH_OUTPUT_PATH: /tmp/metrics/head_alloc.json
         run: cargo run --release --example benchmark_alloc --features='hotpath,hotpath-alloc'
 
       - name: Checkout base
@@ -45,19 +39,13 @@ jobs:
       - name: Base noop benchmark (timing)
         env:
           HOTPATH_OUTPUT_FORMAT: json
-          HOTPATH_OUTPUT_PATH: /tmp/metrics/base_noop_timing.json
+          HOTPATH_OUTPUT_PATH: /tmp/metrics/base_noop.json
         run: cargo run --release --example benchmark_noop --features='hotpath'
 
-      - name: Base alloc benchmark (timing)
+      - name: Base alloc benchmark (timing + alloc)
         env:
           HOTPATH_OUTPUT_FORMAT: json
-          HOTPATH_OUTPUT_PATH: /tmp/metrics/base_alloc_timing.json
-        run: cargo run --release --example benchmark_alloc --features='hotpath'
-
-      - name: Base alloc benchmark (alloc)
-        env:
-          HOTPATH_OUTPUT_FORMAT: json
-          HOTPATH_OUTPUT_PATH: /tmp/metrics/base_alloc_alloc.json
+          HOTPATH_OUTPUT_PATH: /tmp/metrics/base_alloc.json
         run: cargo run --release --example benchmark_alloc --features='hotpath,hotpath-alloc'
 
       - name: Save PR metadata

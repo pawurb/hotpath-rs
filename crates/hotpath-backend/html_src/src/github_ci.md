@@ -52,38 +52,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - id: head_timing
+      - name: Create metrics directory
+        run: mkdir -p /tmp/metrics
+
+      - name: Head benchmark (timing)
         env:
           HOTPATH_OUTPUT_FORMAT: json
-        run: |
-          {
-            echo 'metrics<<EOF'
-            cargo run --release --example my_benchmark \
-              --features='hotpath' | grep '^{"hotpath_profiling_mode"'
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          HOTPATH_OUTPUT_PATH: /tmp/metrics/head_timing.json
+        run: cargo run --release --example my_benchmark
+          --features='hotpath'
 
       - name: Checkout base
         run: git checkout ${{ github.event.pull_request.base.sha }}
 
-      - id: base_timing
+      - name: Base benchmark (timing)
         env:
           HOTPATH_OUTPUT_FORMAT: json
-        run: |
-          {
-            echo 'metrics<<EOF'
-            cargo run --release --example my_benchmark \
-              --features='hotpath' | grep '^{"hotpath_profiling_mode"'
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          HOTPATH_OUTPUT_PATH: /tmp/metrics/base_timing.json
+        run: cargo run --release --example my_benchmark
+          --features='hotpath'
 
-      - name: Save metrics to artifact
+      - name: Save PR metadata
         run: |
-          mkdir -p /tmp/metrics
-          echo '${{ steps.head_timing.outputs.metrics }}' \
-            > /tmp/metrics/head_timing.json
-          echo '${{ steps.base_timing.outputs.metrics }}' \
-            > /tmp/metrics/base_timing.json
           echo '${{ github.event.pull_request.number }}' \
             > /tmp/metrics/pr_number.txt
           echo '${{ github.base_ref }}' > /tmp/metrics/base_ref.txt
@@ -96,7 +86,7 @@ jobs:
           retention-days: 1
 ```
 
-`HOTPATH_OUTPUT_FORMAT=json` makes hotpath output metrics as a JSON line. The `grep` extracts that line from any other program output.
+`HOTPATH_OUTPUT_FORMAT=json` makes hotpath output metrics as JSON. `HOTPATH_OUTPUT_PATH` writes the JSON directly to the specified file.
 
 ### 3. Add the comment workflow
 
@@ -141,16 +131,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          HEAD=$(cat /tmp/metrics/head_timing.json)
-          BASE=$(cat /tmp/metrics/base_timing.json)
-          PR=$(cat /tmp/metrics/pr_number.txt)
           export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
           export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
           hotpath-utils profile-pr \
-            --head-metrics "$HEAD" \
-            --base-metrics "$BASE" \
+            --head-metrics /tmp/metrics/head_timing.json \
+            --base-metrics /tmp/metrics/base_timing.json \
             --github-token "$GH_TOKEN" \
-            --pr-number "$PR" \
+            --pr-number "$(cat /tmp/metrics/pr_number.txt)" \
             --benchmark-id "timing"
 ```
 
@@ -158,52 +145,43 @@ jobs:
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--head-metrics` | yes | JSON metrics from the PR branch |
-| `--base-metrics` | yes | JSON metrics from the base branch |
+| `--head-metrics` | yes | Path to JSON metrics file from the PR branch |
+| `--base-metrics` | yes | Path to JSON metrics file from the base branch |
 | `--github-token` | yes | GitHub token for API access |
 | `--pr-number` | yes | Pull request number |
 | `--benchmark-id` | no | Unique ID to prevent comment collisions when running multiple benchmarks |
 | `--emoji-threshold` | no | % change threshold for warning/celebration emoji (default: 20, 0 to disable) |
 
-The CLI compares functions between the two snapshots and generates a markdown table with:
+The CLI automatically compares all available sections (`functions_timing`, `functions_alloc`) between the two reports and generates a markdown comment with:
 - Per-function diffs for calls, avg latency, p99, and total time
 - Emoji indicators for significant changes (⚠️ regressions, 🚀 improvements)
 - 🆕 for new functions and 🗑️ for removed functions
-- Collapsible raw JSON details
 
 ## Multiple benchmarks
 
 You can run several benchmarks in the same workflow by adding more step pairs (head + base). Use distinct `--benchmark-id` values so each benchmark gets its own PR comment:
 
 ```yaml
-- id: head_timing
+- name: Head noop benchmark (timing)
   env:
     HOTPATH_OUTPUT_FORMAT: json
-  run: |
-    {
-      echo 'metrics<<EOF'
-      cargo run --release --example benchmark_noop \
-        --features='hotpath' | grep '^{"hotpath_profiling_mode"'
-      echo 'EOF'
-    } >> "$GITHUB_OUTPUT"
+    HOTPATH_OUTPUT_PATH: /tmp/metrics/head_timing.json
+  run: cargo run --release --example benchmark_noop
+    --features='hotpath'
 
-- id: head_alloc
+- name: Head alloc benchmark (alloc)
   env:
     HOTPATH_OUTPUT_FORMAT: json
-  run: |
-    {
-      echo 'metrics<<EOF'
-      cargo run --release --example benchmark_alloc \
-        --features='hotpath,hotpath-alloc' | grep '^{"hotpath_profiling_mode"'
-      echo 'EOF'
-    } >> "$GITHUB_OUTPUT"
+    HOTPATH_OUTPUT_PATH: /tmp/metrics/head_alloc.json
+  run: cargo run --release --example benchmark_alloc
+    --features='hotpath,hotpath-alloc'
 ```
 
-Then in the comment workflow, post each with a different `--benchmark-id`:
+Then in the comment workflow, post each with a different `--benchmark-id`. The CLI will automatically include all available sections (timing and/or alloc) from each report:
 
 ```bash
 hotpath-utils profile-pr \
-  --benchmark-id "timing" ...
+  --benchmark-id "noop" ...
 
 hotpath-utils profile-pr \
   --benchmark-id "alloc" ...

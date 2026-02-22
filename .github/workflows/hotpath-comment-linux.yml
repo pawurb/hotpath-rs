@@ -30,53 +30,30 @@ jobs:
       - name: Install hotpath-utils CLI
         run: cargo install --path crates/hotpath --bin hotpath-utils --features=utils
 
-      - name: Post PR comment - noop timing
+      - name: Post PR comment - noop
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          HEAD_METRICS=$(cat /tmp/metrics/head_noop_timing.json)
-          BASE_METRICS=$(cat /tmp/metrics/base_noop_timing.json)
-          PR_NUMBER=$(cat /tmp/metrics/pr_number.txt)
           export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
           export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
           hotpath-utils profile-pr \
-            --head-metrics "$HEAD_METRICS" \
-            --base-metrics "$BASE_METRICS" \
+            --head-metrics /tmp/metrics/head_noop.json \
+            --base-metrics /tmp/metrics/base_noop.json \
             --github-token "$GH_TOKEN" \
-            --pr-number "$PR_NUMBER" \
-            --benchmark-id "noop-timing_linux"
+            --pr-number "$(cat /tmp/metrics/pr_number.txt)" \
+            --benchmark-id "noop_linux"
 
-      - name: Post PR comment - alloc timing
+      - name: Post PR comment - alloc
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          HEAD_METRICS=$(cat /tmp/metrics/head_alloc_timing.json)
-          BASE_METRICS=$(cat /tmp/metrics/base_alloc_timing.json)
-          PR_NUMBER=$(cat /tmp/metrics/pr_number.txt)
           export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
           export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
           hotpath-utils profile-pr \
-            --head-metrics "$HEAD_METRICS" \
-            --base-metrics "$BASE_METRICS" \
+            --head-metrics /tmp/metrics/head_alloc.json \
+            --base-metrics /tmp/metrics/base_alloc.json \
             --github-token "$GH_TOKEN" \
-            --pr-number "$PR_NUMBER" \
-            --benchmark-id "alloc-timing_linux"
-
-      - name: Post PR comment - alloc alloc
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          HEAD_METRICS=$(cat /tmp/metrics/head_alloc_alloc.json)
-          BASE_METRICS=$(cat /tmp/metrics/base_alloc_alloc.json)
-          PR_NUMBER=$(cat /tmp/metrics/pr_number.txt)
-          export GITHUB_BASE_REF=$(cat /tmp/metrics/base_ref.txt)
-          export GITHUB_HEAD_REF=$(cat /tmp/metrics/head_ref.txt)
-          hotpath-utils profile-pr \
-            --head-metrics "$HEAD_METRICS" \
-            --base-metrics "$BASE_METRICS" \
-            --github-token "$GH_TOKEN" \
-            --pr-number "$PR_NUMBER" \
-            --benchmark-id "alloc-alloc_linux"
+            --pr-number "$(cat /tmp/metrics/pr_number.txt)" \
+            --benchmark-id "alloc_linux"
