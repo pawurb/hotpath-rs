@@ -7,10 +7,17 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use regex::Regex;
+use std::sync::LazyLock;
 use std::time::Instant;
 use tracing::Instrument;
 use tracing::info_span;
 use uuid::Uuid;
+
+static TITLE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<title>[^<]*</title>").unwrap());
+static DESC_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<meta name="description" content="[^"]*">"#).unwrap());
+static H1_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<h1 class="menu-title">([^<]*)</h1>"#).unwrap());
 
 struct Faq {
     question: &'static str,
@@ -256,12 +263,10 @@ pub async fn seo_titles(request: Request, next: Next) -> Response {
 
     let html = String::from_utf8_lossy(&bytes);
 
-    let title_regex = Regex::new(r"<title>[^<]*</title>").unwrap();
-    let modified = title_regex.replace(&html, format!("<title>{}</title>", config.title));
+    let modified = TITLE_RE.replace(&html, format!("<title>{}</title>", config.title));
 
-    let desc_regex = Regex::new(r#"<meta name="description" content="[^"]*">"#).unwrap();
     let canonical_url = format!("{}{}", BASE_URL, path);
-    let modified = desc_regex.replace(
+    let modified = DESC_RE.replace(
         &modified,
         format!(
             r#"<meta name="description" content="{}">
@@ -289,8 +294,7 @@ pub async fn seo_titles(request: Request, next: Next) -> Response {
         ),
     );
 
-    let h1_regex = Regex::new(r#"<h1 class="menu-title">([^<]*)</h1>"#).unwrap();
-    let modified = h1_regex.replace(&modified, r#"<div class="menu-title">$1</div>"#);
+    let modified = H1_RE.replace(&modified, r#"<div class="menu-title">$1</div>"#);
 
     let mut json_ld_block = String::new();
 
