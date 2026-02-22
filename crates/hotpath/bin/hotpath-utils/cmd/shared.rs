@@ -93,6 +93,8 @@ pub struct FunctionMetricsDiff {
 
 #[derive(Debug, Clone)]
 pub struct JsonReportDiff {
+    pub before_label: Option<String>,
+    pub after_label: Option<String>,
     pub total_elapsed_diff: MetricDiff,
     pub cpu_baseline_diff: Option<MetricDiff>,
     pub functions_timing: Option<MetricsComparison>,
@@ -135,6 +137,8 @@ pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> JsonReportDif
     };
 
     JsonReportDiff {
+        before_label: before.label.clone(),
+        after_label: after.label.clone(),
         total_elapsed_diff: MetricDiff::DurationNs(before_ns, after_ns),
         cpu_baseline_diff,
         functions_timing,

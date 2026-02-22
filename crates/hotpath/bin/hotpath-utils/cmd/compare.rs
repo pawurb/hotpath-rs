@@ -42,6 +42,12 @@ fn print_diff(diff: &JsonReportDiff) {
         return;
     }
 
+    if diff.before_label.is_some() || diff.after_label.is_some() {
+        let before = diff.before_label.as_deref().unwrap_or("(unlabeled)");
+        let after = diff.after_label.as_deref().unwrap_or("(unlabeled)");
+        println!("Comparing: {} → {}", before, after);
+    }
+
     println!("Total Elapsed: {}", diff.total_elapsed_diff);
     if let Some(cpu_baseline) = &diff.cpu_baseline_diff {
         println!("CPU Baseline: {}", cpu_baseline);
