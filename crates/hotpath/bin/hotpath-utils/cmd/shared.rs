@@ -3,7 +3,7 @@ use hotpath::json::{
     JsonThreadEntry, JsonThreadsList,
 };
 use hotpath::{format_bytes, parse_bytes, parse_duration, shorten_function_name};
-use prettytable::{Cell, Row, Table};
+use prettytable::{color, Attr, Cell, Row, Table};
 use std::fmt;
 use std::time::Duration;
 
@@ -531,18 +531,33 @@ pub fn compare_threads(
     }
 }
 
+fn styled_header(text: &str, use_colors: bool) -> Cell {
+    if use_colors {
+        Cell::new(text)
+            .with_style(Attr::Bold)
+            .with_style(Attr::ForegroundColor(color::CYAN))
+    } else {
+        Cell::new(text).with_style(Attr::Bold)
+    }
+}
+
 pub fn build_functions_table(
     comparison: &FunctionsComparison,
     emoji_threshold: Option<u32>,
+    use_colors: bool,
 ) -> Table {
     let mut table = Table::new();
 
-    let mut header_cells = vec![Cell::new("Function"), Cell::new("Calls"), Cell::new("Avg")];
+    let mut header_cells = vec![
+        styled_header("Function", use_colors),
+        styled_header("Calls", use_colors),
+        styled_header("Avg", use_colors),
+    ];
     for &p in &comparison.percentiles {
-        header_cells.push(Cell::new(&format!("P{}", p)));
+        header_cells.push(styled_header(&format!("P{}", p), use_colors));
     }
-    header_cells.push(Cell::new("Total"));
-    header_cells.push(Cell::new("% Total"));
+    header_cells.push(styled_header("Total", use_colors));
+    header_cells.push(styled_header("% Total", use_colors));
     table.add_row(Row::new(header_cells));
 
     for func_diff in &comparison.function_diffs {
@@ -565,7 +580,11 @@ pub fn build_functions_table(
     table
 }
 
-pub fn build_threads_table(threads: &ThreadsComparison, emoji_threshold: Option<u32>) -> Table {
+pub fn build_threads_table(
+    threads: &ThreadsComparison,
+    emoji_threshold: Option<u32>,
+    use_colors: bool,
+) -> Table {
     let fmt = |m: &Option<MetricDiff>| {
         m.as_ref()
             .map(|d| d.format_with_emoji(emoji_threshold))
@@ -578,12 +597,15 @@ pub fn build_threads_table(threads: &ThreadsComparison, emoji_threshold: Option<
         .any(|d| d.alloc_bytes.is_some() || d.dealloc_bytes.is_some() || d.mem_diff.is_some());
 
     let mut table = Table::new();
-    let mut header = vec![Cell::new("Thread"), Cell::new("CPU % Max")];
+    let mut header = vec![
+        styled_header("Thread", use_colors),
+        styled_header("CPU % Max", use_colors),
+    ];
     if has_alloc {
         header.extend([
-            Cell::new("Alloc"),
-            Cell::new("Dealloc"),
-            Cell::new("Mem Diff"),
+            styled_header("Alloc", use_colors),
+            styled_header("Dealloc", use_colors),
+            styled_header("Mem Diff", use_colors),
         ]);
     }
     table.add_row(Row::new(header));

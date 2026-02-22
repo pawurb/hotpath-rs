@@ -1,12 +1,25 @@
 use clap::Parser;
 use eyre::Result;
 use hotpath::json::JsonReport;
+use std::env;
 use std::fs;
 
 use crate::cmd::shared::{
     build_functions_table, build_threads_table, compare_reports, format_threads_globals,
     JsonReportDiff,
 };
+
+fn use_colors() -> bool {
+    env::var("NO_COLOR").is_err()
+}
+
+fn print_table(table: &prettytable::Table) {
+    if use_colors() {
+        let _ = table.print_tty(false);
+    } else {
+        table.printstd();
+    }
+}
 
 #[derive(Debug, Parser)]
 pub struct CompareArgs {
@@ -54,6 +67,8 @@ fn print_diff(diff: &JsonReportDiff) {
     }
     println!();
 
+    let colors = use_colors();
+
     if let Some(comparison) = &diff.functions_timing {
         println!(
             "Functions Timing ({} - {})",
@@ -62,7 +77,7 @@ fn print_diff(diff: &JsonReportDiff) {
         if comparison.function_diffs.is_empty() {
             println!("No functions to compare.");
         } else {
-            build_functions_table(comparison, None).printstd();
+            print_table(&build_functions_table(comparison, None, colors));
         }
         println!();
     }
@@ -75,7 +90,7 @@ fn print_diff(diff: &JsonReportDiff) {
         if comparison.function_diffs.is_empty() {
             println!("No functions to compare.");
         } else {
-            build_functions_table(comparison, None).printstd();
+            print_table(&build_functions_table(comparison, None, colors));
         }
         println!();
     }
@@ -89,7 +104,7 @@ fn print_diff(diff: &JsonReportDiff) {
             if !globals.is_empty() {
                 println!("{}", globals.join(" | "));
             }
-            build_threads_table(threads, None).printstd();
+            print_table(&build_threads_table(threads, None, colors));
         }
         println!();
     }

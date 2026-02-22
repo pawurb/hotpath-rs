@@ -60,5 +60,4 @@ run_bench "$AFTER_REF" "tmp/after.json"
 reset
 
 cargo run $RELEASE_FLAG -p hotpath --features=utils --bin hotpath-utils -- \
-    compare --before-json-path tmp/before.json --after-json-path tmp/after.json \
-    | tee tmp/compare_result.txt
+    compare --before-json-path tmp/before.json --after-json-path tmp/after.json 
