@@ -8,16 +8,16 @@ use std::time::Instant;
 pub struct MeasurementGuard {
     name: &'static str,
     wrapper: bool,
-    unsupported_async: bool,
     tid: u64,
     start: Instant,
     skipped: bool,
+    is_async: bool,
 }
 
 impl MeasurementGuard {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, unsupported_async: bool, skipped: bool) -> Self {
-        if !unsupported_async && !skipped {
+    pub fn new(name: &'static str, wrapper: bool, skipped: bool, is_async: bool) -> Self {
+        if !skipped && !is_async {
             super::core::ALLOCATIONS.with(|stack| {
                 let current_depth = stack.depth.get();
                 stack.depth.set(current_depth + 1);
@@ -25,17 +25,16 @@ impl MeasurementGuard {
                 let depth = stack.depth.get() as usize;
                 stack.elements[depth].bytes_total.set(0);
                 stack.elements[depth].count_total.set(0);
-                stack.elements[depth].unsupported_async.set(false);
             });
         }
 
         Self {
             name,
             wrapper,
-            unsupported_async,
             tid: crate::tid::current_tid(),
             start: Instant::now(),
             skipped,
+            is_async,
         }
     }
 }
@@ -50,49 +49,41 @@ impl Drop for MeasurementGuard {
         let duration = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
 
-        let (bytes_total, count_total, unsupported_async) =
-            if self.unsupported_async || cross_thread {
-                (0, 0, self.unsupported_async)
-            } else {
-                super::core::ALLOCATIONS.with(|stack| {
-                    let depth = stack.depth.get() as usize;
-                    let bytes = stack.elements[depth].bytes_total.get();
-                    let count = stack.elements[depth].count_total.get();
-                    let unsup_async = stack.elements[depth].unsupported_async.get();
+        let (bytes_total, count_total) = if self.is_async || cross_thread {
+            (None, None)
+        } else {
+            super::core::ALLOCATIONS.with(|stack| {
+                let depth = stack.depth.get() as usize;
+                let bytes = stack.elements[depth].bytes_total.get();
+                let count = stack.elements[depth].count_total.get();
 
-                    stack.depth.set(stack.depth.get() - 1);
+                stack.depth.set(stack.depth.get() - 1);
 
-                    if !super::shared::is_alloc_self_enabled() {
-                        let parent = stack.depth.get() as usize;
-                        stack.elements[parent]
-                            .bytes_total
-                            .set(stack.elements[parent].bytes_total.get() + bytes);
-                        stack.elements[parent]
-                            .count_total
-                            .set(stack.elements[parent].count_total.get() + count);
-                        stack.elements[parent]
-                            .unsupported_async
-                            .set(stack.elements[parent].unsupported_async.get() | unsup_async);
-                    }
+                if !super::shared::is_alloc_self_enabled() {
+                    let parent = stack.depth.get() as usize;
+                    stack.elements[parent]
+                        .bytes_total
+                        .set(stack.elements[parent].bytes_total.get() + bytes);
+                    stack.elements[parent]
+                        .count_total
+                        .set(stack.elements[parent].count_total.get() + count);
+                }
 
-                    (bytes, count, unsup_async)
-                })
-            };
+                (Some(bytes), Some(count))
+            })
+        };
 
         super::core::ALLOCATIONS.with(|stack| {
             stack.tracking_enabled.set(false);
         });
 
-        let tid = if cross_thread { None } else { Some(self.tid) };
         super::state::send_alloc_measurement(
             self.name,
             bytes_total,
             count_total,
             duration,
-            unsupported_async,
             self.wrapper,
-            cross_thread,
-            tid,
+            Some(self.tid),
         );
 
         super::core::ALLOCATIONS.with(|stack| {
@@ -105,17 +96,17 @@ impl Drop for MeasurementGuard {
 pub struct MeasurementGuardWithLog {
     name: &'static str,
     wrapper: bool,
-    unsupported_async: bool,
     tid: u64,
     start: Instant,
     finished: bool,
     skipped: bool,
+    is_async: bool,
 }
 
 impl MeasurementGuardWithLog {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, unsupported_async: bool, skipped: bool) -> Self {
-        if !unsupported_async && !skipped {
+    pub fn new(name: &'static str, wrapper: bool, skipped: bool, is_async: bool) -> Self {
+        if !skipped && !is_async {
             super::core::ALLOCATIONS.with(|stack| {
                 let current_depth = stack.depth.get();
                 stack.depth.set(current_depth + 1);
@@ -123,18 +114,17 @@ impl MeasurementGuardWithLog {
                 let depth = stack.depth.get() as usize;
                 stack.elements[depth].bytes_total.set(0);
                 stack.elements[depth].count_total.set(0);
-                stack.elements[depth].unsupported_async.set(false);
             });
         }
 
         Self {
             name,
             wrapper,
-            unsupported_async,
             tid: crate::tid::current_tid(),
             start: Instant::now(),
             finished: false,
             skipped,
+            is_async,
         }
     }
 
@@ -149,49 +139,41 @@ impl MeasurementGuardWithLog {
         let duration = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
 
-        let (bytes_total, count_total, unsupported_async) =
-            if self.unsupported_async || cross_thread {
-                (0, 0, self.unsupported_async)
-            } else {
-                super::core::ALLOCATIONS.with(|stack| {
-                    let depth = stack.depth.get() as usize;
-                    let bytes = stack.elements[depth].bytes_total.get();
-                    let count = stack.elements[depth].count_total.get();
-                    let unsup_async = stack.elements[depth].unsupported_async.get();
+        let (bytes_total, count_total) = if self.is_async || cross_thread {
+            (None, None)
+        } else {
+            super::core::ALLOCATIONS.with(|stack| {
+                let depth = stack.depth.get() as usize;
+                let bytes = stack.elements[depth].bytes_total.get();
+                let count = stack.elements[depth].count_total.get();
 
-                    stack.depth.set(stack.depth.get() - 1);
+                stack.depth.set(stack.depth.get() - 1);
 
-                    if !super::shared::is_alloc_self_enabled() {
-                        let parent = stack.depth.get() as usize;
-                        stack.elements[parent]
-                            .bytes_total
-                            .set(stack.elements[parent].bytes_total.get() + bytes);
-                        stack.elements[parent]
-                            .count_total
-                            .set(stack.elements[parent].count_total.get() + count);
-                        stack.elements[parent]
-                            .unsupported_async
-                            .set(stack.elements[parent].unsupported_async.get() | unsup_async);
-                    }
+                if !super::shared::is_alloc_self_enabled() {
+                    let parent = stack.depth.get() as usize;
+                    stack.elements[parent]
+                        .bytes_total
+                        .set(stack.elements[parent].bytes_total.get() + bytes);
+                    stack.elements[parent]
+                        .count_total
+                        .set(stack.elements[parent].count_total.get() + count);
+                }
 
-                    (bytes, count, unsup_async)
-                })
-            };
+                (Some(bytes), Some(count))
+            })
+        };
 
         super::core::ALLOCATIONS.with(|stack| {
             stack.tracking_enabled.set(false);
         });
 
-        let tid = if cross_thread { None } else { Some(self.tid) };
         super::state::send_alloc_measurement_with_log(
             self.name,
             bytes_total,
             count_total,
             duration,
-            unsupported_async,
             self.wrapper,
-            cross_thread,
-            tid,
+            Some(self.tid),
             Some(result_str),
         );
 
@@ -211,49 +193,41 @@ impl Drop for MeasurementGuardWithLog {
         let duration = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
 
-        let (bytes_total, count_total, unsupported_async) =
-            if self.unsupported_async || cross_thread {
-                (0, 0, self.unsupported_async)
-            } else {
-                super::core::ALLOCATIONS.with(|stack| {
-                    let depth = stack.depth.get() as usize;
-                    let bytes = stack.elements[depth].bytes_total.get();
-                    let count = stack.elements[depth].count_total.get();
-                    let unsup_async = stack.elements[depth].unsupported_async.get();
+        let (bytes_total, count_total) = if self.is_async || cross_thread {
+            (None, None)
+        } else {
+            super::core::ALLOCATIONS.with(|stack| {
+                let depth = stack.depth.get() as usize;
+                let bytes = stack.elements[depth].bytes_total.get();
+                let count = stack.elements[depth].count_total.get();
 
-                    stack.depth.set(stack.depth.get() - 1);
+                stack.depth.set(stack.depth.get() - 1);
 
-                    if !super::shared::is_alloc_self_enabled() {
-                        let parent = stack.depth.get() as usize;
-                        stack.elements[parent]
-                            .bytes_total
-                            .set(stack.elements[parent].bytes_total.get() + bytes);
-                        stack.elements[parent]
-                            .count_total
-                            .set(stack.elements[parent].count_total.get() + count);
-                        stack.elements[parent]
-                            .unsupported_async
-                            .set(stack.elements[parent].unsupported_async.get() | unsup_async);
-                    }
+                if !super::shared::is_alloc_self_enabled() {
+                    let parent = stack.depth.get() as usize;
+                    stack.elements[parent]
+                        .bytes_total
+                        .set(stack.elements[parent].bytes_total.get() + bytes);
+                    stack.elements[parent]
+                        .count_total
+                        .set(stack.elements[parent].count_total.get() + count);
+                }
 
-                    (bytes, count, unsup_async)
-                })
-            };
+                (Some(bytes), Some(count))
+            })
+        };
 
         super::core::ALLOCATIONS.with(|stack| {
             stack.tracking_enabled.set(false);
         });
 
-        let tid = if cross_thread { None } else { Some(self.tid) };
         super::state::send_alloc_measurement_with_log(
             self.name,
             bytes_total,
             count_total,
             duration,
-            unsupported_async,
             self.wrapper,
-            cross_thread,
-            tid,
+            Some(self.tid),
             None,
         );
 

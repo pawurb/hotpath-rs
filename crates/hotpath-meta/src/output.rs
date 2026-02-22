@@ -415,10 +415,6 @@ pub trait MetricsProvider<'a> {
         }
     }
 
-    fn has_unsupported_async(&self) -> bool {
-        false
-    }
-
     fn entry_counts(&self) -> (usize, usize);
 
     #[cfg(feature = "hotpath-meta")]

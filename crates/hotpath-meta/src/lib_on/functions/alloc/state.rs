@@ -29,12 +29,10 @@ impl MeasurementBatch {
     fn add(
         &mut self,
         name: &'static str,
-        bytes_total: u64,
-        count_total: u64,
+        bytes_total: Option<u64>,
+        count_total: Option<u64>,
         duration: Duration,
-        unsupported_async: bool,
         wrapper: bool,
-        cross_thread: bool,
         tid: Option<u64>,
         result_log: Option<String>,
     ) {
@@ -59,9 +57,7 @@ impl MeasurementBatch {
             count_total,
             duration,
             measurement_time: Instant::now(),
-            unsupported_async,
             wrapper,
-            cross_thread,
             tid,
             result_log,
         };
@@ -109,13 +105,11 @@ pub(crate) fn flush_batch() {
 #[derive(Debug)]
 pub struct Measurement {
     pub name: &'static str,
-    pub bytes_total: u64,
-    pub count_total: u64,
+    pub bytes_total: Option<u64>,
+    pub count_total: Option<u64>,
     pub duration: Duration,
     pub measurement_time: Instant,
-    pub unsupported_async: bool,
     pub wrapper: bool,
-    pub cross_thread: bool,
     pub tid: Option<u64>,
     pub result_log: Option<String>,
 }
@@ -137,11 +131,12 @@ pub struct FunctionStats {
     bytes_total_hist: Option<Histogram<u64>>,
     count_total_hist: Option<Histogram<u64>>,
     duration_hist: Option<Histogram<u64>>,
+    pub total_bytes_sum: u64,
+    pub total_count_sum: u64,
     pub total_duration_ns: u64,
     pub has_data: bool,
-    pub has_unsupported_async: bool,
+    pub is_async: bool,
     pub wrapper: bool,
-    pub cross_thread: bool,
     pub recent_logs: VecDeque<LogEntry>,
 }
 
@@ -158,13 +153,11 @@ impl FunctionStats {
     pub fn new_alloc(
         id: u32,
         name: &'static str,
-        bytes_total: u64,
-        count_total: u64,
+        bytes_total: Option<u64>,
+        count_total: Option<u64>,
         duration: Duration,
         elapsed: Duration,
-        unsupported_async: bool,
         wrapper: bool,
-        cross_thread: bool,
         tid: Option<u64>,
         result_log: Option<String>,
     ) -> Self {
@@ -185,12 +178,14 @@ impl FunctionStats {
 
         let duration_ns = duration.as_nanos() as u64;
         let mut recent_logs = VecDeque::with_capacity(*crate::channels::LOGS_LIMIT);
-        let (bytes_opt, count_opt) = if unsupported_async || cross_thread {
-            (None, None)
-        } else {
-            (Some(bytes_total), Some(count_total))
-        };
-        recent_logs.push_back((bytes_opt, count_opt, duration_ns, elapsed, tid, result_log));
+        recent_logs.push_back((
+            bytes_total,
+            count_total,
+            duration_ns,
+            elapsed,
+            tid,
+            result_log,
+        ));
 
         let mut s = Self {
             id,
@@ -199,11 +194,12 @@ impl FunctionStats {
             bytes_total_hist: Some(bytes_total_hist),
             count_total_hist: Some(count_total_hist),
             duration_hist: Some(duration_hist),
+            total_bytes_sum: bytes_total.unwrap_or(0),
+            total_count_sum: count_total.unwrap_or(0),
             total_duration_ns: duration_ns,
             has_data: true,
-            has_unsupported_async: unsupported_async,
+            is_async: bytes_total.is_none(),
             wrapper,
-            cross_thread,
             recent_logs,
         };
         s.record_alloc(bytes_total, count_total);
@@ -212,16 +208,20 @@ impl FunctionStats {
     }
 
     #[inline]
-    fn record_alloc(&mut self, bytes_total: u64, count_total: u64) {
-        if let Some(ref mut bytes_total_hist) = self.bytes_total_hist {
-            if bytes_total > 0 {
-                let clamped_total = bytes_total.clamp(Self::LOW_BYTES, Self::HIGH_BYTES);
+    fn record_alloc(&mut self, bytes_total: Option<u64>, count_total: Option<u64>) {
+        if let (Some(ref mut bytes_total_hist), Some(bytes)) =
+            (&mut self.bytes_total_hist, bytes_total)
+        {
+            if bytes > 0 {
+                let clamped_total = bytes.clamp(Self::LOW_BYTES, Self::HIGH_BYTES);
                 bytes_total_hist.record(clamped_total).unwrap();
             }
         }
-        if let Some(ref mut count_total_hist) = self.count_total_hist {
-            if count_total > 0 {
-                let clamped_total = count_total.clamp(Self::LOW_COUNT, Self::HIGH_COUNT);
+        if let (Some(ref mut count_total_hist), Some(count)) =
+            (&mut self.count_total_hist, count_total)
+        {
+            if count > 0 {
+                let clamped_total = count.clamp(Self::LOW_COUNT, Self::HIGH_COUNT);
                 count_total_hist.record(clamped_total).unwrap();
             }
         }
@@ -238,21 +238,19 @@ impl FunctionStats {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn update_alloc(
         &mut self,
-        bytes_total: u64,
-        count_total: u64,
+        bytes_total: Option<u64>,
+        count_total: Option<u64>,
         duration: Duration,
         elapsed: Duration,
-        unsupported_async: bool,
-        cross_thread: bool,
         tid: Option<u64>,
         result_log: Option<String>,
     ) {
         self.count += 1;
-        self.has_unsupported_async |= unsupported_async;
-        self.cross_thread |= cross_thread;
+        self.is_async |= bytes_total.is_none();
+        self.total_bytes_sum += bytes_total.unwrap_or(0);
+        self.total_count_sum += count_total.unwrap_or(0);
         self.record_alloc(bytes_total, count_total);
 
         let duration_ns = duration.as_nanos() as u64;
@@ -263,13 +261,14 @@ impl FunctionStats {
         {
             self.recent_logs.pop_front();
         }
-        let (bytes_opt, count_opt) = if unsupported_async || cross_thread {
-            (None, None)
-        } else {
-            (Some(bytes_total), Some(count_total))
-        };
-        self.recent_logs
-            .push_back((bytes_opt, count_opt, duration_ns, elapsed, tid, result_log));
+        self.recent_logs.push_back((
+            bytes_total,
+            count_total,
+            duration_ns,
+            elapsed,
+            tid,
+            result_log,
+        ));
     }
 
     #[inline]
@@ -298,38 +297,28 @@ impl FunctionStats {
 
     #[inline]
     pub fn total_bytes(&self) -> u64 {
-        if self.count == 0 || self.bytes_total_hist.is_none() {
-            return 0;
-        }
-        let hist = self.bytes_total_hist.as_ref().unwrap();
-        let mean = hist.mean();
-        (mean * self.count as f64) as u64
+        self.total_bytes_sum
     }
 
     #[inline]
     pub fn avg_bytes(&self) -> u64 {
-        if self.count == 0 || self.bytes_total_hist.is_none() {
+        if self.count == 0 {
             return 0;
         }
-        self.bytes_total_hist.as_ref().unwrap().mean() as u64
+        self.total_bytes_sum / self.count
     }
 
     #[inline]
     pub fn total_count(&self) -> u64 {
-        if self.count == 0 || self.count_total_hist.is_none() {
-            return 0;
-        }
-        let hist = self.count_total_hist.as_ref().unwrap();
-        let mean = hist.mean();
-        (mean * self.count as f64) as u64
+        self.total_count_sum
     }
 
     #[inline]
     pub fn avg_count(&self) -> u64 {
-        if self.count == 0 || self.count_total_hist.is_none() {
+        if self.count == 0 {
             return 0;
         }
-        self.count_total_hist.as_ref().unwrap().mean() as u64
+        self.total_count_sum / self.count
     }
 
     #[inline]
@@ -375,8 +364,6 @@ pub(crate) fn process_measurement(
                 m.count_total,
                 m.duration,
                 elapsed,
-                m.unsupported_async,
-                m.cross_thread,
                 m.tid,
                 m.result_log,
             );
@@ -393,9 +380,7 @@ pub(crate) fn process_measurement(
                 m.count_total,
                 m.duration,
                 elapsed,
-                m.unsupported_async,
                 m.wrapper,
-                m.cross_thread,
                 m.tid,
                 m.result_log,
             ),
@@ -405,39 +390,24 @@ pub(crate) fn process_measurement(
 
 use super::super::FUNCTIONS_STATE;
 
-#[allow(clippy::too_many_arguments)]
 pub fn send_alloc_measurement(
     name: &'static str,
-    bytes_total: u64,
-    count_total: u64,
+    bytes_total: Option<u64>,
+    count_total: Option<u64>,
     duration: Duration,
-    unsupported_async: bool,
     wrapper: bool,
-    cross_thread: bool,
     tid: Option<u64>,
 ) {
-    send_alloc_measurement_with_log(
-        name,
-        bytes_total,
-        count_total,
-        duration,
-        unsupported_async,
-        wrapper,
-        cross_thread,
-        tid,
-        None,
-    );
+    send_alloc_measurement_with_log(name, bytes_total, count_total, duration, wrapper, tid, None);
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn send_alloc_measurement_with_log(
     name: &'static str,
-    bytes_total: u64,
-    count_total: u64,
+    bytes_total: Option<u64>,
+    count_total: Option<u64>,
     duration: Duration,
-    unsupported_async: bool,
     wrapper: bool,
-    cross_thread: bool,
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
@@ -451,9 +421,7 @@ pub fn send_alloc_measurement_with_log(
             bytes_total,
             count_total,
             duration,
-            unsupported_async,
             wrapper,
-            cross_thread,
             tid,
             result_log,
         );

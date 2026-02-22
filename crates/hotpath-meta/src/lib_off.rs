@@ -163,7 +163,7 @@ pub use crate::Section;
 pub struct MeasurementGuard {}
 
 impl MeasurementGuard {
-    pub fn new(_name: &'static str, _wrapper: bool, _unsupported_async: bool) -> Self {
+    pub fn new(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
         Self {}
     }
 
@@ -175,7 +175,7 @@ impl MeasurementGuard {
 pub struct MeasurementGuardWithLog {}
 
 impl MeasurementGuardWithLog {
-    pub fn new(_name: &'static str, _wrapper: bool, _unsupported_async: bool) -> Self {
+    pub fn new(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
         Self {}
     }
 
@@ -190,7 +190,6 @@ impl MeasurementGuardWithLog {
 pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
     _name: &'static str,
     _wrapper: bool,
-    _is_async: bool,
     f: F,
 ) -> T {
     f()

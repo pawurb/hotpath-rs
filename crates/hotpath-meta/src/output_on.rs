@@ -112,17 +112,6 @@ pub(crate) fn display_table_to<W: Write>(
 
     print_table(&table, writer);
 
-    if metrics_provider.has_unsupported_async() {
-        let _ = writeln!(
-            writer,
-            "* alloc profiling for async methods is currently only available for tokio current_thread runtime."
-        );
-        let _ = writeln!(
-            writer,
-            "  Please use #[tokio::main(flavor = \"current_thread\")] to enable it."
-        );
-    }
-
     let _ = writeln!(writer);
 }
 
