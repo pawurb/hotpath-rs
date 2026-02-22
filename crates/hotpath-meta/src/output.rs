@@ -156,6 +156,19 @@ impl fmt::Display for ProfilingMode {
     }
 }
 
+#[cfg(all(feature = "hotpath-meta", not(feature = "hotpath-off-meta")))]
+static USE_COLORS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+#[cfg(all(feature = "hotpath-meta", not(feature = "hotpath-off-meta")))]
+pub fn set_use_colors(value: bool) {
+    let _ = USE_COLORS.set(value);
+}
+
+#[cfg(all(feature = "hotpath-meta", not(feature = "hotpath-off-meta")))]
+pub fn use_colors() -> bool {
+    *USE_COLORS.get().unwrap_or(&false)
+}
+
 impl OutputDestination {
     /// Creates a writer for this destination.
     ///

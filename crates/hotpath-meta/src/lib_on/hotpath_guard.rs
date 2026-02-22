@@ -512,6 +512,9 @@ impl Drop for HotpathGuard {
         };
 
         let output = OutputDestination::from_path(self.output_path.take());
+        crate::output::set_use_colors(
+            matches!(output, OutputDestination::Stdout) && std::env::var("NO_COLOR").is_err(),
+        );
         let format = if std::env::var("HOTPATH_META_OUTPUT_FORMAT").is_ok() {
             Format::from_env()
         } else {

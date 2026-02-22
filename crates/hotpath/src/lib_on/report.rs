@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use prettytable::{Cell, Row, Table};
+use prettytable::{color, Attr, Cell, Row, Table};
 
 use crate::channels::{compare_channel_entries, resolve_label, ChannelEntry, CHANNELS_STATE};
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
@@ -11,6 +11,24 @@ use crate::json::{
 use crate::output::format_bytes;
 use crate::output_on::write_section_header;
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
+
+fn styled_header(text: &str) -> Cell {
+    if crate::output::use_colors() {
+        Cell::new(text)
+            .with_style(Attr::Bold)
+            .with_style(Attr::ForegroundColor(color::CYAN))
+    } else {
+        Cell::new(text).with_style(Attr::Bold)
+    }
+}
+
+fn print_table(table: &Table, writer: &mut dyn Write) {
+    if crate::output::use_colors() {
+        let _ = table.print_tty(false);
+    } else {
+        let _ = table.print(writer);
+    }
+}
 
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
     CHANNELS_STATE
@@ -54,14 +72,14 @@ pub(crate) fn report_channels_table(
 
     let mut table = Table::new();
     table.add_row(Row::new(vec![
-        Cell::new("Channel"),
-        Cell::new("Type"),
-        Cell::new("State"),
-        Cell::new("Sent"),
-        Cell::new("Received"),
-        Cell::new("Queued"),
-        Cell::new("Max Q"),
-        Cell::new("Mem"),
+        styled_header("Channel"),
+        styled_header("Type"),
+        styled_header("State"),
+        styled_header("Sent"),
+        styled_header("Received"),
+        styled_header("Queued"),
+        styled_header("Max Q"),
+        styled_header("Mem"),
     ]));
 
     for channel_stats in channels {
@@ -86,7 +104,7 @@ pub(crate) fn report_channels_table(
         let _ = write!(writer, " ({}/{})", channels.len(), total_count);
     }
     let _ = writeln!(writer);
-    let _ = table.print(writer);
+    print_table(&table, writer);
     let _ = writeln!(writer);
 }
 
@@ -138,9 +156,9 @@ pub(crate) fn report_streams_table(
 
     let mut table = Table::new();
     table.add_row(Row::new(vec![
-        Cell::new("Stream"),
-        Cell::new("State"),
-        Cell::new("Yielded"),
+        styled_header("Stream"),
+        styled_header("State"),
+        styled_header("Yielded"),
     ]));
 
     for stream_stats in streams {
@@ -160,7 +178,7 @@ pub(crate) fn report_streams_table(
         let _ = write!(writer, " ({}/{})", streams.len(), total_count);
     }
     let _ = writeln!(writer);
-    let _ = table.print(writer);
+    print_table(&table, writer);
     let _ = writeln!(writer);
 }
 
@@ -212,9 +230,9 @@ pub(crate) fn report_futures_table(
 
     let mut table = Table::new();
     table.add_row(Row::new(vec![
-        Cell::new("Future"),
-        Cell::new("Calls"),
-        Cell::new("Polls"),
+        styled_header("Future"),
+        styled_header("Calls"),
+        styled_header("Polls"),
     ]));
 
     for future_stats in futures {
@@ -230,7 +248,7 @@ pub(crate) fn report_futures_table(
         let _ = write!(writer, " ({}/{})", futures.len(), total_count);
     }
     let _ = writeln!(writer);
-    let _ = table.print(writer);
+    print_table(&table, writer);
     let _ = writeln!(writer);
 }
 
@@ -262,18 +280,18 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
     let has_alloc = threads_json.data.iter().any(|t| t.alloc_bytes.is_some());
 
     let mut header = vec![
-        Cell::new("Thread"),
-        Cell::new("Status"),
-        Cell::new("CPU%"),
-        Cell::new("Max%"),
-        Cell::new("CPU User"),
-        Cell::new("CPU Sys"),
-        Cell::new("CPU Total"),
+        styled_header("Thread"),
+        styled_header("Status"),
+        styled_header("CPU%"),
+        styled_header("Max%"),
+        styled_header("CPU User"),
+        styled_header("CPU Sys"),
+        styled_header("CPU Total"),
     ];
     if has_alloc {
-        header.push(Cell::new("Alloc"));
-        header.push(Cell::new("Dealloc"));
-        header.push(Cell::new("Diff"));
+        header.push(styled_header("Alloc"));
+        header.push(styled_header("Dealloc"));
+        header.push(styled_header("Diff"));
     }
 
     let mut table = Table::new();
@@ -322,7 +340,7 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
         let _ = write!(writer, " ({})", info_parts.join(", "));
     }
     let _ = writeln!(writer);
-    let _ = table.print(writer);
+    print_table(&table, writer);
     let _ = writeln!(writer);
 }
 

@@ -1,6 +1,6 @@
 use crate::output::{format_duration, shorten_function_name, MetricType, MetricsProvider};
 use crate::shared::Section;
-use prettytable::{Attr, Cell, Row, Table};
+use prettytable::{color, Attr, Cell, Row, Table};
 use std::io::Write;
 use std::time::Duration;
 
@@ -54,16 +54,33 @@ pub(crate) fn write_section_header<W: Write + ?Sized>(
     let _ = write!(writer, "{} - {}", section_name, description);
 }
 
+fn print_table<W: Write>(table: &Table, writer: &mut W) {
+    if crate::output::use_colors() {
+        let _ = table.print_tty(false);
+    } else {
+        let _ = table.print(writer);
+    }
+}
+
 pub(crate) fn display_table_to<W: Write>(
     writer: &mut W,
     metrics_provider: &dyn MetricsProvider<'_>,
 ) {
+    let use_colors = crate::output::use_colors();
     let mut table = Table::new();
 
     let header_cells: Vec<Cell> = metrics_provider
         .headers()
         .into_iter()
-        .map(|header| Cell::new(&header).with_style(Attr::Bold))
+        .map(|header| {
+            if use_colors {
+                Cell::new(&header)
+                    .with_style(Attr::Bold)
+                    .with_style(Attr::ForegroundColor(color::CYAN))
+            } else {
+                Cell::new(&header).with_style(Attr::Bold)
+            }
+        })
         .collect();
 
     table.add_row(Row::new(header_cells));
@@ -93,7 +110,7 @@ pub(crate) fn display_table_to<W: Write>(
         let _ = writeln!(writer);
     }
 
-    let _ = table.print(writer);
+    print_table(&table, writer);
 
     if metrics_provider.has_unsupported_async() {
         let _ = writeln!(
