@@ -119,6 +119,9 @@ pub struct ThreadMetricsDiff {
 
 #[derive(Debug, Clone)]
 pub struct ThreadsComparison {
+    pub total_alloc_diff: Option<MetricDiff>,
+    pub total_dealloc_diff: Option<MetricDiff>,
+    pub total_mem_diff_diff: Option<MetricDiff>,
     pub thread_diffs: Vec<ThreadMetricsDiff>,
 }
 
@@ -479,7 +482,25 @@ pub fn compare_threads(
 
     thread_diffs.extend(new_threads);
 
-    ThreadsComparison { thread_diffs }
+    let total_alloc_diff = make_alloc_diff(
+        &before_threads.total_alloc_bytes,
+        &after_threads.total_alloc_bytes,
+    );
+    let total_dealloc_diff = make_alloc_diff(
+        &before_threads.total_dealloc_bytes,
+        &after_threads.total_dealloc_bytes,
+    );
+    let total_mem_diff_diff = make_alloc_signed_diff(
+        &before_threads.alloc_dealloc_diff,
+        &after_threads.alloc_dealloc_diff,
+    );
+
+    ThreadsComparison {
+        total_alloc_diff,
+        total_dealloc_diff,
+        total_mem_diff_diff,
+        thread_diffs,
+    }
 }
 
 #[cfg(test)]
@@ -711,5 +732,28 @@ mod test {
             .thread_diffs
             .iter()
             .any(|t| t.thread_name == "worker-2" && t.is_new));
+
+        assert!(comparison.total_alloc_diff.is_none());
+        assert!(comparison.total_dealloc_diff.is_none());
+        assert!(comparison.total_mem_diff_diff.is_none());
+    }
+
+    #[test]
+    fn test_compare_threads_global_alloc_diffs() {
+        let mut before = make_threads_list(vec![make_thread_entry(1, "main", 30.0)]);
+        before.total_alloc_bytes = Some("1.00 MB".to_string());
+        before.total_dealloc_bytes = Some("512.00 KB".to_string());
+        before.alloc_dealloc_diff = Some("512.00 KB".to_string());
+
+        let mut after = make_threads_list(vec![make_thread_entry(1, "main", 42.5)]);
+        after.total_alloc_bytes = Some("2.00 MB".to_string());
+        after.total_dealloc_bytes = Some("1.00 MB".to_string());
+        after.alloc_dealloc_diff = Some("1.00 MB".to_string());
+
+        let comparison = compare_threads(&before, &after);
+
+        assert!(comparison.total_alloc_diff.is_some());
+        assert!(comparison.total_dealloc_diff.is_some());
+        assert!(comparison.total_mem_diff_diff.is_some());
     }
 }

@@ -85,6 +85,23 @@ fn print_threads_diff(threads: &ThreadsComparison) {
         return;
     }
 
+    let fmt = |m: &Option<crate::cmd::shared::MetricDiff>| {
+        m.as_ref().map(|d| format!("{}", d)).unwrap_or_default()
+    };
+
+    let has_globals = threads.total_alloc_diff.is_some()
+        || threads.total_dealloc_diff.is_some()
+        || threads.total_mem_diff_diff.is_some();
+
+    if has_globals {
+        println!(
+            "Total Alloc: {}  |  Total Dealloc: {}  |  Mem Diff: {}",
+            fmt(&threads.total_alloc_diff),
+            fmt(&threads.total_dealloc_diff),
+            fmt(&threads.total_mem_diff_diff),
+        );
+    }
+
     let mut table = Table::new();
     table.add_row(Row::new(vec![
         Cell::new("Thread"),
@@ -101,10 +118,6 @@ fn print_threads_diff(threads: &ThreadsComparison) {
             format!("[new] {}", diff.thread_name)
         } else {
             diff.thread_name.clone()
-        };
-
-        let fmt = |m: &Option<crate::cmd::shared::MetricDiff>| {
-            m.as_ref().map(|d| format!("{}", d)).unwrap_or_default()
         };
 
         table.add_row(Row::new(vec![
