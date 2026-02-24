@@ -4,6 +4,7 @@
 - [Sampling Comparison](./sampling_comparison.md)
 - [Profiling modes](./profiling_modes.md)
 - [Functions](./functions.md)
+- [A/B benchmarks](./benchmarks.md)
 - [Async Data Flow](./data_flow.md)
 - [Threads](./threads.md)
 - [Tokio Runtime](./tokio_runtime.md)

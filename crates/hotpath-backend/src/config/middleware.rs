@@ -101,6 +101,13 @@ const SEO_MAPPINGS: &[SeoConfig] = &[
         ],
     },
     SeoConfig {
+        path: "/benchmarks",
+        title: "Benchmark and Compare Rust Application Performance Across Versions | hotpath-rs",
+        description: "Run deterministic benchmarks and compare results between git commits. Detect performance regressions with A/B comparison, CPU baseline normalization, and load-testing integration.",
+        breadcrumb_label: "A/B Benchmarks",
+        faqs: &[],
+    },
+    SeoConfig {
         path: "/data_flow",
         title: "Rust Async Data Flow Profiling - Functions, Channels & Streams Monitoring | hotpath-rs",
         description: "Profile async data flow in Rust with hotpath-rs. Measure function latency, memory allocations, channel throughput, and stream performance. Monitor messages flow and identify async bottlenecks in real time.",
