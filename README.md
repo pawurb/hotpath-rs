@@ -893,13 +893,24 @@ You can combine multiple parameters:
 Measure overhead of profiling 10k method calls with [hyperfine](https://github.com/sharkdp/hyperfine):
 
 Timing:
-```
-cargo build --example benchmark --features hotpath --release
-hyperfine --warmup 3 './target/release/examples/benchmark'
+```bash
+# With instrumentation
+cargo build --example benchmark_noop --features hotpath --release
+hyperfine --warmup 3 './target/release/examples/benchmark_noop'
+
+# Without instrumentation
+cargo build --example benchmark_noop --release
+hyperfine --warmup 3 './target/release/examples/benchmark_noop'
 ```
 
 Allocations:
-```
-cargo build --example benchmark --features='hotpath,hotpath-alloc' --release
-hyperfine --warmup 3 './target/release/examples/benchmark'
+
+```bash
+# With instrumentation
+cargo build --example benchmark_alloc --features='hotpath,hotpath-alloc' --release
+hyperfine --warmup 3 './target/release/examples/benchmark_alloc'
+
+# Without instrumentation
+cargo build --example benchmark_alloc --release
+hyperfine --warmup 3 './target/release/examples/benchmark_alloc'
 ```
