@@ -139,6 +139,7 @@ pub fn app() -> Router {
 
     router
         .route("/health", get(health_check))
+        .route("/terms", get(terms_page))
         .route("/robots.txt", get(robots_txt))
         .route("/sitemap.xml", get(sitemap_xml))
         .merge(static_routes)
@@ -152,6 +153,27 @@ pub fn app() -> Router {
 
 async fn health_check() -> impl IntoResponse {
     "OK"
+}
+
+async fn terms_page() -> impl IntoResponse {
+    let content = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Terms | hotpath-rs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 80px auto; padding: 0 1rem; color: #c5c5c5; background: #14191f; }
+        a { color: #ffb454; }
+    </style>
+</head>
+<body>
+    <h1>Terms</h1>
+    <p>We use <a href="https://simpleanalytics.com">Simple Analytics</a> to understand how the website is used. Simple Analytics does not use cookies and does not collect any personal data. The data is aggregated and anonymous.</p>
+</body>
+</html>"#;
+    html_response(content.to_string(), StatusCode::OK)
 }
 
 #[hotpath::measure]
