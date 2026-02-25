@@ -22,6 +22,12 @@ cargo run --features='hotpath,hotpath-alloc'
 
 <img loading="lazy" src="{{#asset-hash images/hotpath-alloc-report.png}}" alt="hotpath-rs memory allocation profiling report showing per-function byte counts">
 
+By default, allocation reports sort and display by bytes. Set `HOTPATH_ALLOC_METRIC=count` to use allocation count as the primary metric instead:
+
+```bash
+HOTPATH_ALLOC_METRIC=count cargo run --features='hotpath,hotpath-alloc'
+```
+
 ### Configuring static reports
 
 | Variable | Description |

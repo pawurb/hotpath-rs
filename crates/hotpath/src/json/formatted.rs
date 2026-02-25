@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use super::{ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, StreamLogs, ThreadMetrics};
 
 use crate::output::{
-    format_bytes, format_duration, FunctionLog, FunctionLogsList, MetricType, MetricsProvider,
-    ProfilingMode,
+    format_bytes, format_count, format_duration, FunctionLog, FunctionLogsList, MetricType,
+    MetricsProvider, ProfilingMode,
 };
 
 pub fn format_time_ago(nanos_ago: u64) -> String {
@@ -81,7 +81,7 @@ pub struct JsonFunctionEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionsList {
-    pub hotpath_profiling_mode: ProfilingMode,
+    pub profiling_mode: ProfilingMode,
     pub time_elapsed: String,
     pub total_elapsed_ns: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,25 +94,32 @@ pub struct JsonFunctionsList {
 
 impl JsonFunctionsList {
     pub fn from_provider(provider: &dyn MetricsProvider<'_>, current_elapsed_ns: u64) -> Self {
-        let hotpath_profiling_mode = provider.profiling_mode();
-        let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
+        let profiling_mode = provider.profiling_mode();
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
         let name_to_id = provider.function_ids();
-        let data = format_metric_data(&metric_data, &percentiles_config, &name_to_id);
+        let data = format_metric_data(
+            &metric_data,
+            &percentiles_config,
+            &name_to_id,
+            &profiling_mode,
+        );
         let total_elapsed = provider.total_elapsed();
 
-        let (time_elapsed, total_allocated) = if is_alloc {
-            (
+        let (time_elapsed, total_allocated) = match &profiling_mode {
+            ProfilingMode::Timing => (format_duration(total_elapsed), None),
+            ProfilingMode::AllocBytes => (
                 format_duration(current_elapsed_ns),
                 Some(format_bytes(total_elapsed)),
-            )
-        } else {
-            (format_duration(total_elapsed), None)
+            ),
+            ProfilingMode::AllocCount => (
+                format_duration(current_elapsed_ns),
+                Some(format_count(total_elapsed)),
+            ),
         };
 
         JsonFunctionsList {
-            hotpath_profiling_mode,
+            profiling_mode,
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
             total_allocated,
@@ -125,7 +132,7 @@ impl JsonFunctionsList {
 
     pub fn empty_fallback(current_elapsed_ns: u64) -> Self {
         JsonFunctionsList {
-            hotpath_profiling_mode: ProfilingMode::Timing,
+            profiling_mode: ProfilingMode::Timing,
             time_elapsed: format_duration(0),
             total_elapsed_ns: current_elapsed_ns,
             total_allocated: None,
@@ -141,11 +148,16 @@ fn format_metric_data(
     data: &[(&'static str, Vec<MetricType>)],
     percentiles_config: &[u8],
     name_to_id: &HashMap<&'static str, u32>,
+    mode: &ProfilingMode,
 ) -> Vec<JsonFunctionEntry> {
     let format_value = |metric: &MetricType| -> String {
         match metric {
             MetricType::DurationNs(ns) => format_duration(*ns),
-            MetricType::Alloc(bytes, _) => format_bytes(*bytes),
+            MetricType::Alloc(bytes, count) => match mode {
+                ProfilingMode::AllocCount => format_count(*count),
+                ProfilingMode::AllocBytes => format_bytes(*bytes),
+                ProfilingMode::Timing => unreachable!(),
+            },
             MetricType::Unsupported => "N/A".to_string(),
             _ => metric.to_string(),
         }
@@ -744,8 +756,14 @@ pub struct JsonRuntimeSnapshot {
     pub io_driver_ready_count: Option<u64>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+fn default_report_type() -> String {
+    "hotpath_report".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonReport {
+    #[serde(default = "default_report_type")]
+    pub r#type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -762,6 +780,22 @@ pub struct JsonReport {
     pub threads: Option<JsonThreadsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_baseline: Option<JsonCpuBaseline>,
+}
+
+impl Default for JsonReport {
+    fn default() -> Self {
+        Self {
+            r#type: default_report_type(),
+            label: None,
+            functions_timing: None,
+            functions_alloc: None,
+            channels: None,
+            streams: None,
+            futures: None,
+            threads: None,
+            cpu_baseline: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

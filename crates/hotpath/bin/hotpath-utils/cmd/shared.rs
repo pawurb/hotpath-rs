@@ -2,7 +2,9 @@ use hotpath::json::{
     format_bytes_signed, parse_bytes_signed, JsonFunctionEntry, JsonFunctionsList, JsonReport,
     JsonThreadEntry, JsonThreadsList,
 };
-use hotpath::{format_bytes, parse_bytes, parse_duration, shorten_function_name};
+use hotpath::{
+    format_bytes, format_count, parse_bytes, parse_count, parse_duration, shorten_function_name,
+};
 use prettytable::{color, Attr, Cell, Row, Table};
 use std::fmt;
 use std::time::Duration;
@@ -11,7 +13,8 @@ use std::time::Duration;
 pub enum MetricDiff {
     CallsCount(u64, u64),  // (before, after)
     DurationNs(u64, u64),  // (before, after) - Duration in nanoseconds
-    Alloc(u64, u64),       // (before, after) - Bytes allocated
+    AllocBytes(u64, u64),  // (before, after) - Bytes allocated
+    AllocCount(u64, u64),  // (before, after) - Allocation count
     AllocSigned(i64, i64), // (before, after) - Signed bytes
     Percentage(u64, u64),  // (before, after)
 }
@@ -40,13 +43,24 @@ impl MetricDiff {
                     before_duration, after_duration, diff_percent, emoji
                 )
             }
-            MetricDiff::Alloc(before, after) => {
+            MetricDiff::AllocBytes(before, after) => {
                 let diff_percent = calculate_percentage_diff(*before, *after);
                 let emoji = get_emoji_for_diff(diff_percent, emoji_threshold);
                 format!(
                     "{} → {} ({:+.1}%){}",
                     format_bytes(*before),
                     format_bytes(*after),
+                    diff_percent,
+                    emoji
+                )
+            }
+            MetricDiff::AllocCount(before, after) => {
+                let diff_percent = calculate_percentage_diff(*before, *after);
+                let emoji = get_emoji_for_diff(diff_percent, emoji_threshold);
+                format!(
+                    "{} → {} ({:+.1}%){}",
+                    format_count(*before),
+                    format_count(*after),
                     diff_percent,
                     emoji
                 )
@@ -137,7 +151,28 @@ pub struct JsonReportDiff {
     pub threads: Option<ThreadsComparison>,
 }
 
-pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> JsonReportDiff {
+fn ensure_matching_profiling_mode(
+    section_name: &str,
+    before_metrics: &JsonFunctionsList,
+    after_metrics: &JsonFunctionsList,
+) -> Result<(), String> {
+    if before_metrics.profiling_mode != after_metrics.profiling_mode {
+        return Err(format!(
+            "Profiling mode mismatch in {} section: before={}, after={}",
+            section_name, before_metrics.profiling_mode, after_metrics.profiling_mode
+        ));
+    }
+    Ok(())
+}
+
+pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> Result<JsonReportDiff, String> {
+    if let (Some(b), Some(a)) = (&before.functions_timing, &after.functions_timing) {
+        ensure_matching_profiling_mode("functions_timing", b, a)?;
+    }
+    if let (Some(b), Some(a)) = (&before.functions_alloc, &after.functions_alloc) {
+        ensure_matching_profiling_mode("functions_alloc", b, a)?;
+    }
+
     let functions_timing = match (&before.functions_timing, &after.functions_timing) {
         (Some(b), Some(a)) => Some(compare_metrics(b, a)),
         _ => None,
@@ -177,7 +212,7 @@ pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> JsonReportDif
         _ => None,
     };
 
-    JsonReportDiff {
+    Ok(JsonReportDiff {
         before_label: before.label.clone(),
         after_label: after.label.clone(),
         total_elapsed_diff: MetricDiff::DurationNs(before_ns, after_ns),
@@ -185,7 +220,7 @@ pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> JsonReportDif
         functions_timing,
         functions_alloc,
         threads,
-    }
+    })
 }
 
 fn calculate_percentage_diff(before: u64, after: u64) -> f64 {
@@ -216,11 +251,12 @@ fn find_function<'a>(data: &'a [JsonFunctionEntry], name: &str) -> Option<&'a Js
     data.iter().find(|f| f.name == name)
 }
 
-fn parse_value(s: &str, is_alloc: bool) -> Option<u64> {
-    if is_alloc {
-        parse_bytes(s)
-    } else {
-        parse_duration(s)
+fn parse_metric(s: &str, mode: &hotpath::ProfilingMode) -> Option<u64> {
+    use hotpath::ProfilingMode;
+    match mode {
+        ProfilingMode::AllocCount => parse_count(s),
+        ProfilingMode::AllocBytes => parse_bytes(s),
+        ProfilingMode::Timing => parse_duration(s),
     }
 }
 
@@ -235,37 +271,40 @@ enum MetricKind {
     Calls,
     Duration,
     Alloc,
+    AllocCount,
     Percentage,
 }
 
 fn build_metrics_from_function(
     func: &JsonFunctionEntry,
     percentiles: &[u8],
-    is_alloc: bool,
+    mode: &hotpath::ProfilingMode,
 ) -> Vec<(MetricKind, u64)> {
+    use hotpath::ProfilingMode;
+
     let mut metrics = Vec::new();
-    let kind = if is_alloc {
-        MetricKind::Alloc
-    } else {
-        MetricKind::Duration
+    let kind = match mode {
+        ProfilingMode::AllocCount => MetricKind::AllocCount,
+        ProfilingMode::AllocBytes => MetricKind::Alloc,
+        ProfilingMode::Timing => MetricKind::Duration,
     };
 
     metrics.push((MetricKind::Calls, func.calls));
 
-    if let Some(val) = parse_value(&func.avg, is_alloc) {
+    if let Some(val) = parse_metric(&func.avg, mode) {
         metrics.push((kind, val));
     }
 
     for p in percentiles {
         let key = format!("p{}", p);
         if let Some(formatted) = func.percentiles.get(&key) {
-            if let Some(val) = parse_value(formatted, is_alloc) {
+            if let Some(val) = parse_metric(formatted, mode) {
                 metrics.push((kind, val));
             }
         }
     }
 
-    if let Some(val) = parse_value(&func.total, is_alloc) {
+    if let Some(val) = parse_metric(&func.total, mode) {
         metrics.push((kind, val));
     }
 
@@ -280,30 +319,35 @@ pub fn compare_metrics(
     before_metrics: &JsonFunctionsList,
     after_metrics: &JsonFunctionsList,
 ) -> FunctionsComparison {
-    use hotpath::ProfilingMode;
-
-    let is_alloc = matches!(before_metrics.hotpath_profiling_mode, ProfilingMode::Alloc);
+    let mode = &before_metrics.profiling_mode;
 
     let mut function_diffs = Vec::new();
     let mut new_functions = Vec::new();
 
+    let make_diff = |kind: &MetricKind, before_val: u64, after_val: u64| -> MetricDiff {
+        match kind {
+            MetricKind::Calls => MetricDiff::CallsCount(before_val, after_val),
+            MetricKind::Duration => MetricDiff::DurationNs(before_val, after_val),
+            MetricKind::Alloc => MetricDiff::AllocBytes(before_val, after_val),
+            MetricKind::AllocCount => MetricDiff::AllocCount(before_val, after_val),
+            MetricKind::Percentage => MetricDiff::Percentage(before_val, after_val),
+        }
+    };
+
     for after_func in &after_metrics.data {
         if let Some(before_func) = find_function(&before_metrics.data, &after_func.name) {
             let before_vals =
-                build_metrics_from_function(before_func, &before_metrics.percentiles, is_alloc);
+                build_metrics_from_function(before_func, &before_metrics.percentiles, mode);
             let after_vals =
-                build_metrics_from_function(after_func, &after_metrics.percentiles, is_alloc);
+                build_metrics_from_function(after_func, &after_metrics.percentiles, mode);
 
-            let mut metrics = Vec::new();
-            for ((kind, before_val), (_, after_val)) in before_vals.iter().zip(after_vals.iter()) {
-                let diff = match kind {
-                    MetricKind::Calls => MetricDiff::CallsCount(*before_val, *after_val),
-                    MetricKind::Duration => MetricDiff::DurationNs(*before_val, *after_val),
-                    MetricKind::Alloc => MetricDiff::Alloc(*before_val, *after_val),
-                    MetricKind::Percentage => MetricDiff::Percentage(*before_val, *after_val),
-                };
-                metrics.push(diff);
-            }
+            let metrics = before_vals
+                .iter()
+                .zip(after_vals.iter())
+                .map(|((kind, before_val), (_, after_val))| {
+                    make_diff(kind, *before_val, *after_val)
+                })
+                .collect();
 
             function_diffs.push(FunctionMetricsDiff {
                 function_name: after_func.name.clone(),
@@ -313,16 +357,11 @@ pub fn compare_metrics(
             });
         } else {
             let after_vals =
-                build_metrics_from_function(after_func, &after_metrics.percentiles, is_alloc);
+                build_metrics_from_function(after_func, &after_metrics.percentiles, mode);
 
             let metrics = after_vals
                 .iter()
-                .map(|(kind, after_val)| match kind {
-                    MetricKind::Calls => MetricDiff::CallsCount(0, *after_val),
-                    MetricKind::Duration => MetricDiff::DurationNs(0, *after_val),
-                    MetricKind::Alloc => MetricDiff::Alloc(0, *after_val),
-                    MetricKind::Percentage => MetricDiff::Percentage(0, *after_val),
-                })
+                .map(|(kind, after_val)| make_diff(kind, 0, *after_val))
                 .collect();
 
             new_functions.push(FunctionMetricsDiff {
@@ -337,16 +376,11 @@ pub fn compare_metrics(
     for before_func in &before_metrics.data {
         if find_function(&after_metrics.data, &before_func.name).is_none() {
             let before_vals =
-                build_metrics_from_function(before_func, &before_metrics.percentiles, is_alloc);
+                build_metrics_from_function(before_func, &before_metrics.percentiles, mode);
 
             let metrics = before_vals
                 .iter()
-                .map(|(kind, before_val)| match kind {
-                    MetricKind::Calls => MetricDiff::CallsCount(*before_val, 0),
-                    MetricKind::Duration => MetricDiff::DurationNs(*before_val, 0),
-                    MetricKind::Alloc => MetricDiff::Alloc(*before_val, 0),
-                    MetricKind::Percentage => MetricDiff::Percentage(*before_val, 0),
-                })
+                .map(|(kind, before_val)| make_diff(kind, *before_val, 0))
                 .collect();
 
             function_diffs.push(FunctionMetricsDiff {
@@ -389,7 +423,7 @@ pub fn compare_metrics(
     });
 
     FunctionsComparison {
-        profiling_mode: before_metrics.hotpath_profiling_mode.clone(),
+        profiling_mode: before_metrics.profiling_mode.clone(),
         description: before_metrics.description.clone(),
         percentiles: before_metrics.percentiles.clone(),
         function_diffs,
@@ -415,7 +449,7 @@ fn make_percent_diff(before: &Option<String>, after: &Option<String>) -> Option<
 fn make_alloc_diff(before: &Option<String>, after: &Option<String>) -> Option<MetricDiff> {
     let b = parse_bytes(before.as_deref()?)?;
     let a = parse_bytes(after.as_deref()?)?;
-    Some(MetricDiff::Alloc(b, a))
+    Some(MetricDiff::AllocBytes(b, a))
 }
 
 fn make_alloc_signed_diff(before: &Option<String>, after: &Option<String>) -> Option<MetricDiff> {
@@ -684,7 +718,7 @@ mod test {
 
     fn make_metrics(data: Vec<JsonFunctionEntry>, total_elapsed_ns: u64) -> JsonFunctionsList {
         JsonFunctionsList {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
+            profiling_mode: hotpath::ProfilingMode::Timing,
             time_elapsed: hotpath::format_duration(total_elapsed_ns),
             total_elapsed_ns,
             total_allocated: None,
@@ -722,7 +756,7 @@ mod test {
         total_elapsed_ns: u64,
     ) -> JsonFunctionsList {
         JsonFunctionsList {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Alloc,
+            profiling_mode: hotpath::ProfilingMode::AllocBytes,
             time_elapsed: hotpath::format_duration(total_elapsed_ns),
             total_elapsed_ns,
             total_allocated: Some("10.00 MB".to_string()),
@@ -738,14 +772,9 @@ mod test {
         alloc: Option<JsonFunctionsList>,
     ) -> JsonReport {
         JsonReport {
-            label: None,
             functions_timing: timing,
             functions_alloc: alloc,
-            channels: None,
-            streams: None,
-            futures: None,
-            threads: None,
-            cpu_baseline: None,
+            ..Default::default()
         }
     }
 
@@ -810,7 +839,7 @@ mod test {
         let before = make_report(Some(before_timing), Some(before_alloc));
         let after = make_report(Some(after_timing), Some(after_alloc));
 
-        let diff = compare_reports(&before, &after);
+        let diff = compare_reports(&before, &after).expect("reports should compare");
 
         assert!(diff.functions_timing.is_some());
         assert!(diff.functions_alloc.is_some());

@@ -85,6 +85,7 @@ pub(crate) fn display_table_to<W: Write>(
 
     table.add_row(Row::new(header_cells));
 
+    let mode = metrics_provider.profiling_mode();
     let sorted_entries = get_sorted_measurements(metrics_provider);
 
     for (function_name, metrics) in sorted_entries {
@@ -94,7 +95,7 @@ pub(crate) fn display_table_to<W: Write>(
         row_cells.push(Cell::new(&short_name));
 
         for metric in &metrics {
-            row_cells.push(Cell::new(&metric.to_string()));
+            row_cells.push(Cell::new(&metric.format_with_mode(&mode)));
         }
 
         table.add_row(Row::new(row_cells));

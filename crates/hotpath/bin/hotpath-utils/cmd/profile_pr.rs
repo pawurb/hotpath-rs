@@ -60,7 +60,7 @@ impl ProfilePrArgs {
         let base_report = read_report(&self.base_metrics)?;
         let head_report = read_report(&self.head_metrics)?;
 
-        let diff = compare_reports(&base_report, &head_report);
+        let diff = compare_reports(&base_report, &head_report).map_err(|e| eyre::eyre!("{}", e))?;
 
         if diff.functions_timing.is_none()
             && diff.functions_alloc.is_none()

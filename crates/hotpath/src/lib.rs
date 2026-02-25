@@ -29,9 +29,9 @@ pub(crate) mod output;
 pub use output::format_debug_truncated;
 #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub use output::{
-    ceil_char_boundary, floor_char_boundary, format_bytes, format_duration, parse_bytes,
-    parse_duration, shorten_function_name, FunctionLogsList, FunctionsData, MetricType,
-    MetricsProvider, OutputDestination, ProfilingMode, MAX_RESULT_LEN,
+    ceil_char_boundary, floor_char_boundary, format_bytes, format_count, format_duration,
+    parse_bytes, parse_count, parse_duration, shorten_function_name, FunctionLogsList,
+    FunctionsData, MetricType, MetricsProvider, OutputDestination, ProfilingMode, MAX_RESULT_LEN,
 };
 
 #[cfg(all(feature = "hotpath", not(feature = "hotpath-off")))]

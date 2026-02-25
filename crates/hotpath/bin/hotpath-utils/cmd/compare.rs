@@ -42,7 +42,7 @@ impl CompareArgs {
         let after: JsonReport = serde_json::from_str(&after_raw)
             .map_err(|e| eyre::eyre!("Failed to parse after JSON: {}", e))?;
 
-        let diff = compare_reports(&before, &after);
+        let diff = compare_reports(&before, &after).map_err(|e| eyre::eyre!("{}", e))?;
         print_diff(&diff);
 
         Ok(())

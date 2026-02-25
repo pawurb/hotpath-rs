@@ -17,6 +17,7 @@
 | `HOTPATH_FOCUS` | Filter profiled functions by name. Plain text does substring matching; wrap in `/pattern/` for regex (e.g. `HOTPATH_FOCUS="/^(compute\|process)/"`). (default: `''`) |
 | `HOTPATH_EXCLUDE_WRAPPER` | Set to `true` or `1` to calculate ratios using the sum of measured functions instead of the wrapper total. (default: `false`) |
 | `HOTPATH_ALLOC_SELF` | Set to `true` or `1` to track exclusive (non-cumulative) memory allocations per function instead of the default cumulative mode. (default: `false`) |
+| `HOTPATH_ALLOC_METRIC` | Primary metric for alloc mode: `bytes` or `count`. Controls sorting, percentages, and displayed values in reports. (default: `bytes`) |
 | `HOTPATH_CPU_BASELINE_OFF` | Set to `true` or `1` to disable CPU baseline collection. (default: `false`) |
 
 ## Metrics Server

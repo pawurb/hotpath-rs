@@ -81,7 +81,7 @@ pub struct JsonFunctionEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionsList {
-    pub hotpath_profiling_mode: ProfilingMode,
+    pub profiling_mode: ProfilingMode,
     pub time_elapsed: String,
     pub total_elapsed_ns: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,8 +94,8 @@ pub struct JsonFunctionsList {
 
 impl JsonFunctionsList {
     pub fn from_provider(provider: &dyn MetricsProvider<'_>, current_elapsed_ns: u64) -> Self {
-        let hotpath_profiling_mode = provider.profiling_mode();
-        let is_alloc = matches!(hotpath_profiling_mode, ProfilingMode::Alloc);
+        let profiling_mode = provider.profiling_mode();
+        let is_alloc = matches!(profiling_mode, ProfilingMode::Alloc);
         let percentiles_config = provider.percentiles();
         let metric_data = provider.metric_data();
         let name_to_id = provider.function_ids();
@@ -112,7 +112,7 @@ impl JsonFunctionsList {
         };
 
         JsonFunctionsList {
-            hotpath_profiling_mode,
+            profiling_mode,
             time_elapsed,
             total_elapsed_ns: current_elapsed_ns,
             total_allocated,
@@ -125,7 +125,7 @@ impl JsonFunctionsList {
 
     pub fn empty_fallback(current_elapsed_ns: u64) -> Self {
         JsonFunctionsList {
-            hotpath_profiling_mode: ProfilingMode::Timing,
+            profiling_mode: ProfilingMode::Timing,
             time_elapsed: format_duration(0),
             total_elapsed_ns: current_elapsed_ns,
             total_allocated: None,

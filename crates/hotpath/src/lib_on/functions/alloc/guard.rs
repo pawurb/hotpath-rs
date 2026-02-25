@@ -6,6 +6,25 @@ use quanta::Instant;
 #[cfg(not(target_os = "linux"))]
 use std::time::Instant;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AllocMetric {
+    Bytes,
+    Count,
+}
+
+pub(crate) static ALLOC_METRIC: LazyLock<AllocMetric> =
+    LazyLock::new(|| match std::env::var("HOTPATH_ALLOC_METRIC") {
+        Ok(v) => match v.to_lowercase().as_str() {
+            "bytes" => AllocMetric::Bytes,
+            "count" => AllocMetric::Count,
+            other => panic!(
+                "Invalid HOTPATH_ALLOC_METRIC value: '{}'. Expected 'bytes' or 'count'.",
+                other
+            ),
+        },
+        Err(_) => AllocMetric::Bytes,
+    });
+
 pub(crate) static ALLOC_SELF: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("HOTPATH_ALLOC_SELF")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")

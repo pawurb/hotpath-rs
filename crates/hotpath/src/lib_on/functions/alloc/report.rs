@@ -47,14 +47,29 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn profiling_mode(&self) -> ProfilingMode {
-        ProfilingMode::Alloc
+        use crate::lib_on::functions::alloc::guard::{AllocMetric, ALLOC_METRIC};
+        match *ALLOC_METRIC {
+            AllocMetric::Bytes => ProfilingMode::AllocBytes,
+            AllocMetric::Count => ProfilingMode::AllocCount,
+        }
     }
 
     fn description(&self) -> String {
+        use crate::lib_on::functions::alloc::guard::{AllocMetric, ALLOC_METRIC};
+        let metric = match *ALLOC_METRIC {
+            AllocMetric::Bytes => "bytes",
+            AllocMetric::Count => "count",
+        };
         if *super::guard::ALLOC_SELF {
-            "Exclusive allocations by each function (excluding nested calls).".to_string()
+            format!(
+                "Exclusive allocation {} by each function (excluding nested calls).",
+                metric
+            )
         } else {
-            "Cumulative allocations during each function call (including nested calls).".to_string()
+            format!(
+                "Cumulative allocation {} during each function call (including nested calls).",
+                metric
+            )
         }
     }
 
@@ -70,7 +85,10 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
     }
 
     fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)> {
+        use crate::lib_on::functions::alloc::guard::{AllocMetric, ALLOC_METRIC};
+
         let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
+        let use_count = *ALLOC_METRIC == AllocMetric::Count;
 
         let bytes_cache: HashMap<u32, u64> = self
             .stats
@@ -114,9 +132,12 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             .collect();
 
         entries.sort_by(|a, b| {
-            b.total_bytes
-                .cmp(&a.total_bytes)
-                .then_with(|| a.stats.name.cmp(b.stats.name))
+            let primary = if use_count {
+                b.total_count.cmp(&a.total_count)
+            } else {
+                b.total_bytes.cmp(&a.total_bytes)
+            };
+            primary.then_with(|| a.stats.name.cmp(b.stats.name))
         });
 
         let entries = if self.limit > 0 {
@@ -125,30 +146,36 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             entries
         };
 
-        let grand_total_bytes: u64 = if *crate::functions::EXCLUDE_WRAPPER {
+        let primary_cache = if use_count {
+            &count_cache
+        } else {
+            &bytes_cache
+        };
+
+        let grand_total: u64 = if *crate::functions::EXCLUDE_WRAPPER {
             self.stats
                 .values()
                 .filter(|s| !s.wrapper && s.has_data)
-                .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
+                .map(|s| primary_cache.get(&s.id).copied().unwrap_or(0))
                 .sum()
         } else if *super::guard::ALLOC_SELF {
             self.stats
                 .values()
                 .filter(|s| s.has_data)
-                .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
+                .map(|s| primary_cache.get(&s.id).copied().unwrap_or(0))
                 .sum()
         } else {
-            let wrapper_total_bytes = self
+            let wrapper_total = self
                 .stats
                 .values()
                 .find(|s| s.wrapper && s.has_data)
-                .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0));
+                .map(|s| primary_cache.get(&s.id).copied().unwrap_or(0));
 
-            wrapper_total_bytes.unwrap_or_else(|| {
+            wrapper_total.unwrap_or_else(|| {
                 self.stats
                     .values()
                     .filter(|s| s.has_data)
-                    .map(|s| bytes_cache.get(&s.id).copied().unwrap_or(0))
+                    .map(|s| primary_cache.get(&s.id).copied().unwrap_or(0))
                     .sum()
             })
         };
@@ -157,8 +184,13 @@ impl<'a> MetricsProvider<'a> for StatsData<'a> {
             .into_iter()
             .map(|entry| {
                 let stats = entry.stats;
-                let percentage = if grand_total_bytes > 0 {
-                    (entry.total_bytes as f64 / grand_total_bytes as f64) * 100.0
+                let primary_total = if use_count {
+                    entry.total_count
+                } else {
+                    entry.total_bytes
+                };
+                let percentage = if grand_total > 0 {
+                    (primary_total as f64 / grand_total as f64) * 100.0
                 } else {
                     0.0
                 };

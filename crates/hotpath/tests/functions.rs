@@ -195,7 +195,7 @@ pub mod tests {
 
         let all_expected = [
             "main_format::example_function",
-            "\"hotpath_profiling_mode\"",
+            "\"profiling_mode\"",
             "\"calls\"",
         ];
 
@@ -232,7 +232,7 @@ pub mod tests {
 
         let all_expected = [
             "main_percentiles_format::example_function",
-            "\"hotpath_profiling_mode\"",
+            "\"profiling_mode\"",
             "\"p75\"",
             "\"p95\"",
         ];
@@ -872,7 +872,7 @@ pub mod tests {
 
         let expected_content = [
             "functions_file_output::example_function",
-            "\"hotpath_profiling_mode\"",
+            "\"profiling_mode\"",
             "\"calls\"",
         ];
 
@@ -919,7 +919,7 @@ pub mod tests {
         let not_expected = [
             "basic::sync_function",
             "basic::async_function",
-            "hotpath_profiling_mode",
+            "profiling_mode",
             "percent_total",
         ];
 

@@ -109,6 +109,17 @@ pub fn parse_bytes(s: &str) -> Option<u64> {
     }
 }
 
+/// Formats an allocation count as a string.
+pub fn format_count(count: u64) -> String {
+    count.to_string()
+}
+
+/// Parses a count string back to a u64.
+/// Inverse of [`format_count`].
+pub fn parse_count(s: &str) -> Option<u64> {
+    s.trim().parse::<u64>().ok()
+}
+
 /// Represents different types of profiling metrics with their values.
 #[derive(Debug, Clone)]
 pub enum MetricType {
@@ -122,6 +133,19 @@ pub enum MetricType {
     Percentage(u64),
     /// For N/A values (async functions when not supported)
     Unsupported,
+}
+
+impl MetricType {
+    pub fn format_with_mode(&self, mode: &ProfilingMode) -> String {
+        match self {
+            MetricType::Alloc(bytes, count) => match mode {
+                ProfilingMode::AllocCount => format_count(*count),
+                ProfilingMode::AllocBytes => format_bytes(*bytes),
+                ProfilingMode::Timing => unreachable!(),
+            },
+            other => other.to_string(),
+        }
+    }
 }
 
 impl fmt::Display for MetricType {
@@ -139,19 +163,22 @@ impl fmt::Display for MetricType {
 }
 
 /// Profiling mode indicating what type of measurements were collected.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProfilingMode {
     /// Time-based profiling (execution duration)
     Timing,
-    /// Combined allocation profiling (both bytes and count)
-    Alloc,
+    /// Allocation profiling with bytes as primary metric
+    AllocBytes,
+    /// Allocation profiling with count as primary metric
+    AllocCount,
 }
 
 impl fmt::Display for ProfilingMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ProfilingMode::Timing => write!(f, "timing"),
-            ProfilingMode::Alloc => write!(f, "alloc"),
+            ProfilingMode::AllocBytes => write!(f, "alloc-bytes"),
+            ProfilingMode::AllocCount => write!(f, "alloc-count"),
         }
     }
 }
@@ -238,7 +265,8 @@ impl Serialize for ProfilingMode {
     {
         match self {
             ProfilingMode::Timing => serializer.serialize_str("timing"),
-            ProfilingMode::Alloc => serializer.serialize_str("alloc"),
+            ProfilingMode::AllocBytes => serializer.serialize_str("alloc-bytes"),
+            ProfilingMode::AllocCount => serializer.serialize_str("alloc-count"),
         }
     }
 }
@@ -251,8 +279,12 @@ impl<'de> Deserialize<'de> for ProfilingMode {
         let s = String::deserialize(deserializer)?;
         match s.as_str() {
             "timing" => Ok(ProfilingMode::Timing),
-            "alloc" => Ok(ProfilingMode::Alloc),
-            _ => Err(serde::de::Error::unknown_variant(&s, &["timing", "alloc"])),
+            "alloc-bytes" => Ok(ProfilingMode::AllocBytes),
+            "alloc-count" => Ok(ProfilingMode::AllocCount),
+            _ => Err(serde::de::Error::unknown_variant(
+                &s,
+                &["timing", "alloc-bytes", "alloc-count"],
+            )),
         }
     }
 }
@@ -525,6 +557,27 @@ mod parse_tests {
         for val in [0, 100, 1023, 1024, 1536, 1048576, 1073741824] {
             let formatted = format_bytes(val);
             let parsed = parse_bytes(&formatted);
+            assert_eq!(
+                parsed,
+                Some(val),
+                "round-trip failed for {val}: formatted as '{formatted}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_format_count() {
+        assert_eq!(format_count(0), "0");
+        assert_eq!(format_count(999), "999");
+        assert_eq!(format_count(1_000), "1000");
+        assert_eq!(format_count(1_000_000), "1000000");
+    }
+
+    #[test]
+    fn test_parse_count_roundtrip() {
+        for val in [0, 1, 500, 999, 1_000, 1_500, 50_000, 1_000_000] {
+            let formatted = format_count(val);
+            let parsed = parse_count(&formatted);
             assert_eq!(
                 parsed,
                 Some(val),

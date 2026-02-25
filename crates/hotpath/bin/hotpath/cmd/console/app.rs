@@ -208,7 +208,7 @@ impl App {
         };
 
         let empty_functions = JsonFunctionsList {
-            hotpath_profiling_mode: hotpath::ProfilingMode::Timing,
+            profiling_mode: hotpath::ProfilingMode::Timing,
             time_elapsed: "0 ns".to_string(),
             total_elapsed_ns: 0,
             total_allocated: None,
