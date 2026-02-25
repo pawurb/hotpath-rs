@@ -1,6 +1,6 @@
 use crate::cmd::console::app::{DataFlowFocus, DebugFocus, FunctionsFocus, SelectedTab};
 use ratatui::{
-    layout::Rect,
+    layout::{Alignment, Rect},
     style::Stylize,
     symbols::border,
     text::Line,
@@ -19,6 +19,7 @@ const INSPECT_LABEL: &str = " | Inspect ";
 const INSPECT_KEY: &str = "<i> ";
 const CLOSE_LABEL: &str = " | Close ";
 const CLOSE_KEYS: &str = "<i/o/h> ";
+const VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 
 #[hotpath::measure]
 pub(crate) fn render_help_bar(
@@ -142,7 +143,9 @@ pub(crate) fn render_help_bar(
             }
         };
 
-    let block = Block::bordered().border_set(border::PLAIN);
+    let block = Block::bordered()
+        .border_set(border::PLAIN)
+        .title_bottom(Line::from(format!(" {VERSION} ")).alignment(Alignment::Right));
 
     let paragraph = Paragraph::new(controls_line).block(block).left_aligned();
 
