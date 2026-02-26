@@ -31,6 +31,12 @@ pub(crate) static ALLOC_SELF: LazyLock<bool> = LazyLock::new(|| {
         .unwrap_or(false)
 });
 
+pub(crate) static UNSAFE_ASYNC_ALLOC: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("HOTPATH_UNSAFE_ASYNC_ALLOC")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+});
+
 #[must_use = "guard is dropped immediately without measuring anything"]
 pub struct MeasurementGuard {
     name: &'static str,
@@ -44,7 +50,7 @@ pub struct MeasurementGuard {
 impl MeasurementGuard {
     #[inline]
     pub fn new(name: &'static str, wrapper: bool, skipped: bool, is_async: bool) -> Self {
-        if !skipped && !is_async {
+        if !skipped && (!is_async || *UNSAFE_ASYNC_ALLOC) {
             super::core::ALLOCATIONS.with(|stack| {
                 let current_depth = stack.depth.get();
                 stack.depth.set(current_depth + 1);
@@ -76,7 +82,8 @@ impl Drop for MeasurementGuard {
         let duration = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
 
-        let (bytes_total, count_total) = if self.is_async || cross_thread {
+        let (bytes_total, count_total) = if (self.is_async && !*UNSAFE_ASYNC_ALLOC) || cross_thread
+        {
             (None, None)
         } else {
             super::core::ALLOCATIONS.with(|stack| {
@@ -133,7 +140,7 @@ pub struct MeasurementGuardWithLog {
 impl MeasurementGuardWithLog {
     #[inline]
     pub fn new(name: &'static str, wrapper: bool, skipped: bool, is_async: bool) -> Self {
-        if !skipped && !is_async {
+        if !skipped && (!is_async || *UNSAFE_ASYNC_ALLOC) {
             super::core::ALLOCATIONS.with(|stack| {
                 let current_depth = stack.depth.get();
                 stack.depth.set(current_depth + 1);
@@ -166,7 +173,8 @@ impl MeasurementGuardWithLog {
         let duration = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
 
-        let (bytes_total, count_total) = if self.is_async || cross_thread {
+        let (bytes_total, count_total) = if (self.is_async && !*UNSAFE_ASYNC_ALLOC) || cross_thread
+        {
             (None, None)
         } else {
             super::core::ALLOCATIONS.with(|stack| {
@@ -220,7 +228,8 @@ impl Drop for MeasurementGuardWithLog {
         let duration = self.start.elapsed();
         let cross_thread = crate::tid::current_tid() != self.tid;
 
-        let (bytes_total, count_total) = if self.is_async || cross_thread {
+        let (bytes_total, count_total) = if (self.is_async && !*UNSAFE_ASYNC_ALLOC) || cross_thread
+        {
             (None, None)
         } else {
             super::core::ALLOCATIONS.with(|stack| {

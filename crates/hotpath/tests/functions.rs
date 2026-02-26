@@ -1124,6 +1124,60 @@ pub mod tests {
         }
     }
 
+    // HOTPATH_UNSAFE_ASYNC_ALLOC=true cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
+    #[test]
+    fn test_unsafe_async_alloc() {
+        use hotpath::json::JsonReport;
+
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "basic",
+                "--features",
+                "hotpath,hotpath-alloc",
+            ])
+            .env("HOTPATH_UNSAFE_ASYNC_ALLOC", "true")
+            .env("HOTPATH_METRICS_SERVER_OFF", "true")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let report: JsonReport = serde_json::from_str(stdout.lines().last().expect("no output"))
+            .expect("Failed to parse JSON output");
+
+        let alloc = report
+            .functions_alloc
+            .expect("Expected functions_alloc in report");
+
+        let async_fn = alloc
+            .data
+            .iter()
+            .find(|f| f.name == "basic::async_function")
+            .expect("Expected basic::async_function in alloc data");
+
+        assert_ne!(
+            async_fn.total, "N/A",
+            "async_function should have alloc data with HOTPATH_UNSAFE_ASYNC_ALLOC=true, got N/A"
+        );
+
+        let bytes =
+            hotpath::parse_bytes(&async_fn.total).expect("Failed to parse async_function total");
+        assert!(
+            bytes > 0,
+            "async_function should have non-zero alloc bytes, got {}",
+            bytes
+        );
+    }
+
     // cargo run -p test-tokio-async --example alloc_measure --features hotpath,hotpath-alloc
     #[test]
     fn test_alloc_uninstrumented_children_tracked() {
