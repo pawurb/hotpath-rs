@@ -216,6 +216,8 @@ impl App {
             caller_name: "unknown".to_string(),
             percentiles: vec![95],
             data: Vec::new(),
+            displayed_count: 0,
+            total_count: 0,
         };
 
         Self {

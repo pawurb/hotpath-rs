@@ -96,7 +96,7 @@ impl ProfilePrArgs {
             .functions_timing
             .as_ref()
             .or(diff.functions_alloc.as_ref())
-            .map(|c| c.profiling_mode.clone())
+            .map(|c| c.profiling_mode)
             .unwrap();
 
         match upsert_pr_comment(

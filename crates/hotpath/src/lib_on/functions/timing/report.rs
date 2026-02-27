@@ -1,139 +1,94 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
-use crate::output::{MetricType, MetricsProvider};
-use crate::ProfilingMode;
+use crate::json::JsonFunctionEntry;
+use crate::json::JsonFunctionsList;
+use crate::lib_on::functions::StatsConfig;
+use crate::output::{format_duration, ProfilingMode};
 
 use super::state::FunctionStats;
 
-pub struct StatsData<'a> {
-    pub stats: &'a HashMap<u32, FunctionStats>,
-    pub total_elapsed: Duration,
-    pub percentiles: Vec<u8>,
-    pub caller_name: &'static str,
-    pub limit: usize,
-}
+pub(crate) fn build_functions_list(
+    stats: &HashMap<u32, FunctionStats>,
+    config: &StatsConfig,
+    current_elapsed_ns: u64,
+) -> JsonFunctionsList {
+    let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
 
-impl<'a> MetricsProvider<'a> for StatsData<'a> {
-    fn new(
-        stats: &'a HashMap<u32, FunctionStats>,
-        total_elapsed: Duration,
-        percentiles: Vec<u8>,
-        caller_name: &'static str,
-        limit: usize,
-    ) -> Self {
-        Self {
-            stats,
-            total_elapsed,
-            percentiles,
-            caller_name,
-            limit,
-        }
-    }
-
-    fn percentiles(&self) -> Vec<u8> {
-        self.percentiles.clone()
-    }
-
-    fn description(&self) -> String {
-        "Execution duration of functions.".to_string()
-    }
-
-    fn profiling_mode(&self) -> ProfilingMode {
-        ProfilingMode::Timing
-    }
-
-    fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)> {
-        let reference_total = if *crate::functions::EXCLUDE_WRAPPER {
-            self.stats
-                .values()
-                .filter(|s| !s.wrapper && s.has_data)
-                .map(|s| s.total_duration_ns)
-                .sum::<u64>()
-        } else {
-            let wrapper_total = self
-                .stats
-                .values()
-                .find(|s| s.wrapper)
-                .map(|s| s.total_duration_ns);
-            wrapper_total.unwrap_or(self.total_elapsed.as_nanos() as u64)
-        };
-
-        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
-        let mut entries: Vec<_> = self
-            .stats
+    let reference_total = if exclude_wrapper {
+        stats
             .values()
-            .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
-            .collect();
-
-        entries.sort_by(|a, b| {
-            b.total_duration_ns
-                .cmp(&a.total_duration_ns)
-                .then_with(|| a.name.cmp(b.name))
-        });
-
-        let entries = if self.limit > 0 {
-            entries.into_iter().take(self.limit).collect::<Vec<_>>()
-        } else {
-            entries
-        };
-
-        entries
-            .into_iter()
-            .map(|stats| {
-                let percentage = if reference_total > 0 {
-                    (stats.total_duration_ns as f64 / reference_total as f64) * 100.0
-                } else {
-                    0.0
-                };
-
-                let mut metrics = vec![
-                    MetricType::CallsCount(stats.count),
-                    MetricType::DurationNs(stats.avg_duration_ns()),
-                ];
-
-                for p in self.percentiles.iter() {
-                    let value = stats.percentile(*p as f64);
-                    metrics.push(MetricType::DurationNs(value.as_nanos() as u64));
-                }
-
-                metrics.push(MetricType::DurationNs(stats.total_duration_ns));
-                metrics.push(MetricType::Percentage((percentage * 100.0) as u64));
-
-                (stats.name, metrics)
-            })
-            .collect()
-    }
-
-    fn function_ids(&self) -> HashMap<&'static str, u32> {
-        self.stats
+            .filter(|s| !s.wrapper && s.has_data)
+            .map(|s| s.total_duration_ns)
+            .sum::<u64>()
+    } else {
+        let wrapper_total = stats
             .values()
-            .map(|stat| (stat.name, stat.id))
-            .collect()
+            .find(|s| s.wrapper)
+            .map(|s| s.total_duration_ns);
+        wrapper_total.unwrap_or(config.total_elapsed.as_nanos() as u64)
+    };
+
+    let mut entries: Vec<_> = stats
+        .values()
+        .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
+        .collect();
+
+    entries.sort_by(|a, b| {
+        b.total_duration_ns
+            .cmp(&a.total_duration_ns)
+            .then_with(|| a.name.cmp(b.name))
+    });
+
+    let total_count = entries.len();
+    let displayed_count = if config.limit > 0 && config.limit < total_count {
+        config.limit
+    } else {
+        total_count
+    };
+
+    if config.limit > 0 {
+        entries.truncate(config.limit);
     }
 
-    fn total_elapsed(&self) -> u64 {
-        self.total_elapsed.as_nanos() as u64
-    }
+    let data: Vec<JsonFunctionEntry> = entries
+        .into_iter()
+        .map(|s| {
+            let percentage = if reference_total > 0 {
+                (s.total_duration_ns as f64 / reference_total as f64) * 100.0
+            } else {
+                0.0
+            };
 
-    fn caller_name(&self) -> &str {
-        self.caller_name
-    }
+            let mut percentiles = HashMap::new();
+            for &p in &config.percentiles {
+                let value = s.percentile(p as f64);
+                percentiles.insert(format!("p{}", p), format_duration(value.as_nanos() as u64));
+            }
 
-    fn entry_counts(&self) -> (usize, usize) {
-        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
-        let total_count = self
-            .stats
-            .iter()
-            .filter(|(_, s)| s.has_data && !(exclude_wrapper && s.wrapper))
-            .count();
+            JsonFunctionEntry {
+                id: s.id,
+                name: s.name.to_string(),
+                calls: s.count,
+                avg: format_duration(s.avg_duration_ns()),
+                percentiles,
+                total: format_duration(s.total_duration_ns),
+                percent_total: format!("{:.2}%", percentage),
+            }
+        })
+        .collect();
 
-        let displayed_count = if self.limit > 0 && self.limit < total_count {
-            self.limit
-        } else {
-            total_count
-        };
+    let total_elapsed_ns = config.total_elapsed.as_nanos() as u64;
 
-        (displayed_count, total_count)
+    JsonFunctionsList {
+        profiling_mode: ProfilingMode::Timing,
+        time_elapsed: format_duration(total_elapsed_ns),
+        total_elapsed_ns: current_elapsed_ns,
+        total_allocated: None,
+        description: "Execution duration of functions.".to_string(),
+        caller_name: config.caller_name.to_string(),
+        percentiles: config.percentiles.clone(),
+        data,
+        displayed_count,
+        total_count,
     }
 }

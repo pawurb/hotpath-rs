@@ -423,7 +423,7 @@ pub fn compare_metrics(
     });
 
     FunctionsComparison {
-        profiling_mode: before_metrics.profiling_mode.clone(),
+        profiling_mode: before_metrics.profiling_mode,
         description: before_metrics.description.clone(),
         percentiles: before_metrics.percentiles.clone(),
         function_diffs,
@@ -717,6 +717,7 @@ mod test {
     }
 
     fn make_metrics(data: Vec<JsonFunctionEntry>, total_elapsed_ns: u64) -> JsonFunctionsList {
+        let count = data.len();
         JsonFunctionsList {
             profiling_mode: hotpath::ProfilingMode::Timing,
             time_elapsed: hotpath::format_duration(total_elapsed_ns),
@@ -725,6 +726,8 @@ mod test {
             description: "Time metrics".to_string(),
             caller_name: "test::main".to_string(),
             percentiles: vec![95],
+            displayed_count: count,
+            total_count: count,
             data,
         }
     }
@@ -755,6 +758,7 @@ mod test {
         data: Vec<JsonFunctionEntry>,
         total_elapsed_ns: u64,
     ) -> JsonFunctionsList {
+        let count = data.len();
         JsonFunctionsList {
             profiling_mode: hotpath::ProfilingMode::AllocBytes,
             time_elapsed: hotpath::format_duration(total_elapsed_ns),
@@ -763,6 +767,8 @@ mod test {
             description: "Alloc metrics".to_string(),
             caller_name: "test::main".to_string(),
             percentiles: vec![95],
+            displayed_count: count,
+            total_count: count,
             data,
         }
     }

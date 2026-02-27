@@ -1,15 +1,9 @@
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-#[cfg(feature = "hotpath")]
-use std::time::Duration;
-
-#[cfg(feature = "hotpath")]
-use crate::FunctionStats;
 
 /// Destination for profiling report output.
 #[derive(Default)]
@@ -120,50 +114,8 @@ pub fn parse_count(s: &str) -> Option<u64> {
     s.trim().parse::<u64>().ok()
 }
 
-/// Represents different types of profiling metrics with their values.
-#[derive(Debug, Clone)]
-pub enum MetricType {
-    /// Number of function calls
-    CallsCount(u64),
-    /// Duration in nanoseconds
-    DurationNs(u64),
-    /// Bytes allocated, objects allocated
-    Alloc(u64, u64),
-    /// Percentage as basis points (1% = 100)
-    Percentage(u64),
-    /// For N/A values (async functions when not supported)
-    Unsupported,
-}
-
-impl MetricType {
-    pub fn format_with_mode(&self, mode: &ProfilingMode) -> String {
-        match self {
-            MetricType::Alloc(bytes, count) => match mode {
-                ProfilingMode::AllocCount => format_count(*count),
-                ProfilingMode::AllocBytes => format_bytes(*bytes),
-                ProfilingMode::Timing => unreachable!(),
-            },
-            other => other.to_string(),
-        }
-    }
-}
-
-impl fmt::Display for MetricType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MetricType::CallsCount(count) => write!(f, "{}", count),
-            MetricType::DurationNs(ns) => write!(f, "{}", format_duration(*ns)),
-            MetricType::Alloc(bytes, _count) => write!(f, "{}", format_bytes(*bytes)),
-            MetricType::Percentage(basis_points) => {
-                write!(f, "{:.2}%", *basis_points as f64 / 100.0)
-            }
-            MetricType::Unsupported => write!(f, "N/A"),
-        }
-    }
-}
-
 /// Profiling mode indicating what type of measurements were collected.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProfilingMode {
     /// Time-based profiling (execution duration)
     Timing,
@@ -240,21 +192,6 @@ pub fn resolve_output_path(path: impl AsRef<std::path::Path>) -> PathBuf {
         std::env::current_dir()
             .map(|cwd| cwd.join(path))
             .unwrap_or_else(|_| path.to_path_buf())
-    }
-}
-
-impl Serialize for MetricType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            MetricType::CallsCount(count) => serializer.serialize_u64(*count),
-            MetricType::DurationNs(ns) => serializer.serialize_u64(*ns),
-            MetricType::Alloc(bytes, _count) => serializer.serialize_u64(*bytes),
-            MetricType::Percentage(basis_points) => serializer.serialize_u64(*basis_points),
-            MetricType::Unsupported => serializer.serialize_none(),
-        }
     }
 }
 
@@ -401,66 +338,6 @@ pub struct FunctionLogsList {
     pub logs: Vec<FunctionLog>,
     /// Total number of times this function was invoked (used to calculate invocation numbers)
     pub count: usize,
-}
-
-/// Structured per-function profiling metrics data as an ordered list.
-pub type FunctionsData = Vec<(&'static str, Vec<MetricType>)>;
-
-/// Trait for accessing profiling metrics data.
-///
-/// Provides a standardized interface to access profiling metrics, regardless of
-/// the underlying profiling mode (time or allocation tracking).
-pub trait MetricsProvider<'a> {
-    fn description(&self) -> String;
-    fn profiling_mode(&self) -> ProfilingMode;
-    fn headers(&self) -> Vec<String> {
-        let mut headers = vec![
-            "Function".to_string(),
-            "Calls".to_string(),
-            "Avg".to_string(),
-        ];
-
-        for &p in &self.percentiles() {
-            headers.push(format!("P{}", p));
-        }
-
-        headers.push("Total".to_string());
-        headers.push("% Total".to_string());
-
-        headers
-    }
-    fn percentiles(&self) -> Vec<u8>;
-
-    fn metric_data(&self) -> Vec<(&'static str, Vec<MetricType>)>;
-
-    fn sort_key(&self, metrics: &[MetricType]) -> f64 {
-        if let Some(MetricType::Percentage(basis_points)) = metrics.last() {
-            *basis_points as f64 / 100.0
-        } else {
-            0.0
-        }
-    }
-
-    fn entry_counts(&self) -> (usize, usize);
-
-    #[cfg(feature = "hotpath")]
-    fn new(
-        stats: &'a HashMap<u32, FunctionStats>,
-        total_elapsed: Duration,
-        percentiles: Vec<u8>,
-        caller_name: &'static str,
-        limit: usize,
-    ) -> Self
-    where
-        Self: Sized;
-
-    fn function_ids(&self) -> HashMap<&'static str, u32> {
-        HashMap::new()
-    }
-
-    fn total_elapsed(&self) -> u64;
-
-    fn caller_name(&self) -> &str;
 }
 
 #[cfg(test)]

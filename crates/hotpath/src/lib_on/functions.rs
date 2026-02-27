@@ -25,6 +25,13 @@ cfg_if::cfg_if! {
     }
 }
 
+pub(crate) struct StatsConfig {
+    pub(crate) total_elapsed: Duration,
+    pub(crate) percentiles: Vec<u8>,
+    pub(crate) caller_name: &'static str,
+    pub(crate) limit: usize,
+}
+
 pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 pub(crate) fn next_function_id() -> u32 {

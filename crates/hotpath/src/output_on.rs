@@ -1,28 +1,9 @@
-use crate::output::{format_duration, shorten_function_name, MetricType, MetricsProvider};
+use crate::json::JsonFunctionsList;
+use crate::output::{format_duration, shorten_function_name};
 use crate::shared::Section;
 use prettytable::{color, Attr, Cell, Row, Table};
 use std::io::Write;
 use std::time::Duration;
-
-pub(crate) fn get_sorted_measurements(
-    metrics_provider: &dyn MetricsProvider<'_>,
-) -> Vec<(&'static str, Vec<MetricType>)> {
-    let metric_data = metrics_provider.metric_data();
-
-    let mut sorted_entries: Vec<(&'static str, Vec<MetricType>)> =
-        metric_data.into_iter().collect();
-    sorted_entries.sort_by(|(name_a, metrics_a), (name_b, metrics_b)| {
-        let key_a = metrics_provider.sort_key(metrics_a);
-        let key_b = metrics_provider.sort_key(metrics_b);
-
-        key_b
-            .partial_cmp(&key_a)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| name_a.cmp(name_b))
-    });
-
-    sorted_entries
-}
 
 pub(crate) fn write_report_header<W: Write + ?Sized>(
     writer: &mut W,
@@ -62,15 +43,22 @@ fn print_table<W: Write>(table: &Table, writer: &mut W) {
     }
 }
 
-pub(crate) fn display_table_to<W: Write>(
-    writer: &mut W,
-    metrics_provider: &dyn MetricsProvider<'_>,
-) {
+pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFunctionsList) {
     let use_colors = crate::output::use_colors();
     let mut table = Table::new();
 
-    let header_cells: Vec<Cell> = metrics_provider
-        .headers()
+    let mut header_names = vec![
+        "Function".to_string(),
+        "Calls".to_string(),
+        "Avg".to_string(),
+    ];
+    for &p in &list.percentiles {
+        header_names.push(format!("P{}", p));
+    }
+    header_names.push("Total".to_string());
+    header_names.push("% Total".to_string());
+
+    let header_cells: Vec<Cell> = header_names
         .into_iter()
         .map(|header| {
             if use_colors {
@@ -85,29 +73,40 @@ pub(crate) fn display_table_to<W: Write>(
 
     table.add_row(Row::new(header_cells));
 
-    let mode = metrics_provider.profiling_mode();
-    let sorted_entries = get_sorted_measurements(metrics_provider);
-
-    for (function_name, metrics) in sorted_entries {
+    for entry in &list.data {
         let mut row_cells = Vec::new();
 
-        let short_name = shorten_function_name(function_name);
+        let short_name = shorten_function_name(&entry.name);
         row_cells.push(Cell::new(&short_name));
+        row_cells.push(Cell::new(&entry.calls.to_string()));
+        row_cells.push(Cell::new(&entry.avg));
 
-        for metric in &metrics {
-            row_cells.push(Cell::new(&metric.format_with_mode(&mode)));
+        for &p in &list.percentiles {
+            let key = format!("p{}", p);
+            let value = entry
+                .percentiles
+                .get(&key)
+                .map(|s| s.as_str())
+                .unwrap_or("N/A");
+            row_cells.push(Cell::new(value));
         }
+
+        row_cells.push(Cell::new(&entry.total));
+        row_cells.push(Cell::new(&entry.percent_total));
 
         table.add_row(Row::new(row_cells));
     }
 
-    let mode = metrics_provider.profiling_mode().to_string();
-    let desc = metrics_provider.description();
-    let (displayed, total) = metrics_provider.entry_counts();
-    if displayed < total {
-        let _ = writeln!(writer, "{} - {} ({}/{})", mode, desc, displayed, total);
+    let mode = list.profiling_mode.to_string();
+    let desc = &list.description;
+    if list.displayed_count < list.total_count {
+        let _ = writeln!(
+            writer,
+            "{} - {} ({}/{})",
+            mode, desc, list.displayed_count, list.total_count
+        );
     } else {
-        write_section_header(writer, &mode, &desc);
+        write_section_header(writer, &mode, desc);
         let _ = writeln!(writer);
     }
 
