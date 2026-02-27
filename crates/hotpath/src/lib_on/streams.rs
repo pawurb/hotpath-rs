@@ -29,7 +29,6 @@ pub(crate) struct StreamStats {
     pub(crate) items_yielded: u64,
     pub(crate) type_name: &'static str,
     pub(crate) type_size: usize,
-    pub(crate) logs: VecDeque<DataFlowLogEntry>,
     pub(crate) iter: u32,
 }
 
@@ -51,10 +50,27 @@ impl StreamStats {
             items_yielded: 0,
             type_name,
             type_size,
-            logs: VecDeque::with_capacity(*LOGS_LIMIT),
             iter,
         }
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct StreamStatsLogs {
+    pub(crate) logs: VecDeque<DataFlowLogEntry>,
+}
+
+impl StreamStatsLogs {
+    fn new() -> Self {
+        Self {
+            logs: VecDeque::with_capacity(*LOGS_LIMIT),
+        }
+    }
+}
+
+pub(crate) struct StreamsInternalState {
+    pub(crate) stats: HashMap<u32, StreamStats>,
+    pub(crate) logs: HashMap<u32, StreamStatsLogs>,
 }
 
 impl From<&StreamStats> for JsonStreamEntry {
@@ -97,7 +113,7 @@ pub(crate) enum StreamEvent {
 
 pub(crate) struct StreamsState {
     pub(crate) event_tx: CbSender<StreamEvent>,
-    pub(crate) stats_map: Arc<RwLock<HashMap<u32, StreamStats>>>,
+    pub(crate) inner: Arc<RwLock<StreamsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -107,7 +123,7 @@ pub(crate) type StreamStatsState = StreamsState;
 pub(crate) static STREAMS_STATE: OnceLock<StreamStatsState> = OnceLock::new();
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn process_stream_event(stats: &mut HashMap<u32, StreamStats>, event: StreamEvent) {
+fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
     match event {
         StreamEvent::Created {
             id,
@@ -116,22 +132,25 @@ fn process_stream_event(stats: &mut HashMap<u32, StreamStats>, event: StreamEven
             type_name,
             type_size,
         } => {
-            let iter = stats.values().filter(|s| s.source == source).count() as u32;
-            stats.insert(
+            let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
+            state.stats.insert(
                 id,
                 StreamStats::new(id, source, display_label, type_name, type_size, iter),
             );
+            state.logs.insert(id, StreamStatsLogs::new());
         }
         StreamEvent::Yielded { id, log, timestamp } => {
-            if let Some(stream_stats) = stats.get_mut(&id) {
+            if let Some(stream_stats) = state.stats.get_mut(&id) {
                 stream_stats.items_yielded += 1;
-
+            }
+            if let Some(entry_logs) = state.logs.get_mut(&id) {
+                let items_yielded = state.stats.get(&id).map_or(0, |s| s.items_yielded);
                 let limit = *crate::channels::LOGS_LIMIT;
-                if stream_stats.logs.len() >= limit {
-                    stream_stats.logs.pop_front();
+                if entry_logs.logs.len() >= limit {
+                    entry_logs.logs.pop_front();
                 }
-                stream_stats.logs.push_back(DataFlowLogEntry::new(
-                    stream_stats.items_yielded,
+                entry_logs.logs.push_back(DataFlowLogEntry::new(
+                    items_yielded,
                     crate::channels::timestamp_nanos(timestamp),
                     log,
                     None,
@@ -139,7 +158,7 @@ fn process_stream_event(stats: &mut HashMap<u32, StreamStats>, event: StreamEven
             }
         }
         StreamEvent::Completed { id } => {
-            if let Some(stream_stats) = stats.get_mut(&id) {
+            if let Some(stream_stats) = state.stats.get_mut(&id) {
                 stream_stats.state = ChannelState::Closed;
             }
         }
@@ -171,8 +190,11 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
             label = "hp-st-completion",
             log = true
         );
-        let stats_map = Arc::new(RwLock::new(HashMap::<u32, StreamStats>::new()));
-        let stats_map_clone = Arc::clone(&stats_map);
+        let inner = Arc::new(RwLock::new(StreamsInternalState {
+            stats: HashMap::new(),
+            logs: HashMap::new(),
+        }));
+        let inner_clone = Arc::clone(&inner);
 
         std::thread::Builder::new()
             .name("hp-streams".into())
@@ -187,7 +209,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
                                 Ok(event) => {
                                     local_buffer.push(event);
                                     if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = stats_map_clone.write() {
+                                        if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
                                                 process_stream_event(&mut shared, e);
                                             }
@@ -196,7 +218,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
                                 }
                                 Err(_) => {
                                     if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = stats_map_clone.write() {
+                                        if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
                                                 process_stream_event(&mut shared, e);
                                             }
@@ -207,7 +229,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
                             }
                         }
                         recv(shutdown_rx) -> _ => {
-                            if let Ok(mut shared) = stats_map_clone.write() {
+                            if let Ok(mut shared) = inner_clone.write() {
                                 for e in local_buffer.drain(..) {
                                     process_stream_event(&mut shared, e);
                                 }
@@ -219,7 +241,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
                         }
                         default(flush_interval) => {
                             if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = stats_map_clone.write() {
+                                if let Ok(mut shared) = inner_clone.write() {
                                     for e in local_buffer.drain(..) {
                                         process_stream_event(&mut shared, e);
                                     }
@@ -237,7 +259,7 @@ pub(crate) fn init_streams_state() -> &'static StreamStatsState {
 
         StreamsState {
             event_tx,
-            stats_map,
+            inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),
         }
@@ -345,15 +367,6 @@ macro_rules! stream {
     }};
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn get_all_stream_stats() -> HashMap<u32, StreamStats> {
-    if let Some(state) = STREAMS_STATE.get() {
-        state.stats_map.read().unwrap().clone()
-    } else {
-        HashMap::new()
-    }
-}
-
 /// Compare two stream stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -376,7 +389,11 @@ pub(crate) fn compare_stream_stats(a: &StreamStats, b: &StreamStats) -> std::cmp
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
-    let mut stats: Vec<StreamStats> = get_all_stream_stats().into_values().collect();
+    let Some(state) = STREAMS_STATE.get() else {
+        return Vec::new();
+    };
+    let guard = state.inner.read().unwrap();
+    let mut stats: Vec<StreamStats> = guard.stats.values().cloned().collect();
     stats.sort_by(compare_stream_stats);
     stats
 }
@@ -385,16 +402,12 @@ pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
 pub(crate) fn get_stream_logs(stream_id: &str) -> Option<StreamLogs> {
     let id = stream_id.parse::<u32>().ok()?;
     let state = STREAMS_STATE.get()?;
-    let streams_data = state.stats_map.read().unwrap();
-    streams_data.get(&id).map(|stream_stats| {
-        let mut yielded_logs: Vec<DataFlowLogEntry> = stream_stats.logs.iter().cloned().collect();
-
-        // Sort by index descending (most recent first)
-        yielded_logs.sort_by(|a, b| b.index.cmp(&a.index));
-
-        StreamLogs {
-            id: stream_id.to_string(),
-            logs: yielded_logs,
-        }
+    let guard = state.inner.read().unwrap();
+    let entry_logs = guard.logs.get(&id)?;
+    let mut yielded_logs: Vec<DataFlowLogEntry> = entry_logs.logs.iter().cloned().collect();
+    yielded_logs.sort_by(|a, b| b.index.cmp(&a.index));
+    Some(StreamLogs {
+        id: stream_id.to_string(),
+        logs: yielded_logs,
     })
 }

@@ -61,7 +61,6 @@ pub struct FutureEntry {
     pub id: u32,
     pub source: &'static str,
     pub label: Option<String>,
-    pub logs: VecDeque<FutureLog>,
     pub logs_count: u64,
     pub total_poll_count: u64,
     pub total_poll_duration_ns: u64,
@@ -74,7 +73,6 @@ impl FutureEntry {
             id,
             source,
             label,
-            logs: VecDeque::with_capacity(*LOGS_LIMIT),
             logs_count: 0,
             total_poll_count: 0,
             total_poll_duration_ns: 0,
@@ -88,11 +86,28 @@ impl FutureEntry {
     pub fn total_poll_duration_ns(&self) -> u64 {
         self.total_poll_duration_ns
     }
+}
 
-    /// Find a call by ID
+#[derive(Debug)]
+pub(crate) struct FutureEntryLogs {
+    pub(crate) logs: VecDeque<FutureLog>,
+}
+
+impl FutureEntryLogs {
+    fn new() -> Self {
+        Self {
+            logs: VecDeque::with_capacity(*LOGS_LIMIT),
+        }
+    }
+
     fn find_call_mut(&mut self, id: u32) -> Option<&mut FutureLog> {
         self.logs.iter_mut().find(|c| c.id == id)
     }
+}
+
+pub(crate) struct FuturesInternalState {
+    pub(crate) stats: HashMap<u32, FutureEntry>,
+    pub(crate) logs: HashMap<u32, FutureEntryLogs>,
 }
 
 impl From<&FutureEntry> for JsonFutureEntry {
@@ -149,7 +164,7 @@ pub(crate) enum FutureEvent {
 
 pub(crate) struct FuturesState {
     pub(crate) event_tx: CbSender<FutureEvent>,
-    pub(crate) stats_map: Arc<RwLock<HashMap<u32, FutureEntry>>>,
+    pub(crate) inner: Arc<RwLock<FuturesInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -185,8 +200,11 @@ pub fn init_futures_state() {
             label = "hp-ft-completion",
             log = true
         );
-        let stats_map = Arc::new(RwLock::new(HashMap::<u32, FutureEntry>::new()));
-        let stats_map_clone = Arc::clone(&stats_map);
+        let inner = Arc::new(RwLock::new(FuturesInternalState {
+            stats: HashMap::new(),
+            logs: HashMap::new(),
+        }));
+        let inner_clone = Arc::clone(&inner);
 
         std::thread::Builder::new()
             .name("hp-futures".into())
@@ -201,7 +219,7 @@ pub fn init_futures_state() {
                                 Ok(event) => {
                                     local_buffer.push(event);
                                     if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = stats_map_clone.write() {
+                                        if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
                                                 process_future_event(&mut shared, e);
                                             }
@@ -210,7 +228,7 @@ pub fn init_futures_state() {
                                 }
                                 Err(_) => {
                                     if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = stats_map_clone.write() {
+                                        if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
                                                 process_future_event(&mut shared, e);
                                             }
@@ -221,7 +239,7 @@ pub fn init_futures_state() {
                             }
                         }
                         recv(shutdown_rx) -> _ => {
-                            if let Ok(mut shared) = stats_map_clone.write() {
+                            if let Ok(mut shared) = inner_clone.write() {
                                 for e in local_buffer.drain(..) {
                                     process_future_event(&mut shared, e);
                                 }
@@ -233,7 +251,7 @@ pub fn init_futures_state() {
                         }
                         default(flush_interval) => {
                             if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = stats_map_clone.write() {
+                                if let Ok(mut shared) = inner_clone.write() {
                                     for e in local_buffer.drain(..) {
                                         process_future_event(&mut shared, e);
                                     }
@@ -249,7 +267,7 @@ pub fn init_futures_state() {
 
         FuturesState {
             event_tx,
-            stats_map,
+            inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),
         }
@@ -258,26 +276,29 @@ pub fn init_futures_state() {
 
 /// Process a future event and update stats.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn process_future_event(stats_map: &mut HashMap<u32, FutureEntry>, event: FutureEvent) {
+fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
     match event {
         FutureEvent::Created {
             future_id,
             source,
             display_label,
         } => {
-            stats_map.insert(
+            state.stats.insert(
                 future_id,
                 FutureEntry::new(future_id, source, display_label),
             );
+            state.logs.insert(future_id, FutureEntryLogs::new());
         }
         FutureEvent::CallCreated { future_id, call_id } => {
-            if let Some(future_stats) = stats_map.get_mut(&future_id) {
+            if let Some(future_stats) = state.stats.get_mut(&future_id) {
                 future_stats.logs_count += 1;
+            }
+            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
                 let limit = *LOGS_LIMIT;
-                if future_stats.logs.len() >= limit {
-                    future_stats.logs.pop_front();
+                if entry_logs.logs.len() >= limit {
+                    entry_logs.logs.pop_front();
                 }
-                future_stats
+                entry_logs
                     .logs
                     .push_back(FutureLog::new(call_id, future_id));
             }
@@ -289,10 +310,12 @@ fn process_future_event(stats_map: &mut HashMap<u32, FutureEntry>, event: Future
             log_message,
             poll_duration_ns,
         } => {
-            if let Some(future_stats) = stats_map.get_mut(&future_id) {
+            if let Some(future_stats) = state.stats.get_mut(&future_id) {
                 future_stats.total_poll_count += 1;
                 future_stats.total_poll_duration_ns += poll_duration_ns;
-                if let Some(call) = future_stats.find_call_mut(call_id) {
+            }
+            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
+                if let Some(call) = entry_logs.find_call_mut(call_id) {
                     call.poll_count += 1;
                     call.total_poll_duration_ns += poll_duration_ns;
                     call.last_poll_duration_ns = poll_duration_ns;
@@ -314,15 +337,15 @@ fn process_future_event(stats_map: &mut HashMap<u32, FutureEntry>, event: Future
             }
         }
         FutureEvent::Completed { future_id, call_id } => {
-            if let Some(future_stats) = stats_map.get_mut(&future_id) {
-                if let Some(call) = future_stats.find_call_mut(call_id) {
+            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
+                if let Some(call) = entry_logs.find_call_mut(call_id) {
                     call.state = FutureState::Ready;
                 }
             }
         }
         FutureEvent::Cancelled { future_id, call_id } => {
-            if let Some(future_stats) = stats_map.get_mut(&future_id) {
-                if let Some(call) = future_stats.find_call_mut(call_id) {
+            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
+                if let Some(call) = entry_logs.find_call_mut(call_id) {
                     if call.state != FutureState::Ready {
                         call.state = FutureState::Cancelled;
                     }
@@ -393,17 +416,12 @@ pub(crate) fn compare_future_stats(a: &FutureEntry, b: &FutureEntry) -> std::cmp
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn get_all_future_stats() -> HashMap<u32, FutureEntry> {
-    if let Some(state) = FUTURES_STATE.get() {
-        state.stats_map.read().unwrap().clone()
-    } else {
-        HashMap::new()
-    }
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_sorted_future_stats() -> Vec<FutureEntry> {
-    let mut stats: Vec<FutureEntry> = get_all_future_stats().into_values().collect();
+    let Some(state) = FUTURES_STATE.get() else {
+        return Vec::new();
+    };
+    let guard = state.inner.read().unwrap();
+    let mut stats: Vec<FutureEntry> = guard.stats.values().cloned().collect();
     stats.sort_by(compare_future_stats);
     stats
 }
@@ -411,13 +429,15 @@ pub(crate) fn get_sorted_future_stats() -> Vec<FutureEntry> {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_future_logs_list(future_id: u32) -> Option<FutureLogsList> {
     let state = FUTURES_STATE.get()?;
-    let futures_data = state.stats_map.read().unwrap();
-    futures_data.get(&future_id).map(|s| FutureLogsList {
+    let guard = state.inner.read().unwrap();
+    let stats = guard.stats.get(&future_id)?;
+    let entry_logs = guard.logs.get(&future_id)?;
+    Some(FutureLogsList {
         id: future_id.to_string(),
-        call_count: s.logs_count,
-        total_polls: s.total_polls(),
-        total_poll_duration_ns: s.total_poll_duration_ns(),
-        calls: s.logs.iter().rev().cloned().collect(),
+        call_count: stats.logs_count,
+        total_polls: stats.total_polls(),
+        total_poll_duration_ns: stats.total_poll_duration_ns(),
+        calls: entry_logs.logs.iter().rev().cloned().collect(),
     })
 }
 

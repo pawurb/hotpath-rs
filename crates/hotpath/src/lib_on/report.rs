@@ -45,10 +45,13 @@ pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state.stats_map.read().ok().map(|stats| stats.clone())
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
         })
-        .map(|stats| {
-            let mut channels: Vec<ChannelEntry> = stats.into_values().collect();
+        .map(|mut channels| {
             channels.sort_by(compare_channel_entries);
             channels
         })
@@ -133,10 +136,13 @@ pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state.stats_map.read().ok().map(|stats| stats.clone())
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
         })
-        .map(|stats| {
-            let mut streams: Vec<StreamStats> = stats.into_values().collect();
+        .map(|mut streams| {
             streams.sort_by(compare_stream_stats);
             streams
         })
@@ -207,10 +213,13 @@ pub(crate) fn shutdown_futures() -> Vec<FutureEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state.stats_map.read().ok().map(|stats| stats.clone())
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
         })
-        .map(|stats| {
-            let mut futures: Vec<FutureEntry> = stats.into_values().collect();
+        .map(|mut futures| {
             futures.sort_by(compare_future_stats);
             futures
         })
