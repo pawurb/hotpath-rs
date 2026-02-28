@@ -1,5 +1,5 @@
 use crate::cmd::console::app::InspectedDataFlowLog;
-use hotpath::json::format_delay;
+use hotpath::format_bytes;
 use ratatui::{
     layout::Rect,
     symbols::border,
@@ -68,20 +68,13 @@ pub(crate) fn render_inspect_popup(
             (title, message.to_string())
         }
         InspectedDataFlowLog::FutureCall(call) => {
-            let avg_poll = if call.poll_count > 0 {
-                format_delay(call.total_poll_duration_ns / call.poll_count)
-            } else {
-                "-".to_string()
-            };
-            let max_poll = if call.max_poll_duration_ns > 0 {
-                format_delay(call.max_poll_duration_ns)
-            } else {
-                "-".to_string()
-            };
-            let total_poll = format_delay(call.total_poll_duration_ns);
+            let total_alloc = call
+                .total_poll_alloc_bytes
+                .map(format_bytes)
+                .unwrap_or_else(|| "-".to_string());
             let title = format!(
-                " Result (Call ID: {}, State: {}, Polls: {}, Total: {}, Avg: {}, Max: {}) ",
-                call.id, call.state, call.poll_count, total_poll, avg_poll, max_poll
+                " Result (Call ID: {}, State: {}, Alloc: {}) ",
+                call.id, call.state, total_alloc
             );
             let message = call.result.as_deref().unwrap_or("(no result available)");
             (title, message.to_string())

@@ -163,29 +163,13 @@ pub use crate::Section;
 pub struct MeasurementGuard {}
 
 impl MeasurementGuard {
-    pub fn new(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
+    pub fn new(_name: &'static str, _wrapper: bool) -> Self {
         Self {}
     }
 
-    pub fn build(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
+    pub fn build(_name: &'static str, _wrapper: bool) -> Self {
         Self {}
     }
-}
-
-#[allow(dead_code)]
-pub(crate) struct MeasurementGuardWithLog {}
-
-#[allow(dead_code)]
-impl MeasurementGuardWithLog {
-    pub fn new(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
-        Self {}
-    }
-
-    pub fn build(_name: &'static str, _wrapper: bool, _is_async: bool) -> Self {
-        Self {}
-    }
-
-    pub fn finish_with_result<T: std::fmt::Debug>(self, _result: &T) {}
 }
 
 #[inline]
@@ -272,10 +256,6 @@ impl HotpathGuardBuilder {
 
     pub fn build_with_shutdown(self, _duration: std::time::Duration) {}
 }
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub(crate) struct FunctionStats {}
 
 pub mod channels {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

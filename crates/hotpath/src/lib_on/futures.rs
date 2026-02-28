@@ -64,6 +64,8 @@ pub(crate) struct FutureEntry {
     pub(crate) logs_count: u64,
     pub(crate) total_poll_count: u64,
     pub(crate) total_poll_duration_ns: u64,
+    pub(crate) total_poll_alloc_bytes: Option<u64>,
+    pub(crate) total_poll_alloc_count: Option<u64>,
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
@@ -76,6 +78,8 @@ impl FutureEntry {
             logs_count: 0,
             total_poll_count: 0,
             total_poll_duration_ns: 0,
+            total_poll_alloc_bytes: None,
+            total_poll_alloc_count: None,
         }
     }
 
@@ -85,6 +89,14 @@ impl FutureEntry {
 
     pub(crate) fn total_poll_duration_ns(&self) -> u64 {
         self.total_poll_duration_ns
+    }
+
+    pub(crate) fn total_poll_alloc_bytes(&self) -> Option<u64> {
+        self.total_poll_alloc_bytes
+    }
+
+    pub(crate) fn total_poll_alloc_count(&self) -> Option<u64> {
+        self.total_poll_alloc_count
     }
 }
 
@@ -122,6 +134,8 @@ impl From<&FutureEntry> for JsonFutureEntry {
             call_count: stats.logs_count,
             total_polls: stats.total_polls(),
             total_poll_duration_ns: stats.total_poll_duration_ns(),
+            total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
+            total_poll_alloc_count: stats.total_poll_alloc_count(),
         }
     }
 }
@@ -151,6 +165,8 @@ pub(crate) enum FutureEvent {
         result: PollResult,
         log_message: Option<String>,
         poll_duration_ns: u64,
+        poll_alloc_bytes: Option<u64>,
+        poll_alloc_count: Option<u64>,
     },
     Completed {
         future_id: u32,
@@ -285,6 +301,12 @@ pub fn init_futures_state() {
 /// Process a future event and update stats.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
+    fn add_optional(total: &mut Option<u64>, delta: Option<u64>) {
+        if let Some(delta) = delta {
+            *total = Some(total.unwrap_or(0) + delta);
+        }
+    }
+
     match event {
         FutureEvent::Created {
             future_id,
@@ -317,18 +339,33 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
             result,
             log_message,
             poll_duration_ns,
+            poll_alloc_bytes,
+            poll_alloc_count,
         } => {
             if let Some(future_stats) = state.stats.get_mut(&future_id) {
                 future_stats.total_poll_count += 1;
                 future_stats.total_poll_duration_ns += poll_duration_ns;
+                add_optional(&mut future_stats.total_poll_alloc_bytes, poll_alloc_bytes);
+                add_optional(&mut future_stats.total_poll_alloc_count, poll_alloc_count);
             }
             if let Some(entry_logs) = state.logs.get_mut(&future_id) {
                 if let Some(call) = entry_logs.find_call_mut(call_id) {
                     call.poll_count += 1;
                     call.total_poll_duration_ns += poll_duration_ns;
                     call.last_poll_duration_ns = poll_duration_ns;
+                    add_optional(&mut call.total_poll_alloc_bytes, poll_alloc_bytes);
+                    add_optional(&mut call.total_poll_alloc_count, poll_alloc_count);
+                    call.last_poll_alloc_bytes = poll_alloc_bytes;
                     if poll_duration_ns > call.max_poll_duration_ns {
                         call.max_poll_duration_ns = poll_duration_ns;
+                    }
+                    if let Some(poll_alloc_bytes) = poll_alloc_bytes {
+                        if call
+                            .max_poll_alloc_bytes
+                            .is_none_or(|max| poll_alloc_bytes > max)
+                        {
+                            call.max_poll_alloc_bytes = Some(poll_alloc_bytes);
+                        }
                     }
                     match result {
                         PollResult::Pending => {
@@ -365,7 +402,11 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
 
 /// Send a future event to the background thread.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn send_future_event(event: FutureEvent) {
+pub(crate) fn send_future_event(visible: bool, event: FutureEvent) {
+    if !visible {
+        return;
+    };
+
     if let Some(state) = FUTURES_STATE.get() {
         let _ = state.event_tx.send(event);
     }
@@ -393,7 +434,7 @@ impl<F: std::future::Future> InstrumentFuture for F {
     type Output = InstrumentedFuture<F>;
 
     fn instrument_future(self, source: &'static str, label: Option<String>) -> Self::Output {
-        InstrumentedFuture::new(self, source, label)
+        InstrumentedFuture::new(self, source, label, None, true)
     }
 }
 
@@ -404,7 +445,7 @@ where
     type Output = InstrumentedFutureLog<F>;
 
     fn instrument_future_log(self, source: &'static str, label: Option<String>) -> Self::Output {
-        InstrumentedFutureLog::new(self, source, label)
+        InstrumentedFutureLog::new(self, source, label, None, true)
     }
 }
 
@@ -445,6 +486,8 @@ pub(crate) fn get_future_logs_list(future_id: u32) -> Option<FutureLogsList> {
         call_count: stats.logs_count,
         total_polls: stats.total_polls(),
         total_poll_duration_ns: stats.total_poll_duration_ns(),
+        total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
+        total_poll_alloc_count: stats.total_poll_alloc_count(),
         calls: entry_logs.logs.iter().rev().cloned().collect(),
     })
 }

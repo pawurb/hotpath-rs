@@ -32,7 +32,9 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 pub mod hotpath_guard;
 pub(crate) mod report;
 
-pub use functions::{measure_with_log, measure_with_log_async, MeasurementGuard};
+pub use functions::{
+    measure_with_log, measure_with_log_async, MeasurementGuardAsync, MeasurementGuardSync,
+};
 pub use hotpath_guard::{HotpathGuard, HotpathGuardBuilder};
 
 cfg_if::cfg_if! {
@@ -79,7 +81,7 @@ cfg_if::cfg_if! {
 #[macro_export]
 macro_rules! measure_block {
     ($label:expr, $expr:expr) => {{
-        let _guard = hotpath::functions::MeasurementGuard::build($label, false, false);
+        let _guard = hotpath::functions::build_measurement_guard_sync($label, false);
 
         $expr
     }};

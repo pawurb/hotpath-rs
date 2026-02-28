@@ -46,7 +46,7 @@ cfg_if::cfg_if! {
     }
 }
 
-use crate::functions::MeasurementGuard;
+use crate::functions::MeasurementGuardSync;
 use crate::Format;
 
 /// Builder for [`HotpathGuard`] — a programmatic alternative to the
@@ -253,7 +253,7 @@ impl HotpathGuardBuilder {
 pub struct HotpathGuard {
     state: Arc<RwLock<FunctionsState>>,
     format: Format,
-    wrapper_guard: Option<MeasurementGuard>,
+    wrapper_guard: Option<MeasurementGuardSync>,
     output_path: Option<PathBuf>,
     sections: Vec<Section>,
     start_time: Instant,
@@ -505,7 +505,7 @@ impl HotpathGuard {
 
         crate::cpu_baseline::init_cpu_baseline();
 
-        let wrapper_guard = MeasurementGuard::build(caller_name, true, false);
+        let wrapper_guard = crate::functions::build_measurement_guard_sync(caller_name, true);
 
         #[cfg(feature = "hotpath-alloc")]
         crate::functions::alloc::core::ALLOCATIONS.with(|stack| {

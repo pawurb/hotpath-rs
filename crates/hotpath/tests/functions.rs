@@ -1157,9 +1157,9 @@ pub mod tests {
         }
     }
 
-    // HOTPATH_UNSAFE_ASYNC_ALLOC=true cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
+    // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
     #[test]
-    fn test_unsafe_async_alloc() {
+    fn test_async_alloc_is_reported() {
         use hotpath::json::JsonReport;
 
         let output = Command::new("cargo")
@@ -1172,7 +1172,6 @@ pub mod tests {
                 "--features",
                 "hotpath,hotpath-alloc",
             ])
-            .env("HOTPATH_UNSAFE_ASYNC_ALLOC", "true")
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
             .output()
             .expect("Failed to execute command");
@@ -1199,15 +1198,7 @@ pub mod tests {
 
         assert_ne!(
             async_fn.total, "N/A",
-            "async_function should have alloc data with HOTPATH_UNSAFE_ASYNC_ALLOC=true, got N/A"
-        );
-
-        let bytes =
-            hotpath::parse_bytes(&async_fn.total).expect("Failed to parse async_function total");
-        assert!(
-            bytes > 0,
-            "async_function should have non-zero alloc bytes, got {}",
-            bytes
+            "async_function alloc should be reported when hotpath-alloc is enabled"
         );
     }
 

@@ -1,7 +1,7 @@
 use crate::cmd::console::app::DataFlowLogs;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_message;
-use hotpath::json::{format_delay, DataFlowType};
+use hotpath::{format_bytes, json::DataFlowType};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Style},
@@ -144,29 +144,30 @@ pub(crate) fn render_logs_panel(
             frame.render_stateful_widget(table, inner_area, table_state);
         }
         (DataFlowLogs::Future(future_logs), DataFlowType::Future) => {
-            let total_polls = future_logs.total_polls;
-            let total_ns = future_logs.total_poll_duration_ns;
-            let avg = if total_polls > 0 {
-                format_delay(total_ns / total_polls)
-            } else {
-                "-".to_string()
-            };
-            let summary = format!(
-                " calls: {} | polls: {} | total: {} | avg: {}",
-                future_logs.call_count,
-                total_polls,
-                format_delay(total_ns),
-                avg,
+            let total_alloc_bytes = future_logs.total_poll_alloc_bytes;
+            let total_alloc_count = future_logs.total_poll_alloc_count;
+            let mut summary = format!(
+                " calls: {} | polls: {}",
+                future_logs.call_count, future_logs.total_polls,
             );
+            if let Some(total_alloc_bytes) = total_alloc_bytes {
+                summary.push_str(&format!(
+                    " | alloc total: {}",
+                    format_bytes(total_alloc_bytes)
+                ));
+            }
+            if let Some(total_alloc_count) = total_alloc_count {
+                summary.push_str(&format!(" | alloc count: {}", total_alloc_count));
+            }
 
             let [summary_area, table_area] =
                 Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner_area);
 
             frame.render_widget(Paragraph::new(Line::raw(summary)), summary_area);
 
-            let result_width = (available_width.saturating_sub(41) as usize).max(10);
+            let result_width = (available_width.saturating_sub(33) as usize).max(10);
 
-            let header = Row::new(vec!["State", "Polls", "Avg Poll", "Max Poll", "Result"])
+            let header = Row::new(vec!["State", "Polls", "Alloc", "Result"])
                 .style(common_styles::HEADER_STYLE_CYAN)
                 .height(1);
 
@@ -176,33 +177,24 @@ pub(crate) fn render_logs_panel(
                 .map(|call| {
                     let result = call.result.as_deref().unwrap_or("-");
                     let result_text = truncate_message(result, result_width);
-
-                    let avg_poll = if call.poll_count > 0 {
-                        format_delay(call.total_poll_duration_ns / call.poll_count)
-                    } else {
-                        "-".to_string()
-                    };
-                    let max_poll = if call.max_poll_duration_ns > 0 {
-                        format_delay(call.max_poll_duration_ns)
-                    } else {
-                        "-".to_string()
-                    };
+                    let alloc = call
+                        .total_poll_alloc_bytes
+                        .map(format_bytes)
+                        .unwrap_or_else(|| "-".to_string());
 
                     Row::new(vec![
                         Cell::from(call.state.clone()).style(state_style(&call.state)),
                         Cell::from(call.poll_count.to_string()),
-                        Cell::from(avg_poll),
-                        Cell::from(max_poll),
+                        Cell::from(alloc),
                         Cell::from(result_text),
                     ])
                 })
                 .collect();
 
-            let widths = [
+            let widths = vec![
                 Constraint::Length(9),  // State
                 Constraint::Length(6),  // Polls
-                Constraint::Length(10), // Avg Poll
-                Constraint::Length(10), // Max Poll
+                Constraint::Length(12), // Alloc
                 Constraint::Min(10),    // Result
             ];
 
