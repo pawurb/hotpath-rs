@@ -18,7 +18,7 @@ pub struct MeasurementGuard {
 
 impl MeasurementGuard {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, skipped: bool, _is_async: bool) -> Self {
+    pub fn new(name: &'static str, wrapper: bool, skipped: bool) -> Self {
         Self {
             name,
             start: Instant::now(),
@@ -59,7 +59,7 @@ pub(crate) struct MeasurementGuardWithLog {
 
 impl MeasurementGuardWithLog {
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, skipped: bool, _is_async: bool) -> Self {
+    pub fn new(name: &'static str, wrapper: bool, skipped: bool) -> Self {
         Self {
             name,
             start: Instant::now(),

@@ -157,6 +157,10 @@ pub(crate) struct FutureLog {
     pub total_poll_duration_ns: u64,
     pub max_poll_duration_ns: u64,
     pub last_poll_duration_ns: u64,
+    pub total_poll_alloc_bytes: Option<u64>,
+    pub total_poll_alloc_count: Option<u64>,
+    pub max_poll_alloc_bytes: Option<u64>,
+    pub last_poll_alloc_bytes: Option<u64>,
     pub result: Option<String>,
 }
 
@@ -170,6 +174,10 @@ impl FutureLog {
             total_poll_duration_ns: 0,
             max_poll_duration_ns: 0,
             last_poll_duration_ns: 0,
+            total_poll_alloc_bytes: None,
+            total_poll_alloc_count: None,
+            max_poll_alloc_bytes: None,
+            last_poll_alloc_bytes: None,
             result: None,
         }
     }
@@ -182,6 +190,8 @@ pub(crate) struct FutureLogsList {
     pub call_count: u64,
     pub total_polls: u64,
     pub total_poll_duration_ns: u64,
+    pub total_poll_alloc_bytes: Option<u64>,
+    pub total_poll_alloc_count: Option<u64>,
     pub calls: Vec<FutureLog>,
 }
 

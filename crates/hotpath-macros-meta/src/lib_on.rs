@@ -373,13 +373,10 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {
             {
                 const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
-                hotpath_meta::futures::init_futures_state();
-                hotpath_meta::InstrumentFutureLog::instrument_future_log(
-                    async {
-                        hotpath_meta::functions::measure_with_log_async(#loc, || async #block).await
-                    },
+                hotpath_meta::functions::measure_with_future_log_async(
+                    #loc,
                     FUTURE_LOC,
-                    None
+                    async #block
                 ).await
             }
         }
@@ -387,18 +384,10 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {
             {
                 const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
-                hotpath_meta::futures::init_futures_state();
-                hotpath_meta::InstrumentFuture::instrument_future(
-                    async {
-                        let _guard = hotpath_meta::functions::MeasurementGuard::build(
-                            concat!(module_path!(), "::", #name),
-                            false,
-                            true,
-                        );
-                        #block
-                    },
+                hotpath_meta::functions::measure_with_future_async(
+                    concat!(module_path!(), "::", #name),
                     FUTURE_LOC,
-                    None
+                    async #block
                 ).await
             }
         }
@@ -413,20 +402,20 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 hotpath_meta::functions::measure_with_log(#loc, false, || #block)
             }
         }
+    } else if asyncness {
+        quote! {
+            hotpath_meta::functions::measure_async(
+                concat!(module_path!(), "::", #name),
+                async #block
+            ).await
+        }
     } else {
-        let guard_init = quote! {
-            let _guard = hotpath_meta::functions::MeasurementGuard::build(
+        quote! {
+            let _guard = hotpath_meta::functions::build_measurement_guard_sync(
                 concat!(module_path!(), "::", #name),
                 false,
-                #asyncness,
             );
             #block
-        };
-
-        if asyncness {
-            quote! { async { #guard_init }.await }
-        } else {
-            guard_init
         }
     };
 

@@ -395,6 +395,8 @@ pub struct JsonFutureEntry {
     pub call_count: u64,
     pub total_polls: u64,
     pub total_poll_duration_ns: u64,
+    pub total_poll_alloc_bytes: Option<u64>,
+    pub total_poll_alloc_count: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -406,6 +408,10 @@ pub struct JsonFutureLog {
     pub total_poll_duration_ns: u64,
     pub max_poll_duration_ns: u64,
     pub last_poll_duration_ns: u64,
+    pub total_poll_alloc_bytes: Option<u64>,
+    pub total_poll_alloc_count: Option<u64>,
+    pub max_poll_alloc_bytes: Option<u64>,
+    pub last_poll_alloc_bytes: Option<u64>,
     pub result: Option<String>,
 }
 
@@ -472,6 +478,8 @@ pub struct JsonFutureLogsList {
     pub call_count: u64,
     pub total_polls: u64,
     pub total_poll_duration_ns: u64,
+    pub total_poll_alloc_bytes: Option<u64>,
+    pub total_poll_alloc_count: Option<u64>,
     pub calls: Vec<JsonFutureLog>,
 }
 
@@ -485,6 +493,10 @@ impl From<&FutureLog> for JsonFutureLog {
             total_poll_duration_ns: log.total_poll_duration_ns,
             max_poll_duration_ns: log.max_poll_duration_ns,
             last_poll_duration_ns: log.last_poll_duration_ns,
+            total_poll_alloc_bytes: log.total_poll_alloc_bytes,
+            total_poll_alloc_count: log.total_poll_alloc_count,
+            max_poll_alloc_bytes: log.max_poll_alloc_bytes,
+            last_poll_alloc_bytes: log.last_poll_alloc_bytes,
             result: log.result.clone(),
         }
     }
@@ -497,6 +509,8 @@ impl From<&FutureLogsList> for JsonFutureLogsList {
             call_count: calls.call_count,
             total_polls: calls.total_polls,
             total_poll_duration_ns: calls.total_poll_duration_ns,
+            total_poll_alloc_bytes: calls.total_poll_alloc_bytes,
+            total_poll_alloc_count: calls.total_poll_alloc_count,
             calls: calls.calls.iter().map(JsonFutureLog::from).collect(),
         }
     }

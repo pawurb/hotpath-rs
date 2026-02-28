@@ -1,5 +1,6 @@
 //! Function profiling module - measures execution time and memory allocations per function.
 
+use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
 
@@ -13,15 +14,24 @@ use crate::output::FunctionLogsList;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc-meta")] {
-        pub mod alloc;
+        pub(crate) mod alloc;
         use alloc::state::FunctionsState;
-        pub use alloc::guard::MeasurementGuard;
-        pub(crate) use alloc::guard::MeasurementGuardWithLog;
+        pub(crate) use alloc::guard::AsyncAllocBridge;
+        pub use alloc::guard::{MeasurementGuardAsync, MeasurementGuardSync};
+        pub(crate) use alloc::guard::{MeasurementGuardAsyncWithLog, MeasurementGuardSyncWithLog};
     } else {
-        pub mod timing;
+        pub(crate) mod timing;
         use timing::state::FunctionsState;
-        pub use timing::guard::MeasurementGuard;
-        pub(crate) use timing::guard::MeasurementGuardWithLog;
+        #[derive(Default)]
+        pub(crate) struct AsyncAllocBridge;
+        impl AsyncAllocBridge {
+            #[inline]
+            pub(crate) fn add(&self, _bytes: u64, _count: u64) {}
+        }
+        pub use timing::guard::MeasurementGuard as MeasurementGuardAsync;
+        pub use timing::guard::MeasurementGuard as MeasurementGuardSync;
+        pub(crate) use timing::guard::MeasurementGuardWithLog as MeasurementGuardAsyncWithLog;
+        pub(crate) use timing::guard::MeasurementGuardWithLog as MeasurementGuardSyncWithLog;
     }
 }
 
@@ -69,17 +79,110 @@ pub(crate) static EXCLUDE_WRAPPER: LazyLock<bool> = LazyLock::new(|| {
         .unwrap_or(false)
 });
 
-impl MeasurementGuard {
-    pub fn build(measurement_name: &'static str, wrapper: bool, is_async: bool) -> Self {
-        let skipped = !wrapper && !is_focused(measurement_name);
-        MeasurementGuard::new(measurement_name, wrapper, skipped, is_async)
+#[doc(hidden)]
+pub fn build_measurement_guard_sync(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> MeasurementGuardSync {
+    let skipped = !wrapper && !is_focused(measurement_name);
+    MeasurementGuardSync::new(measurement_name, wrapper, skipped)
+}
+
+#[doc(hidden)]
+fn build_measurement_guard_async(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> MeasurementGuardAsync {
+    let skipped = !wrapper && !is_focused(measurement_name);
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc-meta")] {
+            MeasurementGuardAsync::new(measurement_name, wrapper, skipped, None)
+        } else {
+            MeasurementGuardAsync::new(measurement_name, wrapper, skipped)
+        }
     }
 }
 
-impl MeasurementGuardWithLog {
-    pub fn build(measurement_name: &'static str, wrapper: bool, is_async: bool) -> Self {
-        let skipped = !wrapper && !is_focused(measurement_name);
-        MeasurementGuardWithLog::new(measurement_name, wrapper, skipped, is_async)
+#[inline]
+fn make_alloc_bridge(skipped: bool) -> Option<std::sync::Arc<AsyncAllocBridge>> {
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc-meta")] {
+            if skipped { None } else { Some(std::sync::Arc::new(AsyncAllocBridge::default())) }
+        } else {
+            let _ = skipped;
+            None
+        }
+    }
+}
+
+#[inline]
+fn build_measurement_guard_async_with_bridge(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> (
+    MeasurementGuardAsync,
+    Option<std::sync::Arc<AsyncAllocBridge>>,
+) {
+    let skipped = !wrapper && !is_focused(measurement_name);
+    let alloc_bridge = make_alloc_bridge(skipped);
+
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc-meta")] {
+            let guard = MeasurementGuardAsync::new(
+                measurement_name,
+                wrapper,
+                skipped,
+                alloc_bridge.clone(),
+            );
+            (guard, alloc_bridge)
+        } else {
+            let guard = MeasurementGuardAsync::new(measurement_name, wrapper, skipped);
+            (guard, alloc_bridge)
+        }
+    }
+}
+
+fn build_measurement_guard_sync_with_log(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> MeasurementGuardSyncWithLog {
+    let skipped = !wrapper && !is_focused(measurement_name);
+    MeasurementGuardSyncWithLog::new(measurement_name, wrapper, skipped)
+}
+
+#[cfg(not(feature = "hotpath-alloc-meta"))]
+fn build_measurement_guard_async_with_log(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> MeasurementGuardAsyncWithLog {
+    let skipped = !wrapper && !is_focused(measurement_name);
+    MeasurementGuardAsyncWithLog::new(measurement_name, wrapper, skipped)
+}
+
+#[inline]
+fn build_measurement_guard_async_with_log_bridge(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> (
+    MeasurementGuardAsyncWithLog,
+    Option<std::sync::Arc<AsyncAllocBridge>>,
+) {
+    let skipped = !wrapper && !is_focused(measurement_name);
+    let alloc_bridge = make_alloc_bridge(skipped);
+
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc-meta")] {
+            let guard = MeasurementGuardAsyncWithLog::new(
+                measurement_name,
+                wrapper,
+                skipped,
+                alloc_bridge.clone(),
+            );
+            (guard, alloc_bridge)
+        } else {
+            let guard = MeasurementGuardAsyncWithLog::new(measurement_name, wrapper, skipped);
+            (guard, alloc_bridge)
+        }
     }
 }
 
@@ -91,7 +194,7 @@ pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
     wrapper: bool,
     f: F,
 ) -> T {
-    let guard = MeasurementGuardWithLog::build(name, wrapper, false);
+    let guard = build_measurement_guard_sync_with_log(name, wrapper);
     let result = f();
     guard.finish_with_result(&result);
     result
@@ -104,8 +207,91 @@ where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = T>,
 {
-    let guard = MeasurementGuardWithLog::build(name, false, true);
-    let result = f().await;
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc-meta")] {
+            let (guard, alloc_bridge) = build_measurement_guard_async_with_log_bridge(name, false);
+            let result = crate::futures::wrapper::InstrumentedFutureLog::new(
+                f(),
+                name,
+                None,
+                alloc_bridge,
+                false,
+            )
+            .await;
+            guard.finish_with_result(&result);
+            result
+        } else {
+            let guard = build_measurement_guard_async_with_log(name, false);
+            let result = f().await;
+            guard.finish_with_result(&result);
+            result
+        }
+    }
+}
+
+/// Measure an async function without emitting future events.
+#[doc(hidden)]
+pub async fn measure_async<T, Fut>(name: &'static str, fut: Fut) -> T
+where
+    Fut: Future<Output = T>,
+{
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hotpath-alloc-meta")] {
+            let (_guard, alloc_bridge) = build_measurement_guard_async_with_bridge(name, false);
+            crate::futures::wrapper::InstrumentedFuture::new(
+                fut,
+                name,
+                None,
+                alloc_bridge,
+                false,
+            )
+            .await
+        } else {
+            let _guard = build_measurement_guard_async(name, false);
+            fut.await
+        }
+    }
+}
+
+/// Measure an async function with explicit future instrumentation (`measure(future = true)`).
+#[doc(hidden)]
+pub async fn measure_with_future_async<T, Fut>(
+    name: &'static str,
+    future_loc: &'static str,
+    fut: Fut,
+) -> T
+where
+    Fut: Future<Output = T>,
+{
+    crate::futures::init_futures_state();
+
+    let (_guard, alloc_bridge) = build_measurement_guard_async_with_bridge(name, false);
+    crate::futures::wrapper::InstrumentedFuture::new(fut, future_loc, None, alloc_bridge, true)
+        .await
+}
+
+/// Measure an async function with explicit future instrumentation and return-value logs.
+#[doc(hidden)]
+pub async fn measure_with_future_log_async<T, Fut>(
+    name: &'static str,
+    future_loc: &'static str,
+    fut: Fut,
+) -> T
+where
+    T: std::fmt::Debug,
+    Fut: Future<Output = T>,
+{
+    crate::futures::init_futures_state();
+
+    let (guard, alloc_bridge) = build_measurement_guard_async_with_log_bridge(name, false);
+    let result = crate::futures::wrapper::InstrumentedFutureLog::new(
+        fut,
+        future_loc,
+        None,
+        alloc_bridge,
+        true,
+    )
+    .await;
     guard.finish_with_result(&result);
     result
 }

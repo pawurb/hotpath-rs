@@ -19,13 +19,6 @@ pub(crate) fn alloc_metric() -> AllocMetric {
 }
 
 #[inline]
-pub(crate) fn is_unsafe_async_alloc_enabled() -> bool {
-    std::env::var("HOTPATH_META_UNSAFE_ASYNC_ALLOC")
-        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-        .unwrap_or(false)
-}
-
-#[inline]
 pub(crate) fn is_alloc_self_enabled() -> bool {
     std::env::var("HOTPATH_META_ALLOC_SELF")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
