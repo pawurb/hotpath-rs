@@ -163,7 +163,6 @@ pub(crate) enum FutureEvent {
         future_id: u32,
         call_id: u32,
         result: PollResult,
-        log_message: Option<String>,
         poll_duration_ns: u64,
         poll_alloc_bytes: Option<u64>,
         poll_alloc_count: Option<u64>,
@@ -171,6 +170,7 @@ pub(crate) enum FutureEvent {
     Completed {
         future_id: u32,
         call_id: u32,
+        log_message: Option<String>,
     },
     Cancelled {
         future_id: u32,
@@ -337,7 +337,6 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
             future_id,
             call_id,
             result,
-            log_message,
             poll_duration_ns,
             poll_alloc_bytes,
             poll_alloc_count,
@@ -373,18 +372,20 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
                         }
                         PollResult::Ready => {
                             call.state = FutureState::Ready;
-                            if log_message.is_some() {
-                                call.result = log_message;
-                            }
                         }
                     };
                 }
             }
         }
-        FutureEvent::Completed { future_id, call_id } => {
+        FutureEvent::Completed {
+            future_id,
+            call_id,
+            log_message,
+        } => {
             if let Some(entry_logs) = state.logs.get_mut(&future_id) {
                 if let Some(call) = entry_logs.find_call_mut(call_id) {
                     call.state = FutureState::Ready;
+                    call.result = log_message;
                 }
             }
         }

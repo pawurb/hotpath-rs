@@ -136,12 +136,15 @@ impl<F: Future> Future for InstrumentedFuture<F> {
             future_id,
             call_id,
             result: poll_result,
-            log_message: None,
             poll_duration_ns,
         });
 
         if *this.completed {
-            send_future_event(FutureEvent::Completed { future_id, call_id });
+            send_future_event(FutureEvent::Completed {
+                future_id,
+                call_id,
+                log_message: None,
+            });
         }
 
         result
@@ -229,12 +232,15 @@ where
             future_id,
             call_id,
             result: poll_result,
-            log_message,
             poll_duration_ns,
         });
 
         if *this.completed {
-            send_future_event(FutureEvent::Completed { future_id, call_id });
+            send_future_event(FutureEvent::Completed {
+                future_id,
+                call_id,
+                log_message,
+            });
         }
 
         result
