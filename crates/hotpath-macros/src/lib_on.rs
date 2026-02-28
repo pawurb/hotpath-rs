@@ -330,8 +330,8 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = sig.ident.to_string();
     let asyncness = sig.asyncness.is_some();
 
-    // Parse optional `log = true` attribute
     let mut log_result = false;
+    let mut future = false;
 
     if !attr.is_empty() {
         let parser = syn::meta::parser(|meta| {
@@ -342,7 +342,14 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return Ok(());
             }
 
-            Err(meta.error("Unknown parameter. Supported: log = true"))
+            if meta.path.is_ident("future") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let lit: syn::LitBool = meta.input.parse()?;
+                future = lit.value();
+                return Ok(());
+            }
+
+            Err(meta.error("Unknown parameter. Supported: log = true, future = true"))
         });
 
         if let Err(e) = parser.parse2(proc_macro2::TokenStream::from(attr)) {
@@ -350,7 +357,52 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let wrapped = if log_result {
+    if future && !asyncness {
+        return syn::Error::new_spanned(
+            sig.fn_token,
+            "future = true can only be used on async functions",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let fn_name = &sig.ident;
+
+    let wrapped = if future && log_result {
+        let loc = quote! { concat!(module_path!(), "::", #name) };
+        quote! {
+            {
+                const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
+                hotpath::futures::init_futures_state();
+                hotpath::InstrumentFutureLog::instrument_future_log(
+                    async {
+                        hotpath::functions::measure_with_log_async(#loc, || async #block).await
+                    },
+                    FUTURE_LOC,
+                    None
+                ).await
+            }
+        }
+    } else if future {
+        quote! {
+            {
+                const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
+                hotpath::futures::init_futures_state();
+                hotpath::InstrumentFuture::instrument_future(
+                    async {
+                        let _guard = hotpath::functions::MeasurementGuard::build(
+                            concat!(module_path!(), "::", #name),
+                            false,
+                            true,
+                        );
+                        #block
+                    },
+                    FUTURE_LOC,
+                    None
+                ).await
+            }
+        }
+    } else if log_result {
         let loc = quote! { concat!(module_path!(), "::", #name) };
         if asyncness {
             quote! {

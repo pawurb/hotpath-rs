@@ -82,10 +82,6 @@ fn format_queue(entry: &JsonDataFlowEntry) -> &str {
     entry.queue.as_deref().unwrap_or("-")
 }
 
-fn format_queue_mem(entry: &JsonDataFlowEntry) -> &str {
-    entry.queue_mem.as_deref().unwrap_or("-")
-}
-
 fn format_max_queue(entry: &JsonDataFlowEntry) -> &str {
     entry.max_queue.as_deref().unwrap_or("-")
 }
@@ -111,7 +107,6 @@ pub(crate) fn render_data_flow_panel(
         Cell::from("State"),
         Cell::from("Queue"),
         Cell::from("Max Q"),
-        Cell::from("Mem"),
         Cell::from("Count"),
     ])
     .style(common_styles::HEADER_STYLE_CYAN)
@@ -130,13 +125,17 @@ pub(crate) fn render_data_flow_panel(
                 entry.state.clone()
             };
 
+            let display_label = match entry.data_flow_type {
+                DataFlowType::Future => hotpath::shorten_function_name(&entry.label),
+                _ => entry.label.clone(),
+            };
+
             Row::new(vec![
                 type_cell,
-                Cell::from(truncate_left(&entry.label, label_width)),
+                Cell::from(truncate_left(&display_label, label_width)),
                 Cell::from(state_text).style(state_style(&entry.state)),
                 Cell::from(format_queue(entry)),
                 Cell::from(format_max_queue(entry)),
-                Cell::from(format_queue_mem(entry)),
                 Cell::from(format_counts(entry)),
             ])
         })
@@ -144,11 +143,10 @@ pub(crate) fn render_data_flow_panel(
 
     let widths = [
         Constraint::Length(12),     // Type (Channel[∞], Channel[100], etc.)
-        Constraint::Percentage(40), // Label
+        Constraint::Percentage(45), // Label
         Constraint::Length(10),     // State
         Constraint::Length(8),      // Queue
         Constraint::Length(8),      // Max Q
-        Constraint::Length(8),      // Mem
         Constraint::Length(12),     // Count
     ];
 

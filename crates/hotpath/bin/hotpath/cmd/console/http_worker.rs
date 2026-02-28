@@ -114,6 +114,7 @@ trait RouteExt {
 }
 
 impl RouteExt for Route {
+    #[hotpath::measure(future = true, log = true)]
     async fn fetch(&self, client: &reqwest::Client, base_url: &str) -> DataResponse {
         let url = format!("{}{}", base_url, self.to_path());
         trace!("Fetching {}", url);

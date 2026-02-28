@@ -236,6 +236,63 @@ pub mod tests {
         }
     }
 
+    // cargo run -p test-futures --example measure_future --features hotpath
+    #[test]
+    fn test_measure_future_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-futures",
+                "--example",
+                "measure_future",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let expected_timing = [
+            "measure_future::timed_future ",
+            "measure_future::timed_future_with_log",
+            "measure_future::timing_only",
+        ];
+
+        for expected in expected_timing {
+            assert!(
+                stdout.contains(expected),
+                "Expected in timing table:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+
+        let expected_futures = [
+            "| measure_future::timed_future          | 2     | 4",
+            "| measure_future::timed_future_with_log | 1     | 2",
+        ];
+
+        for expected in expected_futures {
+            assert!(
+                stdout.contains(expected),
+                "Expected in futures table:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+
+        if let Some(futures_section) = stdout.split("futures - Future poll").nth(1) {
+            assert!(
+                !futures_section.contains("timing_only"),
+                "timing_only should not appear in futures table.\nFutures section:\n{futures_section}",
+            );
+        }
+    }
+
     // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-futures --example basic_futures --features hotpath
     #[test]
     fn test_format_none_suppresses_output() {

@@ -110,6 +110,7 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// # Parameters
 ///
 /// * `log` - If `true`, logs the return value on each call (requires `Debug` on return type)
+/// * `future` - If `true`, also tracks the future lifecycle (poll count, state transitions, cancellation). Only valid on async functions.
 ///
 /// # Examples
 ///
@@ -122,6 +123,11 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// #[hotpath::measure(log = true)]
 /// fn compute() -> i32 {
 ///     42
+/// }
+///
+/// #[hotpath::measure(future = true)]
+/// async fn fetch_data() -> Vec<u8> {
+///     vec![1, 2, 3]
 /// }
 /// ```
 ///
