@@ -183,7 +183,6 @@ impl<F: Future> Future for InstrumentedFuture<F> {
                 future_id,
                 call_id,
                 result: poll_result,
-                log_message: None,
                 poll_duration_ns,
                 poll_alloc_bytes,
                 poll_alloc_count,
@@ -191,7 +190,14 @@ impl<F: Future> Future for InstrumentedFuture<F> {
         );
 
         if *this.completed {
-            send_future_event(visible, FutureEvent::Completed { future_id, call_id });
+            send_future_event(
+                visible,
+                FutureEvent::Completed {
+                    future_id,
+                    call_id,
+                    log_message: None,
+                },
+            );
         }
 
         result
@@ -308,7 +314,6 @@ where
                 future_id,
                 call_id,
                 result: poll_result,
-                log_message,
                 poll_duration_ns,
                 poll_alloc_bytes,
                 poll_alloc_count,
@@ -316,7 +321,14 @@ where
         );
 
         if *this.completed {
-            send_future_event(visible, FutureEvent::Completed { future_id, call_id });
+            send_future_event(
+                visible,
+                FutureEvent::Completed {
+                    future_id,
+                    call_id,
+                    log_message,
+                },
+            );
         }
 
         result
