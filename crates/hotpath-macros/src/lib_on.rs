@@ -327,25 +327,25 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let sig = &input.sig;
     let block = &input.block;
 
-    let name = sig.ident.to_string();
-    let asyncness = sig.asyncness.is_some();
+    let fn_ident = &sig.ident;
+    let is_async_fn = sig.asyncness.is_some();
 
-    let mut log_result = false;
-    let mut future = false;
+    let mut enable_result_logging = false;
+    let mut enable_future_tracking = false;
 
     if !attr.is_empty() {
         let parser = syn::meta::parser(|meta| {
             if meta.path.is_ident("log") {
                 meta.input.parse::<syn::Token![=]>()?;
                 let lit: syn::LitBool = meta.input.parse()?;
-                log_result = lit.value();
+                enable_result_logging = lit.value();
                 return Ok(());
             }
 
             if meta.path.is_ident("future") {
                 meta.input.parse::<syn::Token![=]>()?;
                 let lit: syn::LitBool = meta.input.parse()?;
-                future = lit.value();
+                enable_future_tracking = lit.value();
                 return Ok(());
             }
 
@@ -357,7 +357,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    if future && !asyncness {
+    if enable_future_tracking && !is_async_fn {
         return syn::Error::new_spanned(
             sig.fn_token,
             "future = true can only be used on async functions",
@@ -366,63 +366,42 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    let fn_name = &sig.ident;
+    let measurement_loc = quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) };
 
-    let wrapped = if future && log_result {
-        let loc = quote! { concat!(module_path!(), "::", #name) };
-        quote! {
-            {
-                const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
-                hotpath::functions::measure_with_future_log_async(
-                    #loc,
-                    FUTURE_LOC,
-                    async #block
-                ).await
-            }
-        }
-    } else if future {
-        quote! {
-            {
-                const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
-                hotpath::functions::measure_with_future_async(
-                    concat!(module_path!(), "::", #name),
-                    FUTURE_LOC,
-                    async #block
-                ).await
-            }
-        }
-    } else if log_result {
-        let loc = quote! { concat!(module_path!(), "::", #name) };
-        if asyncness {
+    let wrapped_body = if !is_async_fn {
+        if enable_result_logging {
             quote! {
-                hotpath::functions::measure_with_log_async(#loc, || async #block).await
+                hotpath::functions::measure_sync_log(#measurement_loc, || #block)
             }
         } else {
             quote! {
-                hotpath::functions::measure_with_log(#loc, false, || #block)
+                hotpath::functions::measure_sync(#measurement_loc, || #block)
             }
         }
-    } else if asyncness {
+    } else if enable_future_tracking {
+        if enable_result_logging {
+            quote! {
+                hotpath::functions::measure_async_future_log(#measurement_loc, async #block).await
+            }
+        } else {
+            quote! {
+                hotpath::functions::measure_async_future(#measurement_loc, async #block).await
+            }
+        }
+    } else if enable_result_logging {
         quote! {
-            hotpath::functions::measure_async(
-                concat!(module_path!(), "::", #name),
-                async #block
-            ).await
+            hotpath::functions::measure_async_log(#measurement_loc, async #block).await
         }
     } else {
         quote! {
-            let _guard = hotpath::functions::build_measurement_guard_sync(
-                concat!(module_path!(), "::", #name),
-                false,
-            );
-            #block
+            hotpath::functions::measure_async(#measurement_loc, async #block).await
         }
     };
 
     let output = quote! {
         #(#attrs)*
         #vis #sig {
-            #wrapped
+            #wrapped_body
         }
     };
 

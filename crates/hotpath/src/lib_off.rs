@@ -173,20 +173,50 @@ impl MeasurementGuard {
 }
 
 #[inline]
-pub fn measure_with_log<T: std::fmt::Debug, F: FnOnce() -> T>(
-    _name: &'static str,
-    _wrapper: bool,
+pub fn measure_sync<T, F: FnOnce() -> T>(_measurement_loc: &'static str, f: F) -> T {
+    f()
+}
+
+#[inline]
+pub fn measure_sync_log<T: std::fmt::Debug, F: FnOnce() -> T>(
+    _measurement_loc: &'static str,
     f: F,
 ) -> T {
     f()
 }
 
-pub async fn measure_with_log_async<T: std::fmt::Debug, F, Fut>(_name: &'static str, f: F) -> T
+pub async fn measure_async<T, Fut>(_measurement_loc: &'static str, fut: Fut) -> T
 where
-    F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = T>,
 {
-    f().await
+    fut.await
+}
+
+pub async fn measure_async_log<T: std::fmt::Debug, Fut>(
+    _measurement_loc: &'static str,
+    fut: Fut,
+) -> T
+where
+    Fut: std::future::Future<Output = T>,
+{
+    fut.await
+}
+
+pub async fn measure_async_future<T, Fut>(_measurement_loc: &'static str, fut: Fut) -> T
+where
+    Fut: std::future::Future<Output = T>,
+{
+    fut.await
+}
+
+pub async fn measure_async_future_log<T: std::fmt::Debug, Fut>(
+    _measurement_loc: &'static str,
+    fut: Fut,
+) -> T
+where
+    Fut: std::future::Future<Output = T>,
+{
+    fut.await
 }
 
 pub struct HotpathGuard;
