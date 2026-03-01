@@ -7,28 +7,28 @@ use std::time::{Duration, Instant};
 
 const BATCH_SIZE: usize = 64;
 const FLUSH_INTERVAL_MS: u64 = 50;
+const FLUSH_INTERVAL_NS: u64 = FLUSH_INTERVAL_MS * 1_000_000;
 
 struct MeasurementBatch {
     measurements: Vec<Measurement>,
-    last_flush: Instant,
+    last_flush_elapsed_ns: u64,
     sender: Option<Sender<Measurement>>,
-    start_time: Option<Instant>,
 }
 
 impl MeasurementBatch {
     fn new() -> Self {
         Self {
             measurements: Vec::with_capacity(BATCH_SIZE),
-            last_flush: Instant::now(),
+            last_flush_elapsed_ns: 0,
             sender: None,
-            start_time: None,
         }
     }
 
     fn add(
         &mut self,
         name: &'static str,
-        duration: Duration,
+        duration_ns: u64,
+        elapsed_since_start_ns: u64,
         wrapper: bool,
         tid: Option<u64>,
         result_log: Option<String>,
@@ -38,19 +38,18 @@ impl MeasurementBatch {
                 if let Some(state) = arc_swap.load_full() {
                     if let Ok(state_guard) = state.read() {
                         self.sender = state_guard.sender.clone();
-                        self.start_time = Some(state_guard.start_time);
                     }
                 }
             }
         }
 
-        if self.start_time.is_none() {
+        if self.sender.is_none() {
             return;
         };
 
         let measurement = Measurement {
-            duration_ns: duration.as_nanos() as u64,
-            measurement_time: Instant::now(),
+            duration_ns,
+            elapsed_since_start_ns,
             name,
             wrapper,
             tid,
@@ -60,7 +59,8 @@ impl MeasurementBatch {
         self.measurements.push(measurement);
 
         let should_flush = self.measurements.len() >= BATCH_SIZE
-            || self.last_flush.elapsed() >= Duration::from_millis(FLUSH_INTERVAL_MS);
+            || elapsed_since_start_ns.saturating_sub(self.last_flush_elapsed_ns)
+                >= FLUSH_INTERVAL_NS;
 
         if should_flush {
             self.flush();
@@ -73,11 +73,12 @@ impl MeasurementBatch {
         }
 
         let sender = self.sender.as_ref().expect("Sender must exist");
+        if let Some(last) = self.measurements.last() {
+            self.last_flush_elapsed_ns = last.elapsed_since_start_ns;
+        }
         for measurement in self.measurements.drain(..) {
             let _ = sender.send(measurement);
         }
-
-        self.last_flush = Instant::now();
     }
 }
 
@@ -100,7 +101,7 @@ pub(crate) fn flush_batch() {
 #[derive(Debug)]
 pub(crate) struct Measurement {
     pub(crate) duration_ns: u64,
-    pub(crate) measurement_time: Instant,
+    pub(crate) elapsed_since_start_ns: u64,
     pub(crate) name: &'static str,
     pub(crate) wrapper: bool,
     pub(crate) tid: Option<u64>,
@@ -214,9 +215,9 @@ pub(crate) fn process_measurement(
     stats: &mut HashMap<u32, FunctionStats>,
     name_to_id: &mut HashMap<&'static str, u32>,
     m: Measurement,
-    start_time: Instant,
+    _start_time: Instant,
 ) {
-    let elapsed = m.measurement_time.duration_since(start_time);
+    let elapsed = Duration::from_nanos(m.elapsed_since_start_ns);
     if let Some(&id) = name_to_id.get(m.name) {
         if let Some(s) = stats.get_mut(&id) {
             s.update_duration(m.duration_ns, elapsed, m.tid, m.result_log);
@@ -243,16 +244,25 @@ use super::super::FUNCTIONS_STATE;
 
 pub(crate) fn send_duration_measurement(
     name: &'static str,
-    duration: Duration,
+    duration_ns: u64,
+    elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
 ) {
-    send_duration_measurement_with_log(name, duration, wrapper, tid, None);
+    send_duration_measurement_with_log(
+        name,
+        duration_ns,
+        elapsed_since_start_ns,
+        wrapper,
+        tid,
+        None,
+    );
 }
 
 pub(crate) fn send_duration_measurement_with_log(
     name: &'static str,
-    duration: Duration,
+    duration_ns: u64,
+    elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
     result_log: Option<String>,
@@ -262,8 +272,13 @@ pub(crate) fn send_duration_measurement_with_log(
     }
 
     MEASUREMENT_BATCH.with(|batch| {
-        batch
-            .borrow_mut()
-            .add(name, duration, wrapper, tid, result_log);
+        batch.borrow_mut().add(
+            name,
+            duration_ns,
+            elapsed_since_start_ns,
+            wrapper,
+            tid,
+            result_log,
+        );
     });
 }

@@ -40,10 +40,21 @@ impl Drop for MeasurementGuard {
         if self.skipped {
             return;
         }
-        let dur = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::START_TIME
+            .get()
+            .map(|start| end.duration_since(*start).as_nanos() as u64)
+            .unwrap_or(0);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
-        super::state::send_duration_measurement(self.name, dur, self.wrapper, tid);
+        super::state::send_duration_measurement(
+            self.name,
+            duration_ns,
+            elapsed_since_start_ns,
+            self.wrapper,
+            tid,
+        );
     }
 }
 
@@ -82,13 +93,19 @@ impl MeasurementGuardWithLog {
         if self.skipped {
             return;
         }
-        let dur = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::START_TIME
+            .get()
+            .map(|start| end.duration_since(*start).as_nanos() as u64)
+            .unwrap_or(0);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
         let result_str = format_debug_truncated(result);
         super::state::send_duration_measurement_with_log(
             self.name,
-            dur,
+            duration_ns,
+            elapsed_since_start_ns,
             self.wrapper,
             tid,
             Some(result_str),
@@ -102,9 +119,21 @@ impl Drop for MeasurementGuardWithLog {
         if self.skipped || self.finished {
             return;
         }
-        let dur = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::START_TIME
+            .get()
+            .map(|start| end.duration_since(*start).as_nanos() as u64)
+            .unwrap_or(0);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
-        super::state::send_duration_measurement_with_log(self.name, dur, self.wrapper, tid, None);
+        super::state::send_duration_measurement_with_log(
+            self.name,
+            duration_ns,
+            elapsed_since_start_ns,
+            self.wrapper,
+            tid,
+            None,
+        );
     }
 }
