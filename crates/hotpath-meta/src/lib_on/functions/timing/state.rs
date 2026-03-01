@@ -3,7 +3,9 @@ use hdrhistogram::Histogram;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use crate::instant::Instant;
 
 const BATCH_SIZE: usize = 64;
 const FLUSH_INTERVAL_MS: u64 = 50;

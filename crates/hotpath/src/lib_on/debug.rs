@@ -36,11 +36,7 @@ pub(crate) fn get_or_create_gauge_id(key: &str) -> u32 {
         .or_insert_with(|| DEBUG_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
 }
 
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 pub mod dbg;
 pub mod gauge;

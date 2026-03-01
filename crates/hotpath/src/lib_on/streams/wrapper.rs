@@ -7,11 +7,7 @@ use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 pin_project! {
     /// Wrapper around a `Stream` that instruments it with statistics collection.

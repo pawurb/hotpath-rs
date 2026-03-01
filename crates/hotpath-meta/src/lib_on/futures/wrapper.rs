@@ -14,11 +14,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 struct WakerData {
     inner: Waker,

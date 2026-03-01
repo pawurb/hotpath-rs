@@ -4,11 +4,7 @@ use std::collections::VecDeque;
 
 pub use crate::shared::IntoF64;
 
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 use crate::channels::{extract_filename, LOGS_LIMIT, START_TIME};
 use crate::debug::{get_or_create_gauge_id, init_debug_state, send_debug_event, DebugEvent};

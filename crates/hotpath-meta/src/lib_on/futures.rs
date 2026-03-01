@@ -8,11 +8,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 pub(crate) mod wrapper;
 

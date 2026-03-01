@@ -3,7 +3,9 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use crate::instant::Instant;
 
 #[cfg(target_os = "macos")]
 #[path = "threads/collector_macos.rs"]

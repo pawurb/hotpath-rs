@@ -50,6 +50,8 @@ pub mod json;
 pub use json::Route;
 
 #[cfg(feature = "hotpath")]
+pub(crate) mod instant;
+#[cfg(feature = "hotpath")]
 pub(crate) mod tid;
 
 #[cfg(not(feature = "hotpath"))]

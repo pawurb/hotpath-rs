@@ -1,10 +1,10 @@
+use crate::instant::Instant;
 use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, select_biased, unbounded};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::thread;
-use std::time::Instant;
 
 pub(crate) const WORKER_SHUTDOWN_DRAIN_LIMIT: usize = 1_000;
 const DEFAULT_LOGS_LIMIT: usize = 50;
@@ -478,10 +478,7 @@ impl HotpathGuard {
 
         arc_swap.store(Some(Arc::clone(&state_arc)));
 
-        #[cfg(target_os = "linux")]
-        crate::lib_on::START_TIME.get_or_init(quanta::Instant::now);
-        #[cfg(not(target_os = "linux"))]
-        crate::lib_on::START_TIME.get_or_init(std::time::Instant::now);
+        crate::lib_on::START_TIME.get_or_init(Instant::now);
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 

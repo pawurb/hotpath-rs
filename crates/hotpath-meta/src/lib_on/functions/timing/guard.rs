@@ -1,8 +1,4 @@
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 use crate::output::format_debug_truncated;
 

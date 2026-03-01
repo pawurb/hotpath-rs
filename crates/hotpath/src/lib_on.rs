@@ -4,11 +4,7 @@ pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 
 use std::sync::OnceLock;
 
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
 

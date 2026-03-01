@@ -2,11 +2,7 @@
 
 use std::fmt::Debug;
 
-#[cfg(target_os = "linux")]
-use quanta::Instant;
-
-#[cfg(not(target_os = "linux"))]
-use std::time::Instant;
+use crate::instant::Instant;
 
 use crate::channels::{extract_filename, START_TIME};
 use crate::debug::{
