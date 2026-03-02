@@ -375,7 +375,8 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         } else {
             quote! {
-                hotpath::functions::measure_sync(#measurement_loc, || #block)
+                let _guard = hotpath::functions::build_measurement_guard_sync(#measurement_loc, false);
+                #block
             }
         }
     } else if enable_future_tracking {

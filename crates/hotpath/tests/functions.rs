@@ -452,6 +452,29 @@ pub mod tests {
         }
     }
 
+    // cargo check -p test-tokio-async --example measure_all_impl_return_closure --features hotpath
+    #[test]
+    fn test_measure_all_impl_return_closure_compiles() {
+        let output = Command::new("cargo")
+            .args([
+                "check",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "measure_all_impl_return_closure",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     // cargo run -p test-tokio-async --example limit --features hotpath,hotpath-alloc
     #[test]
     fn test_limit_output() {

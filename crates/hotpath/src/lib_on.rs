@@ -29,7 +29,7 @@ pub mod hotpath_guard;
 pub(crate) mod report;
 
 pub use functions::{
-    measure_async, measure_async_future, measure_async_future_log, measure_async_log, measure_sync,
+    measure_async, measure_async_future, measure_async_future_log, measure_async_log,
     measure_sync_log, MeasurementGuardAsync, MeasurementGuardSync,
 };
 pub use hotpath_guard::{HotpathGuard, HotpathGuardBuilder};

@@ -190,18 +190,6 @@ fn build_measurement_guard_async_with_log_bridge(
     }
 }
 
-/// Internal helper used by `#[hotpath::measure]` for sync functions without `log = true`.
-///
-/// `measurement_loc` is the fully-qualified function path used as the metrics key.
-/// `f` is the function body closure to execute under a sync measurement guard.
-#[doc(hidden)]
-#[inline]
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-pub fn measure_sync<T, F: FnOnce() -> T>(measurement_loc: &'static str, f: F) -> T {
-    let _guard = build_measurement_guard_sync(measurement_loc, false);
-    f()
-}
-
 /// Internal helper used by `#[hotpath::measure(log = true)]` for sync functions.
 ///
 /// `measurement_loc` is the fully-qualified function path used as the metrics key.
