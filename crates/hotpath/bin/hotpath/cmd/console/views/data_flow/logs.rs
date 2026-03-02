@@ -1,7 +1,7 @@
 use crate::cmd::console::app::DataFlowLogs;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_message;
-use hotpath::{format_bytes, json::DataFlowType};
+use hotpath::{format_bytes, format_duration, json::DataFlowType};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Style},
@@ -144,30 +144,23 @@ pub(crate) fn render_logs_panel(
             frame.render_stateful_widget(table, inner_area, table_state);
         }
         (DataFlowLogs::Future(future_logs), DataFlowType::Future) => {
-            let total_alloc_bytes = future_logs.total_poll_alloc_bytes;
-            let total_alloc_count = future_logs.total_poll_alloc_count;
-            let mut summary = format!(
-                " calls: {} | polls: {}",
-                future_logs.call_count, future_logs.total_polls,
+            let result_width = (available_width.saturating_sub(44) as usize).max(10);
+            let total_alloc = future_logs
+                .total_poll_alloc_bytes
+                .map(format_bytes)
+                .unwrap_or_else(|| "-".to_string());
+            let summary = format!(
+                "polls: {} | time: {} | alloc: {}",
+                future_logs.total_polls,
+                format_duration(future_logs.total_poll_duration_ns),
+                total_alloc,
             );
-            if let Some(total_alloc_bytes) = total_alloc_bytes {
-                summary.push_str(&format!(
-                    " | alloc total: {}",
-                    format_bytes(total_alloc_bytes)
-                ));
-            }
-            if let Some(total_alloc_count) = total_alloc_count {
-                summary.push_str(&format!(" | alloc count: {}", total_alloc_count));
-            }
 
             let [summary_area, table_area] =
                 Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner_area);
-
             frame.render_widget(Paragraph::new(Line::raw(summary)), summary_area);
 
-            let result_width = (available_width.saturating_sub(33) as usize).max(10);
-
-            let header = Row::new(vec!["State", "Polls", "Alloc", "Result"])
+            let header = Row::new(vec!["State", "Polls", "Time", "Alloc", "Result"])
                 .style(common_styles::HEADER_STYLE_CYAN)
                 .height(1);
 
@@ -175,16 +168,22 @@ pub(crate) fn render_logs_panel(
                 .calls
                 .iter()
                 .map(|call| {
-                    let result = call.result.as_deref().unwrap_or("-");
-                    let result_text = truncate_message(result, result_width);
+                    let total_poll = if call.poll_count > 0 {
+                        format_duration(call.total_poll_duration_ns)
+                    } else {
+                        "-".to_string()
+                    };
                     let alloc = call
                         .total_poll_alloc_bytes
                         .map(format_bytes)
                         .unwrap_or_else(|| "-".to_string());
+                    let result = call.result.as_deref().unwrap_or("-");
+                    let result_text = truncate_message(result, result_width);
 
                     Row::new(vec![
                         Cell::from(call.state.clone()).style(state_style(&call.state)),
                         Cell::from(call.poll_count.to_string()),
+                        Cell::from(total_poll),
                         Cell::from(alloc),
                         Cell::from(result_text),
                     ])
@@ -194,6 +193,7 @@ pub(crate) fn render_logs_panel(
             let widths = vec![
                 Constraint::Length(9),  // State
                 Constraint::Length(6),  // Polls
+                Constraint::Length(11), // Time
                 Constraint::Length(12), // Alloc
                 Constraint::Min(10),    // Result
             ];

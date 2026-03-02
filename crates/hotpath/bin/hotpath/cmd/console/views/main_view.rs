@@ -194,6 +194,10 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let selected_index = app.data_flow_table_state.selected().unwrap_or(0);
     let position = selected_index + 1;
     let total = entries.len();
+    let selected_entry = app
+        .data_flow_table_state
+        .selected()
+        .and_then(|i| entries.get(i));
 
     data_flow::render_data_flow_panel(
         entries,
@@ -207,11 +211,6 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
     );
 
     if let Some(logs_area) = logs_area {
-        let selected_entry = app
-            .data_flow_table_state
-            .selected()
-            .and_then(|i| entries.get(i));
-
         let (label, data_flow_type) = selected_entry
             .map(|entry| {
                 let label = if entry.label.is_empty() {
@@ -257,7 +256,16 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if app.data_flow_focus == DataFlowFocus::Inspect {
         if let Some(ref inspected) = app.inspected_data_flow_log {
-            data_flow_inspect::render_inspect_popup(inspected, area, frame);
+            let inspect_label = selected_entry
+                .map(|entry| {
+                    if entry.label.is_empty() {
+                        entry.id.to_string()
+                    } else {
+                        entry.label.clone()
+                    }
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
+            data_flow_inspect::render_inspect_popup(inspected, &inspect_label, area, frame);
         }
     }
 }

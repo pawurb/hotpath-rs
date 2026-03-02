@@ -1,7 +1,7 @@
 use crate::cmd::console::app::InspectedDataFlowLog;
-use hotpath::format_bytes;
+use hotpath::{format_bytes, format_duration};
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     symbols::border,
     text::Line,
     widgets::{Block, Clear, Paragraph, Wrap},
@@ -31,8 +31,19 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<Line<'static>> {
         .collect()
 }
 
+fn format_opt_bytes(bytes: Option<u64>) -> String {
+    bytes.map(format_bytes).unwrap_or_else(|| "-".to_string())
+}
+
+fn format_opt_count(count: Option<u64>) -> String {
+    count
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
 pub(crate) fn render_inspect_popup(
     inspected: &InspectedDataFlowLog,
+    item_label: &str,
     area: Rect,
     frame: &mut Frame,
 ) {
@@ -50,38 +61,81 @@ pub(crate) fn render_inspect_popup(
 
     frame.render_widget(Clear, popup_area);
 
-    let (title, message) = match inspected {
-        InspectedDataFlowLog::ChannelSent(entry) => {
-            let title = format!(" Message (Index: {}) - {} ", entry.index, entry.timestamp);
-            let message = entry
-                .message
-                .as_deref()
-                .unwrap_or("(missing \"log = true\")");
-            (title, message.to_string())
-        }
-        InspectedDataFlowLog::Stream(entry) => {
-            let title = format!(" Message (Index: {}) - {} ", entry.index, entry.timestamp);
-            let message = entry
-                .message
-                .as_deref()
-                .unwrap_or("(missing \"log = true\")");
-            (title, message.to_string())
-        }
-        InspectedDataFlowLog::FutureCall(call) => {
-            let total_alloc = call
-                .total_poll_alloc_bytes
-                .map(format_bytes)
-                .unwrap_or_else(|| "-".to_string());
-            let title = format!(
-                " Result (Call ID: {}, State: {}, Alloc: {}) ",
-                call.id, call.state, total_alloc
-            );
-            let message = call.result.as_deref().unwrap_or("(no result available)");
-            (title, message.to_string())
-        }
+    if let InspectedDataFlowLog::FutureCall(call) = inspected {
+        let block = Block::bordered()
+            .title(format!(" {} ", item_label))
+            .border_set(border::DOUBLE);
+
+        let inner_area = block.inner(popup_area);
+        frame.render_widget(block, popup_area);
+
+        let avg_poll = if call.poll_count > 0 {
+            format_duration(call.total_poll_duration_ns / call.poll_count)
+        } else {
+            "-".to_string()
+        };
+        let total_poll = if call.poll_count > 0 {
+            format_duration(call.total_poll_duration_ns)
+        } else {
+            "-".to_string()
+        };
+        let max_poll = if call.poll_count > 0 {
+            format_duration(call.max_poll_duration_ns)
+        } else {
+            "-".to_string()
+        };
+
+        let details_text = format!(
+            "State: {} | Polls: {}\nTiming: avg {} | max {} | total {}\nAlloc bytes/count: {} / {}",
+            call.state,
+            call.poll_count,
+            avg_poll,
+            max_poll,
+            total_poll,
+            format_opt_bytes(call.total_poll_alloc_bytes),
+            format_opt_count(call.total_poll_alloc_count),
+        );
+
+        let [details_area, _, result_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .areas(inner_area);
+
+        let details = Paragraph::new(details_text).wrap(Wrap { trim: false });
+        frame.render_widget(details, details_area);
+
+        let result_text = call
+            .result
+            .as_deref()
+            .unwrap_or("(no result available)")
+            .to_string();
+        let max_width = result_area.width.saturating_sub(2) as usize;
+        let result_lines = wrap_text(&result_text, max_width);
+        let result = Paragraph::new(result_lines).wrap(Wrap { trim: false });
+        frame.render_widget(result, result_area);
+
+        return;
+    }
+
+    let message = match inspected {
+        InspectedDataFlowLog::ChannelSent(entry) => entry
+            .message
+            .as_deref()
+            .unwrap_or("(missing \"log = true\")")
+            .to_string(),
+        InspectedDataFlowLog::Stream(entry) => entry
+            .message
+            .as_deref()
+            .unwrap_or("(missing \"log = true\")")
+            .to_string(),
+        InspectedDataFlowLog::FutureCall(_) => unreachable!(),
     };
 
-    let block = Block::bordered().title(title).border_set(border::DOUBLE);
+    let block = Block::bordered()
+        .title(format!(" {} ", item_label))
+        .border_set(border::DOUBLE);
 
     let inner_area = block.inner(popup_area);
     frame.render_widget(block, popup_area);
