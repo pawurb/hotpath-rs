@@ -431,6 +431,14 @@ impl DataFlowType {
             DataFlowType::Future => "future",
         }
     }
+
+    pub fn sort_order(&self) -> u8 {
+        match self {
+            DataFlowType::Future => 0,
+            DataFlowType::Channel => 1,
+            DataFlowType::Stream => 2,
+        }
+    }
 }
 
 impl std::fmt::Display for DataFlowType {

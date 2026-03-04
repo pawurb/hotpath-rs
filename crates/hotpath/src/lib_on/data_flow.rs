@@ -131,7 +131,16 @@ pub(crate) fn get_data_flow_json() -> JsonDataFlowList {
         entries.push(JsonDataFlowEntry::from(&stats));
     }
 
-    entries.sort_by(|a, b| a.id.cmp(&b.id));
+    entries.sort_by(|a, b| {
+        b.has_custom_label
+            .cmp(&a.has_custom_label)
+            .then_with(|| {
+                a.data_flow_type
+                    .sort_order()
+                    .cmp(&b.data_flow_type.sort_order())
+            })
+            .then_with(|| a.id.cmp(&b.id))
+    });
 
     let current_elapsed_ns = START_TIME
         .get()
