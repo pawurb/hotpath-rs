@@ -25,7 +25,7 @@ async fn main() {
 }
 ```
 
-[std::sync](https://doc.rust-lang.org/stable/std/sync/mpsc/index.html) channels can be instrumented by default. Enable `tokio`, `futures`, or `crossbeam` features for [Tokio](https://github.com/tokio-rs/tokio), [futures-rs](https://github.com/rust-lang/futures-rs), [async-channel](https://github.com/smol-rs/async-channel), and [crossbeam](https://github.com/crossbeam-rs/crossbeam) channels, respectively.
+[std::sync](https://doc.rust-lang.org/stable/std/sync/mpsc/index.html) channels can be instrumented by default. Enable `tokio`, `futures`, `crossbeam`, or `async-channel` features for [Tokio](https://github.com/tokio-rs/tokio), [futures-rs](https://github.com/rust-lang/futures-rs), [crossbeam](https://github.com/crossbeam-rs/crossbeam) and [async-channel](https://github.com/smol-rs/async-channel) channels, respectively.
 
 **Supported channel types:**
 - [`tokio::sync::mpsc::channel`](https://docs.rs/tokio/latest/tokio/sync/mpsc/fn.channel.html)

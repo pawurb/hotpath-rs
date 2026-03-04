@@ -1,4 +1,4 @@
-#[cfg(feature = "async")]
+#[cfg(feature = "async-channel")]
 pub(crate) mod asc;
 #[cfg(feature = "crossbeam")]
 pub(crate) mod crossbeam;

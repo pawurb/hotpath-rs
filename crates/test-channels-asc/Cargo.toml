@@ -7,7 +7,7 @@ description = "Tests for async channels instrumentation."
 
 [dependencies]
 async-channel = "2.5.0"
-hotpath = { workspace = true, features = ["async"] }
+hotpath = { workspace = true, features = ["async-channel"] }
 smol = "2.0"
 
 [features]
