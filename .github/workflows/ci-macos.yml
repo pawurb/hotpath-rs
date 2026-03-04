@@ -49,6 +49,9 @@ jobs:
       - name: Run channels futures tests
         run: |
           cargo test --features hotpath --test channels_ftc -- --nocapture --test-threads=1
+      - name: Run channels async tests
+        run: |
+          cargo test --features hotpath --test channels_asc -- --nocapture --test-threads=1
       - name: Run channels std tests
         run: |
           cargo test --features hotpath --test channels_std -- --nocapture --test-threads=1
