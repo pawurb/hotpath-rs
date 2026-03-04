@@ -151,9 +151,27 @@ impl<F: Future> Future for InstrumentedFuture<F> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
+        let visible = *this.visible;
+
+        // Don't instrument future unless visible, only collect alloc data
+        if !visible {
+            let (result, poll_alloc_bytes, poll_alloc_count) =
+                measure_poll_alloc(|| this.inner.poll(cx));
+            if let (Some(bytes), Some(count), Some(bridge)) = (
+                poll_alloc_bytes,
+                poll_alloc_count,
+                this.alloc_bridge.as_ref(),
+            ) {
+                bridge.add(bytes, count);
+            }
+            if result.is_ready() {
+                *this.completed = true;
+            }
+            return result;
+        }
+
         let future_id = *this.future_id;
         let call_id = *this.call_id;
-        let visible = *this.visible;
 
         let instrumented_waker = {
             let _suspend = crate::lib_on::SuspendAllocTracking::new();
@@ -184,7 +202,7 @@ impl<F: Future> Future for InstrumentedFuture<F> {
         {
             let _suspend = crate::lib_on::SuspendAllocTracking::new();
             send_future_event(
-                visible,
+                true,
                 FutureEvent::Polled {
                     future_id,
                     call_id,
@@ -197,7 +215,7 @@ impl<F: Future> Future for InstrumentedFuture<F> {
 
             if *this.completed {
                 send_future_event(
-                    visible,
+                    true,
                     FutureEvent::Completed {
                         future_id,
                         call_id,
@@ -232,8 +250,8 @@ pin_project! {
 
     impl<F: Future> PinnedDrop for InstrumentedFutureLog<F> {
         fn drop(this: Pin<&mut Self>) {
-            if !this.completed {
-                send_future_event(this.visible, FutureEvent::Cancelled { future_id: this.future_id, call_id: this.call_id });
+            if this.visible && !this.completed {
+                send_future_event(true, FutureEvent::Cancelled { future_id: this.future_id, call_id: this.call_id });
             }
         }
     }
@@ -293,9 +311,26 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
+        let visible = *this.visible;
+
+        if !visible {
+            let (result, poll_alloc_bytes, poll_alloc_count) =
+                measure_poll_alloc(|| this.inner.poll(cx));
+            if let (Some(bytes), Some(count), Some(bridge)) = (
+                poll_alloc_bytes,
+                poll_alloc_count,
+                this.alloc_bridge.as_ref(),
+            ) {
+                bridge.add(bytes, count);
+            }
+            if result.is_ready() {
+                *this.completed = true;
+            }
+            return result;
+        }
+
         let future_id = *this.future_id;
         let call_id = *this.call_id;
-        let visible = *this.visible;
 
         let instrumented_waker = {
             let _suspend = crate::lib_on::SuspendAllocTracking::new();
@@ -319,19 +354,14 @@ where
             Poll::Pending => (PollResult::Pending, None),
             Poll::Ready(value) => {
                 *this.completed = true;
-                let log_message = if visible {
-                    Some(format_debug_truncated(value))
-                } else {
-                    None
-                };
-                (PollResult::Ready, log_message)
+                (PollResult::Ready, Some(format_debug_truncated(value)))
             }
         };
 
         {
             let _suspend = crate::lib_on::SuspendAllocTracking::new();
             send_future_event(
-                visible,
+                true,
                 FutureEvent::Polled {
                     future_id,
                     call_id,
@@ -344,7 +374,7 @@ where
 
             if *this.completed {
                 send_future_event(
-                    visible,
+                    true,
                     FutureEvent::Completed {
                         future_id,
                         call_id,
