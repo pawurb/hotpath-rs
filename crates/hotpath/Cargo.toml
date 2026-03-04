@@ -53,6 +53,7 @@ utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable
 tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:chrono", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "dep:tracing", "dep:tracing-subscriber", "dep:time", "crossbeam"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
+async = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:async-channel"]
 crossbeam = []
 threads = []
 dev = ["dep:chrono"]
@@ -79,6 +80,7 @@ tokio = { version = "1", features = ["rt"], optional = true }
 ureq = { version = "3.1", features = ["json"], optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
 futures-channel = { version = "0.3", features = ["sink"], optional = true }
+async-channel = { version = "2.5.0", optional = true }
 futures-util = { version = "0.3", features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2", optional = true }
 chrono = { version = "0.4", optional = true }

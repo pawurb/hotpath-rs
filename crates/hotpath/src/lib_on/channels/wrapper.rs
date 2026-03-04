@@ -1,3 +1,5 @@
+#[cfg(feature = "async")]
+pub(crate) mod asc;
 #[cfg(feature = "crossbeam")]
 pub(crate) mod crossbeam;
 #[cfg(feature = "futures")]
