@@ -8,7 +8,9 @@ use std::collections::HashMap;
 
 use super::{ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, StreamLogs, ThreadMetrics};
 
-use crate::output::{format_bytes, format_duration, FunctionLog, FunctionLogsList, ProfilingMode};
+use crate::output::{
+    format_bytes, format_count, format_duration, FunctionLog, FunctionLogsList, ProfilingMode,
+};
 
 pub(crate) fn format_time_ago(nanos_ago: u64) -> String {
     if nanos_ago < 1_000_000_000 {
@@ -541,6 +543,10 @@ pub struct JsonThreadEntry {
     pub dealloc_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub mem_diff: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub alloc_count: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dealloc_count: Option<String>,
 }
 
 impl From<&ThreadMetrics> for JsonThreadEntry {
@@ -558,6 +564,8 @@ impl From<&ThreadMetrics> for JsonThreadEntry {
             alloc_bytes: metrics.alloc_bytes.map(format_bytes),
             dealloc_bytes: metrics.dealloc_bytes.map(format_bytes),
             mem_diff: metrics.mem_diff.map(format_bytes_signed),
+            alloc_count: metrics.alloc_count.map(format_count),
+            dealloc_count: metrics.dealloc_count.map(format_count),
         }
     }
 }

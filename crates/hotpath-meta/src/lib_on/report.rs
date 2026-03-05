@@ -327,6 +327,8 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
         header.push(styled_header("Alloc"));
         header.push(styled_header("Dealloc"));
         header.push(styled_header("Diff"));
+        header.push(styled_header("Allocs"));
+        header.push(styled_header("Deallocs"));
     }
 
     let mut table = Table::new();
@@ -348,6 +350,8 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
             row.push(Cell::new(thread.alloc_bytes.as_deref().unwrap_or("-")));
             row.push(Cell::new(thread.dealloc_bytes.as_deref().unwrap_or("-")));
             row.push(Cell::new(thread.mem_diff.as_deref().unwrap_or("-")));
+            row.push(Cell::new(thread.alloc_count.as_deref().unwrap_or("-")));
+            row.push(Cell::new(thread.dealloc_count.as_deref().unwrap_or("-")));
         }
         table.add_row(Row::new(row));
     }

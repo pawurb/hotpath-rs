@@ -14,6 +14,8 @@ pub(crate) struct ThreadAllocStats {
     pub(crate) tid: AtomicU64,
     pub(crate) alloc_bytes: AtomicU64,
     pub(crate) dealloc_bytes: AtomicU64,
+    pub(crate) alloc_count: AtomicU64,
+    pub(crate) dealloc_count: AtomicU64,
 }
 
 impl Default for ThreadAllocStats {
@@ -28,6 +30,8 @@ impl ThreadAllocStats {
             tid: AtomicU64::new(0),
             alloc_bytes: AtomicU64::new(0),
             dealloc_bytes: AtomicU64::new(0),
+            alloc_count: AtomicU64::new(0),
+            dealloc_count: AtomicU64::new(0),
         }
     }
 }
@@ -45,8 +49,15 @@ pub(crate) fn init_thread_alloc_tracking() {
     THREAD_TRACKING_ENABLED.store(1, Ordering::Release);
 }
 
+pub(crate) struct ThreadAllocSnapshot {
+    pub(crate) alloc_bytes: u64,
+    pub(crate) dealloc_bytes: u64,
+    pub(crate) alloc_count: u64,
+    pub(crate) dealloc_count: u64,
+}
+
 /// Get allocation stats for a thread
-pub(crate) fn get_thread_alloc_stats(os_tid: u64) -> Option<(u64, u64)> {
+pub(crate) fn get_thread_alloc_stats(os_tid: u64) -> Option<ThreadAllocSnapshot> {
     if THREAD_TRACKING_ENABLED.load(Ordering::Acquire) == 0 {
         return None;
     }
@@ -54,10 +65,12 @@ pub(crate) fn get_thread_alloc_stats(os_tid: u64) -> Option<(u64, u64)> {
     for slot in &THREAD_ALLOC_STATS {
         let slot_tid = slot.tid.load(Ordering::Acquire);
         if slot_tid == os_tid {
-            return Some((
-                slot.alloc_bytes.load(Ordering::Relaxed),
-                slot.dealloc_bytes.load(Ordering::Relaxed),
-            ));
+            return Some(ThreadAllocSnapshot {
+                alloc_bytes: slot.alloc_bytes.load(Ordering::Relaxed),
+                dealloc_bytes: slot.dealloc_bytes.load(Ordering::Relaxed),
+                alloc_count: slot.alloc_count.load(Ordering::Relaxed),
+                dealloc_count: slot.dealloc_count.load(Ordering::Relaxed),
+            });
         }
         if slot_tid == 0 {
             break;
@@ -136,6 +149,7 @@ pub(crate) fn track_alloc(size: usize) {
         let tid = current_tid();
         if let Some(slot) = get_or_create_slot(tid) {
             slot.alloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+            slot.alloc_count.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -146,6 +160,7 @@ pub(crate) fn track_dealloc(size: usize) {
         let tid = current_tid();
         if let Some(slot) = get_or_create_slot(tid) {
             slot.dealloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+            slot.dealloc_count.fetch_add(1, Ordering::Relaxed);
         }
     }
 }

@@ -499,6 +499,8 @@ pub fn compare_threads(
         alloc_bytes: Some("0 B".to_string()),
         dealloc_bytes: Some("0 B".to_string()),
         mem_diff: Some("0 B".to_string()),
+        alloc_count: Some("0".to_string()),
+        dealloc_count: Some("0".to_string()),
     };
 
     let duplicate_names = {

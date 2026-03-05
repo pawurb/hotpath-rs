@@ -226,6 +226,12 @@ pub(crate) struct ThreadMetrics {
     /// Current memory held (alloc - dealloc)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mem_diff: Option<i64>,
+    /// Total number of allocations by this thread (only with hotpath-alloc)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alloc_count: Option<u64>,
+    /// Total number of deallocations by this thread (only with hotpath-alloc)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dealloc_count: Option<u64>,
 }
 
 impl ThreadMetrics {
@@ -250,6 +256,8 @@ impl ThreadMetrics {
             alloc_bytes: None,
             dealloc_bytes: None,
             mem_diff: None,
+            alloc_count: None,
+            dealloc_count: None,
         }
     }
 }
