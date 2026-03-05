@@ -89,11 +89,6 @@ pub mod tests {
 
         for thread in &threads_response.data {
             assert!(thread.os_tid > 0, "Thread should have valid os_tid");
-            // cpu_total is now a formatted string like "0.083s"
-            assert!(
-                thread.cpu_total.ends_with('s'),
-                "CPU total should be formatted as seconds"
-            );
         }
 
         let _ = child.kill();

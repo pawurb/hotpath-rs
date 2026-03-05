@@ -319,9 +319,7 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
         styled_header("Status"),
         styled_header("CPU%"),
         styled_header("Max%"),
-        styled_header("CPU User"),
-        styled_header("CPU Sys"),
-        styled_header("CPU Total"),
+        styled_header("Avg%"),
     ];
     if has_alloc {
         header.push(styled_header("Alloc"));
@@ -335,14 +333,13 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
     for thread in &threads_json.data {
         let cpu_pct = thread.cpu_percent.as_deref().unwrap_or("-");
         let cpu_pct_max = thread.cpu_percent_max.as_deref().unwrap_or("-");
+        let cpu_pct_avg = thread.cpu_percent_avg.as_deref().unwrap_or("-");
         let mut row = vec![
             Cell::new(&thread.name),
             Cell::new(&thread.status),
             Cell::new(cpu_pct),
             Cell::new(cpu_pct_max),
-            Cell::new(&thread.cpu_user),
-            Cell::new(&thread.cpu_sys),
-            Cell::new(&thread.cpu_total),
+            Cell::new(cpu_pct_avg),
         ];
         if has_alloc {
             row.push(Cell::new(thread.alloc_bytes.as_deref().unwrap_or("-")));

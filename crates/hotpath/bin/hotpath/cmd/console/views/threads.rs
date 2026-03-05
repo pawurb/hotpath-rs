@@ -102,8 +102,7 @@ pub(crate) fn render_threads_panel(
         Cell::from("Status"),
         Cell::from("CPU %"),
         Cell::from("Max %"),
-        Cell::from("User"),
-        Cell::from("Sys"),
+        Cell::from("Avg %"),
         Cell::from("Alloc"),
         Cell::from("Dealloc"),
         Cell::from("Diff"),
@@ -129,14 +128,15 @@ pub(crate) fn render_threads_panel(
 
             let status_str = format!("{} ({})", thread.status, thread.status_code);
 
+            let cpu_percent_avg_str = thread.cpu_percent_avg.as_deref().unwrap_or("-");
+
             Row::new(vec![
                 Cell::from(truncate_right(&thread.name, thread_width)),
                 Cell::from(thread.os_tid.to_string()),
                 Cell::from(status_str).style(status_style(&thread.status)),
                 Cell::from(cpu_percent_str),
                 Cell::from(cpu_percent_max_str),
-                Cell::from(thread.cpu_user.as_str()),
-                Cell::from(thread.cpu_sys.as_str()),
+                Cell::from(cpu_percent_avg_str),
                 Cell::from(alloc_str),
                 Cell::from(dealloc_str),
                 Cell::from(diff_str),
@@ -145,16 +145,15 @@ pub(crate) fn render_threads_panel(
         .collect();
 
     let widths = [
-        Constraint::Percentage(15), // Thread name
-        Constraint::Percentage(6),  // TID
+        Constraint::Percentage(16), // Thread name
+        Constraint::Percentage(7),  // TID
         Constraint::Percentage(17), // Status
         Constraint::Percentage(7),  // CPU %
         Constraint::Percentage(7),  // Max %
-        Constraint::Percentage(6),  // User
-        Constraint::Percentage(6),  // Sys
-        Constraint::Percentage(11), // Alloc
-        Constraint::Percentage(11), // Dealloc
-        Constraint::Percentage(14), // Diff
+        Constraint::Percentage(7),  // Avg %
+        Constraint::Percentage(12), // Alloc
+        Constraint::Percentage(12), // Dealloc
+        Constraint::Percentage(15), // Diff
     ];
 
     let title = " Threads - CPU usage and memory metrics. ";

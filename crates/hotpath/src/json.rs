@@ -217,6 +217,8 @@ pub(crate) struct ThreadMetrics {
     pub cpu_percent: Option<f64>,
     /// Peak CPU usage percentage ever observed for this thread
     pub cpu_percent_max: Option<f64>,
+    /// Lifetime average CPU utilization: (cpu_total / profiler_elapsed) * 100
+    pub cpu_percent_avg: Option<f64>,
     /// Total bytes allocated by this thread (only with hotpath-alloc)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alloc_bytes: Option<u64>,
@@ -247,6 +249,7 @@ impl ThreadMetrics {
             cpu_total: cpu_user + cpu_sys,
             cpu_percent: None,
             cpu_percent_max: None,
+            cpu_percent_avg: None,
             alloc_bytes: None,
             dealloc_bytes: None,
             mem_diff: None,

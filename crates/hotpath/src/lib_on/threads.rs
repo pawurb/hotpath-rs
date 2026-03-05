@@ -103,6 +103,7 @@ fn collector_loop(state: ThreadsStateRef, interval: Duration) {
                     Err(_) => continue,
                 };
                 let elapsed_secs = state_guard.last_sample_time.elapsed().as_secs_f64();
+                let profiler_elapsed = state_guard.start_time.elapsed().as_secs_f64();
 
                 // Calculate CPU percentages by comparing with previous sample
                 let mut new_metrics = Vec::with_capacity(raw_metrics.len());
@@ -120,6 +121,11 @@ fn collector_loop(state: ThreadsStateRef, interval: Duration) {
                         m_with_percent.alloc_bytes = Some(alloc);
                         m_with_percent.dealloc_bytes = Some(dealloc);
                         m_with_percent.mem_diff = Some(alloc as i64 - dealloc as i64);
+                    }
+
+                    if profiler_elapsed > 0.0 {
+                        m_with_percent.cpu_percent_avg =
+                            Some((m_with_percent.cpu_total / profiler_elapsed) * 100.0);
                     }
 
                     if let Some(pct) = m_with_percent.cpu_percent {
