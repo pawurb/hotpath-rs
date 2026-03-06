@@ -41,13 +41,6 @@ pub(crate) fn parse_delay(s: &str) -> Option<u64> {
     crate::output::parse_duration(s)
 }
 
-pub(crate) fn format_queue_status(queued: u64, capacity: Option<usize>) -> String {
-    match capacity {
-        Some(cap) => format!("{}/{}", queued, cap),
-        None => format!("{}/∞", queued),
-    }
-}
-
 pub fn format_bytes_signed(bytes: i64) -> String {
     let sign = if bytes < 0 { "-" } else { "" };
     let abs_bytes = bytes.unsigned_abs();
@@ -255,12 +248,8 @@ pub struct JsonChannelEntry {
     pub state: String,
     pub sent_count: u64,
     pub received_count: u64,
-    pub queued: u64,
-    pub max_queued: u64,
-    pub queue_status: String,
     pub type_name: String,
     pub type_size: usize,
-    pub queued_bytes: String,
     pub iter: u32,
 }
 
@@ -466,12 +455,6 @@ pub struct JsonDataFlowEntry {
     pub primary_count: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secondary_count: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub queue: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub queue_mem: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_queue: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub type_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

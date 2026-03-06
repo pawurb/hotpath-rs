@@ -67,11 +67,7 @@ pub(crate) fn report_channels_table(
         return;
     }
 
-    write_section_header(
-        writer,
-        "channels",
-        "Channel throughput and queue statistics.",
-    );
+    write_section_header(writer, "channels", "Channel throughput statistics.");
 
     let mut table = Table::new();
     table.add_row(Row::new(vec![
@@ -80,9 +76,6 @@ pub(crate) fn report_channels_table(
         styled_header("State"),
         styled_header("Sent"),
         styled_header("Received"),
-        styled_header("Queued"),
-        styled_header("Max Q"),
-        styled_header("Mem"),
     ]));
 
     for channel_stats in channels {
@@ -97,9 +90,6 @@ pub(crate) fn report_channels_table(
             Cell::new(channel_stats.state.as_str()),
             Cell::new(&channel_stats.sent_count.to_string()),
             Cell::new(&channel_stats.received_count.to_string()),
-            Cell::new(&channel_stats.queued().to_string()),
-            Cell::new(&channel_stats.max_queued.to_string()),
-            Cell::new(&format_bytes(channel_stats.queued_bytes())),
         ]));
     }
 

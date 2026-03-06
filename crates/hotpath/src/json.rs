@@ -18,7 +18,6 @@ pub(crate) enum ChannelState {
     #[default]
     Active,
     Closed,
-    Full,
     Notified,
 }
 
@@ -27,7 +26,6 @@ impl ChannelState {
         match self {
             ChannelState::Active => "active",
             ChannelState::Closed => "closed",
-            ChannelState::Full => "full",
             ChannelState::Notified => "notified",
         }
     }

@@ -131,10 +131,9 @@ Returns JSON array with:
 - label: optional custom label
 - channel_type: "bounded", "unbounded", or "oneshot"
 - sent/received: message counts
-- queue_size: current pending messages (high values indicate backpressure)
-- state: "active", "closed", "full"
+- state: "active", "closed"
 
-Look for channels with growing queue_size or "full" state to identify bottlenecks."#
+Use to track channel throughput and identify stalled or closed channels."#
     )]
     async fn channels(&self) -> Result<CallToolResult, McpError> {
         log_debug("Tool called: channels");

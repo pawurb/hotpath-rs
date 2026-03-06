@@ -54,7 +54,6 @@ fn state_style(state: &str) -> Style {
     match state {
         "active" | "Active" => Style::default().fg(Color::Green),
         "closed" | "Closed" => Style::default().fg(Color::Yellow),
-        "full" => Style::default().fg(Color::Red),
         "Ready" => Style::default().fg(Color::Green),
         "Cancelled" => Style::default().fg(Color::Red),
         "Suspended" => Style::default().fg(Color::Yellow),
@@ -78,14 +77,6 @@ fn format_counts(entry: &JsonDataFlowEntry) -> String {
     }
 }
 
-fn format_queue(entry: &JsonDataFlowEntry) -> &str {
-    entry.queue.as_deref().unwrap_or("-")
-}
-
-fn format_max_queue(entry: &JsonDataFlowEntry) -> &str {
-    entry.max_queue.as_deref().unwrap_or("-")
-}
-
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_data_flow_panel(
@@ -105,8 +96,6 @@ pub(crate) fn render_data_flow_panel(
         Cell::from("Type"),
         Cell::from("Label"),
         Cell::from("State"),
-        Cell::from("Queue"),
-        Cell::from("Max Q"),
         Cell::from("Count"),
     ])
     .style(common_styles::HEADER_STYLE_CYAN)
@@ -119,12 +108,6 @@ pub(crate) fn render_data_flow_panel(
             let type_cell =
                 Cell::from(type_text).style(Style::default().fg(type_color(entry.data_flow_type)));
 
-            let state_text = if entry.state == "full" {
-                format!("⚠ {}", entry.state)
-            } else {
-                entry.state.clone()
-            };
-
             let display_label = match entry.data_flow_type {
                 DataFlowType::Future => hotpath::shorten_function_name(&entry.label),
                 _ => entry.label.clone(),
@@ -133,9 +116,7 @@ pub(crate) fn render_data_flow_panel(
             Row::new(vec![
                 type_cell,
                 Cell::from(truncate_left(&display_label, label_width)),
-                Cell::from(state_text).style(state_style(&entry.state)),
-                Cell::from(format_queue(entry)),
-                Cell::from(format_max_queue(entry)),
+                Cell::from(entry.state.clone()).style(state_style(&entry.state)),
                 Cell::from(format_counts(entry)),
             ])
         })
@@ -143,10 +124,8 @@ pub(crate) fn render_data_flow_panel(
 
     let widths = [
         Constraint::Length(12),     // Type (Channel[∞], Channel[100], etc.)
-        Constraint::Percentage(45), // Label
+        Constraint::Percentage(55), // Label
         Constraint::Length(10),     // State
-        Constraint::Length(8),      // Queue
-        Constraint::Length(8),      // Max Q
         Constraint::Length(12),     // Count
     ];
 

@@ -1,6 +1,6 @@
 # Rust async data flow monitoring: channels, streams, and futures
 
-`hotpath` lets you observe async data flow in real time - across Rust channels, streams, and futures. See channel backlogs build up, identify slow consumers, monitor futures resolution, and discover data flow bottlenecks while your system is running. With minimal instrumentation, you can get a clear picture of how data moves through your app's async pipeline.
+`hotpath` lets you observe async data flow in real time - across Rust channels, streams, and futures. Track channel throughput, identify slow consumers, monitor futures resolution, and discover data flow bottlenecks while your system is running. With minimal instrumentation, you can get a clear picture of how data moves through your app's async pipeline.
 
 All monitoring macros (`channel!`, `stream!`, `future!` and `future_fn`) are noop unless `hotpath` feature is activated.
 
@@ -69,9 +69,9 @@ Tokio, crossbeam, and async-channel channels don't require this parameter becaus
 
 ### A note on accuracy
 
-`hotpath` instruments channels by using a proxy on the receive side with the capacity of 1. Messages flow directly into your original channel, then through a proxy before reaching the consumer. This design adds 1 slot of extra buffering for bounded channels.
+`hotpath` instruments channels by using a proxy on the receive side with the capacity of 1. Messages flow directly into your original channel, then through a proxy before reaching the consumer. Sent/received counts are observed at the proxy boundary (between the original channel and the proxy), not at the final consumer. In practice, the observable results closely reflect the real ones - counts will match exactly once messages pass through the proxy. 
 
-Please note that enabling monitoring can subtly affect channel behavior in some cases. For example, using `try_send` may behave slightly differently since the proxy adds 1 slot of extra capacity. Also some wrappers currently not propagate info about receiver getting dropped.
+Please note that enabling monitoring can subtly affect channel behavior in some cases. For example, using `try_send` may behave slightly differently since the proxy adds 1 slot of extra capacity. Also some wrappers currently do not propagate info about receiver getting dropped.
 
 I'm actively improving the library, so any feedback, issues, bug reports are appreciated.
 
