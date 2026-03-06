@@ -5,12 +5,12 @@ use crate::tid::current_tid;
 
 pub(crate) const MAX_DEPTH: usize = 64;
 
-/// Maximum number of threads we can track (fixed size to avoid allocations in allocator)
 const MAX_THREADS: usize = 256;
+const SLOT_UNSET: u32 = u32::MAX;
 
-/// Per-thread allocation statistics (lock-free)
+#[repr(align(64))]
 pub(crate) struct ThreadAllocStats {
-    /// Thread ID (0 means slot is unused)
+    /// Thread ID (0 unused)
     pub(crate) tid: AtomicU64,
     pub(crate) alloc_bytes: AtomicU64,
     pub(crate) dealloc_bytes: AtomicU64,
@@ -67,12 +67,27 @@ pub(crate) fn get_thread_alloc_stats(os_tid: u64) -> Option<(u64, u64)> {
 }
 
 #[inline]
-fn get_or_create_slot(tid: u64) -> Option<&'static ThreadAllocStats> {
-    for slot in &THREAD_ALLOC_STATS {
+fn get_or_create_slot_cached() -> Option<&'static ThreadAllocStats> {
+    THREAD_ALLOC_SLOT_IDX.with(|slot_idx| {
+        let cached_idx = slot_idx.get();
+        if cached_idx != SLOT_UNSET {
+            return Some(&THREAD_ALLOC_STATS[cached_idx as usize]);
+        }
+
+        let tid = current_tid();
+        let slot_idx_value = get_or_create_slot_index_slow(tid)?;
+        slot_idx.set(slot_idx_value as u32);
+        Some(&THREAD_ALLOC_STATS[slot_idx_value])
+    })
+}
+
+#[cold]
+fn get_or_create_slot_index_slow(tid: u64) -> Option<usize> {
+    for (idx, slot) in THREAD_ALLOC_STATS.iter().enumerate() {
         let slot_tid = slot.tid.load(Ordering::Acquire);
 
         if slot_tid == tid {
-            return Some(slot);
+            return Some(idx);
         }
 
         if slot_tid == 0 {
@@ -80,8 +95,8 @@ fn get_or_create_slot(tid: u64) -> Option<&'static ThreadAllocStats> {
                 .tid
                 .compare_exchange(0, tid, Ordering::AcqRel, Ordering::Acquire)
             {
-                Ok(_) => return Some(slot),
-                Err(current) if current == tid => return Some(slot),
+                Ok(_) => return Some(idx),
+                Err(current) if current == tid => return Some(idx),
                 Err(_) => continue,
             }
         }
@@ -110,6 +125,8 @@ pub(crate) struct AllocationInfoStack {
 }
 
 thread_local! {
+    static THREAD_ALLOC_SLOT_IDX: Cell<u32> = const { Cell::new(SLOT_UNSET) };
+
     pub(crate) static ALLOCATIONS: AllocationInfoStack = const { AllocationInfoStack {
         depth: Cell::new(0),
         elements: [const { AllocationInfo {
@@ -138,13 +155,10 @@ pub(crate) fn track_alloc(size: usize) {
         return;
     }
 
-    if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) == 0 {
-        return;
-    }
-
-    let tid = current_tid();
-    if let Some(slot) = get_or_create_slot(tid) {
-        slot.alloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+    if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) != 0 {
+        if let Some(slot) = get_or_create_slot_cached() {
+            slot.alloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        }
     }
 }
 
@@ -155,13 +169,10 @@ pub(crate) fn track_dealloc(size: usize) {
         return;
     }
 
-    if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) == 0 {
-        return;
-    }
-
-    let tid = current_tid();
-    if let Some(slot) = get_or_create_slot(tid) {
-        slot.dealloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+    if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) != 0 {
+        if let Some(slot) = get_or_create_slot_cached() {
+            slot.dealloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        }
     }
 }
 
