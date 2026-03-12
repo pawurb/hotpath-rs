@@ -124,6 +124,7 @@ pub struct FunctionMetricsDiff {
 #[derive(Debug, Clone)]
 pub struct ThreadMetricsDiff {
     pub thread_name: String,
+    pub cpu_percent_avg: Option<MetricDiff>,
     pub cpu_percent_max: Option<MetricDiff>,
     pub alloc_bytes: Option<MetricDiff>,
     pub dealloc_bytes: Option<MetricDiff>,
@@ -470,6 +471,7 @@ fn build_thread_diff(
         } else {
             before.name.clone()
         },
+        cpu_percent_avg: make_percent_diff(&before.cpu_percent_avg, &after.cpu_percent_avg),
         cpu_percent_max: make_percent_diff(&before.cpu_percent_max, &after.cpu_percent_max),
         alloc_bytes: make_alloc_diff(&before.alloc_bytes, &after.alloc_bytes),
         dealloc_bytes: make_alloc_diff(&before.dealloc_bytes, &after.dealloc_bytes),
@@ -493,7 +495,7 @@ pub fn compare_threads(
         status_code: String::new(),
         cpu_percent: None,
         cpu_percent_max: Some("0.0%".to_string()),
-        cpu_percent_avg: None,
+        cpu_percent_avg: Some("0.0%".to_string()),
         alloc_bytes: Some("0 B".to_string()),
         dealloc_bytes: Some("0 B".to_string()),
         mem_diff: Some("0 B".to_string()),
@@ -631,6 +633,7 @@ pub fn build_threads_table(
     let mut table = Table::new();
     let mut header = vec![
         styled_header("Thread", use_colors),
+        styled_header("CPU % Avg", use_colors),
         styled_header("CPU % Max", use_colors),
     ];
     if has_alloc {
@@ -651,7 +654,11 @@ pub fn build_threads_table(
             diff.thread_name.clone()
         };
 
-        let mut row = vec![Cell::new(&name), Cell::new(&fmt(&diff.cpu_percent_max))];
+        let mut row = vec![
+            Cell::new(&name),
+            Cell::new(&fmt(&diff.cpu_percent_avg)),
+            Cell::new(&fmt(&diff.cpu_percent_max)),
+        ];
         if has_alloc {
             row.extend([
                 Cell::new(&fmt(&diff.alloc_bytes)),
