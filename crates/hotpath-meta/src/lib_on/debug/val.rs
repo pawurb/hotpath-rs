@@ -1,6 +1,7 @@
 //! Value metrics - key-value logging for arbitrary values.
 
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use crate::instant::Instant;
 
@@ -19,13 +20,13 @@ fn get_thread_id() -> Option<u64> {
 
 pub struct ValHandle {
     id: u32,
-    key: String,
+    key: Arc<str>,
     source: &'static str,
 }
 
 impl ValHandle {
     #[inline]
-    pub fn new(key: impl Into<String>, source: &'static str) -> Self {
+    pub fn new(key: impl Into<Arc<str>>, source: &'static str) -> Self {
         init_debug_state();
         let key = key.into();
         let id = get_or_create_val_id(&key);
@@ -90,7 +91,7 @@ impl From<&ValEntry> for JsonDebugEntry {
             entry_type: crate::json::DebugEntryType::Val,
             source,
             source_display,
-            expression: stats.key.clone(),
+            expression: stats.key.to_string(),
             log_count: stats.log_count,
             last_value,
         }
@@ -100,7 +101,7 @@ impl From<&ValEntry> for JsonDebugEntry {
 impl JsonDebugValLogs {
     pub(crate) fn from_stats(stats: &ValEntry, current_elapsed_ns: u64) -> Self {
         JsonDebugValLogs {
-            key: stats.key.clone(),
+            key: stats.key.to_string(),
             total_logs: stats.log_count,
             logs: stats
                 .logs

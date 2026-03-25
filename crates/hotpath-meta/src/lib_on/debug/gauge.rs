@@ -1,6 +1,7 @@
 //! Gauge metrics - numeric values with set/inc/dec operations.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 pub use crate::shared::IntoF64;
 
@@ -18,7 +19,7 @@ fn get_thread_id() -> Option<u64> {
 #[derive(Debug, Clone)]
 pub(crate) struct GaugeEntry {
     pub id: u32,
-    pub key: String,
+    pub key: Arc<str>,
     pub source: &'static str,
     pub current_value: f64,
     pub min_value: f64,
@@ -36,7 +37,7 @@ pub(crate) struct GaugeLog {
 }
 
 impl GaugeEntry {
-    pub fn new(id: u32, key: String, source: &'static str, initial_value: f64) -> Self {
+    pub fn new(id: u32, key: Arc<str>, source: &'static str, initial_value: f64) -> Self {
         Self {
             id,
             key,
@@ -52,13 +53,13 @@ impl GaugeEntry {
 
 pub struct GaugeHandle {
     id: u32,
-    key: String,
+    key: Arc<str>,
     source: &'static str,
 }
 
 impl GaugeHandle {
     #[inline]
-    pub fn new(key: impl Into<String>, source: &'static str) -> Self {
+    pub fn new(key: impl Into<Arc<str>>, source: &'static str) -> Self {
         init_debug_state();
         let key = key.into();
         let id = get_or_create_gauge_id(&key);
@@ -149,7 +150,7 @@ impl From<&GaugeEntry> for JsonDebugEntry {
             entry_type: crate::json::DebugEntryType::Gauge,
             source: stats.source.to_string(),
             source_display: truncate_source_path(stats.source),
-            expression: stats.key.clone(),
+            expression: stats.key.to_string(),
             log_count: stats.update_count,
             last_value: Some(format!("{}", stats.current_value)),
         }
@@ -159,7 +160,7 @@ impl From<&GaugeEntry> for JsonDebugEntry {
 impl JsonDebugGaugeLogs {
     pub(crate) fn from_stats(stats: &GaugeEntry, current_elapsed_ns: u64) -> Self {
         JsonDebugGaugeLogs {
-            key: stats.key.clone(),
+            key: stats.key.to_string(),
             total_logs: stats.update_count,
             logs: stats
                 .logs
