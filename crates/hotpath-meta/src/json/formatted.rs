@@ -698,6 +698,8 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<JsonThreadsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub debug: Option<JsonDebugList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_baseline: Option<JsonCpuBaseline>,
 }
 
@@ -712,6 +714,7 @@ impl Default for JsonReport {
             streams: None,
             futures: None,
             threads: None,
+            debug: None,
             cpu_baseline: None,
         }
     }

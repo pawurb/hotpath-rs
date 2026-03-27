@@ -3,7 +3,11 @@ use std::io::Write;
 use prettytable::{color, Attr, Cell, Row, Table};
 
 use crate::channels::{compare_channel_entries, resolve_label, ChannelEntry, CHANNELS_STATE};
+use crate::debug::{
+    get_sorted_debug_dbg_entries, get_sorted_debug_gauge_entries, get_sorted_debug_val_entries,
+};
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
+use crate::json::JsonDebugEntry;
 use crate::json::{
     JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonStreamEntry,
     JsonStreamsList,
@@ -373,4 +377,71 @@ pub(crate) fn collect_threads_json(limit: usize) -> crate::json::JsonThreadsList
         json.data.truncate(limit);
     }
     json
+}
+
+pub(crate) fn report_debug_table(writer: &mut dyn Write) {
+    let dbg_entries = get_sorted_debug_dbg_entries();
+    let val_entries = get_sorted_debug_val_entries();
+    let gauge_entries = get_sorted_debug_gauge_entries();
+
+    if dbg_entries.is_empty() && val_entries.is_empty() && gauge_entries.is_empty() {
+        return;
+    }
+
+    write_section_header(writer, "debug", "Debug last values (dbg!, val!, gauge!).");
+
+    let header = vec![
+        styled_header("Type"),
+        styled_header("Key/Expr"),
+        styled_header("Value"),
+        styled_header("Updates"),
+        styled_header("Source"),
+    ];
+
+    let mut table = Table::new();
+    table.add_row(Row::new(header));
+
+    let mut entries: Vec<JsonDebugEntry> = Vec::new();
+    entries.extend(dbg_entries.iter().map(JsonDebugEntry::from));
+    entries.extend(val_entries.iter().map(JsonDebugEntry::from));
+    entries.extend(gauge_entries.iter().map(JsonDebugEntry::from));
+
+    for entry in &entries {
+        let value = entry.last_value.as_deref().unwrap_or("-");
+        table.add_row(Row::new(vec![
+            Cell::new(entry.entry_type.as_str()),
+            Cell::new(&entry.expression),
+            Cell::new(value),
+            Cell::new(&entry.log_count.to_string()),
+            Cell::new(&entry.source_display),
+        ]));
+    }
+
+    let _ = writeln!(writer);
+    print_table(&table, writer);
+    let _ = writeln!(writer);
+}
+
+pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::JsonDebugList {
+    let mut entries: Vec<JsonDebugEntry> = Vec::new();
+    entries.extend(
+        get_sorted_debug_dbg_entries()
+            .iter()
+            .map(JsonDebugEntry::from),
+    );
+    entries.extend(
+        get_sorted_debug_val_entries()
+            .iter()
+            .map(JsonDebugEntry::from),
+    );
+    entries.extend(
+        get_sorted_debug_gauge_entries()
+            .iter()
+            .map(JsonDebugEntry::from),
+    );
+
+    crate::json::JsonDebugList {
+        current_elapsed_ns: elapsed.as_nanos() as u64,
+        entries,
+    }
 }

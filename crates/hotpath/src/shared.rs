@@ -8,6 +8,7 @@ pub enum Section {
     Streams,
     Futures,
     Threads,
+    Debug,
 }
 
 impl Section {
@@ -19,6 +20,7 @@ impl Section {
             Section::Streams,
             Section::Futures,
             Section::Threads,
+            Section::Debug,
         ]
     }
 
@@ -30,6 +32,7 @@ impl Section {
             Section::Streams => "streams",
             Section::Futures => "futures",
             Section::Threads => "threads",
+            Section::Debug => "debug",
         }
     }
 
@@ -41,6 +44,7 @@ impl Section {
             "streams" => Some(Section::Streams),
             "futures" => Some(Section::Futures),
             "threads" => Some(Section::Threads),
+            "debug" => Some(Section::Debug),
             _ => None,
         }
     }

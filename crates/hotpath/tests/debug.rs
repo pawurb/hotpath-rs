@@ -301,4 +301,161 @@ pub mod tests {
         let _ = child.kill();
         let _ = child.wait();
     }
+
+    fn run_debug_report_json(report: &str) -> serde_json::Value {
+        let output = Command::new("cargo")
+            .env("HOTPATH_OUTPUT_FORMAT", "json")
+            .env("HOTPATH_REPORT", report)
+            .env("HOTPATH_METRICS_SERVER_OFF", "true")
+            .args([
+                "run",
+                "-p",
+                "test-debug",
+                "--example",
+                "debug_report",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        serde_json::from_str(stdout.lines().last().expect("No JSON output line"))
+            .expect("Failed to parse JSON report")
+    }
+
+    // HOTPATH_OUTPUT_FORMAT=json HOTPATH_REPORT=debug HOTPATH_METRICS_SERVER_OFF=true cargo run -p test-debug --example debug_report --features hotpath
+    #[test]
+    fn test_debug_report_json() {
+        let report = run_debug_report_json("debug");
+
+        let entries = report["debug"]["entries"]
+            .as_array()
+            .expect("Expected debug.entries array");
+
+        assert!(
+            !entries.is_empty(),
+            "Expected at least one debug entry in report"
+        );
+
+        // Check gauge entries
+        let gauge_entries: Vec<_> = entries
+            .iter()
+            .filter(|e| e["entry_type"].as_str() == Some("gauge"))
+            .collect();
+        let gauge_keys: Vec<&str> = gauge_entries
+            .iter()
+            .filter_map(|e| e["expression"].as_str())
+            .collect();
+        assert!(
+            gauge_keys.contains(&"queue_size"),
+            "Expected 'queue_size' gauge in report, got: {:?}",
+            gauge_keys
+        );
+        assert!(
+            gauge_keys.contains(&"connections"),
+            "Expected 'connections' gauge in report, got: {:?}",
+            gauge_keys
+        );
+
+        // Check queue_size has the right update count (set + inc + dec = 3)
+        let queue_size = gauge_entries
+            .iter()
+            .find(|e| e["expression"].as_str() == Some("queue_size"))
+            .expect("queue_size entry not found");
+        assert!(
+            queue_size["log_count"].as_u64().unwrap_or(0) >= 3,
+            "Expected queue_size to have at least 3 updates"
+        );
+        assert_eq!(
+            queue_size["last_value"].as_str(),
+            Some("12"),
+            "Expected queue_size value to be 12 (set 10, inc 5, dec 3)"
+        );
+
+        // Check val entries
+        let val_keys: Vec<&str> = entries
+            .iter()
+            .filter(|e| e["entry_type"].as_str() == Some("val"))
+            .filter_map(|e| e["expression"].as_str())
+            .collect();
+        assert!(
+            val_keys.contains(&"counter"),
+            "Expected 'counter' val in report, got: {:?}",
+            val_keys
+        );
+        assert!(
+            val_keys.contains(&"status"),
+            "Expected 'status' val in report, got: {:?}",
+            val_keys
+        );
+
+        // Check dbg entries
+        let dbg_entries: Vec<_> = entries
+            .iter()
+            .filter(|e| e["entry_type"].as_str() == Some("dbg"))
+            .collect();
+        assert!(
+            !dbg_entries.is_empty(),
+            "Expected at least one dbg entry in report"
+        );
+
+        // All entries should have non-empty source and log_count >= 1
+        for entry in entries {
+            assert!(
+                !entry["source"].as_str().unwrap_or("").is_empty(),
+                "Expected non-empty source for entry: {:?}",
+                entry
+            );
+            assert!(
+                entry["log_count"].as_u64().unwrap_or(0) >= 1,
+                "Expected log_count >= 1 for entry: {:?}",
+                entry
+            );
+        }
+    }
+
+    // HOTPATH_REPORT=debug HOTPATH_METRICS_SERVER_OFF=true cargo run -p test-debug --example debug_report --features hotpath
+    #[test]
+    fn test_debug_report_table() {
+        let output = Command::new("cargo")
+            .env("HOTPATH_REPORT", "debug")
+            .env("HOTPATH_METRICS_SERVER_OFF", "true")
+            .args([
+                "run",
+                "-p",
+                "test-debug",
+                "--example",
+                "debug_report",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let expected_content = ["debug", "gauge!", "val!", "dbg!", "queue_size", "counter"];
+
+        for expected in expected_content {
+            assert!(
+                stdout.contains(expected),
+                "Expected '{}' in table output.\n\nGot:\n{}",
+                expected,
+                stdout
+            );
+        }
+    }
 }

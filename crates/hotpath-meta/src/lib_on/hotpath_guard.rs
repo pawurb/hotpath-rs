@@ -612,6 +612,12 @@ impl Drop for HotpathGuard {
                             }
                         }
                     }
+                    Section::Debug => {
+                        let json = report::collect_debug_json(elapsed);
+                        if !json.entries.is_empty() {
+                            report.debug = Some(json);
+                        }
+                    }
                 }
             }
 
@@ -752,6 +758,11 @@ impl Drop for HotpathGuard {
                         #[cfg(feature = "threads")]
                         if matches!(format, Format::Table) {
                             report::report_threads_table(&mut writer, self.threads_limit);
+                        }
+                    }
+                    Section::Debug => {
+                        if matches!(format, Format::Table) {
+                            report::report_debug_table(&mut writer);
                         }
                     }
                 }
