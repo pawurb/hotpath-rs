@@ -302,10 +302,12 @@ pub mod tests {
         let _ = child.wait();
     }
 
-    fn run_debug_report_json(report: &str) -> serde_json::Value {
+    // HOTPATH_OUTPUT_FORMAT=json HOTPATH_REPORT=debug HOTPATH_METRICS_SERVER_OFF=true cargo run -p test-debug --example debug_report --features hotpath
+    #[test]
+    fn test_debug_report_json() {
         let output = Command::new("cargo")
             .env("HOTPATH_OUTPUT_FORMAT", "json")
-            .env("HOTPATH_REPORT", report)
+            .env("HOTPATH_REPORT", "debug")
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
             .args([
                 "run",
@@ -326,14 +328,9 @@ pub mod tests {
         );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        serde_json::from_str(stdout.lines().last().expect("No JSON output line"))
-            .expect("Failed to parse JSON report")
-    }
-
-    // HOTPATH_OUTPUT_FORMAT=json HOTPATH_REPORT=debug HOTPATH_METRICS_SERVER_OFF=true cargo run -p test-debug --example debug_report --features hotpath
-    #[test]
-    fn test_debug_report_json() {
-        let report = run_debug_report_json("debug");
+        let report: serde_json::Value =
+            serde_json::from_str(stdout.lines().last().expect("No JSON output line"))
+                .expect("Failed to parse JSON report");
 
         let entries = report["debug"]["entries"]
             .as_array()
