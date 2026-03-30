@@ -104,5 +104,11 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 features = ["hotpath", "hotpath-alloc"]
 
 [dev-dependencies]
+criterion = "0.5"
 serde_json = "1.0"
 ureq = { version = "3.1", features = ["json"] }
+
+[[bench]]
+name = "benchmark_gauge"
+harness = false
+required-features = ["hotpath"]
