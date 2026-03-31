@@ -44,9 +44,14 @@ fn current_tid_uncached() -> u64 {
         current_tid_macos()
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
     {
-        // current_tid() is only implemented for Linux and macOS");
+        current_tid_windows()
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        // current_tid() is only implemented for Linux, macOS and Windows
         0
     }
 }
@@ -64,4 +69,11 @@ fn current_tid_macos() -> u64 {
         let pthread = libc::pthread_self();
         libc::pthread_mach_thread_np(pthread) as u64
     }
+}
+
+#[cfg(target_os = "windows")]
+#[inline]
+fn current_tid_windows() -> u64 {
+    // windows v0.58 uses GetCurrentThreadId() from Win32::System::Threading
+    unsafe { windows::Win32::System::Threading::GetCurrentThreadId() as u64 }
 }
