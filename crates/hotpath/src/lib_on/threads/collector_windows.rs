@@ -25,7 +25,7 @@ impl ScopedHandle {
 
     /// Returns true if the underlying handle is invalid or null.
     fn is_invalid(&self) -> bool {
-        self.0.is_invalid() || self.0.0 == 0
+        self.0.is_invalid() || self.0 .0 == 0
     }
 
     /// Returns the raw handle for use with Win32 APIs.
@@ -94,8 +94,8 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
 fn query_thread_metrics(tid: u32) -> Result<ThreadMetrics, Error> {
     unsafe {
         // Open the thread with minimal required permissions for metrics collection.
-        let handle = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid)
-            .map(ScopedHandle::new)?;
+        let handle =
+            OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid).map(ScopedHandle::new)?;
 
         let mut creation_time = FILETIME::default();
         let mut exit_time = FILETIME::default();
@@ -182,7 +182,10 @@ mod tests {
     #[test]
     fn test_windows_collector_functionality() {
         let metrics = collect_thread_metrics().expect("Should succeed in capturing metrics");
-        assert!(!metrics.is_empty(), "Captured thread list should not be empty");
+        assert!(
+            !metrics.is_empty(),
+            "Captured thread list should not be empty"
+        );
 
         for m in &metrics {
             assert!(m.os_tid > 0, "TID should be positive");
@@ -207,6 +210,9 @@ mod tests {
         let subsequent = collect_thread_metrics().unwrap();
         let subsequent_sum: f64 = subsequent.iter().map(|m| m.cpu_total).sum();
 
-        assert!(subsequent_sum >= initial_sum, "CPU time should not decrease");
+        assert!(
+            subsequent_sum >= initial_sum,
+            "CPU time should not decrease"
+        );
     }
 }
