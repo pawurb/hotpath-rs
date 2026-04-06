@@ -3,7 +3,7 @@ async fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
         .format(hotpath::Format::Json)
         .output_path("tmp/channels_output_test.json")
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build();
 
     let (tx, mut rx) = hotpath::channel!(

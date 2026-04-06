@@ -40,7 +40,7 @@ async fn attributed_with_log() -> String {
 #[tokio::main]
 async fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![hotpath::Section::Futures])
+        .sections(vec![hotpath::Section::Futures])
         .build();
 
     println!("=== Futures Instrumentation Demo ===\n");

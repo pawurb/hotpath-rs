@@ -87,9 +87,9 @@ impl HotpathGuardBuilder {
     }
 
     /// Sets the maximum number of items shown in every report section (except debug).
-    /// Set to `0` for unlimited. Per-resource limits (e.g. `with_functions_limit`)
+    /// Set to `0` for unlimited. Per-resource limits (e.g. `functions_limit`)
     /// called after this method will override the global value for that section.
-    pub fn with_limit(mut self, limit: usize) -> Self {
+    pub fn limit(mut self, limit: usize) -> Self {
         self.functions_limit = limit;
         self.channels_limit = limit;
         self.streams_limit = limit;
@@ -98,27 +98,27 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn with_functions_limit(mut self, limit: usize) -> Self {
+    pub fn functions_limit(mut self, limit: usize) -> Self {
         self.functions_limit = limit;
         self
     }
 
-    pub fn with_channels_limit(mut self, limit: usize) -> Self {
+    pub fn channels_limit(mut self, limit: usize) -> Self {
         self.channels_limit = limit;
         self
     }
 
-    pub fn with_streams_limit(mut self, limit: usize) -> Self {
+    pub fn streams_limit(mut self, limit: usize) -> Self {
         self.streams_limit = limit;
         self
     }
 
-    pub fn with_futures_limit(mut self, limit: usize) -> Self {
+    pub fn futures_limit(mut self, limit: usize) -> Self {
         self.futures_limit = limit;
         self
     }
 
-    pub fn with_threads_limit(mut self, limit: usize) -> Self {
+    pub fn threads_limit(mut self, limit: usize) -> Self {
         self.threads_limit = limit;
         self
     }
@@ -133,7 +133,7 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn with_sections(mut self, sections: Vec<Section>) -> Self {
+    pub fn sections(mut self, sections: Vec<Section>) -> Self {
         self.sections = Some(sections);
         self
     }

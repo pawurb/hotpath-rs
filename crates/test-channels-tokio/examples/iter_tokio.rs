@@ -11,7 +11,7 @@ async fn main() {
     };
 
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build();
 
     println!("Creating channels in loops...\n");

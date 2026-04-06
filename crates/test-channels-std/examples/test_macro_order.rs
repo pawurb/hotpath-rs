@@ -3,7 +3,7 @@ use std::time::Duration;
 
 fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build();
 
     // Test: label first, then capacity

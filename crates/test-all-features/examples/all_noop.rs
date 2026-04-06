@@ -73,13 +73,13 @@ async fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("noop_builder")
         .percentiles(&[50.0, 95.0, 99.0])
         .format(hotpath::Format::Table)
-        .with_functions_limit(20)
-        .with_channels_limit(10)
-        .with_streams_limit(10)
-        .with_futures_limit(10)
-        .with_threads_limit(5)
+        .functions_limit(20)
+        .channels_limit(10)
+        .streams_limit(10)
+        .futures_limit(10)
+        .threads_limit(5)
         .output_path("/dev/null")
-        .with_sections(vec![
+        .sections(vec![
             hotpath::Section::FunctionsTiming,
             hotpath::Section::Channels,
         ])

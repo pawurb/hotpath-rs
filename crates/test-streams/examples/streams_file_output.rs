@@ -5,7 +5,7 @@ fn main() {
         let _streams_guard = hotpath::HotpathGuardBuilder::new("main")
             .format(hotpath::Format::Json)
             .output_path("tmp/streams_output_test.json")
-            .with_sections(vec![hotpath::Section::Streams])
+            .sections(vec![hotpath::Section::Streams])
             .build();
 
         let stream = hotpath::stream!(stream::iter(1..=5), label = "number-stream");

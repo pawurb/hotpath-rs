@@ -3,7 +3,7 @@ use std::time::Duration;
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     hotpath::HotpathGuardBuilder::new("guard_timeout_channels")
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build_with_shutdown(Duration::from_secs(1));
 
     let (tx, mut rx) = hotpath::channel!(

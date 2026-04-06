@@ -248,27 +248,27 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn with_functions_limit(self, _limit: usize) -> Self {
+    pub fn functions_limit(self, _limit: usize) -> Self {
         self
     }
 
-    pub fn with_channels_limit(self, _limit: usize) -> Self {
+    pub fn channels_limit(self, _limit: usize) -> Self {
         self
     }
 
-    pub fn with_streams_limit(self, _limit: usize) -> Self {
+    pub fn streams_limit(self, _limit: usize) -> Self {
         self
     }
 
-    pub fn with_futures_limit(self, _limit: usize) -> Self {
+    pub fn futures_limit(self, _limit: usize) -> Self {
         self
     }
 
-    pub fn with_threads_limit(self, _limit: usize) -> Self {
+    pub fn threads_limit(self, _limit: usize) -> Self {
         self
     }
 
-    pub fn with_limit(self, _limit: usize) -> Self {
+    pub fn limit(self, _limit: usize) -> Self {
         self
     }
 
@@ -276,7 +276,7 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn with_sections(self, _sections: Vec<Section>) -> Self {
+    pub fn sections(self, _sections: Vec<Section>) -> Self {
         self
     }
 

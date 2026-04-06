@@ -70,7 +70,7 @@ mod tests {
             let _channels_guard = hotpath::HotpathGuardBuilder::new("test_channel")
                 .format(hotpath::Format::Json)
                 .output_path(&temp_file)
-                .with_sections(vec![hotpath::Section::Channels])
+                .sections(vec![hotpath::Section::Channels])
                 .build();
 
             let (tx, mut rx) = hotpath::channel!(

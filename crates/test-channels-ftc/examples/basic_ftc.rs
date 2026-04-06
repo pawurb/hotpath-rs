@@ -15,7 +15,7 @@ fn main() {
         };
 
         let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
-            .with_sections(vec![hotpath::Section::Channels])
+            .sections(vec![hotpath::Section::Channels])
             .build();
 
         let (txa, mut _rxa) = hotpath::channel!(

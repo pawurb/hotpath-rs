@@ -5,7 +5,7 @@ use std::time::Duration;
 fn main() {
     smol::block_on(async {
         hotpath::HotpathGuardBuilder::new("guard_timeout_streams")
-            .with_sections(vec![hotpath::Section::Streams])
+            .sections(vec![hotpath::Section::Streams])
             .build_with_shutdown(Duration::from_secs(1));
 
         loop {

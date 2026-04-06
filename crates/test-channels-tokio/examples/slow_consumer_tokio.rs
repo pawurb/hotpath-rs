@@ -4,7 +4,7 @@ use tokio::time::{sleep, Duration};
 #[tokio::main]
 async fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build();
 
     println!("Slow Consumer Example:");

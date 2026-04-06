@@ -21,7 +21,7 @@ async fn timing_only() -> i32 {
 #[tokio::main]
 async fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![
+        .sections(vec![
             hotpath::Section::FunctionsTiming,
             hotpath::Section::Futures,
         ])

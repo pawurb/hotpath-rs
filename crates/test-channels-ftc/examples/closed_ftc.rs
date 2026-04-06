@@ -6,7 +6,7 @@ use std::time::Duration;
 fn main() {
     smol::block_on(async {
         let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
-            .with_sections(vec![hotpath::Section::Channels])
+            .sections(vec![hotpath::Section::Channels])
             .build();
 
         let (txa, mut rxa) = hotpath::channel!(

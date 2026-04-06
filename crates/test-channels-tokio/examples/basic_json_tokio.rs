@@ -3,7 +3,7 @@
 async fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
         .format(hotpath::Format::JsonPretty)
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build();
 
     let (txa, _rxa) = hotpath::channel!(tokio::sync::mpsc::unbounded_channel::<i32>());

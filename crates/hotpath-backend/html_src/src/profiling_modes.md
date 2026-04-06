@@ -56,7 +56,7 @@ fn main() { /* ... */ }
 fn main() { /* ... */ }
 ```
 
-The same applies to the builder API — `with_limit` sets all sections, then individual setters override:
+The same applies to the builder API — `limit` sets all sections, then individual setters override:
 
 ```rust
 use std::time::Duration;
@@ -69,8 +69,8 @@ fn example_function() {
 fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("my_program")
         .percentiles(&[95.0, 99.0])
-        .with_limit(10)
-        .with_functions_limit(20)
+        .limit(10)
+        .functions_limit(20)
         .format(hotpath::Format::Table)
         .build();
 

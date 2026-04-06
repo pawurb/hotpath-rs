@@ -11,7 +11,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![hotpath::Section::Futures])
+        .sections(vec![hotpath::Section::Futures])
         .build();
 
     println!("Creating futures in loops...\n");

@@ -9,7 +9,7 @@ async fn timeout_worker() -> u64 {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     hotpath::HotpathGuardBuilder::new("guard_timeout_futures")
-        .with_sections(vec![hotpath::Section::Futures])
+        .sections(vec![hotpath::Section::Futures])
         .build_with_shutdown(Duration::from_secs(1));
 
     loop {

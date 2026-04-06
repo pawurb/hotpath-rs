@@ -279,9 +279,9 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             .collect();
 
         if report_str.split(',').any(|s| s.trim() == "all") {
-            quote! { .with_sections(hotpath::Section::all()) }
+            quote! { .sections(hotpath::Section::all()) }
         } else if !section_tokens.is_empty() {
-            quote! { .with_sections(vec![#(#section_tokens),*]) }
+            quote! { .sections(vec![#(#section_tokens),*]) }
         } else {
             quote! {}
         }
@@ -295,27 +295,27 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let global_limit_call = match global_limit {
-        Some(l) => quote! { .with_limit(#l) },
+        Some(l) => quote! { .limit(#l) },
         None => quote! {},
     };
     let functions_limit_call = match functions_limit {
-        Some(l) => quote! { .with_functions_limit(#l) },
+        Some(l) => quote! { .functions_limit(#l) },
         None => quote! {},
     };
     let channels_limit_call = match channels_limit {
-        Some(l) => quote! { .with_channels_limit(#l) },
+        Some(l) => quote! { .channels_limit(#l) },
         None => quote! {},
     };
     let streams_limit_call = match streams_limit {
-        Some(l) => quote! { .with_streams_limit(#l) },
+        Some(l) => quote! { .streams_limit(#l) },
         None => quote! {},
     };
     let futures_limit_call = match futures_limit {
-        Some(l) => quote! { .with_futures_limit(#l) },
+        Some(l) => quote! { .futures_limit(#l) },
         None => quote! {},
     };
     let threads_limit_call = match threads_limit {
-        Some(l) => quote! { .with_threads_limit(#l) },
+        Some(l) => quote! { .threads_limit(#l) },
         None => quote! {},
     };
     let builder_chain = quote! {

@@ -1,7 +1,7 @@
 #[tokio::main]
 async fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build();
 
     let (tx, rx) = hotpath::channel!(tokio::sync::oneshot::channel::<String>());

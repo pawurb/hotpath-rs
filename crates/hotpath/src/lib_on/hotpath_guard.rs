@@ -62,11 +62,11 @@ use crate::Format;
 ///
 /// let _guard = HotpathGuardBuilder::new("main")
 ///     .percentiles(&[50.0, 95.0, 99.9])
-///     .with_functions_limit(20)
-///     .with_channels_limit(5)
+///     .functions_limit(20)
+///     .channels_limit(5)
 ///     .format(Format::JsonPretty)
 ///     .output_path("report.json")
-///     .with_sections(vec![Section::FunctionsTiming, Section::Channels])
+///     .sections(vec![Section::FunctionsTiming, Section::Channels])
 ///     .build();
 /// ```
 #[must_use = "builder is discarded without creating a guard"]
@@ -125,9 +125,9 @@ impl HotpathGuardBuilder {
     }
 
     /// Sets the maximum number of items shown in every report section (except debug).
-    /// Set to `0` for unlimited. Per-resource limits (e.g. `with_functions_limit`)
+    /// Set to `0` for unlimited. Per-resource limits (e.g. `functions_limit`)
     /// called after this method will override the global value for that section.
-    pub fn with_limit(mut self, limit: usize) -> Self {
+    pub fn limit(mut self, limit: usize) -> Self {
         self.functions_limit = limit;
         self.channels_limit = limit;
         self.streams_limit = limit;
@@ -137,31 +137,31 @@ impl HotpathGuardBuilder {
     }
 
     /// Maximum number of functions shown in the report. Set to `0` for unlimited.
-    pub fn with_functions_limit(mut self, limit: usize) -> Self {
+    pub fn functions_limit(mut self, limit: usize) -> Self {
         self.functions_limit = limit;
         self
     }
 
     /// Maximum number of channels shown in the report. Set to `0` for unlimited.
-    pub fn with_channels_limit(mut self, limit: usize) -> Self {
+    pub fn channels_limit(mut self, limit: usize) -> Self {
         self.channels_limit = limit;
         self
     }
 
     /// Maximum number of streams shown in the report. Set to `0` for unlimited.
-    pub fn with_streams_limit(mut self, limit: usize) -> Self {
+    pub fn streams_limit(mut self, limit: usize) -> Self {
         self.streams_limit = limit;
         self
     }
 
     /// Maximum number of futures shown in the report. Set to `0` for unlimited.
-    pub fn with_futures_limit(mut self, limit: usize) -> Self {
+    pub fn futures_limit(mut self, limit: usize) -> Self {
         self.futures_limit = limit;
         self
     }
 
     /// Maximum number of threads shown in the report. Set to `0` for unlimited.
-    pub fn with_threads_limit(mut self, limit: usize) -> Self {
+    pub fn threads_limit(mut self, limit: usize) -> Self {
         self.threads_limit = limit;
         self
     }
@@ -179,7 +179,7 @@ impl HotpathGuardBuilder {
     }
 
     /// Chooses which report sections to include. Overridden by `HOTPATH_REPORT` env var.
-    pub fn with_sections(mut self, sections: Vec<Section>) -> Self {
+    pub fn sections(mut self, sections: Vec<Section>) -> Self {
         self.sections = Some(sections);
         self
     }
@@ -345,7 +345,7 @@ impl HotpathGuard {
                 let _suspend = crate::lib_on::SuspendAllocTracking::new();
                 #[cfg(feature = "hotpath-meta")]
                 {
-                    let builder = hotpath_meta::HotpathGuardBuilder::new("hotpath-meta").with_functions_limit(10).with_threads_limit(5);
+                    let builder = hotpath_meta::HotpathGuardBuilder::new("hotpath-meta").functions_limit(10).threads_limit(5);
                     #[cfg(feature = "tui")]
                     let builder = builder.before_shutdown(ratatui::restore);
                     builder.build_with_shutdown(std::time::Duration::from_secs(0));

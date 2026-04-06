@@ -1,7 +1,7 @@
 #[allow(unused_mut)]
 fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")
-        .with_sections(vec![hotpath::Section::Channels])
+        .sections(vec![hotpath::Section::Channels])
         .build();
 
     let (txa, _rxa) = hotpath::channel!(crossbeam_channel::unbounded::<i32>(), log = true);

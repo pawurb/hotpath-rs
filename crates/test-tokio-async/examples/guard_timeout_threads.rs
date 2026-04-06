@@ -2,7 +2,7 @@ use std::time::Duration;
 
 fn main() {
     hotpath::HotpathGuardBuilder::new("guard_timeout_threads")
-        .with_sections(vec![hotpath::Section::Threads])
+        .sections(vec![hotpath::Section::Threads])
         .build_with_shutdown(Duration::from_secs(2));
 
     loop {
