@@ -227,7 +227,7 @@ impl App {
             total_allocated: None,
             description: "Waiting for data...".to_string(),
             caller_name: "unknown".to_string(),
-            percentiles: vec![95],
+            percentiles: vec![95.0],
             data: Vec::new(),
             displayed_count: 0,
             total_count: 0,

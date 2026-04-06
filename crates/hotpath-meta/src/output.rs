@@ -61,6 +61,24 @@ pub fn parse_duration(s: &str) -> Option<u64> {
     }
 }
 
+/// Formats a percentile value for use as a map key (e.g., `"p95"`, `"p99.9"`).
+pub fn format_percentile_key(p: f64) -> String {
+    if p.fract() == 0.0 {
+        format!("p{}", p as u64)
+    } else {
+        format!("p{}", p)
+    }
+}
+
+/// Formats a percentile value for display as a column header (e.g., `"P95"`, `"P99.9"`).
+pub fn format_percentile_header(p: f64) -> String {
+    if p.fract() == 0.0 {
+        format!("P{}", p as u64)
+    } else {
+        format!("P{}", p)
+    }
+}
+
 /// Formats a byte count into a human-readable string (e.g., "1.5 MB").
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];

@@ -109,7 +109,7 @@ fn get_emoji_for_diff(diff_percent: f64, threshold: Option<u32>) -> &'static str
 pub struct FunctionsComparison {
     pub profiling_mode: hotpath::ProfilingMode,
     pub description: String,
-    pub percentiles: Vec<u8>,
+    pub percentiles: Vec<f64>,
     pub function_diffs: Vec<FunctionMetricsDiff>,
 }
 
@@ -278,7 +278,7 @@ enum MetricKind {
 
 fn build_metrics_from_function(
     func: &JsonFunctionEntry,
-    percentiles: &[u8],
+    percentiles: &[f64],
     mode: &hotpath::ProfilingMode,
 ) -> Vec<(MetricKind, u64)> {
     use hotpath::ProfilingMode;
@@ -297,7 +297,7 @@ fn build_metrics_from_function(
     }
 
     for p in percentiles {
-        let key = format!("p{}", p);
+        let key = hotpath::format_percentile_key(*p);
         if let Some(formatted) = func.percentiles.get(&key) {
             if let Some(val) = parse_metric(formatted, mode) {
                 metrics.push((kind, val));
@@ -588,7 +588,10 @@ pub fn build_functions_table(
         styled_header("Avg", use_colors),
     ];
     for &p in &comparison.percentiles {
-        header_cells.push(styled_header(&format!("P{}", p), use_colors));
+        header_cells.push(styled_header(
+            &hotpath::format_percentile_header(p),
+            use_colors,
+        ));
     }
     header_cells.push(styled_header("Total", use_colors));
     header_cells.push(styled_header("% Total", use_colors));

@@ -61,7 +61,7 @@ use crate::Format;
 /// use hotpath::{HotpathGuardBuilder, Format, Section};
 ///
 /// let _guard = HotpathGuardBuilder::new("main")
-///     .percentiles(&[50, 95, 99])
+///     .percentiles(&[50.0, 95.0, 99.9])
 ///     .with_functions_limit(20)
 ///     .with_channels_limit(5)
 ///     .format(Format::JsonPretty)
@@ -72,7 +72,7 @@ use crate::Format;
 #[must_use = "builder is discarded without creating a guard"]
 pub struct HotpathGuardBuilder {
     caller_name: &'static str,
-    percentiles: Vec<u8>,
+    percentiles: Vec<f64>,
     format: Format,
     functions_limit: usize,
     channels_limit: usize,
@@ -105,7 +105,7 @@ impl HotpathGuardBuilder {
     pub fn new(caller_name: &'static str) -> Self {
         Self {
             caller_name,
-            percentiles: vec![95],
+            percentiles: vec![95.0],
             format: Format::Table,
             functions_limit: 15,
             channels_limit: 0,
@@ -118,8 +118,8 @@ impl HotpathGuardBuilder {
         }
     }
 
-    /// Sets which latency percentiles to compute (e.g. `&[50, 95, 99]`).
-    pub fn percentiles(mut self, percentiles: &[u8]) -> Self {
+    /// Sets which latency percentiles to compute (e.g. `&[50.0, 95.0, 99.9]`).
+    pub fn percentiles(mut self, percentiles: &[f64]) -> Self {
         self.percentiles = percentiles.to_vec();
         self
     }
@@ -280,7 +280,7 @@ impl HotpathGuard {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         caller_name: &'static str,
-        percentiles: &[u8],
+        percentiles: &[f64],
         limit: usize,
         format: Format,
         output_path: Option<PathBuf>,

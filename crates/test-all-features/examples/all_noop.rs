@@ -71,7 +71,7 @@ async fn main() {
     let _skipped = calc.skipped_method();
 
     let _guard = hotpath::HotpathGuardBuilder::new("noop_builder")
-        .percentiles(&[50, 95, 99])
+        .percentiles(&[50.0, 95.0, 99.0])
         .format(hotpath::Format::Table)
         .with_functions_limit(20)
         .with_channels_limit(10)

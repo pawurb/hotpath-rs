@@ -18,7 +18,7 @@ mod lib_off;
 ///
 /// # Parameters
 ///
-/// * `percentiles` - Array of percentile values (0-100) to compute. Default: `[95]`
+/// * `percentiles` - Array of percentile values (0.0-100.0) to compute, e.g. `[50, 95, 99.9]`. Default: `[95]`
 /// * `format` - Output format: `"table"` (default), `"json"`, `"json-pretty"`, or `"none"`
 /// * `limit` - Maximum number of functions in the report (0 = unlimited). Default: `15`
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_OUTPUT_PATH` env var.
@@ -39,7 +39,7 @@ mod lib_off;
 ///
 /// ```rust,no_run
 /// #[tokio::main]
-/// #[hotpath::main(percentiles = [50, 90, 95, 99])]
+/// #[hotpath::main(percentiles = [50, 90, 95, 99.9])]
 /// async fn main() {
 ///     // Your code here
 /// }

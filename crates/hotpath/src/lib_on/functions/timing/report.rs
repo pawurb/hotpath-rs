@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::json::JsonFunctionEntry;
 use crate::json::JsonFunctionsList;
 use crate::lib_on::functions::StatsConfig;
-use crate::output::{format_duration, ProfilingMode};
+use crate::output::{format_duration, format_percentile_key, ProfilingMode};
 
 use super::state::FunctionStats;
 
@@ -61,8 +61,11 @@ pub(crate) fn build_functions_list(
 
             let mut percentiles = HashMap::new();
             for &p in &config.percentiles {
-                let value = s.percentile(p as f64);
-                percentiles.insert(format!("p{}", p), format_duration(value.as_nanos() as u64));
+                let value = s.percentile(p);
+                percentiles.insert(
+                    format_percentile_key(p),
+                    format_duration(value.as_nanos() as u64),
+                );
             }
 
             JsonFunctionEntry {

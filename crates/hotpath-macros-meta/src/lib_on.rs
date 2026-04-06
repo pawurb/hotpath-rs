@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::Parser;
-use syn::{parse_macro_input, ImplItem, Item, ItemFn, LitInt, LitStr};
+use syn::{parse_macro_input, ImplItem, Item, ItemFn, Lit, LitInt, LitStr};
 
 #[derive(Clone, Copy)]
 pub(crate) enum Format {
@@ -31,7 +31,7 @@ impl Format {
 ///
 /// # Parameters
 ///
-/// * `percentiles` - Array of percentile values (0-100) to display in the report. Default: `[95]`
+/// * `percentiles` - Array of percentile values (0.0-100.0) to display in the report, e.g. `[50, 95, 99.9]`. Default: `[95]`
 /// * `format` - Output format as a string: `"table"` (default), `"json"`, `"json-pretty"`, or `"none"`
 /// * `limit` - Maximum number of functions to display in the report (0 = show all). Default: `15`
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_META_OUTPUT_PATH` env var.
@@ -52,7 +52,7 @@ impl Format {
 ///
 /// ```rust,no_run
 /// #[tokio::main]
-/// #[hotpath_meta::main(percentiles = [50, 90, 95, 99])]
+/// #[hotpath_meta::main(percentiles = [50, 90, 95, 99.9])]
 /// async fn main() {
 ///     // Your code here
 /// }
@@ -70,7 +70,7 @@ impl Format {
 /// Combined parameters:
 ///
 /// ```rust,no_run
-/// #[hotpath_meta::main(percentiles = [50, 99], format = "json")]
+/// #[hotpath_meta::main(percentiles = [50, 99.9], format = "json")]
 /// fn main() {
 ///     // Your code here
 /// }
@@ -123,7 +123,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let block = &input.block;
 
     // Defaults
-    let mut percentiles: Vec<u8> = vec![95];
+    let mut percentiles: Vec<f64> = vec![95.0];
     let mut format = Format::Table;
     let mut global_limit: Option<usize> = None;
     let mut functions_limit: Option<usize> = None;
@@ -143,9 +143,13 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 syn::bracketed!(content in meta.input);
                 let mut vals = Vec::new();
                 while !content.is_empty() {
-                    let li: LitInt = content.parse()?;
-                    let v: u8 = li.base10_parse()?;
-                    if !(0..=100).contains(&v) {
+                    let lit: Lit = content.parse()?;
+                    let v: f64 = match &lit {
+                        Lit::Int(li) => li.base10_parse::<u64>().map(|i| i as f64)?,
+                        Lit::Float(lf) => lf.base10_parse()?,
+                        _ => return Err(meta.error("Expected a number for percentile")),
+                    };
+                    if !(0.0..=100.0).contains(&v) {
                         return Err(
                             meta.error(format!("Invalid percentile {} (must be 0..=100)", v))
                         );

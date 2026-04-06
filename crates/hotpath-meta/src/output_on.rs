@@ -1,5 +1,7 @@
 use crate::json::JsonFunctionsList;
-use crate::output::{format_duration, shorten_function_name};
+use crate::output::{
+    format_duration, format_percentile_header, format_percentile_key, shorten_function_name,
+};
 use crate::shared::Section;
 use prettytable::{color, Attr, Cell, Row, Table};
 use std::io::Write;
@@ -53,7 +55,7 @@ pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFu
         "Avg".to_string(),
     ];
     for &p in &list.percentiles {
-        header_names.push(format!("P{}", p));
+        header_names.push(format_percentile_header(p));
     }
     header_names.push("Total".to_string());
     header_names.push("% Total".to_string());
@@ -82,7 +84,7 @@ pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFu
         row_cells.push(Cell::new(&entry.avg));
 
         for &p in &list.percentiles {
-            let key = format!("p{}", p);
+            let key = format_percentile_key(p);
             let value = entry
                 .percentiles
                 .get(&key)

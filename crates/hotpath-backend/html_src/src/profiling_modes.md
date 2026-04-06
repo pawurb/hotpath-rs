@@ -68,7 +68,7 @@ fn example_function() {
 
 fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("my_program")
-        .percentiles(&[95, 99])
+        .percentiles(&[95.0, 99.0])
         .with_limit(10)
         .with_functions_limit(20)
         .format(hotpath::Format::Table)

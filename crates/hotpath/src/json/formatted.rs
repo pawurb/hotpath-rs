@@ -79,7 +79,7 @@ pub struct JsonFunctionsList {
     pub total_allocated: Option<String>,
     pub description: String,
     pub caller_name: String,
-    pub percentiles: Vec<u8>,
+    pub percentiles: Vec<f64>,
     pub data: Vec<JsonFunctionEntry>,
     #[serde(skip)]
     pub displayed_count: usize,
@@ -96,7 +96,7 @@ impl JsonFunctionsList {
             total_allocated: None,
             description: "No timing data available yet".to_string(),
             caller_name: "hotpath".to_string(),
-            percentiles: vec![95],
+            percentiles: vec![95.0],
             data: Vec::new(),
             displayed_count: 0,
             total_count: 0,

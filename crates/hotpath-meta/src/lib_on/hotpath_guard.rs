@@ -52,7 +52,7 @@ use crate::Format;
 #[must_use = "builder is discarded without creating a guard"]
 pub struct HotpathGuardBuilder {
     caller_name: &'static str,
-    percentiles: Vec<u8>,
+    percentiles: Vec<f64>,
     format: Format,
     functions_limit: usize,
     channels_limit: usize,
@@ -68,7 +68,7 @@ impl HotpathGuardBuilder {
     pub fn new(caller_name: &'static str) -> Self {
         Self {
             caller_name,
-            percentiles: vec![95],
+            percentiles: vec![95.0],
             format: Format::Table,
             functions_limit: 15,
             channels_limit: 0,
@@ -81,7 +81,7 @@ impl HotpathGuardBuilder {
         }
     }
 
-    pub fn percentiles(mut self, percentiles: &[u8]) -> Self {
+    pub fn percentiles(mut self, percentiles: &[f64]) -> Self {
         self.percentiles = percentiles.to_vec();
         self
     }
@@ -219,7 +219,7 @@ impl HotpathGuard {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         caller_name: &'static str,
-        percentiles: &[u8],
+        percentiles: &[f64],
         limit: usize,
         format: Format,
         output_path: Option<PathBuf>,

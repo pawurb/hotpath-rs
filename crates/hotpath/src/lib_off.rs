@@ -235,7 +235,7 @@ impl HotpathGuardBuilder {
         Self {}
     }
 
-    pub fn percentiles(self, _percentiles: &[u8]) -> Self {
+    pub fn percentiles(self, _percentiles: &[f64]) -> Self {
         self
     }
 

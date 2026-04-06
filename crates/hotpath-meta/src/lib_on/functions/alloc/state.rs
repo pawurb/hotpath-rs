@@ -348,7 +348,7 @@ pub(crate) struct FunctionsState {
 
     pub start_time: Instant,
     pub caller_name: &'static str,
-    pub percentiles: Vec<u8>,
+    pub percentiles: Vec<f64>,
     pub limit: usize,
 }
 

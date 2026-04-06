@@ -66,7 +66,7 @@ pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rec
         app.memory_functions
             .percentiles
             .iter()
-            .map(|p| format!("P{}", p))
+            .map(|p| hotpath::format_percentile_header(*p))
             .collect::<Vec<_>>(),
     )
     .chain(vec!["Total".to_string(), "% Total".to_string()])
@@ -87,7 +87,7 @@ pub(crate) fn render_functions_table(frame: &mut Frame, app: &mut App, area: Rec
         .memory_functions
         .percentiles
         .iter()
-        .map(|p| format!("p{}", p))
+        .map(|p| hotpath::format_percentile_key(*p))
         .collect();
 
     let rows = entries.iter().map(|func| {

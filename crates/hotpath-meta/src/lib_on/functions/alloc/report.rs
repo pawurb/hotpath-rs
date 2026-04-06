@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use crate::json::JsonFunctionEntry;
 use crate::json::JsonFunctionsList;
 use crate::lib_on::functions::StatsConfig;
-use crate::output::{format_bytes, format_count, format_duration, ProfilingMode};
+use crate::output::{
+    format_bytes, format_count, format_duration, format_percentile_key, ProfilingMode,
+};
 
 use super::state::FunctionStats;
 
@@ -123,12 +125,12 @@ pub(crate) fn build_functions_list_alloc(
             let mut percentiles = HashMap::new();
             for &p in &config.percentiles {
                 if s.is_async {
-                    percentiles.insert(format!("p{}", p), "N/A".to_string());
+                    percentiles.insert(format_percentile_key(p), "N/A".to_string());
                 } else {
-                    let bytes_total = s.bytes_total_percentile(p as f64);
-                    let count_total = s.count_total_percentile(p as f64);
+                    let bytes_total = s.bytes_total_percentile(p);
+                    let count_total = s.count_total_percentile(p);
                     percentiles.insert(
-                        format!("p{}", p),
+                        format_percentile_key(p),
                         format_alloc_value(bytes_total, count_total),
                     );
                 }
@@ -236,8 +238,8 @@ pub(crate) fn build_functions_list_timing(
 
             let mut percentiles = HashMap::new();
             for &p in &config.percentiles {
-                let duration_ns = s.duration_percentile(p as f64);
-                percentiles.insert(format!("p{}", p), format_duration(duration_ns));
+                let duration_ns = s.duration_percentile(p);
+                percentiles.insert(format_percentile_key(p), format_duration(duration_ns));
             }
 
             JsonFunctionEntry {

@@ -37,7 +37,7 @@ cfg_if::cfg_if! {
 
 pub(crate) struct StatsConfig {
     pub(crate) total_elapsed: Duration,
-    pub(crate) percentiles: Vec<u8>,
+    pub(crate) percentiles: Vec<f64>,
     pub(crate) caller_name: &'static str,
     pub(crate) limit: usize,
 }
