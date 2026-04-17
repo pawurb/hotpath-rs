@@ -398,6 +398,8 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// * `log` - If `true`, logs the result value when the function returns (requires `Debug` on return type)
 /// * `future` - If `true`, also tracks async future lifecycle. Only valid on async functions.
+/// * `label` - String literal that replaces the full reported identifier
+///   (instead of `module_path::<fn_name>`).
 ///
 /// # Examples
 ///
@@ -409,6 +411,13 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///     // The result value will be logged in TUI console
 ///     42
 /// }
+/// ```
+///
+/// With a custom label:
+///
+/// ```rust,no_run
+/// #[hotpath::measure(label = "db_query")]
+/// fn fetch_user(id: u64) { /* ... */ }
 /// ```
 ///
 /// # See Also
@@ -428,6 +437,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let mut enable_result_logging = false;
     let mut enable_future_tracking = false;
+    let mut label: Option<syn::LitStr> = None;
 
     if !attr.is_empty() {
         let parser = syn::meta::parser(|meta| {
@@ -445,7 +455,18 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return Ok(());
             }
 
-            Err(meta.error("Unknown parameter. Supported: log = true, future = true"))
+            if meta.path.is_ident("label") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let lit: syn::LitStr = meta.input.parse()?;
+                if lit.value().is_empty() {
+                    return Err(meta.error("label must be a non-empty string literal"));
+                }
+                label = Some(lit);
+                return Ok(());
+            }
+
+            Err(meta
+                .error("Unknown parameter. Supported: log = true, future = true, label = \"name\""))
         });
 
         if let Err(e) = parser.parse2(proc_macro2::TokenStream::from(attr)) {
@@ -462,7 +483,10 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    let measurement_loc = quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) };
+    let measurement_loc = match &label {
+        Some(lit) => quote! { #lit },
+        None => quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) },
+    };
 
     let wrapped_body = if !is_async_fn {
         if enable_result_logging {

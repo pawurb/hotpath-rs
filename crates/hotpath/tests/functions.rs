@@ -1225,6 +1225,54 @@ pub mod tests {
         );
     }
 
+    // cargo run -p test-tokio-async --example measure_label --features hotpath
+    #[test]
+    fn test_measure_label_output() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "measure_label",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let expected_content = ["| sync_labeled", "| async_labeled"];
+
+        for expected in expected_content {
+            assert!(
+                stdout.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+
+        let not_expected = [
+            "measure_label::sync_function",
+            "measure_label::async_function",
+            "measure_label::sync_labeled",
+            "measure_label::async_labeled",
+        ];
+
+        for not_exp in not_expected {
+            assert!(
+                !stdout.contains(not_exp),
+                "Function name should be replaced by label. Found: {not_exp}\n\nGot:\n{stdout}"
+            );
+        }
+    }
+
     // cargo run -p test-tokio-async --example alloc_measure --features hotpath,hotpath-alloc
     #[test]
     fn test_alloc_uninstrumented_children_tracked() {

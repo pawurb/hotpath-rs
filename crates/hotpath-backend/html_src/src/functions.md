@@ -68,6 +68,7 @@ Attribute macro that initializes the background measurement processing when appl
 An attribute macro that instruments functions to send timing/memory measurements to the background processor. Parameters:
 
 - `log = true` - logs the result value when the function returns (requires `std::fmt::Debug` on return type)
+- `label = "name"` - replaces the full reported identifier (instead of `module_path::<fn_name>`).
 
 Example:
 
@@ -77,6 +78,9 @@ fn compute() -> i32 {
     // The result value will be logged in TUI console
     42
 }
+
+#[hotpath::measure(label = "db_query")]
+fn fetch_user(id: u64) { /* ... */ }
 ```
 
 <img loading="lazy" src="{{#asset-hash images/functions-log.png}}" alt="hotpath-rs TUI showing function return value logging">
