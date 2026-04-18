@@ -213,7 +213,6 @@ pub(crate) fn process_measurement(
     stats: &mut HashMap<u32, FunctionStats>,
     name_to_id: &mut HashMap<&'static str, u32>,
     m: Measurement,
-    _start_time: Instant,
 ) {
     let elapsed = Duration::from_nanos(m.elapsed_since_start_ns);
     if let Some(&id) = name_to_id.get(m.name) {

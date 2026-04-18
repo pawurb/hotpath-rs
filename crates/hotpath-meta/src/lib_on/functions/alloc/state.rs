@@ -14,7 +14,6 @@ struct MeasurementBatch {
     measurements: Vec<Measurement>,
     last_flush: Instant,
     sender: Option<Sender<Measurement>>,
-    start_time: Option<Instant>,
 }
 
 impl MeasurementBatch {
@@ -23,7 +22,6 @@ impl MeasurementBatch {
             measurements: Vec::with_capacity(BATCH_SIZE),
             last_flush: Instant::now(),
             sender: None,
-            start_time: None,
         }
     }
 
@@ -33,7 +31,8 @@ impl MeasurementBatch {
         name: &'static str,
         bytes_total: Option<u64>,
         count_total: Option<u64>,
-        duration: Duration,
+        duration_ns: u64,
+        elapsed_since_start_ns: u64,
         wrapper: bool,
         tid: Option<u64>,
         result_log: Option<String>,
@@ -43,13 +42,12 @@ impl MeasurementBatch {
                 if let Some(state) = arc_swap.load_full() {
                     if let Ok(state_guard) = state.read() {
                         self.sender = state_guard.sender.clone();
-                        self.start_time = Some(state_guard.start_time);
                     }
                 }
             }
         }
 
-        if self.start_time.is_none() {
+        if self.sender.is_none() {
             return;
         };
 
@@ -57,8 +55,8 @@ impl MeasurementBatch {
             name,
             bytes_total,
             count_total,
-            duration,
-            measurement_time: Instant::now(),
+            duration_ns,
+            elapsed_since_start_ns,
             wrapper,
             tid,
             result_log,
@@ -109,8 +107,8 @@ pub(crate) struct Measurement {
     pub(crate) name: &'static str,
     pub(crate) bytes_total: Option<u64>,
     pub(crate) count_total: Option<u64>,
-    pub(crate) duration: Duration,
-    pub(crate) measurement_time: Instant,
+    pub(crate) duration_ns: u64,
+    pub(crate) elapsed_since_start_ns: u64,
     pub(crate) wrapper: bool,
     pub(crate) tid: Option<u64>,
     pub(crate) result_log: Option<String>,
@@ -157,7 +155,7 @@ impl FunctionStats {
         name: &'static str,
         bytes_total: Option<u64>,
         count_total: Option<u64>,
-        duration: Duration,
+        duration_ns: u64,
         elapsed: Duration,
         wrapper: bool,
         tid: Option<u64>,
@@ -178,7 +176,6 @@ impl FunctionStats {
         )
         .expect("duration histogram init");
 
-        let duration_ns = duration.as_nanos() as u64;
         let mut recent_logs = VecDeque::with_capacity(*crate::channels::LOGS_LIMIT);
         recent_logs.push_back((
             bytes_total,
@@ -244,7 +241,7 @@ impl FunctionStats {
         &mut self,
         bytes_total: Option<u64>,
         count_total: Option<u64>,
-        duration: Duration,
+        duration_ns: u64,
         elapsed: Duration,
         tid: Option<u64>,
         result_log: Option<String>,
@@ -255,7 +252,6 @@ impl FunctionStats {
         self.total_count_sum += count_total.unwrap_or(0);
         self.record_alloc(bytes_total, count_total);
 
-        let duration_ns = duration.as_nanos() as u64;
         self.total_duration_ns += duration_ns;
         self.record_duration(duration_ns);
 
@@ -356,15 +352,14 @@ pub(crate) fn process_measurement(
     stats: &mut HashMap<u32, FunctionStats>,
     name_to_id: &mut HashMap<&'static str, u32>,
     m: Measurement,
-    start_time: Instant,
 ) {
-    let elapsed = m.measurement_time.duration_since(start_time);
+    let elapsed = Duration::from_nanos(m.elapsed_since_start_ns);
     if let Some(&id) = name_to_id.get(m.name) {
         if let Some(s) = stats.get_mut(&id) {
             s.update_alloc(
                 m.bytes_total,
                 m.count_total,
-                m.duration,
+                m.duration_ns,
                 elapsed,
                 m.tid,
                 m.result_log,
@@ -380,7 +375,7 @@ pub(crate) fn process_measurement(
                 m.name,
                 m.bytes_total,
                 m.count_total,
-                m.duration,
+                m.duration_ns,
                 elapsed,
                 m.wrapper,
                 m.tid,
@@ -392,15 +387,26 @@ pub(crate) fn process_measurement(
 
 use super::super::FUNCTIONS_STATE;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn send_alloc_measurement(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration: Duration,
+    duration_ns: u64,
+    elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
 ) {
-    send_alloc_measurement_with_log(name, bytes_total, count_total, duration, wrapper, tid, None);
+    send_alloc_measurement_with_log(
+        name,
+        bytes_total,
+        count_total,
+        duration_ns,
+        elapsed_since_start_ns,
+        wrapper,
+        tid,
+        None,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -408,7 +414,8 @@ pub(crate) fn send_alloc_measurement_with_log(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration: Duration,
+    duration_ns: u64,
+    elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
     result_log: Option<String>,
@@ -422,7 +429,8 @@ pub(crate) fn send_alloc_measurement_with_log(
             name,
             bytes_total,
             count_total,
-            duration,
+            duration_ns,
+            elapsed_since_start_ns,
             wrapper,
             tid,
             result_log,

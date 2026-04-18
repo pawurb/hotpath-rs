@@ -8,6 +8,14 @@ use crate::instant::Instant;
 
 pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
 
+#[inline]
+pub(crate) fn elapsed_since_start_ns(end: Instant) -> u64 {
+    START_TIME
+        .get()
+        .map(|start| end.duration_since(*start).as_nanos() as u64)
+        .unwrap_or(0)
+}
+
 pub mod channels;
 pub mod cpu_baseline;
 pub mod data_flow;

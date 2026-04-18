@@ -359,7 +359,7 @@ impl HotpathGuard {
                         recv(shutdown_rx) -> _ => {
                             for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
                                 match rx.try_recv() {
-                                    Ok(measurement) => process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time),
+                                    Ok(measurement) => process_measurement(&mut local_stats, &mut name_to_id, measurement),
                                     Err(_) => break,
                                 }
                             }
@@ -475,7 +475,7 @@ impl HotpathGuard {
                         recv(rx) -> result => {
                             match result {
                                 Ok(measurement) => {
-                                    process_measurement(&mut local_stats, &mut name_to_id, measurement, worker_start_time);
+                                    process_measurement(&mut local_stats, &mut name_to_id, measurement);
                                 }
                                 Err(_) => break,
                             }

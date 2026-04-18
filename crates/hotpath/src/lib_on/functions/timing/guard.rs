@@ -38,10 +38,7 @@ impl Drop for MeasurementGuard {
         }
         let end = Instant::now();
         let duration_ns = end.duration_since(self.start).as_nanos() as u64;
-        let elapsed_since_start_ns = crate::lib_on::START_TIME
-            .get()
-            .map(|start| end.duration_since(*start).as_nanos() as u64)
-            .unwrap_or(0);
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
         super::state::send_duration_measurement(
@@ -91,10 +88,7 @@ impl MeasurementGuardWithLog {
         }
         let end = Instant::now();
         let duration_ns = end.duration_since(self.start).as_nanos() as u64;
-        let elapsed_since_start_ns = crate::lib_on::START_TIME
-            .get()
-            .map(|start| end.duration_since(*start).as_nanos() as u64)
-            .unwrap_or(0);
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
         let result_str = format_debug_truncated(result);
@@ -117,10 +111,7 @@ impl Drop for MeasurementGuardWithLog {
         }
         let end = Instant::now();
         let duration_ns = end.duration_since(self.start).as_nanos() as u64;
-        let elapsed_since_start_ns = crate::lib_on::START_TIME
-            .get()
-            .map(|start| end.duration_since(*start).as_nanos() as u64)
-            .unwrap_or(0);
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
         super::state::send_duration_measurement_with_log(

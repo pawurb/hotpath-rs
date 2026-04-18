@@ -62,11 +62,13 @@ pub(crate) fn pop_alloc_stack() -> (u64, u64) {
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn send_alloc_measurement(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration: std::time::Duration,
+    duration_ns: u64,
+    elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
 ) {
@@ -76,18 +78,21 @@ fn send_alloc_measurement(
         name,
         bytes_total,
         count_total,
-        duration,
+        duration_ns,
+        elapsed_since_start_ns,
         wrapper,
         tid,
     );
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn send_alloc_measurement_with_log(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration: std::time::Duration,
+    duration_ns: u64,
+    elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
     result_log: Option<String>,
@@ -98,7 +103,8 @@ fn send_alloc_measurement_with_log(
         name,
         bytes_total,
         count_total,
-        duration,
+        duration_ns,
+        elapsed_since_start_ns,
         wrapper,
         tid,
         result_log,
@@ -138,7 +144,9 @@ impl Drop for MeasurementGuardSync {
             return;
         }
 
-        let duration = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
         let (bytes_total, count_total) = if cross_thread {
@@ -152,7 +160,8 @@ impl Drop for MeasurementGuardSync {
             self.name,
             bytes_total,
             count_total,
-            duration,
+            duration_ns,
+            elapsed_since_start_ns,
             self.wrapper,
             Some(self.tid),
         );
@@ -195,7 +204,9 @@ impl Drop for MeasurementGuardAsync {
             return;
         }
 
-        let duration = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let (bytes_total, count_total) = self
             .alloc_bridge
             .as_ref()
@@ -205,7 +216,8 @@ impl Drop for MeasurementGuardAsync {
             self.name,
             bytes_total,
             count_total,
-            duration,
+            duration_ns,
+            elapsed_since_start_ns,
             self.wrapper,
             Some(self.tid),
         );
@@ -246,7 +258,9 @@ impl MeasurementGuardSyncWithLog {
             return;
         }
 
-        let duration = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let result_str = crate::output::format_debug_truncated(result);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
@@ -261,7 +275,8 @@ impl MeasurementGuardSyncWithLog {
             self.name,
             bytes_total,
             count_total,
-            duration,
+            duration_ns,
+            elapsed_since_start_ns,
             self.wrapper,
             Some(self.tid),
             Some(result_str),
@@ -276,7 +291,9 @@ impl Drop for MeasurementGuardSyncWithLog {
             return;
         }
 
-        let duration = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
         let (bytes_total, count_total) = if cross_thread {
@@ -290,7 +307,8 @@ impl Drop for MeasurementGuardSyncWithLog {
             self.name,
             bytes_total,
             count_total,
-            duration,
+            duration_ns,
+            elapsed_since_start_ns,
             self.wrapper,
             Some(self.tid),
             None,
@@ -335,7 +353,9 @@ impl MeasurementGuardAsyncWithLog {
             return;
         }
 
-        let duration = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let result_str = crate::output::format_debug_truncated(result);
         let (bytes_total, count_total) = self
             .alloc_bridge
@@ -346,7 +366,8 @@ impl MeasurementGuardAsyncWithLog {
             self.name,
             bytes_total,
             count_total,
-            duration,
+            duration_ns,
+            elapsed_since_start_ns,
             self.wrapper,
             Some(self.tid),
             Some(result_str),
@@ -361,7 +382,9 @@ impl Drop for MeasurementGuardAsyncWithLog {
             return;
         }
 
-        let duration = self.start.elapsed();
+        let end = Instant::now();
+        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let (bytes_total, count_total) = self
             .alloc_bridge
             .as_ref()
@@ -371,7 +394,8 @@ impl Drop for MeasurementGuardAsyncWithLog {
             self.name,
             bytes_total,
             count_total,
-            duration,
+            duration_ns,
+            elapsed_since_start_ns,
             self.wrapper,
             Some(self.tid),
             None,
