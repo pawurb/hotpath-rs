@@ -2,10 +2,10 @@
 
 use crate::output::format_debug_truncated;
 
-use super::{
+use crate::functions::AsyncAllocBridge;
+use crate::lib_on::futures::{
     get_futures_event_tx, get_or_create_future_id, FutureEvent, PollResult, FUTURE_CALL_ID_COUNTER,
 };
-use crate::functions::AsyncAllocBridge;
 use crossbeam_channel::Sender as CbSender;
 use pin_project_lite::pin_project;
 use std::future::Future;

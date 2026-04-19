@@ -103,7 +103,7 @@ impl DataFlowLogEntry {
 /// Serializable log response containing sent and received logs for channels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ChannelLogs {
-    pub id: String,
+    pub id: u32,
     pub sent_logs: Vec<DataFlowLogEntry>,
     pub received_logs: Vec<DataFlowLogEntry>,
 }
@@ -111,7 +111,7 @@ pub(crate) struct ChannelLogs {
 /// Serializable log response containing yielded logs for streams.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct StreamLogs {
-    pub id: String,
+    pub id: u32,
     pub logs: Vec<DataFlowLogEntry>,
 }
 

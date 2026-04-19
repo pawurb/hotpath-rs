@@ -415,15 +415,10 @@ pub(crate) fn resolve_label(id: &'static str, provided: Option<&str>, iter: Opti
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn extract_filename(path: &str) -> String {
-    let components: Vec<&str> = path.split('/').collect();
-    if components.len() >= 2 {
-        format!(
-            "{}/{}",
-            components[components.len() - 2],
-            components[components.len() - 1]
-        )
-    } else {
-        path.to_string()
+    let mut parts = path.rsplitn(3, '/');
+    match (parts.next(), parts.next()) {
+        (Some(last), Some(second_last)) => format!("{}/{}", second_last, last),
+        _ => path.to_string(),
     }
 }
 
@@ -661,13 +656,12 @@ pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_channel_logs(channel_id: &str) -> Option<ChannelLogs> {
-    let id = channel_id.parse::<u32>().ok()?;
+pub(crate) fn get_channel_logs(id: u32) -> Option<ChannelLogs> {
     let state = CHANNELS_STATE.get()?;
     let guard = state.inner.read().unwrap();
     let entry_logs = guard.logs.get(&id)?;
     Some(ChannelLogs {
-        id: channel_id.to_string(),
+        id,
         sent_logs: entry_logs.sent_logs.iter().rev().cloned().collect(),
         received_logs: entry_logs.received_logs.iter().rev().cloned().collect(),
     })

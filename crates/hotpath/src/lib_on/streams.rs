@@ -396,15 +396,14 @@ pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_stream_logs(stream_id: &str) -> Option<StreamLogs> {
-    let id = stream_id.parse::<u32>().ok()?;
+pub(crate) fn get_stream_logs(id: u32) -> Option<StreamLogs> {
     let state = STREAMS_STATE.get()?;
     let guard = state.inner.read().unwrap();
     let entry_logs = guard.logs.get(&id)?;
     let mut yielded_logs: Vec<DataFlowLogEntry> = entry_logs.logs.iter().cloned().collect();
     yielded_logs.sort_by_key(|entry| std::cmp::Reverse(entry.index));
     Some(StreamLogs {
-        id: stream_id.to_string(),
+        id,
         logs: yielded_logs,
     })
 }

@@ -111,12 +111,14 @@ fn collector_loop(state: ThreadsStateRef, interval: Duration) {
                     let prev = state_guard.previous_metrics.get(&metric.os_tid);
                     #[allow(unused_mut)]
                     let mut m_with_percent =
-                        thread_metrics_with_percentage(metric.clone(), prev, elapsed_secs);
+                        thread_metrics_with_percentage(metric, prev, elapsed_secs);
 
                     // Merge per-thread allocation stats
                     #[cfg(feature = "hotpath-alloc-meta")]
                     if let Some((alloc, dealloc)) =
-                        super::functions::alloc::core::get_thread_alloc_stats(m_with_percent.os_tid)
+                        crate::lib_on::functions::alloc::core::get_thread_alloc_stats(
+                            m_with_percent.os_tid,
+                        )
                     {
                         m_with_percent.alloc_bytes = Some(alloc);
                         m_with_percent.dealloc_bytes = Some(dealloc);

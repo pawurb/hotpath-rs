@@ -7,7 +7,7 @@ use crate::output::{
     format_bytes, format_count, format_duration, format_percentile_key, ProfilingMode,
 };
 
-use super::state::FunctionStats;
+use crate::lib_on::functions::alloc::state::FunctionStats;
 
 pub(crate) fn build_functions_list_alloc(
     stats: &HashMap<u32, FunctionStats>,
@@ -43,7 +43,7 @@ pub(crate) fn build_functions_list_alloc(
             .filter(|s| !s.wrapper && s.has_data)
             .map(|s| primary_cache.get(&s.id).copied().unwrap_or(0))
             .sum()
-    } else if *super::guard::ALLOC_CUMULATIVE {
+    } else if *crate::lib_on::functions::alloc::guard::ALLOC_CUMULATIVE {
         let wrapper_total = stats
             .values()
             .find(|s| s.wrapper && s.has_data)
@@ -153,7 +153,7 @@ pub(crate) fn build_functions_list_alloc(
             AllocMetric::Bytes => "bytes",
             AllocMetric::Count => "count",
         };
-        if *super::guard::ALLOC_CUMULATIVE {
+        if *crate::lib_on::functions::alloc::guard::ALLOC_CUMULATIVE {
             format!(
                 "Cumulative allocation {} during each function call (including nested calls).",
                 metric

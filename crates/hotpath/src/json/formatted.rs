@@ -6,7 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, StreamLogs, ThreadMetrics};
+use crate::json::{
+    ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, StreamLogs, ThreadMetrics,
+};
 
 use crate::output::{format_bytes, format_duration, FunctionLog, FunctionLogsList, ProfilingMode};
 
@@ -294,7 +296,7 @@ impl JsonChannelLogsList {
             .collect();
 
         JsonChannelLogsList {
-            id: logs.id.clone(),
+            id: logs.id.to_string(),
             sent_logs,
             received_logs,
         }
@@ -359,7 +361,7 @@ pub struct JsonStreamLogsList {
 impl JsonStreamLogsList {
     pub(crate) fn from_logs(logs: &StreamLogs, current_elapsed_ns: u64) -> Self {
         JsonStreamLogsList {
-            id: logs.id.clone(),
+            id: logs.id.to_string(),
             logs: logs
                 .logs
                 .iter()

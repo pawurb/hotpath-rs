@@ -35,7 +35,7 @@ impl BatchedMeasurement for Measurement {
     }
 
     fn fetch_sender() -> Option<Sender<Vec<Self>>> {
-        let arc_swap = super::super::FUNCTIONS_STATE.get()?;
+        let arc_swap = crate::lib_on::functions::FUNCTIONS_STATE.get()?;
         let state = arc_swap.load_full()?;
         let state_guard = state.read().ok()?;
         state_guard.sender.clone()
@@ -169,7 +169,7 @@ pub(crate) fn process_measurement(
     }
 }
 
-use super::super::FUNCTIONS_STATE;
+use crate::lib_on::functions::FUNCTIONS_STATE;
 
 pub(crate) fn send_duration_measurement(
     name: &'static str,

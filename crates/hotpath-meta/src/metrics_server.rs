@@ -140,24 +140,20 @@ fn handle_request(request: Request) {
             let data_flow = get_data_flow_json();
             respond_json(request, &data_flow);
         }
-        Ok(Route::DataFlowChannelLogs { channel_id }) => {
-            match get_channel_logs(&channel_id.to_string()) {
-                Some(logs) => {
-                    let formatted = JsonChannelLogsList::from_logs(&logs, get_current_elapsed_ns());
-                    respond_json(request, &formatted);
-                }
-                None => respond_error(request, 404, "Channel not found"),
+        Ok(Route::DataFlowChannelLogs { channel_id }) => match get_channel_logs(channel_id) {
+            Some(logs) => {
+                let formatted = JsonChannelLogsList::from_logs(&logs, get_current_elapsed_ns());
+                respond_json(request, &formatted);
             }
-        }
-        Ok(Route::DataFlowStreamLogs { stream_id }) => {
-            match get_stream_logs(&stream_id.to_string()) {
-                Some(logs) => {
-                    let formatted = JsonStreamLogsList::from_logs(&logs, get_current_elapsed_ns());
-                    respond_json(request, &formatted);
-                }
-                None => respond_error(request, 404, "Stream not found"),
+            None => respond_error(request, 404, "Channel not found"),
+        },
+        Ok(Route::DataFlowStreamLogs { stream_id }) => match get_stream_logs(stream_id) {
+            Some(logs) => {
+                let formatted = JsonStreamLogsList::from_logs(&logs, get_current_elapsed_ns());
+                respond_json(request, &formatted);
             }
-        }
+            None => respond_error(request, 404, "Stream not found"),
+        },
         Ok(Route::DataFlowFutureLogs { future_id }) => match get_future_logs_list(future_id) {
             Some(calls) => {
                 let formatted = JsonFutureLogsList::from(&calls);

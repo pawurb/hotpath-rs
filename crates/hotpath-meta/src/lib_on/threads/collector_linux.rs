@@ -1,6 +1,6 @@
 //! Linux /proc filesystem thread metrics collection
 
-use super::ThreadMetrics;
+use crate::json::ThreadMetrics;
 use std::fs;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -108,7 +108,7 @@ fn get_thread_info(tid: u64, ticks_per_sec: f64) -> Result<ThreadMetrics, String
     let cpu_user = utime_ticks as f64 / ticks_per_sec;
     let cpu_sys = stime_ticks as f64 / ticks_per_sec;
 
-    Ok(super::ThreadMetrics::new(
+    Ok(ThreadMetrics::new(
         tid,
         name,
         status,

@@ -40,7 +40,7 @@ impl Drop for MeasurementGuard {
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
-        super::state::send_duration_measurement(
+        crate::lib_on::functions::timing::state::send_duration_measurement(
             self.name,
             duration_ns,
             elapsed_since_start_ns,
@@ -90,7 +90,7 @@ impl MeasurementGuardWithLog {
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
         let result_str = format_debug_truncated(result);
-        super::state::send_duration_measurement_with_log(
+        crate::lib_on::functions::timing::state::send_duration_measurement_with_log(
             self.name,
             duration_ns,
             elapsed_since_start_ns,
@@ -112,7 +112,7 @@ impl Drop for MeasurementGuardWithLog {
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
         let tid = if cross_thread { None } else { Some(self.tid) };
-        super::state::send_duration_measurement_with_log(
+        crate::lib_on::functions::timing::state::send_duration_measurement_with_log(
             self.name,
             duration_ns,
             elapsed_since_start_ns,

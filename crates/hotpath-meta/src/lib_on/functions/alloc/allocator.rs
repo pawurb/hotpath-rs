@@ -15,13 +15,13 @@ pub(crate) struct CountingAllocator;
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        super::core::track_alloc(layout.size());
+        crate::lib_on::functions::alloc::core::track_alloc(layout.size());
 
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        super::core::track_dealloc(layout.size());
+        crate::lib_on::functions::alloc::core::track_dealloc(layout.size());
 
         unsafe {
             System.dealloc(ptr, layout);

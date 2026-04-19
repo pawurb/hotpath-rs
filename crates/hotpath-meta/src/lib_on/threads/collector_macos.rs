@@ -1,6 +1,6 @@
 //! macOS Mach kernel FFI for thread metrics collection
 
-use super::ThreadMetrics;
+use crate::json::ThreadMetrics;
 use std::mem;
 
 // Mach kernel types and constants (using C naming conventions)
@@ -137,7 +137,7 @@ unsafe fn get_thread_info(thread: thread_act_t, index: u64) -> Result<ThreadMetr
     let cpu_sys = thread_info_data.system_time.seconds as f64
         + (thread_info_data.system_time.microseconds as f64 / 1_000_000.0);
 
-    Ok(super::ThreadMetrics::new(
+    Ok(ThreadMetrics::new(
         os_tid,
         name,
         status,

@@ -272,7 +272,11 @@ Returns JSON array of recent send/receive events with timestamps. Use channels f
         let channel_id = &params.0.channel_id;
         log_debug(&format!("Tool called: channel_logs({})", channel_id));
 
-        match get_channel_logs(channel_id) {
+        let id: u32 = channel_id.parse().map_err(|_| {
+            McpError::invalid_params(format!("Invalid channel_id: {}", channel_id), None)
+        })?;
+
+        match get_channel_logs(id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonChannelLogsList::from_logs(&logs, current_elapsed_ns);
@@ -296,7 +300,11 @@ Returns JSON array of recent yield events with timestamps. Use streams first to 
         let stream_id = &params.0.stream_id;
         log_debug(&format!("Tool called: stream_logs({})", stream_id));
 
-        match get_stream_logs(stream_id) {
+        let id: u32 = stream_id.parse().map_err(|_| {
+            McpError::invalid_params(format!("Invalid stream_id: {}", stream_id), None)
+        })?;
+
+        match get_stream_logs(id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonStreamLogsList::from_logs(&logs, current_elapsed_ns);

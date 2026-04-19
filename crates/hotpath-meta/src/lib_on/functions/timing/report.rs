@@ -5,7 +5,7 @@ use crate::json::JsonFunctionsList;
 use crate::lib_on::functions::FunctionStatsConfig;
 use crate::output::{format_duration, format_percentile_key, ProfilingMode};
 
-use super::state::FunctionStats;
+use crate::lib_on::functions::timing::state::FunctionStats;
 
 pub(crate) fn build_functions_list(
     stats: &HashMap<u32, FunctionStats>,
