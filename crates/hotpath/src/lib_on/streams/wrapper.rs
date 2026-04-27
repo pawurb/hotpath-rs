@@ -1,4 +1,4 @@
-use crate::data_flow::next_data_flow_id;
+use crate::lib_on::hotpath_guard::next_data_flow_id;
 use crate::output::format_debug_truncated;
 use crate::streams::{init_streams_state, StreamEvent};
 use crossbeam_channel::Sender as CbSender;

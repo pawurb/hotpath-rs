@@ -276,14 +276,18 @@ pub enum Route {
     DebugValLogs { id: u32 },
     /// GET /debug/gauge/{id}/logs - Returns logs for a gauge! entry
     DebugGaugeLogs { id: u32 },
-    /// GET /data_flow - Returns unified channels, streams, and futures statistics
-    DataFlow,
-    /// GET /data_flow/channel/{id}/logs - Returns logs for a specific channel
-    DataFlowChannelLogs { channel_id: u32 },
-    /// GET /data_flow/stream/{id}/logs - Returns logs for a specific stream
-    DataFlowStreamLogs { stream_id: u32 },
-    /// GET /data_flow/future/{id}/logs - Returns calls for a specific future
-    DataFlowFutureLogs { future_id: u32 },
+    /// GET /channels - Returns channel statistics
+    Channels,
+    /// GET /channels/{id}/logs - Returns logs for a specific channel
+    ChannelLogs { channel_id: u32 },
+    /// GET /streams - Returns stream statistics
+    Streams,
+    /// GET /streams/{id}/logs - Returns logs for a specific stream
+    StreamLogs { stream_id: u32 },
+    /// GET /futures - Returns future statistics
+    Futures,
+    /// GET /futures/{id}/logs - Returns calls for a specific future
+    FutureLogs { future_id: u32 },
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
     /// GET /profiler_status - Returns profiler uptime
@@ -307,16 +311,12 @@ impl Route {
             Route::DebugDbgLogs { id } => format!("/debug/dbg/{}/logs", id),
             Route::DebugValLogs { id } => format!("/debug/val/{}/logs", id),
             Route::DebugGaugeLogs { id } => format!("/debug/gauge/{}/logs", id),
-            Route::DataFlow => "/data_flow".to_string(),
-            Route::DataFlowChannelLogs { channel_id } => {
-                format!("/data_flow/channel/{}/logs", channel_id)
-            }
-            Route::DataFlowStreamLogs { stream_id } => {
-                format!("/data_flow/stream/{}/logs", stream_id)
-            }
-            Route::DataFlowFutureLogs { future_id } => {
-                format!("/data_flow/future/{}/logs", future_id)
-            }
+            Route::Channels => "/channels".to_string(),
+            Route::ChannelLogs { channel_id } => format!("/channels/{}/logs", channel_id),
+            Route::Streams => "/streams".to_string(),
+            Route::StreamLogs { stream_id } => format!("/streams/{}/logs", stream_id),
+            Route::Futures => "/futures".to_string(),
+            Route::FutureLogs { future_id } => format!("/futures/{}/logs", future_id),
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
         }
@@ -345,7 +345,9 @@ impl FromStr for Route {
             "/functions_alloc" => return Ok(Route::FunctionsAlloc),
             "/threads" => return Ok(Route::Threads),
             "/debug" => return Ok(Route::Debug),
-            "/data_flow" => return Ok(Route::DataFlow),
+            "/channels" => return Ok(Route::Channels),
+            "/streams" => return Ok(Route::Streams),
+            "/futures" => return Ok(Route::Futures),
             "/tokio_runtime" => return Ok(Route::TokioRuntime),
             "/profiler_status" => return Ok(Route::ProfilerStatus),
             _ => {}
@@ -371,16 +373,16 @@ impl FromStr for Route {
             return Ok(Route::DebugGaugeLogs { id });
         }
 
-        if let Some(channel_id) = parse_id_from_path(path, "/data_flow/channel/") {
-            return Ok(Route::DataFlowChannelLogs { channel_id });
+        if let Some(channel_id) = parse_id_from_path(path, "/channels/") {
+            return Ok(Route::ChannelLogs { channel_id });
         }
 
-        if let Some(stream_id) = parse_id_from_path(path, "/data_flow/stream/") {
-            return Ok(Route::DataFlowStreamLogs { stream_id });
+        if let Some(stream_id) = parse_id_from_path(path, "/streams/") {
+            return Ok(Route::StreamLogs { stream_id });
         }
 
-        if let Some(future_id) = parse_id_from_path(path, "/data_flow/future/") {
-            return Ok(Route::DataFlowFutureLogs { future_id });
+        if let Some(future_id) = parse_id_from_path(path, "/futures/") {
+            return Ok(Route::FutureLogs { future_id });
         }
 
         Err(())

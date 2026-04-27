@@ -14,7 +14,7 @@ use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::channels::{get_channel_logs, get_sorted_channel_entries, START_TIME};
+use crate::channels::{get_channel_logs, get_channels_json};
 use crate::debug::dbg::{get_dbg_logs, get_debug_dbg_entries_json};
 use crate::debug::gauge::{get_debug_gauge_entries_json, get_debug_gauge_logs};
 use crate::debug::val::{get_debug_val_entries_json, get_val_logs};
@@ -22,14 +22,13 @@ use crate::functions::{
     get_function_logs_alloc, get_function_logs_timing, get_functions_alloc_json,
     get_functions_timing_json,
 };
-use crate::futures::{get_future_logs_list, get_sorted_future_stats};
+use crate::futures::{get_future_logs_list, get_futures_json};
 use crate::json::{
-    JsonChannelEntry, JsonChannelLogsList, JsonChannelsList, JsonFunctionAllocLogsList,
-    JsonFunctionTimingLogsList, JsonFutureEntry, JsonFutureLogsList, JsonFuturesList,
-    JsonProfilerStatus, JsonStreamEntry, JsonStreamLogsList, JsonStreamsList,
+    JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFutureLogsList,
+    JsonProfilerStatus, JsonStreamLogsList,
 };
 use crate::output::format_duration;
-use crate::streams::{get_sorted_stream_stats, get_stream_logs};
+use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -495,50 +494,8 @@ Use to check if the profiler is running and how long it has been active."#)]
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn get_channels_json() -> JsonChannelsList {
-    let data = get_sorted_channel_entries()
-        .iter()
-        .map(JsonChannelEntry::from)
-        .collect();
-
-    JsonChannelsList {
-        current_elapsed_ns: get_current_elapsed_ns(),
-        data,
-    }
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn get_streams_json() -> JsonStreamsList {
-    let data = get_sorted_stream_stats()
-        .iter()
-        .map(JsonStreamEntry::from)
-        .collect();
-
-    JsonStreamsList {
-        current_elapsed_ns: get_current_elapsed_ns(),
-        data,
-    }
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn get_futures_json() -> JsonFuturesList {
-    let data = get_sorted_future_stats()
-        .iter()
-        .map(JsonFutureEntry::from)
-        .collect();
-
-    JsonFuturesList {
-        current_elapsed_ns: get_current_elapsed_ns(),
-        data,
-    }
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn get_current_elapsed_ns() -> u64 {
-    START_TIME
-        .get()
-        .map(|start| start.elapsed().as_nanos() as u64)
-        .unwrap_or(0)
+    crate::lib_on::current_elapsed_ns()
 }
 
 #[tool_handler]

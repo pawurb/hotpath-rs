@@ -1,5 +1,6 @@
 use crate::cmd::console::app::{
-    App, DataFlowFocus, DataFlowLogs, DebugFocus, FunctionsFocus, FunctionsSubTab, SelectedTab,
+    App, DataFlowFocus, DataFlowLogs, DataFlowSubTab, DebugFocus, FunctionsFocus, FunctionsSubTab,
+    SelectedTab,
 };
 use crate::cmd::console::views::data_flow::{inspect as data_flow_inspect, logs as data_flow_logs};
 use crate::cmd::console::views::debug::{inspect as debug_inspect, logs as debug_logs};
@@ -12,7 +13,6 @@ use crate::cmd::console::views::functions_timing::{
 use crate::cmd::console::views::{
     bottom_bar, data_flow, debug, functions_memory, functions_timing, runtime, threads, top_bar,
 };
-use hotpath::json::DataFlowType;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -40,7 +40,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
             FunctionsSubTab::Timing => !app.timing_functions.data.is_empty(),
             FunctionsSubTab::Memory => !app.memory_functions.data.is_empty(),
         },
-        SelectedTab::DataFlow => !app.data_flow.entries.is_empty(),
+        SelectedTab::DataFlow => app.data_flow_entries_len() > 0,
         SelectedTab::Threads => !app.threads.data.is_empty(),
         SelectedTab::Debug => !app.debug_stats.is_empty(),
         SelectedTab::Runtime => app.tokio_runtime.is_some(),
@@ -50,6 +50,8 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
 
     if app.selected_tab == SelectedTab::Functions {
         render_functions_subtabs(frame, main_chunks[1], app.functions_sub_tab);
+    } else if app.selected_tab == SelectedTab::DataFlow {
+        render_data_flow_subtabs(frame, main_chunks[1], app.data_flow_sub_tab);
     }
 
     top_bar::render_status_bar(
@@ -194,11 +196,46 @@ fn render_functions_subtabs(frame: &mut Frame, area: Rect, sub_tab: FunctionsSub
 }
 
 #[hotpath::measure]
+fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, sub_tab: DataFlowSubTab) {
+    let label = |tab: DataFlowSubTab| {
+        if tab == sub_tab {
+            Span::styled(
+                format!(" {}*", tab.name()),
+                Style::default()
+                    .bg(Color::Cyan)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(
+                format!(" {} ", tab.name()),
+                Style::default().fg(Color::Gray),
+            )
+        }
+    };
+
+    let line = Line::from(vec![
+        Span::styled(
+            " [2]",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        label(DataFlowSubTab::Channels),
+        Span::raw("|"),
+        label(DataFlowSubTab::Streams),
+        Span::raw("|"),
+        label(DataFlowSubTab::Futures),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
+}
+
+#[hotpath::measure]
 fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
-    let entries = &app.data_flow.entries;
+    let total = app.data_flow_entries_len();
 
     if let Some(ref error_msg) = app.error_message {
-        if entries.is_empty() {
+        if total == 0 {
             let error_text = vec![
                 Line::from(""),
                 Line::from("Error").red().bold().centered(),
@@ -219,16 +256,30 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    if entries.is_empty() {
-        let empty_text = vec![
-            Line::from(""),
-            Line::from("No data flow entries found").yellow().centered(),
-            Line::from(""),
-            Line::from("Use channel!, stream!, or future! macros").centered(),
-        ];
+    if total == 0 {
+        let empty_lines = match app.data_flow_sub_tab {
+            DataFlowSubTab::Channels => vec![
+                Line::from(""),
+                Line::from("No channels found").yellow().centered(),
+                Line::from(""),
+                Line::from("Use the channel! macro to instrument channels").centered(),
+            ],
+            DataFlowSubTab::Streams => vec![
+                Line::from(""),
+                Line::from("No streams found").yellow().centered(),
+                Line::from(""),
+                Line::from("Use the stream! macro to instrument streams").centered(),
+            ],
+            DataFlowSubTab::Futures => vec![
+                Line::from(""),
+                Line::from("No futures found").yellow().centered(),
+                Line::from(""),
+                Line::from("Use the future! macro to instrument futures").centered(),
+            ],
+        };
 
         let block = Block::bordered().border_set(border::THICK);
-        frame.render_widget(Paragraph::new(empty_text).block(block), area);
+        frame.render_widget(Paragraph::new(empty_lines).block(block), area);
         return;
     }
 
@@ -242,37 +293,82 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
         (area, None)
     };
 
-    let selected_index = app.data_flow_table_state.selected().unwrap_or(0);
+    let selected_index = app.data_flow_table_state().selected().unwrap_or(0);
     let position = selected_index + 1;
-    let total = entries.len();
-    let selected_entry = app
-        .data_flow_table_state
-        .selected()
-        .and_then(|i| entries.get(i));
 
-    data_flow::render_data_flow_panel(
-        entries,
-        table_area,
-        frame,
-        &mut app.data_flow_table_state,
-        app.show_data_flow_logs,
-        app.data_flow_focus,
-        position,
-        total,
-    );
+    let label = match app.data_flow_sub_tab {
+        DataFlowSubTab::Channels => app
+            .channels_table_state
+            .selected()
+            .and_then(|i| app.channels.data.get(i))
+            .map(|e| {
+                if e.label.is_empty() {
+                    e.id.to_string()
+                } else {
+                    e.label.clone()
+                }
+            })
+            .unwrap_or_else(|| "Unknown".to_string()),
+        DataFlowSubTab::Streams => app
+            .streams_table_state
+            .selected()
+            .and_then(|i| app.streams.data.get(i))
+            .map(|e| {
+                if e.label.is_empty() {
+                    e.id.to_string()
+                } else {
+                    e.label.clone()
+                }
+            })
+            .unwrap_or_else(|| "Unknown".to_string()),
+        DataFlowSubTab::Futures => app
+            .futures_table_state
+            .selected()
+            .and_then(|i| app.futures.data.get(i))
+            .map(|e| {
+                if e.label.is_empty() {
+                    e.id.to_string()
+                } else {
+                    e.label.clone()
+                }
+            })
+            .unwrap_or_else(|| "Unknown".to_string()),
+    };
+
+    match app.data_flow_sub_tab {
+        DataFlowSubTab::Channels => data_flow::render_channels_panel(
+            &app.channels.data,
+            table_area,
+            frame,
+            &mut app.channels_table_state,
+            app.show_data_flow_logs,
+            app.data_flow_focus,
+            position,
+            total,
+        ),
+        DataFlowSubTab::Streams => data_flow::render_streams_panel(
+            &app.streams.data,
+            table_area,
+            frame,
+            &mut app.streams_table_state,
+            app.show_data_flow_logs,
+            app.data_flow_focus,
+            position,
+            total,
+        ),
+        DataFlowSubTab::Futures => data_flow::render_futures_panel(
+            &app.futures.data,
+            table_area,
+            frame,
+            &mut app.futures_table_state,
+            app.show_data_flow_logs,
+            app.data_flow_focus,
+            position,
+            total,
+        ),
+    };
 
     if let Some(logs_area) = logs_area {
-        let (label, data_flow_type) = selected_entry
-            .map(|entry| {
-                let label = if entry.label.is_empty() {
-                    entry.id.to_string()
-                } else {
-                    entry.label.clone()
-                };
-                (label, entry.data_flow_type)
-            })
-            .unwrap_or_else(|| ("Unknown".to_string(), DataFlowType::Channel));
-
         if let Some(ref logs) = app.data_flow_logs {
             let has_missing_log = match logs {
                 DataFlowLogs::Channel(l) => l.sent_logs.iter().any(|e| e.message.is_none()),
@@ -281,7 +377,7 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
             };
             data_flow_logs::render_logs_panel(
                 logs,
-                data_flow_type,
+                app.data_flow_sub_tab,
                 &label,
                 has_missing_log,
                 logs_area,
@@ -303,16 +399,7 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if app.data_flow_focus == DataFlowFocus::Inspect {
         if let Some(ref inspected) = app.inspected_data_flow_log {
-            let inspect_label = selected_entry
-                .map(|entry| {
-                    if entry.label.is_empty() {
-                        entry.id.to_string()
-                    } else {
-                        entry.label.clone()
-                    }
-                })
-                .unwrap_or_else(|| "Unknown".to_string());
-            data_flow_inspect::render_inspect_popup(inspected, &inspect_label, area, frame);
+            data_flow_inspect::render_inspect_popup(inspected, &label, area, frame);
         }
     }
 }

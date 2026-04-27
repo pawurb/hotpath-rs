@@ -286,7 +286,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6773 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-tokio --example basic_tokio --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::{DataFlowType, JsonDataFlowList};
+        use hotpath::json::JsonChannelsList;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -312,7 +312,7 @@ pub mod tests {
         for _attempt in 0..12 {
             sleep(Duration::from_millis(750));
 
-            match ureq::get("http://localhost:6773/data_flow").call() {
+            match ureq::get("http://localhost:6773/channels").call() {
                 Ok(mut response) => {
                     json_text = response
                         .body_mut()
@@ -341,27 +341,19 @@ pub mod tests {
             );
         }
 
-        let data_flow: JsonDataFlowList =
-            serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
+        let channels: JsonChannelsList =
+            serde_json::from_str(&json_text).expect("Failed to parse channels JSON");
 
-        let first_channel = data_flow
-            .entries
-            .iter()
-            .find(|e| e.data_flow_type == DataFlowType::Channel);
-
-        if let Some(channel) = first_channel {
-            let logs_url = format!(
-                "http://localhost:6773/data_flow/channel/{}/logs",
-                channel.id
-            );
+        if let Some(channel) = channels.data.first() {
+            let logs_url = format!("http://localhost:6773/channels/{}/logs", channel.id);
             let response = ureq::get(&logs_url)
                 .call()
-                .expect("Failed to call /data_flow/channel/:id/logs endpoint");
+                .expect("Failed to call /channels/:id/logs endpoint");
 
             assert_eq!(
                 response.status(),
                 200,
-                "Expected status 200 for /data_flow/channel/:id/logs endpoint"
+                "Expected status 200 for /channels/:id/logs endpoint"
             );
         }
 

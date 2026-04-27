@@ -13,8 +13,6 @@ mod lib_on;
 #[cfg(feature = "hotpath")]
 pub use lib_on::channels;
 #[cfg(feature = "hotpath")]
-pub use lib_on::data_flow;
-#[cfg(feature = "hotpath")]
 pub use lib_on::futures;
 #[cfg(feature = "hotpath")]
 pub use lib_on::streams;

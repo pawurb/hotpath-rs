@@ -3,24 +3,26 @@
 use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
-    JsonChannelLogsList, JsonDataFlowList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
-    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonProfilerStatus,
-    JsonRuntimeSnapshot, JsonStreamLogsList, JsonThreadsList,
+    JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
+    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
+    JsonProfilerStatus, JsonRuntimeSnapshot, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
 pub(crate) enum DataRequest {
     RefreshTiming,
     RefreshMemory,
-    RefreshDataFlow,
+    RefreshChannels,
+    RefreshStreams,
+    RefreshFutures,
     RefreshThreads,
     RefreshDebug,
     RefreshTokioRuntime,
     FetchFunctionLogsTiming(u32),
     FetchFunctionLogsAlloc(u32),
-    FetchDataFlowChannelLogs(u32),
-    FetchDataFlowStreamLogs(u32),
-    FetchDataFlowFutureLogs(u32),
+    FetchChannelLogs(u32),
+    FetchStreamLogs(u32),
+    FetchFutureLogs(u32),
     FetchDebugDbgLogs(u32),
     FetchDebugValLogs(u32),
     FetchDebugGaugeLogs(u32),
@@ -32,7 +34,9 @@ impl DataRequest {
         match self {
             DataRequest::RefreshTiming => Route::FunctionsTiming,
             DataRequest::RefreshMemory => Route::FunctionsAlloc,
-            DataRequest::RefreshDataFlow => Route::DataFlow,
+            DataRequest::RefreshChannels => Route::Channels,
+            DataRequest::RefreshStreams => Route::Streams,
+            DataRequest::RefreshFutures => Route::Futures,
             DataRequest::RefreshThreads => Route::Threads,
             DataRequest::RefreshDebug => Route::Debug,
             DataRequest::RefreshTokioRuntime => Route::TokioRuntime,
@@ -42,15 +46,9 @@ impl DataRequest {
             DataRequest::FetchFunctionLogsAlloc(id) => {
                 Route::FunctionAllocLogs { function_id: *id }
             }
-            DataRequest::FetchDataFlowChannelLogs(id) => {
-                Route::DataFlowChannelLogs { channel_id: *id }
-            }
-            DataRequest::FetchDataFlowStreamLogs(id) => {
-                Route::DataFlowStreamLogs { stream_id: *id }
-            }
-            DataRequest::FetchDataFlowFutureLogs(id) => {
-                Route::DataFlowFutureLogs { future_id: *id }
-            }
+            DataRequest::FetchChannelLogs(id) => Route::ChannelLogs { channel_id: *id },
+            DataRequest::FetchStreamLogs(id) => Route::StreamLogs { stream_id: *id },
+            DataRequest::FetchFutureLogs(id) => Route::FutureLogs { future_id: *id },
             DataRequest::FetchDebugDbgLogs(id) => Route::DebugDbgLogs { id: *id },
             DataRequest::FetchDebugValLogs(id) => Route::DebugValLogs { id: *id },
             DataRequest::FetchDebugGaugeLogs(id) => Route::DebugGaugeLogs { id: *id },
@@ -75,20 +73,28 @@ pub(crate) enum DataResponse {
         logs: JsonFunctionAllocLogsList,
     },
     FunctionLogsAllocNotFound(u32),
-    DataFlow(JsonDataFlowList),
-    DataFlowChannelLogs {
+    Channels(JsonChannelsList),
+    Streams(JsonStreamsList),
+    Futures(JsonFuturesList),
+    ChannelLogs {
         id: u32,
         logs: JsonChannelLogsList,
     },
-    DataFlowStreamLogs {
+    StreamLogs {
         id: u32,
         logs: JsonStreamLogsList,
     },
-    DataFlowFutureLogs {
+    FutureLogs {
         id: u32,
         calls: JsonFutureLogsList,
     },
-    DataFlowLogsNotFound {
+    ChannelLogsNotFound {
+        id: u32,
+    },
+    StreamLogsNotFound {
+        id: u32,
+    },
+    FutureLogsNotFound {
         id: u32,
     },
     Threads(JsonThreadsList),

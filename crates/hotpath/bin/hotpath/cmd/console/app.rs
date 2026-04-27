@@ -2,9 +2,10 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
-    JsonChannelLogsList, JsonChannelSentLog, JsonDataFlowList, JsonDataFlowLog, JsonDebugEntry,
+    JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLog, JsonFutureLogsList, JsonRuntimeSnapshot, JsonStreamLogsList, JsonThreadsList,
+    JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonRuntimeSnapshot, JsonStreamLogsList,
+    JsonStreamsList, JsonThreadsList,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -82,6 +83,32 @@ impl FunctionsSubTab {
     }
 }
 
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DataFlowSubTab {
+    #[default]
+    Channels,
+    Streams,
+    Futures,
+}
+
+impl DataFlowSubTab {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            DataFlowSubTab::Channels => "Channels",
+            DataFlowSubTab::Streams => "Streams",
+            DataFlowSubTab::Futures => "Futures",
+        }
+    }
+
+    pub(crate) fn cycle(&self) -> Self {
+        match self {
+            DataFlowSubTab::Channels => DataFlowSubTab::Streams,
+            DataFlowSubTab::Streams => DataFlowSubTab::Futures,
+            DataFlowSubTab::Futures => DataFlowSubTab::Channels,
+        }
+    }
+}
+
 /// Represents which UI component has focus in the Functions tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FunctionsFocus {
@@ -150,6 +177,7 @@ pub(crate) struct App {
     pub(crate) memory_table_state: TableState,
     pub(crate) selected_tab: SelectedTab,
     pub(crate) functions_sub_tab: FunctionsSubTab,
+    pub(crate) data_flow_sub_tab: DataFlowSubTab,
     pub(crate) paused: bool,
 
     pub(crate) last_refresh: Instant,
@@ -176,8 +204,12 @@ pub(crate) struct App {
     pub(crate) loading_threads: bool,
     pub(crate) loading_debug: bool,
 
-    pub(crate) data_flow: JsonDataFlowList,
-    pub(crate) data_flow_table_state: TableState,
+    pub(crate) channels: JsonChannelsList,
+    pub(crate) streams: JsonStreamsList,
+    pub(crate) futures: JsonFuturesList,
+    pub(crate) channels_table_state: TableState,
+    pub(crate) streams_table_state: TableState,
+    pub(crate) futures_table_state: TableState,
     pub(crate) data_flow_focus: DataFlowFocus,
     pub(crate) show_data_flow_logs: bool,
     pub(crate) data_flow_logs: Option<DataFlowLogs>,
@@ -261,6 +293,7 @@ impl App {
             memory_table_state: TableState::default().with_selected(0),
             selected_tab: initial_tab,
             functions_sub_tab: FunctionsSubTab::default(),
+            data_flow_sub_tab: DataFlowSubTab::default(),
             paused: false,
             last_refresh: Instant::now(),
             last_successful_fetch: None,
@@ -282,11 +315,21 @@ impl App {
             loading_data_flow: false,
             loading_threads: false,
             loading_debug: false,
-            data_flow: JsonDataFlowList {
+            channels: JsonChannelsList {
                 current_elapsed_ns: 0,
-                entries: vec![],
+                data: vec![],
             },
-            data_flow_table_state: TableState::default().with_selected(0),
+            streams: JsonStreamsList {
+                current_elapsed_ns: 0,
+                data: vec![],
+            },
+            futures: JsonFuturesList {
+                current_elapsed_ns: 0,
+                data: vec![],
+            },
+            channels_table_state: TableState::default().with_selected(0),
+            streams_table_state: TableState::default().with_selected(0),
+            futures_table_state: TableState::default().with_selected(0),
             data_flow_focus: DataFlowFocus::List,
             show_data_flow_logs: false,
             data_flow_logs: None,
@@ -339,11 +382,54 @@ impl App {
                 FunctionsSubTab::Timing => &mut self.timing_table_state,
                 FunctionsSubTab::Memory => &mut self.memory_table_state,
             },
-            SelectedTab::DataFlow => &mut self.data_flow_table_state,
+            SelectedTab::DataFlow => match self.data_flow_sub_tab {
+                DataFlowSubTab::Channels => &mut self.channels_table_state,
+                DataFlowSubTab::Streams => &mut self.streams_table_state,
+                DataFlowSubTab::Futures => &mut self.futures_table_state,
+            },
             SelectedTab::Threads => &mut self.threads_table_state,
             SelectedTab::Debug => &mut self.debug_table_state,
             SelectedTab::Runtime => &mut self.runtime_table_state,
         }
+    }
+
+    pub(crate) fn data_flow_entries_len(&self) -> usize {
+        match self.data_flow_sub_tab {
+            DataFlowSubTab::Channels => self.channels.data.len(),
+            DataFlowSubTab::Streams => self.streams.data.len(),
+            DataFlowSubTab::Futures => self.futures.data.len(),
+        }
+    }
+
+    pub(crate) fn data_flow_table_state(&self) -> &TableState {
+        match self.data_flow_sub_tab {
+            DataFlowSubTab::Channels => &self.channels_table_state,
+            DataFlowSubTab::Streams => &self.streams_table_state,
+            DataFlowSubTab::Futures => &self.futures_table_state,
+        }
+    }
+
+    pub(crate) fn data_flow_table_state_mut(&mut self) -> &mut TableState {
+        match self.data_flow_sub_tab {
+            DataFlowSubTab::Channels => &mut self.channels_table_state,
+            DataFlowSubTab::Streams => &mut self.streams_table_state,
+            DataFlowSubTab::Futures => &mut self.futures_table_state,
+        }
+    }
+
+    pub(crate) fn selected_channel_id(&self) -> Option<u32> {
+        let idx = self.channels_table_state.selected()?;
+        self.channels.data.get(idx).map(|e| e.id)
+    }
+
+    pub(crate) fn selected_stream_id(&self) -> Option<u32> {
+        let idx = self.streams_table_state.selected()?;
+        self.streams.data.get(idx).map(|e| e.id)
+    }
+
+    pub(crate) fn selected_future_id(&self) -> Option<u32> {
+        let idx = self.futures_table_state.selected()?;
+        self.futures.data.get(idx).map(|e| e.id)
     }
 
     pub(crate) fn run(

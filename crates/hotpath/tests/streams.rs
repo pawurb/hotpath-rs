@@ -83,7 +83,7 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6774 TEST_SLEEP_SECONDS=10 cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::{DataFlowType, JsonDataFlowList};
+        use hotpath::json::JsonStreamsList;
         use std::{thread::sleep, time::Duration};
 
         let mut child = Command::new("cargo")
@@ -109,7 +109,7 @@ pub mod tests {
         for _attempt in 0..12 {
             sleep(Duration::from_millis(750));
 
-            match ureq::get("http://localhost:6774/data_flow").call() {
+            match ureq::get("http://localhost:6774/streams").call() {
                 Ok(mut response) => {
                     json_text = response
                         .body_mut()
@@ -138,24 +138,19 @@ pub mod tests {
             );
         }
 
-        let data_flow: JsonDataFlowList =
-            serde_json::from_str(&json_text).expect("Failed to parse data_flow JSON");
+        let streams: JsonStreamsList =
+            serde_json::from_str(&json_text).expect("Failed to parse streams JSON");
 
-        let first_stream = data_flow
-            .entries
-            .iter()
-            .find(|e| e.data_flow_type == DataFlowType::Stream);
-
-        if let Some(stream) = first_stream {
-            let logs_url = format!("http://localhost:6774/data_flow/stream/{}/logs", stream.id);
+        if let Some(stream) = streams.data.first() {
+            let logs_url = format!("http://localhost:6774/streams/{}/logs", stream.id);
             let response = ureq::get(&logs_url)
                 .call()
-                .expect("Failed to call /data_flow/stream/:id/logs endpoint");
+                .expect("Failed to call /streams/:id/logs endpoint");
 
             assert_eq!(
                 response.status(),
                 200,
-                "Expected status 200 for /data_flow/stream/:id/logs endpoint"
+                "Expected status 200 for /streams/:id/logs endpoint"
             );
         }
 

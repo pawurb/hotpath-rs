@@ -17,7 +17,13 @@ impl App {
                     self.switch_to_tab(SelectedTab::Functions);
                 }
             }
-            KeyCode::Char('2') => self.switch_to_tab(SelectedTab::DataFlow),
+            KeyCode::Char('2') => {
+                if self.selected_tab == SelectedTab::DataFlow {
+                    self.cycle_data_flow_sub_tab();
+                } else {
+                    self.switch_to_tab(SelectedTab::DataFlow);
+                }
+            }
             KeyCode::Char('3') => self.switch_to_tab(SelectedTab::Threads),
             KeyCode::Char('4') => self.switch_to_tab(SelectedTab::Debug),
             KeyCode::Char('5') => self.switch_to_tab(SelectedTab::Runtime),

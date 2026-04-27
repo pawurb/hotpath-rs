@@ -9,9 +9,11 @@ use crate::instant::Instant;
 pub(crate) mod wrapper;
 
 use crate::channels::{resolve_label, LOGS_LIMIT};
-use crate::data_flow::{WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT};
 use crate::json::JsonStreamEntry;
 pub(crate) use crate::json::{ChannelState, DataFlowLogEntry, StreamLogs};
+use crate::lib_on::hotpath_guard::{
+    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
+};
 use crate::metrics_server::METRICS_SERVER_PORT;
 pub use crate::Format;
 
@@ -393,6 +395,19 @@ pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
     let mut stats: Vec<StreamStats> = guard.stats.values().cloned().collect();
     stats.sort_by(compare_stream_stats);
     stats
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn get_streams_json() -> crate::json::JsonStreamsList {
+    let data = get_sorted_stream_stats()
+        .iter()
+        .map(JsonStreamEntry::from)
+        .collect();
+
+    crate::json::JsonStreamsList {
+        current_elapsed_ns: crate::lib_on::current_elapsed_ns(),
+        data,
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

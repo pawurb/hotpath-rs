@@ -64,6 +64,17 @@ impl App {
         self.request_refresh_for_current_tab();
     }
 
+    pub(crate) fn cycle_data_flow_sub_tab(&mut self) {
+        self.data_flow_sub_tab = self.data_flow_sub_tab.cycle();
+        debug!("Cycled data flow subtab: {}", self.data_flow_sub_tab.name());
+        self.data_flow_focus = DataFlowFocus::List;
+        self.data_flow_logs = None;
+        self.show_data_flow_logs = false;
+        self.data_flow_logs_table_state.select(None);
+        self.inspected_data_flow_log = None;
+        self.request_refresh_for_current_tab();
+    }
+
     pub(crate) fn toggle_functions_sub_tab(&mut self) {
         self.functions_sub_tab = self.functions_sub_tab.toggle();
         debug!(
@@ -236,16 +247,16 @@ impl App {
     // Data Flow tab state management
 
     pub(crate) fn select_previous_data_flow(&mut self) {
-        let count = self.data_flow.entries.len();
+        let count = self.data_flow_entries_len();
         if count == 0 {
             return;
         }
 
-        let i = match self.data_flow_table_state.selected() {
+        let i = match self.data_flow_table_state().selected() {
             Some(i) => i.saturating_sub(1),
             None => 0,
         };
-        self.data_flow_table_state.select(Some(i));
+        self.data_flow_table_state_mut().select(Some(i));
 
         if self.paused && self.show_data_flow_logs {
             self.data_flow_logs = None;
@@ -255,16 +266,16 @@ impl App {
     }
 
     pub(crate) fn select_next_data_flow(&mut self) {
-        let count = self.data_flow.entries.len();
+        let count = self.data_flow_entries_len();
         if count == 0 {
             return;
         }
 
-        let i = match self.data_flow_table_state.selected() {
+        let i = match self.data_flow_table_state().selected() {
             Some(i) => (i + 1).min(count - 1),
             None => 0,
         };
-        self.data_flow_table_state.select(Some(i));
+        self.data_flow_table_state_mut().select(Some(i));
 
         if self.paused && self.show_data_flow_logs {
             self.data_flow_logs = None;
@@ -274,11 +285,11 @@ impl App {
     }
 
     pub(crate) fn first_data_flow(&mut self) {
-        let count = self.data_flow.entries.len();
+        let count = self.data_flow_entries_len();
         if count == 0 {
             return;
         }
-        self.data_flow_table_state.select(Some(0));
+        self.data_flow_table_state_mut().select(Some(0));
         if self.paused && self.show_data_flow_logs {
             self.data_flow_logs = None;
         } else if self.show_data_flow_logs {
@@ -287,11 +298,11 @@ impl App {
     }
 
     pub(crate) fn last_data_flow(&mut self) {
-        let count = self.data_flow.entries.len();
+        let count = self.data_flow_entries_len();
         if count == 0 {
             return;
         }
-        self.data_flow_table_state.select(Some(count - 1));
+        self.data_flow_table_state_mut().select(Some(count - 1));
         if self.paused && self.show_data_flow_logs {
             self.data_flow_logs = None;
         } else if self.show_data_flow_logs {
@@ -300,13 +311,14 @@ impl App {
     }
 
     pub(crate) fn toggle_data_flow_logs(&mut self) {
+        let count = self.data_flow_entries_len();
         let has_valid_selection = self
-            .data_flow_table_state
+            .data_flow_table_state()
             .selected()
-            .map(|i| i < self.data_flow.entries.len())
+            .map(|i| i < count)
             .unwrap_or(false);
 
-        if !self.data_flow.entries.is_empty() && has_valid_selection {
+        if count > 0 && has_valid_selection {
             if self.show_data_flow_logs {
                 self.hide_data_flow_logs();
             } else {
@@ -335,7 +347,7 @@ impl App {
     pub(crate) fn focus_data_flow_logs(&mut self) {
         if !self.show_data_flow_logs {
             self.toggle_data_flow_logs();
-        } else if !self.data_flow.entries.is_empty() {
+        } else if self.data_flow_entries_len() > 0 {
             if let Some(ref logs) = self.data_flow_logs {
                 let has_logs = match logs {
                     crate::cmd::console::app::DataFlowLogs::Channel(l) => !l.sent_logs.is_empty(),

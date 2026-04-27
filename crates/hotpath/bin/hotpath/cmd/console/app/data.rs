@@ -1,11 +1,11 @@
 //! Data management - fetching, updating, and transforming functions/data flow
 
-use crate::cmd::console::app::{App, DataFlowLogs, FunctionsSubTab, SelectedTab};
+use crate::cmd::console::app::{App, DataFlowLogs, DataFlowSubTab, FunctionsSubTab, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
-    DataFlowType, DebugEntryType, JsonChannelLogsList, JsonDataFlowList, JsonDebugList,
+    DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
     JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonStreamLogsList, JsonThreadsList,
+    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use std::time::Instant;
 use tracing::{trace, warn};
@@ -28,7 +28,7 @@ impl App {
                 }
                 _ => {}
             },
-            SelectedTab::DataFlow if !self.data_flow.entries.is_empty() => {
+            SelectedTab::DataFlow if self.data_flow_entries_len() > 0 => {
                 self.auto_expand_logs = false;
                 self.toggle_data_flow_logs();
             }
@@ -189,40 +189,90 @@ impl App {
 
     // Data Flow methods
 
-    pub(crate) fn update_data_flow(&mut self, data_flow: JsonDataFlowList) {
-        let selected_id = self
-            .data_flow_table_state
-            .selected()
-            .and_then(|idx| self.data_flow.entries.get(idx))
-            .map(|entry| entry.id);
-
-        self.data_flow = data_flow;
+    pub(crate) fn update_channels(&mut self, channels: JsonChannelsList) {
+        let selected_id = self.selected_channel_id();
+        self.channels = channels;
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
 
+        let len = self.channels.data.len();
         if let Some(idx) = self.auto_select_index {
-            if !self.data_flow.entries.is_empty() {
-                let clamped = idx.min(self.data_flow.entries.len() - 1);
-                self.data_flow_table_state.select(Some(clamped));
+            if len > 0 {
+                self.channels_table_state.select(Some(idx.min(len - 1)));
             }
         } else if let Some(id) = selected_id {
-            if let Some(new_idx) = self.data_flow.entries.iter().position(|e| e.id == id) {
-                self.data_flow_table_state.select(Some(new_idx));
-            } else if !self.data_flow.entries.is_empty() {
-                self.data_flow_table_state
-                    .select(Some(self.data_flow.entries.len() - 1));
+            if let Some(new_idx) = self.channels.data.iter().position(|e| e.id == id) {
+                self.channels_table_state.select(Some(new_idx));
+            } else if len > 0 {
+                self.channels_table_state.select(Some(len - 1));
             }
-        } else if let Some(selected) = self.data_flow_table_state.selected() {
-            if selected >= self.data_flow.entries.len() && !self.data_flow.entries.is_empty() {
-                self.data_flow_table_state
-                    .select(Some(self.data_flow.entries.len() - 1));
+        } else if let Some(selected) = self.channels_table_state.selected() {
+            if selected >= len && len > 0 {
+                self.channels_table_state.select(Some(len - 1));
             }
         }
 
-        if self.show_data_flow_logs {
+        if self.show_data_flow_logs && self.data_flow_sub_tab == DataFlowSubTab::Channels {
             self.request_data_flow_logs();
         }
+        self.try_auto_expand_logs();
+    }
 
+    pub(crate) fn update_streams(&mut self, streams: JsonStreamsList) {
+        let selected_id = self.selected_stream_id();
+        self.streams = streams;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        let len = self.streams.data.len();
+        if let Some(idx) = self.auto_select_index {
+            if len > 0 {
+                self.streams_table_state.select(Some(idx.min(len - 1)));
+            }
+        } else if let Some(id) = selected_id {
+            if let Some(new_idx) = self.streams.data.iter().position(|e| e.id == id) {
+                self.streams_table_state.select(Some(new_idx));
+            } else if len > 0 {
+                self.streams_table_state.select(Some(len - 1));
+            }
+        } else if let Some(selected) = self.streams_table_state.selected() {
+            if selected >= len && len > 0 {
+                self.streams_table_state.select(Some(len - 1));
+            }
+        }
+
+        if self.show_data_flow_logs && self.data_flow_sub_tab == DataFlowSubTab::Streams {
+            self.request_data_flow_logs();
+        }
+        self.try_auto_expand_logs();
+    }
+
+    pub(crate) fn update_futures(&mut self, futures: JsonFuturesList) {
+        let selected_id = self.selected_future_id();
+        self.futures = futures;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        let len = self.futures.data.len();
+        if let Some(idx) = self.auto_select_index {
+            if len > 0 {
+                self.futures_table_state.select(Some(idx.min(len - 1)));
+            }
+        } else if let Some(id) = selected_id {
+            if let Some(new_idx) = self.futures.data.iter().position(|e| e.id == id) {
+                self.futures_table_state.select(Some(new_idx));
+            } else if len > 0 {
+                self.futures_table_state.select(Some(len - 1));
+            }
+        } else if let Some(selected) = self.futures_table_state.selected() {
+            if selected >= len && len > 0 {
+                self.futures_table_state.select(Some(len - 1));
+            }
+        }
+
+        if self.show_data_flow_logs && self.data_flow_sub_tab == DataFlowSubTab::Futures {
+            self.request_data_flow_logs();
+        }
         self.try_auto_expand_logs();
     }
 
@@ -231,15 +281,26 @@ impl App {
             return;
         }
 
-        if let Some(selected) = self.data_flow_table_state.selected() {
-            if let Some(entry) = self.data_flow.entries.get(selected) {
-                let request = match entry.data_flow_type {
-                    DataFlowType::Channel => DataRequest::FetchDataFlowChannelLogs(entry.id),
-                    DataFlowType::Stream => DataRequest::FetchDataFlowStreamLogs(entry.id),
-                    DataFlowType::Future => DataRequest::FetchDataFlowFutureLogs(entry.id),
-                };
-                let _ = self.request_tx.send(request);
-            }
+        let request = match self.data_flow_sub_tab {
+            DataFlowSubTab::Channels => self
+                .channels_table_state
+                .selected()
+                .and_then(|i| self.channels.data.get(i))
+                .map(|e| DataRequest::FetchChannelLogs(e.id)),
+            DataFlowSubTab::Streams => self
+                .streams_table_state
+                .selected()
+                .and_then(|i| self.streams.data.get(i))
+                .map(|e| DataRequest::FetchStreamLogs(e.id)),
+            DataFlowSubTab::Futures => self
+                .futures_table_state
+                .selected()
+                .and_then(|i| self.futures.data.get(i))
+                .map(|e| DataRequest::FetchFutureLogs(e.id)),
+        };
+
+        if let Some(req) = request {
+            let _ = self.request_tx.send(req);
         }
     }
 
@@ -396,7 +457,11 @@ impl App {
             }
             SelectedTab::DataFlow => {
                 self.loading_data_flow = true;
-                DataRequest::RefreshDataFlow
+                match self.data_flow_sub_tab {
+                    DataFlowSubTab::Channels => DataRequest::RefreshChannels,
+                    DataFlowSubTab::Streams => DataRequest::RefreshStreams,
+                    DataFlowSubTab::Futures => DataRequest::RefreshFutures,
+                }
             }
             SelectedTab::Threads => {
                 self.loading_threads = true;
@@ -460,12 +525,22 @@ impl App {
             DataResponse::FunctionLogsAllocNotFound(_) => {
                 self.current_alloc_logs = None;
             }
-            DataResponse::DataFlow(data) => {
-                trace!("Received data flow: {} entries", data.entries.len());
+            DataResponse::Channels(data) => {
+                trace!("Received channels: {} entries", data.data.len());
                 self.loading_data_flow = false;
-                self.update_data_flow(data);
+                self.update_channels(data);
             }
-            DataResponse::DataFlowChannelLogs { id, logs } => {
+            DataResponse::Streams(data) => {
+                trace!("Received streams: {} entries", data.data.len());
+                self.loading_data_flow = false;
+                self.update_streams(data);
+            }
+            DataResponse::Futures(data) => {
+                trace!("Received futures: {} entries", data.data.len());
+                self.loading_data_flow = false;
+                self.update_futures(data);
+            }
+            DataResponse::ChannelLogs { id, logs } => {
                 trace!(
                     "Received channel {} logs: {} sent, {} received",
                     id,
@@ -474,11 +549,11 @@ impl App {
                 );
                 self.handle_data_flow_channel_logs(id, logs);
             }
-            DataResponse::DataFlowStreamLogs { id, logs } => {
+            DataResponse::StreamLogs { id, logs } => {
                 trace!("Received stream {} logs: {} entries", id, logs.logs.len());
                 self.handle_data_flow_stream_logs(id, logs);
             }
-            DataResponse::DataFlowFutureLogs { id, calls } => {
+            DataResponse::FutureLogs { id, calls } => {
                 trace!(
                     "Received future {} calls: {} entries",
                     id,
@@ -486,7 +561,9 @@ impl App {
                 );
                 self.handle_data_flow_future_logs(id, calls);
             }
-            DataResponse::DataFlowLogsNotFound { .. } => {
+            DataResponse::ChannelLogsNotFound { .. }
+            | DataResponse::StreamLogsNotFound { .. }
+            | DataResponse::FutureLogsNotFound { .. } => {
                 self.data_flow_logs = None;
             }
             DataResponse::Threads(data) => {

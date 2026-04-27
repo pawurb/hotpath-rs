@@ -1,7 +1,7 @@
-use crate::cmd::console::app::DataFlowLogs;
+use crate::cmd::console::app::{DataFlowLogs, DataFlowSubTab};
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_message;
-use hotpath::{format_bytes, format_duration, json::DataFlowType};
+use hotpath::{format_bytes, format_duration};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -44,7 +44,7 @@ fn state_style(state: &str) -> Style {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_logs_panel(
     logs: &DataFlowLogs,
-    data_flow_type: DataFlowType,
+    sub_tab: DataFlowSubTab,
     label: &str,
     has_missing_log: bool,
     area: Rect,
@@ -89,8 +89,8 @@ pub(crate) fn render_logs_panel(
     let available_width = inner_area.width.saturating_sub(2);
     let msg_width = (available_width.saturating_sub(30) as usize).max(20);
 
-    match (logs, data_flow_type) {
-        (DataFlowLogs::Channel(channel_logs), DataFlowType::Channel) => {
+    match (logs, sub_tab) {
+        (DataFlowLogs::Channel(channel_logs), DataFlowSubTab::Channels) => {
             let header = Row::new(vec!["Index", "Message", "Delay", "Ago"])
                 .style(common_styles::HEADER_STYLE_CYAN)
                 .height(1);
@@ -127,7 +127,7 @@ pub(crate) fn render_logs_panel(
 
             frame.render_stateful_widget(table, inner_area, table_state);
         }
-        (DataFlowLogs::Stream(stream_logs), DataFlowType::Stream) => {
+        (DataFlowLogs::Stream(stream_logs), DataFlowSubTab::Streams) => {
             let header = Row::new(vec!["Index", "Message", "Ago"])
                 .style(common_styles::HEADER_STYLE_CYAN)
                 .height(1);
@@ -161,7 +161,7 @@ pub(crate) fn render_logs_panel(
 
             frame.render_stateful_widget(table, inner_area, table_state);
         }
-        (DataFlowLogs::Future(future_logs), DataFlowType::Future) => {
+        (DataFlowLogs::Future(future_logs), DataFlowSubTab::Futures) => {
             let result_width = (available_width.saturating_sub(44) as usize).max(10);
             let total_alloc = future_logs
                 .total_poll_alloc_bytes

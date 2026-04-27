@@ -16,9 +16,16 @@ pub(crate) fn elapsed_since_start_ns(end: Instant) -> u64 {
         .unwrap_or(0)
 }
 
+#[inline]
+pub(crate) fn current_elapsed_ns() -> u64 {
+    START_TIME
+        .get()
+        .map(|start| start.elapsed().as_nanos() as u64)
+        .unwrap_or(0)
+}
+
 pub mod channels;
 pub mod cpu_baseline;
-pub mod data_flow;
 pub mod debug;
 pub mod futures;
 pub mod streams;

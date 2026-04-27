@@ -3,10 +3,10 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
-    JsonChannelLogsList, JsonDataFlowList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
+    JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
     JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonStreamLogsList,
-    JsonThreadsList,
+    JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus, JsonRuntimeSnapshot,
+    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -22,15 +22,17 @@ const HTTP_TIMEOUT_MS: u64 = 2000;
 enum RequestKey {
     Timing,
     Memory,
-    DataFlow,
+    Channels,
+    Streams,
+    Futures,
     Threads,
     Debug,
     TokioRuntime,
     FunctionLogsTiming,
     FunctionLogsAlloc,
-    DataFlowChannelLogs,
-    DataFlowStreamLogs,
-    DataFlowFutureLogs,
+    ChannelLogs,
+    StreamLogs,
+    FutureLogs,
     DebugDbgLogs,
     DebugValLogs,
     DebugGaugeLogs,
@@ -42,15 +44,17 @@ impl DataRequest {
         match self {
             DataRequest::RefreshTiming => RequestKey::Timing,
             DataRequest::RefreshMemory => RequestKey::Memory,
-            DataRequest::RefreshDataFlow => RequestKey::DataFlow,
+            DataRequest::RefreshChannels => RequestKey::Channels,
+            DataRequest::RefreshStreams => RequestKey::Streams,
+            DataRequest::RefreshFutures => RequestKey::Futures,
             DataRequest::RefreshThreads => RequestKey::Threads,
             DataRequest::RefreshDebug => RequestKey::Debug,
             DataRequest::RefreshTokioRuntime => RequestKey::TokioRuntime,
             DataRequest::FetchFunctionLogsTiming(_) => RequestKey::FunctionLogsTiming,
             DataRequest::FetchFunctionLogsAlloc(_) => RequestKey::FunctionLogsAlloc,
-            DataRequest::FetchDataFlowChannelLogs(_) => RequestKey::DataFlowChannelLogs,
-            DataRequest::FetchDataFlowStreamLogs(_) => RequestKey::DataFlowStreamLogs,
-            DataRequest::FetchDataFlowFutureLogs(_) => RequestKey::DataFlowFutureLogs,
+            DataRequest::FetchChannelLogs(_) => RequestKey::ChannelLogs,
+            DataRequest::FetchStreamLogs(_) => RequestKey::StreamLogs,
+            DataRequest::FetchFutureLogs(_) => RequestKey::FutureLogs,
             DataRequest::FetchDebugDbgLogs(_) => RequestKey::DebugDbgLogs,
             DataRequest::FetchDebugValLogs(_) => RequestKey::DebugValLogs,
             DataRequest::FetchDebugGaugeLogs(_) => RequestKey::DebugGaugeLogs,
@@ -173,14 +177,14 @@ impl RouteExt for Route {
             Route::FunctionAllocLogs { function_id } => {
                 Some(DataResponse::FunctionLogsAllocNotFound(*function_id))
             }
-            Route::DataFlowChannelLogs { channel_id } => {
-                Some(DataResponse::DataFlowLogsNotFound { id: *channel_id })
+            Route::ChannelLogs { channel_id } => {
+                Some(DataResponse::ChannelLogsNotFound { id: *channel_id })
             }
-            Route::DataFlowStreamLogs { stream_id } => {
-                Some(DataResponse::DataFlowLogsNotFound { id: *stream_id })
+            Route::StreamLogs { stream_id } => {
+                Some(DataResponse::StreamLogsNotFound { id: *stream_id })
             }
-            Route::DataFlowFutureLogs { future_id } => {
-                Some(DataResponse::DataFlowLogsNotFound { id: *future_id })
+            Route::FutureLogs { future_id } => {
+                Some(DataResponse::FutureLogsNotFound { id: *future_id })
             }
             Route::DebugDbgLogs { id }
             | Route::DebugValLogs { id }
@@ -200,7 +204,9 @@ impl RouteExt for Route {
             Route::FunctionsAlloc => {
                 parse_json::<JsonFunctionsList>(bytes).map(DataResponse::FunctionsAlloc)
             }
-            Route::DataFlow => parse_json::<JsonDataFlowList>(bytes).map(DataResponse::DataFlow),
+            Route::Channels => parse_json::<JsonChannelsList>(bytes).map(DataResponse::Channels),
+            Route::Streams => parse_json::<JsonStreamsList>(bytes).map(DataResponse::Streams),
+            Route::Futures => parse_json::<JsonFuturesList>(bytes).map(DataResponse::Futures),
             Route::Threads => parse_json::<JsonThreadsList>(bytes).map(DataResponse::Threads),
             Route::FunctionTimingLogs { function_id } => {
                 parse_json::<JsonFunctionTimingLogsList>(bytes).map(|logs| {
@@ -218,25 +224,22 @@ impl RouteExt for Route {
                     }
                 })
             }
-            Route::DataFlowChannelLogs { channel_id } => parse_json::<JsonChannelLogsList>(bytes)
-                .map(|logs| DataResponse::DataFlowChannelLogs {
+            Route::ChannelLogs { channel_id } => {
+                parse_json::<JsonChannelLogsList>(bytes).map(|logs| DataResponse::ChannelLogs {
                     id: *channel_id,
                     logs,
-                }),
-            Route::DataFlowStreamLogs { stream_id } => {
-                parse_json::<JsonStreamLogsList>(bytes).map(|logs| {
-                    DataResponse::DataFlowStreamLogs {
-                        id: *stream_id,
-                        logs,
-                    }
                 })
             }
-            Route::DataFlowFutureLogs { future_id } => {
-                parse_json::<JsonFutureLogsList>(bytes).map(|calls| {
-                    DataResponse::DataFlowFutureLogs {
-                        id: *future_id,
-                        calls,
-                    }
+            Route::StreamLogs { stream_id } => {
+                parse_json::<JsonStreamLogsList>(bytes).map(|logs| DataResponse::StreamLogs {
+                    id: *stream_id,
+                    logs,
+                })
+            }
+            Route::FutureLogs { future_id } => {
+                parse_json::<JsonFutureLogsList>(bytes).map(|calls| DataResponse::FutureLogs {
+                    id: *future_id,
+                    calls,
                 })
             }
             Route::Debug => parse_json::<JsonDebugList>(bytes).map(DataResponse::Debug),

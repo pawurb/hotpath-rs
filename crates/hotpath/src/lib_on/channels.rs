@@ -10,11 +10,11 @@ mod wrapper;
 
 use std::mem;
 
-use crate::data_flow::{
-    next_data_flow_id, WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
 use crate::json::JsonChannelEntry;
 pub(crate) use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
+use crate::lib_on::hotpath_guard::{
+    next_data_flow_id, WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
+};
 use crate::metrics_server::METRICS_SERVER_PORT;
 
 pub use crate::Format;
@@ -653,6 +653,19 @@ pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
     let mut stats: Vec<ChannelEntry> = guard.stats.values().cloned().collect();
     stats.sort_by(compare_channel_entries);
     stats
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
+    let data = get_sorted_channel_entries()
+        .iter()
+        .map(JsonChannelEntry::from)
+        .collect();
+
+    crate::json::JsonChannelsList {
+        current_elapsed_ns: crate::lib_on::current_elapsed_ns(),
+        data,
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

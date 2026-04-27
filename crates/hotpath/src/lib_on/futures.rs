@@ -9,7 +9,9 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::instant::Instant;
 
-use crate::data_flow::{WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT};
+use crate::lib_on::hotpath_guard::{
+    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
+};
 
 pub(crate) mod wrapper;
 
@@ -46,7 +48,7 @@ pub(crate) fn get_or_create_future_id(source: &'static str) -> (u32, bool) {
         return (future_id, false);
     }
 
-    let future_id = crate::data_flow::next_data_flow_id();
+    let future_id = crate::lib_on::hotpath_guard::next_data_flow_id();
     write_guard.insert(source, future_id);
     (future_id, true)
 }
@@ -466,6 +468,19 @@ pub(crate) fn get_sorted_future_stats() -> Vec<FutureEntry> {
     let mut stats: Vec<FutureEntry> = guard.stats.values().cloned().collect();
     stats.sort_by(compare_future_stats);
     stats
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn get_futures_json() -> crate::json::JsonFuturesList {
+    let data = get_sorted_future_stats()
+        .iter()
+        .map(JsonFutureEntry::from)
+        .collect();
+
+    crate::json::JsonFuturesList {
+        current_elapsed_ns: crate::lib_on::current_elapsed_ns(),
+        data,
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
