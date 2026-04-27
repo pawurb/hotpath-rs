@@ -24,9 +24,9 @@ hotpath-macros = { path = "./crates/hotpath-macros", version = "0.15.1" }
 hotpath = { path = "./crates/hotpath", version = "0.15.1" }
 hotpath-meta = { path = "./crates/hotpath-meta", version = "0.15.1" }
 hotpath-macros-meta = { path = "./crates/hotpath-macros-meta", version = "0.15.1" }
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "2.0", features = ["full"] }
+proc-macro2 = "1.0.75"
+quote = "1.0.35"
+syn = { version = "2.0.52", features = ["full"] }
 
 [profile.profiling]
 inherits = "release"

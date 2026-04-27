@@ -1,5 +1,5 @@
 use crate::instant::Instant;
-use crossbeam_channel::{bounded, select_biased, unbounded};
+use crossbeam_channel::{bounded, select, unbounded};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
@@ -277,7 +277,7 @@ impl HotpathGuard {
                 let mut name_to_id = HashMap::<&'static str, u32>::new();
 
                 loop {
-                    select_biased! {
+                    select! {
                         recv(shutdown_rx) -> _ => {
                             for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
                                 match rx.try_recv() {

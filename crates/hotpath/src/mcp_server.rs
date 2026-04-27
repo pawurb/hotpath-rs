@@ -633,18 +633,23 @@ pub(crate) fn start_mcp_server_once() {
 #[cfg(feature = "dev")]
 fn log_debug(msg: &str) {
     use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
     let _ = std::fs::create_dir_all("log");
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open("log/development.log")
     {
-        let now = chrono::Local::now();
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let sod = (secs % 86_400) as u32;
+        let (hour, min, sec) = (sod / 3600, (sod % 3600) / 60, sod % 60);
         let _ = writeln!(
             file,
-            "{} DEBUG [hotpath-mcp] {}",
-            now.format("%Y-%m-%dT%H:%M:%S"),
-            msg
+            "{:02}:{:02}:{:02} DEBUG [hotpath-mcp] {}",
+            hour, min, sec, msg
         );
     }
 }

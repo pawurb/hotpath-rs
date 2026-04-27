@@ -28,10 +28,7 @@ default = ["threads"]
 hotpath = [
   "hotpath-macros/hotpath",
   "dep:cfg-if",
-  "dep:clap",
-  "dep:colored",
   "dep:crossbeam-channel",
-  "dep:eyre",
   "dep:hdrhistogram",
   "dep:prettytable-rs",
   "dep:quanta",
@@ -42,47 +39,44 @@ hotpath = [
   "dep:futures-util",
   "dep:pin-project-lite",
   "dep:libc",
-  "dep:mach2",
 ]
 hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/crossbeam"]
 hotpath-alloc-meta = ["hotpath-meta/hotpath-alloc-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta"]
 hotpath-alloc = ["dep:tokio", "hotpath-meta?/hotpath-alloc"]
 utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq"]
-tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:chrono", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "dep:tracing", "dep:tracing-subscriber", "dep:time", "crossbeam"]
+tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "dep:tracing", "dep:tracing-subscriber", "dep:time", "crossbeam"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
 async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:async-channel"]
 crossbeam = []
 threads = []
-dev = ["dep:chrono"]
-hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:chrono", "dep:schemars"]
+dev = []
+hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]
 cfg-if = { version = "1.0", optional = true }
-clap = { version = "4.5", features = ["derive"], optional = true }
-colored = { version = "3", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
 crossbeam-channel = { version = "0.5", optional = true }
 crossterm = { version = "0.29", optional = true }
 eyre = { version = "0.6", optional = true }
-hdrhistogram = { version = "7.5", default-features = false, optional = true }
+hdrhistogram = { version = "7", default-features = false, optional = true }
 hotpath-macros = { workspace = true }
 prettytable-rs = { version = "0.10", default-features = false, optional = true }
 quanta = { version = "0.12", optional = true }
 ratatui = { version = "0.29", optional = true }
 regex = { version = "1", optional = true }
-serde = { version = "1.0", features = ["derive"], optional = true }
+serde = { version = "1.0.130", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 tiny_http = { version = "0.12", optional = true }
 tokio = { version = "1", features = ["rt"], optional = true }
-ureq = { version = "3.1", features = ["json"], optional = true }
+ureq = { version = "3", features = ["json"], optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
 futures-channel = { version = "0.3", features = ["sink"], optional = true }
-async-channel = { version = "2.5.0", optional = true }
+async-channel = { version = "2", optional = true }
 futures-util = { version = "0.3", features = ["sink"], optional = true }
-pin-project-lite = { version = "0.2", optional = true }
-chrono = { version = "0.4", optional = true }
-libc = { version = "0.2", optional = true }
+pin-project-lite = { version = "0.2.12", optional = true }
+libc = { version = "0.2.172", optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"], optional = true }
 time = { version = "0.3", features = ["formatting", "local-offset"], optional = true }
@@ -92,9 +86,6 @@ axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }
 hotpath-meta = { workspace = true, optional = true }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-mach2 = { version = "0.6", optional = true }
-
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 
@@ -102,11 +93,5 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 features = ["hotpath", "hotpath-alloc"]
 
 [dev-dependencies]
-criterion = "0.5"
 serde_json = "1.0"
-ureq = { version = "3.1", features = ["json"] }
-
-[[bench]]
-name = "benchmark_gauge"
-harness = false
-required-features = ["hotpath"]
+ureq = { version = "3", features = ["json"] }
