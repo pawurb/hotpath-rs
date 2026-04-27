@@ -18,8 +18,7 @@ mod state;
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SelectedTab {
     #[default]
-    Timing,
-    Memory,
+    Functions,
     DataFlow,
     Threads,
     Debug,
@@ -29,19 +28,17 @@ pub(crate) enum SelectedTab {
 impl SelectedTab {
     pub(crate) fn number(&self) -> u8 {
         match self {
-            SelectedTab::Timing => 1,
-            SelectedTab::Memory => 2,
-            SelectedTab::DataFlow => 3,
-            SelectedTab::Threads => 4,
-            SelectedTab::Debug => 5,
-            SelectedTab::Runtime => 6,
+            SelectedTab::Functions => 1,
+            SelectedTab::DataFlow => 2,
+            SelectedTab::Threads => 3,
+            SelectedTab::Debug => 4,
+            SelectedTab::Runtime => 5,
         }
     }
 
     pub(crate) fn name(&self) -> &'static str {
         match self {
-            SelectedTab::Timing => "Timing",
-            SelectedTab::Memory => "Memory",
+            SelectedTab::Functions => "Functions",
             SelectedTab::DataFlow => "Data Flow",
             SelectedTab::Threads => "Threads",
             SelectedTab::Debug => "Debug",
@@ -52,13 +49,35 @@ impl SelectedTab {
     pub(crate) fn from_env_str(s: &str) -> Option<Self> {
         let n: u8 = s.trim().parse().ok()?;
         match n {
-            1 => Some(SelectedTab::Timing),
-            2 => Some(SelectedTab::Memory),
-            3 => Some(SelectedTab::DataFlow),
-            4 => Some(SelectedTab::Threads),
-            5 => Some(SelectedTab::Debug),
-            6 => Some(SelectedTab::Runtime),
+            1 => Some(SelectedTab::Functions),
+            2 => Some(SelectedTab::DataFlow),
+            3 => Some(SelectedTab::Threads),
+            4 => Some(SelectedTab::Debug),
+            5 => Some(SelectedTab::Runtime),
             _ => None,
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FunctionsSubTab {
+    #[default]
+    Timing,
+    Memory,
+}
+
+impl FunctionsSubTab {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            FunctionsSubTab::Timing => "Timing",
+            FunctionsSubTab::Memory => "Memory",
+        }
+    }
+
+    pub(crate) fn toggle(&self) -> Self {
+        match self {
+            FunctionsSubTab::Timing => FunctionsSubTab::Memory,
+            FunctionsSubTab::Memory => FunctionsSubTab::Timing,
         }
     }
 }
@@ -130,6 +149,7 @@ pub(crate) struct App {
     pub(crate) timing_table_state: TableState,
     pub(crate) memory_table_state: TableState,
     pub(crate) selected_tab: SelectedTab,
+    pub(crate) functions_sub_tab: FunctionsSubTab,
     pub(crate) paused: bool,
 
     pub(crate) last_refresh: Instant,
@@ -240,6 +260,7 @@ impl App {
             timing_table_state: TableState::default().with_selected(0),
             memory_table_state: TableState::default().with_selected(0),
             selected_tab: initial_tab,
+            functions_sub_tab: FunctionsSubTab::default(),
             paused: false,
             last_refresh: Instant::now(),
             last_successful_fetch: None,
@@ -306,17 +327,18 @@ impl App {
     }
 
     pub(crate) fn active_functions(&self) -> &JsonFunctionsList {
-        match self.selected_tab {
-            SelectedTab::Timing => &self.timing_functions,
-            SelectedTab::Memory => &self.memory_functions,
-            _ => unreachable!("active_functions() called on non-functions tab"),
+        match self.functions_sub_tab {
+            FunctionsSubTab::Timing => &self.timing_functions,
+            FunctionsSubTab::Memory => &self.memory_functions,
         }
     }
 
     pub(crate) fn active_table_state_mut(&mut self) -> &mut TableState {
         match self.selected_tab {
-            SelectedTab::Timing => &mut self.timing_table_state,
-            SelectedTab::Memory => &mut self.memory_table_state,
+            SelectedTab::Functions => match self.functions_sub_tab {
+                FunctionsSubTab::Timing => &mut self.timing_table_state,
+                FunctionsSubTab::Memory => &mut self.memory_table_state,
+            },
             SelectedTab::DataFlow => &mut self.data_flow_table_state,
             SelectedTab::Threads => &mut self.threads_table_state,
             SelectedTab::Debug => &mut self.debug_table_state,

@@ -1,7 +1,8 @@
 //! UI state management - navigation, selection, and focus handling
 
 use crate::cmd::console::app::{
-    App, DataFlowFocus, DebugFocus, FunctionsFocus, InspectedFunctionLog, SelectedTab,
+    App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, InspectedFunctionLog,
+    SelectedTab,
 };
 use tracing::{debug, info};
 
@@ -63,6 +64,20 @@ impl App {
         self.request_refresh_for_current_tab();
     }
 
+    pub(crate) fn toggle_functions_sub_tab(&mut self) {
+        self.functions_sub_tab = self.functions_sub_tab.toggle();
+        debug!(
+            "Toggled functions subtab: {}",
+            self.functions_sub_tab.name()
+        );
+        self.functions_focus = FunctionsFocus::Functions;
+        self.function_logs_table_state.select(None);
+        self.inspected_function_log = None;
+        self.update_pinned_function();
+        self.request_refresh_for_current_tab();
+        self.request_function_logs_if_open();
+    }
+
     pub(crate) fn toggle_function_logs(&mut self) {
         self.show_function_logs = !self.show_function_logs;
         if self.show_function_logs {
@@ -82,24 +97,29 @@ impl App {
     }
 
     fn function_logs_len(&self) -> usize {
-        match self.selected_tab {
-            SelectedTab::Timing => self
+        if self.selected_tab != SelectedTab::Functions {
+            return 0;
+        }
+        match self.functions_sub_tab {
+            FunctionsSubTab::Timing => self
                 .current_timing_logs
                 .as_ref()
                 .map(|l| l.logs.len())
                 .unwrap_or(0),
-            SelectedTab::Memory => self
+            FunctionsSubTab::Memory => self
                 .current_alloc_logs
                 .as_ref()
                 .map(|l| l.logs.len())
                 .unwrap_or(0),
-            _ => 0,
         }
     }
 
     fn create_inspected_log_for_index(&self, i: usize) -> Option<InspectedFunctionLog> {
-        match self.selected_tab {
-            SelectedTab::Timing => self.current_timing_logs.as_ref().and_then(|logs| {
+        if self.selected_tab != SelectedTab::Functions {
+            return None;
+        }
+        match self.functions_sub_tab {
+            FunctionsSubTab::Timing => self.current_timing_logs.as_ref().and_then(|logs| {
                 logs.logs.get(i).map(|entry| InspectedFunctionLog {
                     invocation: entry.invocation,
                     value: entry.duration.clone(),
@@ -109,7 +129,7 @@ impl App {
                     result: entry.result.clone(),
                 })
             }),
-            SelectedTab::Memory => self.current_alloc_logs.as_ref().and_then(|logs| {
+            FunctionsSubTab::Memory => self.current_alloc_logs.as_ref().and_then(|logs| {
                 logs.logs.get(i).map(|entry| InspectedFunctionLog {
                     invocation: entry.invocation,
                     value: entry.bytes.clone(),
@@ -119,7 +139,6 @@ impl App {
                     result: entry.result.clone(),
                 })
             }),
-            _ => None,
         }
     }
 

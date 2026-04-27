@@ -19,6 +19,8 @@ const INSPECT_LABEL: &str = " | Inspect ";
 const INSPECT_KEY: &str = "<i> ";
 const CLOSE_LABEL: &str = " | Close ";
 const CLOSE_KEYS: &str = "<i/o/h> ";
+const SUBTAB_LABEL: &str = " | Toggle Mode ";
+const SUBTAB_KEY: &str = "<1> ";
 const VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 
 #[hotpath::measure]
@@ -111,6 +113,8 @@ pub(crate) fn render_help_bar(
             match functions_focus {
                 FunctionsFocus::Functions => Line::from(vec![
                     NAV_KEYS_FULL.blue().bold(),
+                    SUBTAB_LABEL.into(),
+                    SUBTAB_KEY.blue().bold(),
                     TOGGLE_LOGS_LABEL.into(),
                     TOGGLE_LOGS_KEY.blue().bold(),
                     PAUSE_LABEL.into(),
@@ -120,6 +124,8 @@ pub(crate) fn render_help_bar(
                 ]),
                 FunctionsFocus::Logs => Line::from(vec![
                     NAV_KEYS_FULL.blue().bold(),
+                    SUBTAB_LABEL.into(),
+                    SUBTAB_KEY.blue().bold(),
                     TOGGLE_LOGS_LABEL.into(),
                     TOGGLE_LOGS_KEY.blue().bold(),
                     INSPECT_LABEL.into(),

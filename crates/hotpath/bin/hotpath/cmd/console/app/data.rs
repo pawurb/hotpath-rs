@@ -1,6 +1,6 @@
 //! Data management - fetching, updating, and transforming functions/data flow
 
-use crate::cmd::console::app::{App, DataFlowLogs, SelectedTab};
+use crate::cmd::console::app::{App, DataFlowLogs, FunctionsSubTab, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
     DataFlowType, DebugEntryType, JsonChannelLogsList, JsonDataFlowList, JsonDebugList,
@@ -17,14 +17,17 @@ impl App {
             return;
         }
         match self.selected_tab {
-            SelectedTab::Timing if !self.timing_functions.data.is_empty() => {
-                self.auto_expand_logs = false;
-                self.toggle_function_logs();
-            }
-            SelectedTab::Memory if !self.memory_functions.data.is_empty() => {
-                self.auto_expand_logs = false;
-                self.toggle_function_logs();
-            }
+            SelectedTab::Functions => match self.functions_sub_tab {
+                FunctionsSubTab::Timing if !self.timing_functions.data.is_empty() => {
+                    self.auto_expand_logs = false;
+                    self.toggle_function_logs();
+                }
+                FunctionsSubTab::Memory if !self.memory_functions.data.is_empty() => {
+                    self.auto_expand_logs = false;
+                    self.toggle_function_logs();
+                }
+                _ => {}
+            },
             SelectedTab::DataFlow if !self.data_flow.entries.is_empty() => {
                 self.auto_expand_logs = false;
                 self.toggle_data_flow_logs();
@@ -120,10 +123,12 @@ impl App {
 
     #[hotpath::measure(log = true)]
     pub(crate) fn selected_function_id(&self) -> Option<u32> {
-        let (entries, table_state) = match self.selected_tab {
-            SelectedTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
-            SelectedTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
-            _ => return None,
+        if self.selected_tab != SelectedTab::Functions {
+            return None;
+        }
+        let (entries, table_state) = match self.functions_sub_tab {
+            FunctionsSubTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
+            FunctionsSubTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
         };
         table_state
             .selected()
@@ -131,10 +136,12 @@ impl App {
     }
 
     pub(crate) fn selected_function_name(&self) -> Option<String> {
-        let (entries, table_state) = match self.selected_tab {
-            SelectedTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
-            SelectedTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
-            _ => return None,
+        if self.selected_tab != SelectedTab::Functions {
+            return None;
+        }
+        let (entries, table_state) = match self.functions_sub_tab {
+            FunctionsSubTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
+            FunctionsSubTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
         };
         table_state
             .selected()
@@ -157,20 +164,19 @@ impl App {
     }
 
     pub(crate) fn request_function_logs_if_open(&self) {
-        if self.show_function_logs {
+        if self.show_function_logs && self.selected_tab == SelectedTab::Functions {
             if let Some(function_id) = self.pinned_function_id {
-                match self.selected_tab {
-                    SelectedTab::Timing => {
+                match self.functions_sub_tab {
+                    FunctionsSubTab::Timing => {
                         let _ = self
                             .request_tx
                             .send(DataRequest::FetchFunctionLogsTiming(function_id));
                     }
-                    SelectedTab::Memory => {
+                    FunctionsSubTab::Memory => {
                         let _ = self
                             .request_tx
                             .send(DataRequest::FetchFunctionLogsAlloc(function_id));
                     }
-                    _ => {}
                 }
             }
         }
@@ -381,13 +387,12 @@ impl App {
 
     pub(crate) fn request_refresh_for_current_tab(&mut self) {
         let request = match self.selected_tab {
-            SelectedTab::Timing => {
+            SelectedTab::Functions => {
                 self.loading_functions = true;
-                DataRequest::RefreshTiming
-            }
-            SelectedTab::Memory => {
-                self.loading_functions = true;
-                DataRequest::RefreshMemory
+                match self.functions_sub_tab {
+                    FunctionsSubTab::Timing => DataRequest::RefreshTiming,
+                    FunctionsSubTab::Memory => DataRequest::RefreshMemory,
+                }
             }
             SelectedTab::DataFlow => {
                 self.loading_data_flow = true;

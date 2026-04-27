@@ -1,5 +1,5 @@
 use crate::cmd::console::app::{
-    App, DataFlowFocus, DataFlowLogs, DebugFocus, FunctionsFocus, SelectedTab,
+    App, DataFlowFocus, DataFlowLogs, DebugFocus, FunctionsFocus, FunctionsSubTab, SelectedTab,
 };
 use crate::cmd::console::views::data_flow::{inspect as data_flow_inspect, logs as data_flow_logs};
 use crate::cmd::console::views::debug::{inspect as debug_inspect, logs as debug_logs};
@@ -28,6 +28,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // Tabs
+            Constraint::Length(1), // Subtabs (Functions only)
             Constraint::Length(3), // Status bar
             Constraint::Min(0),    // Main content area
             Constraint::Length(3), // Help bar
@@ -35,17 +36,25 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
 
     let has_data = match app.selected_tab {
-        SelectedTab::Timing => !app.timing_functions.data.is_empty(),
-        SelectedTab::Memory => !app.memory_functions.data.is_empty(),
+        SelectedTab::Functions => match app.functions_sub_tab {
+            FunctionsSubTab::Timing => !app.timing_functions.data.is_empty(),
+            FunctionsSubTab::Memory => !app.memory_functions.data.is_empty(),
+        },
         SelectedTab::DataFlow => !app.data_flow.entries.is_empty(),
         SelectedTab::Threads => !app.threads.data.is_empty(),
         SelectedTab::Debug => !app.debug_stats.is_empty(),
         SelectedTab::Runtime => app.tokio_runtime.is_some(),
     };
 
+    render_tabs(frame, main_chunks[0], app.selected_tab);
+
+    if app.selected_tab == SelectedTab::Functions {
+        render_functions_subtabs(frame, main_chunks[1], app.functions_sub_tab);
+    }
+
     top_bar::render_status_bar(
         frame,
-        main_chunks[1],
+        main_chunks[2],
         app.paused,
         app.last_successful_fetch,
         app.error_message.is_some(),
@@ -53,15 +62,45 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         app.program_uptime.as_deref(),
     );
 
-    render_tabs(frame, main_chunks[0], app.selected_tab);
-
     match app.selected_tab {
-        SelectedTab::Timing => {
+        SelectedTab::Functions => {
+            render_functions_view(frame, app, main_chunks[3]);
+        }
+        SelectedTab::DataFlow => {
+            render_data_flow_view(frame, app, main_chunks[3]);
+        }
+        SelectedTab::Threads => {
+            render_threads_view(frame, app, main_chunks[3]);
+        }
+        SelectedTab::Debug => {
+            render_debug_view(frame, app, main_chunks[3]);
+        }
+        SelectedTab::Runtime => {
+            render_runtime_view(frame, app, main_chunks[3]);
+        }
+    }
+
+    bottom_bar::render_help_bar(
+        frame,
+        main_chunks[4],
+        app.selected_tab,
+        app.data_flow_focus,
+        app.functions_focus,
+        app.debug_focus,
+    );
+}
+
+#[hotpath::measure]
+fn render_functions_view(frame: &mut Frame, app: &mut App, area: Rect) {
+    let content_area = area;
+
+    match app.functions_sub_tab {
+        FunctionsSubTab::Timing => {
             if app.show_function_logs {
                 let content_chunks = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(main_chunks[2]);
+                    .split(content_area);
 
                 functions_timing::render_functions_table(frame, app, content_chunks[0]);
                 timing_logs::render_function_logs_panel(
@@ -77,22 +116,22 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                     if let Some(ref inspected_log) = app.inspected_function_log {
                         timing_inspect::render_inspect_popup(
                             inspected_log,
-                            main_chunks[2],
+                            content_area,
                             frame,
                             app.timing_functions.total_elapsed_ns,
                         );
                     }
                 }
             } else {
-                functions_timing::render_functions_table(frame, app, main_chunks[2]);
+                functions_timing::render_functions_table(frame, app, content_area);
             }
         }
-        SelectedTab::Memory => {
+        FunctionsSubTab::Memory => {
             if app.show_function_logs {
                 let content_chunks = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(main_chunks[2]);
+                    .split(content_area);
 
                 functions_memory::render_functions_table(frame, app, content_chunks[0]);
                 memory_logs::render_function_logs_panel(
@@ -108,38 +147,50 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
                     if let Some(ref inspected_log) = app.inspected_function_log {
                         memory_inspect::render_inspect_popup(
                             inspected_log,
-                            main_chunks[2],
+                            content_area,
                             frame,
                             app.memory_functions.total_elapsed_ns,
                         );
                     }
                 }
             } else {
-                functions_memory::render_functions_table(frame, app, main_chunks[2]);
+                functions_memory::render_functions_table(frame, app, content_area);
             }
         }
-        SelectedTab::DataFlow => {
-            render_data_flow_view(frame, app, main_chunks[2]);
-        }
-        SelectedTab::Threads => {
-            render_threads_view(frame, app, main_chunks[2]);
-        }
-        SelectedTab::Debug => {
-            render_debug_view(frame, app, main_chunks[2]);
-        }
-        SelectedTab::Runtime => {
-            render_runtime_view(frame, app, main_chunks[2]);
-        }
     }
+}
 
-    bottom_bar::render_help_bar(
-        frame,
-        main_chunks[3],
-        app.selected_tab,
-        app.data_flow_focus,
-        app.functions_focus,
-        app.debug_focus,
-    );
+#[hotpath::measure]
+fn render_functions_subtabs(frame: &mut Frame, area: Rect, sub_tab: FunctionsSubTab) {
+    let label = |tab: FunctionsSubTab| {
+        if tab == sub_tab {
+            Span::styled(
+                format!(" {}*", tab.name()),
+                Style::default()
+                    .bg(Color::Cyan)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(
+                format!(" {} ", tab.name()),
+                Style::default().fg(Color::Gray),
+            )
+        }
+    };
+
+    let line = Line::from(vec![
+        Span::styled(
+            " [1]",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        label(FunctionsSubTab::Timing),
+        Span::raw("|"),
+        label(FunctionsSubTab::Memory),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 #[hotpath::measure]
@@ -492,8 +543,7 @@ fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: Sel
     };
 
     let titles = vec![
-        create_tab_line(SelectedTab::Timing),
-        create_tab_line(SelectedTab::Memory),
+        create_tab_line(SelectedTab::Functions),
         create_tab_line(SelectedTab::DataFlow),
         create_tab_line(SelectedTab::Threads),
         create_tab_line(SelectedTab::Debug),
