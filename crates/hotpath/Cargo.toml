@@ -24,7 +24,7 @@ path = "bin/hotpath-crashtest/main.rs"
 required-features = ["tui", "hotpath", "hotpath-alloc"]
 
 [features]
-default = ["threads"]
+default = ["threads", "cpu"]
 hotpath = [
   "hotpath-macros/hotpath",
   "dep:cfg-if",
@@ -52,6 +52,7 @@ async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio
 crossbeam = []
 threads = []
 dev = ["dep:tracing", "dep:tracing-subscriber", "dep:time"]
+cpu = ["dep:pprof"]
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]
@@ -85,6 +86,7 @@ schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }
 hotpath-meta = { workspace = true, optional = true }
+pprof = { version = "0.14", optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

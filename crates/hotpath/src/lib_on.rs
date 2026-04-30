@@ -25,6 +25,8 @@ pub(crate) fn current_elapsed_ns() -> u64 {
 }
 
 pub mod channels;
+#[cfg(feature = "cpu")]
+pub(crate) mod cpu;
 pub mod cpu_baseline;
 pub mod debug;
 pub mod futures;

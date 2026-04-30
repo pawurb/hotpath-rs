@@ -328,6 +328,8 @@ pub(crate) enum FunctionsQuery {
     Timing(Sender<JsonFunctionsList>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
     Alloc(Sender<Option<JsonFunctionsList>>),
+    /// Request the names of functions that have already been registered by the worker
+    RegisteredNames(Sender<Vec<&'static str>>),
     /// Request timing function logs for a specific function by ID
     LogsTiming {
         function_id: u32,
@@ -382,6 +384,12 @@ pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsL
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
     query_functions_state(FunctionsQuery::Alloc).flatten()
+}
+
+#[cfg(feature = "cpu")]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn get_registered_function_names() -> Option<Vec<&'static str>> {
+    query_functions_state(FunctionsQuery::RegisteredNames)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

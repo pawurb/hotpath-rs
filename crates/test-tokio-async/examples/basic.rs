@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 #[hotpath::measure]
-#[inline(always)]
 fn sync_function(sleep: u64) {
     let vec1 = vec![
         1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
@@ -26,9 +25,9 @@ async fn async_function(sleep: u64) {
 }
 
 #[tokio::main(flavor = "current_thread")]
-#[hotpath::main(format = "json")]
+#[hotpath::main(format = "table")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    for i in 0..100 {
+    for i in 0..1000 {
         sync_function(i);
         async_function(i * 2).await;
 
