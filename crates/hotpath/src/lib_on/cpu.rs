@@ -20,22 +20,23 @@ pub(crate) fn report_cpu_attribution(
         total
     );
 
-    let mut stacks: Vec<_> = report.data.iter().collect();
-    stacks.sort_by(|a, b| b.1.cmp(a.1));
-    for (idx, (frames, count)) in stacks.iter().enumerate() {
-        eprintln!(
-            "\n[hotpath - pprof] stack #{} (samples: {}, thread: {} [{}])",
-            idx + 1,
-            count,
-            frames.thread_name,
-            frames.thread_id
-        );
-        for (depth, frame) in frames.frames.iter().enumerate() {
-            for sym in frame {
-                eprintln!("  #{:>2} {}", depth, sym);
-            }
-        }
-    }
+    // TODO: keep for now
+    // let mut stacks: Vec<_> = report.data.iter().collect();
+    // stacks.sort_by(|a, b| b.1.cmp(a.1));
+    // for (idx, (frames, count)) in stacks.iter().enumerate() {
+    //     eprintln!(
+    //         "\n[hotpath - pprof] stack #{} (samples: {}, thread: {} [{}])",
+    //         idx + 1,
+    //         count,
+    //         frames.thread_name,
+    //         frames.thread_id
+    //     );
+    //     for (depth, frame) in frames.frames.iter().enumerate() {
+    //         for sym in frame {
+    //             eprintln!("  #{:>2} {}", depth, sym);
+    //         }
+    //     }
+    // }
 
     let Some(instrumented_names) = crate::functions::get_instrumented_function_names() else {
         eprintln!(
