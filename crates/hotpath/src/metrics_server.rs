@@ -21,12 +21,8 @@ pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
         .unwrap_or(6770)
 });
 
-pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("HOTPATH_METRICS_SERVER_OFF")
-        .ok()
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false)
-});
+pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
+    LazyLock::new(|| crate::shared::env_flag("HOTPATH_METRICS_SERVER_OFF"));
 
 pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
 

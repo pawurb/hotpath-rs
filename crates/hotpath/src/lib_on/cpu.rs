@@ -18,6 +18,9 @@ pub(crate) static CPU_SAMPLE_RATE_HZ: LazyLock<u32> = LazyLock::new(|| {
         .unwrap_or(DEFAULT_CPU_SAMPLE_RATE_HZ)
 });
 
+pub(crate) static CPU_INCLUSIVE: LazyLock<bool> =
+    LazyLock::new(|| crate::shared::env_flag("HOTPATH_CPU_INCLUSIVE"));
+
 pub(crate) static PPROF_GUARD: OnceLock<Mutex<Option<pprof::ProfilerGuard<'static>>>> =
     OnceLock::new();
 
@@ -104,14 +107,14 @@ pub(crate) fn build_cpu_report(
         .filter_map(|v| u64::try_from(*v).ok())
         .sum();
 
-    let caller_id = names_and_ids.get(caller_name).copied().unwrap_or(0);
-    let mut eligible: HashMap<&'static str, u32> = names_and_ids
-        .into_iter()
-        .filter(|(name, _)| *name != caller_name)
-        .collect();
+    let mut eligible: HashMap<&'static str, u32> = names_and_ids;
 
     let eligible_names: HashSet<&'static str> = eligible.keys().copied().collect();
-    let attributed = attribute_exclusive_traces(&report, &eligible_names);
+    let attributed = if *CPU_INCLUSIVE {
+        attribute_inclusive_traces(&report, &eligible_names)
+    } else {
+        attribute_exclusive_traces(&report, &eligible_names)
+    };
     let attributed_samples: u64 = attributed.values().sum();
 
     let mut stats: Vec<CpuFunctionStats> = attributed
@@ -122,12 +125,6 @@ pub(crate) fn build_cpu_report(
             samples,
         })
         .collect();
-
-    stats.push(CpuFunctionStats {
-        id: caller_id,
-        name: caller_name,
-        samples: total_samples,
-    });
 
     stats.sort_by(|a, b| b.samples.cmp(&a.samples).then_with(|| a.name.cmp(b.name)));
 
@@ -186,13 +183,19 @@ pub(crate) fn build_cpu_json(
     let total_count = total_inner + wrapper_stats.len();
     let displayed_count = displayed_inner + wrapper_stats.len();
 
+    let description = if *CPU_INCLUSIVE {
+        "CPU sampling attribution per function (inclusive).".to_string()
+    } else {
+        "CPU sampling attribution per function (exclusive).".to_string()
+    };
+
     JsonFunctionsCpuList {
         time_elapsed: format_duration(total_elapsed.as_nanos() as u64),
         total_elapsed_ns: current_elapsed_ns,
         total_samples: report.total_samples,
         attributed_samples: report.attributed_samples,
         sample_rate_hz: report.sample_rate_hz,
-        description: "CPU sampling attribution per function (exclusive).".to_string(),
+        description,
         caller_name: report.caller_name.to_string(),
         data: entries,
         displayed_count,
@@ -247,6 +250,37 @@ pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFu
     let _ = writeln!(writer, "cpu - {} ({})", list.description, info);
     print_table(&table, writer);
     let _ = writeln!(writer);
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn attribute_inclusive_traces(
+    report: &pprof::Report,
+    eligible_names: &HashSet<&'static str>,
+) -> HashMap<&'static str, u64> {
+    let mut attributed = HashMap::<&'static str, u64>::new();
+
+    for (stack, samples) in &report.data {
+        let samples = match u64::try_from(*samples) {
+            Ok(samples) if samples > 0 => samples,
+            _ => continue,
+        };
+
+        let mut seen: HashSet<&'static str> = HashSet::new();
+        for frame in &stack.frames {
+            for sym in frame {
+                let symbol = format!("{sym}");
+                if let Some(name) = eligible_names.get(symbol.as_str()) {
+                    seen.insert(*name);
+                }
+            }
+        }
+
+        for name in seen {
+            *attributed.entry(name).or_default() += samples;
+        }
+    }
+
+    attributed
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

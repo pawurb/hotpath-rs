@@ -369,6 +369,10 @@ impl HotpathGuard {
 
                 let mut local_stats = HashMap::<u32, FunctionStats>::new();
                 let mut name_to_id = HashMap::<&'static str, u32>::new();
+                #[cfg(feature = "cpu")]
+                if *crate::lib_on::cpu::CPU_INCLUSIVE {
+                    name_to_id.insert(worker_caller_name, 0);
+                }
 
                 loop {
                     select! {

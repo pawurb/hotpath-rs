@@ -45,11 +45,8 @@ pub(crate) static ALLOC_METRIC: LazyLock<AllocMetric> =
         Err(_) => AllocMetric::Bytes,
     });
 
-pub(crate) static ALLOC_CUMULATIVE: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("HOTPATH_ALLOC_CUMULATIVE")
-        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-        .unwrap_or(false)
-});
+pub(crate) static ALLOC_CUMULATIVE: LazyLock<bool> =
+    LazyLock::new(|| crate::shared::env_flag("HOTPATH_ALLOC_CUMULATIVE"));
 
 #[inline]
 pub(crate) fn push_alloc_stack() {

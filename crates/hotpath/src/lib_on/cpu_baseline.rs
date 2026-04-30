@@ -9,11 +9,8 @@ struct CpuBaselineHandle {
     completion_rx: Receiver<CpuBaselineResult>,
 }
 
-static CPU_BASELINE_OFF: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("HOTPATH_CPU_BASELINE_OFF")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false)
-});
+static CPU_BASELINE_OFF: LazyLock<bool> =
+    LazyLock::new(|| crate::shared::env_flag("HOTPATH_CPU_BASELINE_OFF"));
 
 static CPU_BASELINE_HANDLE: OnceLock<CpuBaselineHandle> = OnceLock::new();
 
