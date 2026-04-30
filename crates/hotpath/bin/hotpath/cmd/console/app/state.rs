@@ -9,7 +9,7 @@ use crate::cmd::console::log::{debug, info};
 #[hotpath::measure_all]
 impl App {
     pub(crate) fn next_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_functions_len();
         if function_count == 0 {
             return;
         }
@@ -23,7 +23,7 @@ impl App {
     }
 
     pub(crate) fn previous_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_functions_len();
         if function_count == 0 {
             return;
         }
@@ -37,7 +37,7 @@ impl App {
     }
 
     pub(crate) fn first_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_functions_len();
         if function_count == 0 {
             return;
         }
@@ -45,7 +45,7 @@ impl App {
     }
 
     pub(crate) fn last_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_functions_len();
         if function_count == 0 {
             return;
         }
@@ -75,10 +75,10 @@ impl App {
         self.request_refresh_for_current_tab();
     }
 
-    pub(crate) fn toggle_functions_sub_tab(&mut self) {
-        self.functions_sub_tab = self.functions_sub_tab.toggle();
+    pub(crate) fn cycle_functions_sub_tab(&mut self) {
+        self.functions_sub_tab = self.functions_sub_tab.cycle();
         debug!(
-            "Toggled functions subtab: {}",
+            "Cycled functions subtab: {}",
             self.functions_sub_tab.name()
         );
         self.functions_focus = FunctionsFocus::Functions;
@@ -90,6 +90,9 @@ impl App {
     }
 
     pub(crate) fn toggle_function_logs(&mut self) {
+        if self.functions_sub_tab == FunctionsSubTab::Cpu {
+            return;
+        }
         self.show_function_logs = !self.show_function_logs;
         if self.show_function_logs {
             self.pinned_function_id = self.selected_function_id();
@@ -122,6 +125,7 @@ impl App {
                 .as_ref()
                 .map(|l| l.logs.len())
                 .unwrap_or(0),
+            FunctionsSubTab::Cpu => 0,
         }
     }
 
@@ -150,6 +154,7 @@ impl App {
                     result: entry.result.clone(),
                 })
             }),
+            FunctionsSubTab::Cpu => None,
         }
     }
 

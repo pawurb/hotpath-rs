@@ -1,4 +1,6 @@
-use crate::cmd::console::app::{DataFlowFocus, DebugFocus, FunctionsFocus, SelectedTab};
+use crate::cmd::console::app::{
+    DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, SelectedTab,
+};
 use ratatui::{
     layout::{Alignment, Rect},
     style::Stylize,
@@ -32,12 +34,25 @@ pub(crate) fn render_help_bar(
     selected_tab: SelectedTab,
     data_flow_focus: DataFlowFocus,
     functions_focus: FunctionsFocus,
+    functions_sub_tab: FunctionsSubTab,
     debug_focus: DebugFocus,
 ) {
     let controls_line =
         if selected_tab == SelectedTab::Threads || selected_tab == SelectedTab::Runtime {
             Line::from(vec![
                 NAV_KEYS_FULL.blue().bold(),
+                PAUSE_LABEL.into(),
+                PAUSE_KEY.blue().bold(),
+                QUIT_LABEL.into(),
+                QUIT_KEY.blue().bold(),
+            ])
+        } else if selected_tab == SelectedTab::Functions
+            && functions_sub_tab == FunctionsSubTab::Cpu
+        {
+            Line::from(vec![
+                NAV_KEYS_FULL.blue().bold(),
+                SUBTAB_LABEL_FUNCTIONS.into(),
+                SUBTAB_KEY_FUNCTIONS.blue().bold(),
                 PAUSE_LABEL.into(),
                 PAUSE_KEY.blue().bold(),
                 QUIT_LABEL.into(),

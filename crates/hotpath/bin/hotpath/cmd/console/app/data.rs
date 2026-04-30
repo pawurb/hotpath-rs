@@ -5,8 +5,9 @@ use crate::cmd::console::events::{DataRequest, DataResponse};
 use crate::cmd::console::log::{trace, warn};
 use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
-    JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList, JsonFunctionsCpuList,
+    JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList,
+    JsonThreadsList,
 };
 use std::time::Instant;
 
@@ -25,6 +26,9 @@ impl App {
                 FunctionsSubTab::Memory if !self.memory_functions.data.is_empty() => {
                     self.auto_expand_logs = false;
                     self.toggle_function_logs();
+                }
+                FunctionsSubTab::Cpu if !self.cpu_functions.data.is_empty() => {
+                    self.auto_expand_logs = false;
                 }
                 _ => {}
             },
@@ -107,6 +111,37 @@ impl App {
         self.try_auto_expand_logs();
     }
 
+    pub(crate) fn update_cpu_metrics(&mut self, metrics: JsonFunctionsCpuList) {
+        let selected_function_id = self.selected_function_id();
+
+        self.cpu_functions = metrics;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        let entries = &self.cpu_functions.data;
+
+        if let Some(idx) = self.auto_select_index {
+            let clamped = idx.min(entries.len().saturating_sub(1));
+            if !entries.is_empty() {
+                self.cpu_table_state.select(Some(clamped));
+            }
+        } else if let Some(function_id) = selected_function_id {
+            if let Some(new_idx) = entries.iter().position(|f| f.id == function_id) {
+                self.cpu_table_state.select(Some(new_idx));
+            } else if !entries.is_empty() {
+                self.cpu_table_state.select(Some(entries.len() - 1));
+            }
+        } else if let Some(selected) = self.cpu_table_state.selected() {
+            if selected >= entries.len() && !entries.is_empty() {
+                self.cpu_table_state.select(Some(entries.len() - 1));
+            }
+        } else if !entries.is_empty() {
+            self.cpu_table_state.select(Some(0));
+        }
+
+        self.try_auto_expand_logs();
+    }
+
     pub(crate) fn set_error(&mut self, error: String) {
         self.error_message = Some(error);
     }
@@ -126,26 +161,40 @@ impl App {
         if self.selected_tab != SelectedTab::Functions {
             return None;
         }
-        let (entries, table_state) = match self.functions_sub_tab {
-            FunctionsSubTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
-            FunctionsSubTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
-        };
-        table_state
-            .selected()
-            .and_then(|idx| entries.get(idx).map(|f| f.id))
+        match self.functions_sub_tab {
+            FunctionsSubTab::Timing => self
+                .timing_table_state
+                .selected()
+                .and_then(|idx| self.timing_functions.data.get(idx).map(|f| f.id)),
+            FunctionsSubTab::Memory => self
+                .memory_table_state
+                .selected()
+                .and_then(|idx| self.memory_functions.data.get(idx).map(|f| f.id)),
+            FunctionsSubTab::Cpu => self
+                .cpu_table_state
+                .selected()
+                .and_then(|idx| self.cpu_functions.data.get(idx).map(|f| f.id)),
+        }
     }
 
     pub(crate) fn selected_function_name(&self) -> Option<String> {
         if self.selected_tab != SelectedTab::Functions {
             return None;
         }
-        let (entries, table_state) = match self.functions_sub_tab {
-            FunctionsSubTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
-            FunctionsSubTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
-        };
-        table_state
-            .selected()
-            .and_then(|idx| entries.get(idx).map(|f| f.name.clone()))
+        match self.functions_sub_tab {
+            FunctionsSubTab::Timing => self
+                .timing_table_state
+                .selected()
+                .and_then(|idx| self.timing_functions.data.get(idx).map(|f| f.name.clone())),
+            FunctionsSubTab::Memory => self
+                .memory_table_state
+                .selected()
+                .and_then(|idx| self.memory_functions.data.get(idx).map(|f| f.name.clone())),
+            FunctionsSubTab::Cpu => self
+                .cpu_table_state
+                .selected()
+                .and_then(|idx| self.cpu_functions.data.get(idx).map(|f| f.name.clone())),
+        }
     }
 
     pub(crate) fn update_timing_logs(&mut self, logs: JsonFunctionTimingLogsList) {
@@ -177,6 +226,7 @@ impl App {
                             .request_tx
                             .send(DataRequest::FetchFunctionLogsAlloc(function_id));
                     }
+                    FunctionsSubTab::Cpu => {}
                 }
             }
         }
@@ -453,6 +503,7 @@ impl App {
                 match self.functions_sub_tab {
                     FunctionsSubTab::Timing => DataRequest::RefreshTiming,
                     FunctionsSubTab::Memory => DataRequest::RefreshMemory,
+                    FunctionsSubTab::Cpu => DataRequest::RefreshCpu,
                 }
             }
             SelectedTab::DataFlow => {
@@ -504,6 +555,17 @@ impl App {
                 self.set_error(
                     "Memory profiling not available - enable hotpath-alloc feature".to_string(),
                 );
+            }
+            DataResponse::FunctionsCpu(data) => {
+                trace!("Received cpu data: {} functions", data.data.len());
+                self.loading_functions = false;
+                self.cpu_available = true;
+                self.update_cpu_metrics(data);
+            }
+            DataResponse::FunctionsCpuUnavailable => {
+                trace!("CPU profiling unavailable");
+                self.loading_functions = false;
+                self.cpu_available = false;
             }
             DataResponse::FunctionLogsTiming {
                 function_id: _,

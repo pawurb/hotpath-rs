@@ -1,6 +1,8 @@
 //! Keyboard event handling for the TUI
 
-use crate::cmd::console::app::{App, DataFlowFocus, DebugFocus, FunctionsFocus, SelectedTab};
+use crate::cmd::console::app::{
+    App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, SelectedTab,
+};
 use crossterm::event::KeyCode;
 use std::time::{Duration, Instant};
 
@@ -12,7 +14,7 @@ impl App {
             KeyCode::Char('p') | KeyCode::Char('P') => self.toggle_pause(),
             KeyCode::Char('1') => {
                 if self.selected_tab == SelectedTab::Functions {
-                    self.toggle_functions_sub_tab();
+                    self.cycle_functions_sub_tab();
                 } else {
                     self.switch_to_tab(SelectedTab::Functions);
                 }
@@ -63,6 +65,21 @@ impl App {
     }
 
     fn handle_functions_key(&mut self, key_code: KeyCode) {
+        if self.functions_sub_tab == FunctionsSubTab::Cpu {
+            match key_code {
+                KeyCode::Down | KeyCode::Char('j') => self.next_function(),
+                KeyCode::Up | KeyCode::Char('k') => self.previous_function(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_function();
+                }
+                KeyCode::Char('g') if self.handle_g_key() => {
+                    self.first_function();
+                }
+                _ => {}
+            }
+            return;
+        }
         match self.functions_focus {
             FunctionsFocus::Functions => match key_code {
                 KeyCode::Down | KeyCode::Char('j') => {

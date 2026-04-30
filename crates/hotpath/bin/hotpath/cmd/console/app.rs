@@ -3,9 +3,9 @@
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
-    JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonRuntimeSnapshot, JsonStreamLogsList,
-    JsonStreamsList, JsonThreadsList,
+    JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsCpuList,
+    JsonFunctionsList, JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonRuntimeSnapshot,
+    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -65,6 +65,7 @@ pub(crate) enum FunctionsSubTab {
     #[default]
     Timing,
     Memory,
+    Cpu,
 }
 
 impl FunctionsSubTab {
@@ -72,13 +73,15 @@ impl FunctionsSubTab {
         match self {
             FunctionsSubTab::Timing => "Timing",
             FunctionsSubTab::Memory => "Memory",
+            FunctionsSubTab::Cpu => "CPU",
         }
     }
 
-    pub(crate) fn toggle(&self) -> Self {
+    pub(crate) fn cycle(&self) -> Self {
         match self {
             FunctionsSubTab::Timing => FunctionsSubTab::Memory,
-            FunctionsSubTab::Memory => FunctionsSubTab::Timing,
+            FunctionsSubTab::Memory => FunctionsSubTab::Cpu,
+            FunctionsSubTab::Cpu => FunctionsSubTab::Timing,
         }
     }
 }
@@ -171,10 +174,13 @@ pub(crate) enum InspectedDataFlowLog {
 pub(crate) struct App {
     pub(crate) timing_functions: JsonFunctionsList,
     pub(crate) memory_functions: JsonFunctionsList,
+    pub(crate) cpu_functions: JsonFunctionsCpuList,
     pub(crate) memory_available: bool,
+    pub(crate) cpu_available: bool,
 
     pub(crate) timing_table_state: TableState,
     pub(crate) memory_table_state: TableState,
+    pub(crate) cpu_table_state: TableState,
     pub(crate) selected_tab: SelectedTab,
     pub(crate) functions_sub_tab: FunctionsSubTab,
     pub(crate) data_flow_sub_tab: DataFlowSubTab,
@@ -286,12 +292,28 @@ impl App {
             total_count: 0,
         };
 
+        let empty_cpu = JsonFunctionsCpuList {
+            time_elapsed: "0 ns".to_string(),
+            total_elapsed_ns: 0,
+            total_samples: 0,
+            attributed_samples: 0,
+            sample_rate_hz: 0,
+            description: "Waiting for data...".to_string(),
+            caller_name: "unknown".to_string(),
+            data: Vec::new(),
+            displayed_count: 0,
+            total_count: 0,
+        };
+
         Self {
             timing_functions: empty_functions.clone(),
             memory_functions: empty_functions,
+            cpu_functions: empty_cpu,
             memory_available: true,
+            cpu_available: true,
             timing_table_state: TableState::default().with_selected(0),
             memory_table_state: TableState::default().with_selected(0),
+            cpu_table_state: TableState::default().with_selected(0),
             selected_tab: initial_tab,
             functions_sub_tab: FunctionsSubTab::default(),
             data_flow_sub_tab: DataFlowSubTab::default(),
@@ -371,10 +393,11 @@ impl App {
         self.exit = true;
     }
 
-    pub(crate) fn active_functions(&self) -> &JsonFunctionsList {
+    pub(crate) fn active_functions_len(&self) -> usize {
         match self.functions_sub_tab {
-            FunctionsSubTab::Timing => &self.timing_functions,
-            FunctionsSubTab::Memory => &self.memory_functions,
+            FunctionsSubTab::Timing => self.timing_functions.data.len(),
+            FunctionsSubTab::Memory => self.memory_functions.data.len(),
+            FunctionsSubTab::Cpu => self.cpu_functions.data.len(),
         }
     }
 
@@ -383,6 +406,7 @@ impl App {
             SelectedTab::Functions => match self.functions_sub_tab {
                 FunctionsSubTab::Timing => &mut self.timing_table_state,
                 FunctionsSubTab::Memory => &mut self.memory_table_state,
+                FunctionsSubTab::Cpu => &mut self.cpu_table_state,
             },
             SelectedTab::DataFlow => match self.data_flow_sub_tab {
                 DataFlowSubTab::Channels => &mut self.channels_table_state,

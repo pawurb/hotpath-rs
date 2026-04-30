@@ -5,8 +5,8 @@ use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
-    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus, JsonRuntimeSnapshot,
+    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsCpuList,
+    JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus, JsonRuntimeSnapshot,
     JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
@@ -22,6 +22,7 @@ const HTTP_TIMEOUT_MS: u64 = 2000;
 enum RequestKey {
     Timing,
     Memory,
+    Cpu,
     Channels,
     Streams,
     Futures,
@@ -44,6 +45,7 @@ impl DataRequest {
         match self {
             DataRequest::RefreshTiming => RequestKey::Timing,
             DataRequest::RefreshMemory => RequestKey::Memory,
+            DataRequest::RefreshCpu => RequestKey::Cpu,
             DataRequest::RefreshChannels => RequestKey::Channels,
             DataRequest::RefreshStreams => RequestKey::Streams,
             DataRequest::RefreshFutures => RequestKey::Futures,
@@ -171,6 +173,7 @@ impl RouteExt for Route {
     fn not_found_response(&self) -> Option<DataResponse> {
         match self {
             Route::FunctionsAlloc => Some(DataResponse::FunctionsAllocUnavailable),
+            Route::FunctionsCpu => Some(DataResponse::FunctionsCpuUnavailable),
             Route::FunctionTimingLogs { function_id } => {
                 Some(DataResponse::FunctionLogsTimingNotFound(*function_id))
             }
@@ -268,9 +271,9 @@ impl RouteExt for Route {
             Route::ProfilerStatus => {
                 parse_json::<JsonProfilerStatus>(bytes).map(DataResponse::ProfilerStatus)
             }
-            Route::FunctionsCpu => Ok(DataResponse::Error(
-                "FunctionsCpu route not yet wired into TUI".to_string(),
-            )),
+            Route::FunctionsCpu => {
+                parse_json::<JsonFunctionsCpuList>(bytes).map(DataResponse::FunctionsCpu)
+            }
         }
         .unwrap_or_else(|e| DataResponse::Error(format!("JSON parse error: {}", e)))
     }
