@@ -2,13 +2,13 @@
 
 use crate::cmd::console::app::{App, DataFlowLogs, DataFlowSubTab, FunctionsSubTab, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
+use crate::cmd::console::log::{trace, warn};
 use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
     JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList, JsonFunctionsList,
     JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use std::time::Instant;
-use tracing::{trace, warn};
 
 #[hotpath::measure_all]
 impl App {

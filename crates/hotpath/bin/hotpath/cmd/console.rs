@@ -5,6 +5,7 @@ pub mod demo;
 mod events;
 mod http_worker;
 mod input;
+mod log;
 mod views;
 mod widgets;
 

@@ -1,5 +1,6 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
+use crate::cmd::console::log::{error, info, trace, warn};
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
@@ -12,7 +13,6 @@ use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{runtime::Runtime, task::JoinHandle};
-use tracing::{error, info, trace, warn};
 
 use crate::cmd::console::events::{AppEvent, DataRequest, DataResponse};
 
