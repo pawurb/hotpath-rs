@@ -2,6 +2,7 @@
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::instant::Instant;
@@ -16,6 +17,13 @@ use crate::lib_on::hotpath_guard::{
 };
 use crate::metrics_server::METRICS_SERVER_PORT;
 pub use crate::Format;
+
+static STREAM_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn next_stream_id() -> u32 {
+    STREAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Statistics for a single instrumented stream.
 #[derive(Debug, Clone)]

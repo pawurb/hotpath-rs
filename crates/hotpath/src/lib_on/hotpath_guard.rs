@@ -2,21 +2,12 @@ use crate::instant::Instant;
 use crossbeam_channel::{bounded, select, unbounded};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::thread;
 
 pub(crate) const WORKER_SHUTDOWN_DRAIN_LIMIT: usize = 1_000;
 pub(crate) const WORKER_BATCH_SIZE: usize = 100;
 pub(crate) const WORKER_FLUSH_INTERVAL_MS: u64 = 50;
-
-pub(crate) static DATA_FLOW_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn next_data_flow_id() -> u32 {
-    DATA_FLOW_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-}
 
 const DEFAULT_LOGS_LIMIT: usize = 50;
 pub(crate) static LOGS_LIMIT: LazyLock<usize> = LazyLock::new(|| {

@@ -1,6 +1,5 @@
-use crate::lib_on::hotpath_guard::next_data_flow_id;
 use crate::output::format_debug_truncated;
-use crate::streams::{init_streams_state, StreamEvent};
+use crate::streams::{init_streams_state, next_stream_id, StreamEvent};
 use crossbeam_channel::Sender as CbSender;
 use futures_util::Stream;
 use pin_project_lite::pin_project;
@@ -33,7 +32,7 @@ impl<S> InstrumentedStream<S> {
         S: Stream,
     {
         let state = init_streams_state();
-        let id = next_data_flow_id();
+        let id = next_stream_id();
 
         let _ = state.event_tx.send(StreamEvent::Created {
             id,
@@ -98,7 +97,7 @@ impl<S> InstrumentedStreamLog<S> {
         S: Stream,
     {
         let state = init_streams_state();
-        let id = next_data_flow_id();
+        let id = next_stream_id();
 
         let _ = state.event_tx.send(StreamEvent::Created {
             id,

@@ -2,6 +2,7 @@
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::instant::Instant;
@@ -13,11 +14,18 @@ use std::mem;
 use crate::json::JsonChannelEntry;
 pub(crate) use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
 use crate::lib_on::hotpath_guard::{
-    next_data_flow_id, WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
+    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
 };
 use crate::metrics_server::METRICS_SERVER_PORT;
 
 pub use crate::Format;
+
+static CHANNEL_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn next_channel_id() -> u32 {
+    CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Handle returned by [`register_channel`] that gives wrappers the channel's
 /// unique id and a sender to emit [`ChannelEvent`]s to the background worker.
@@ -48,7 +56,7 @@ pub(crate) fn register_channel<T>(
 ) -> RegisteredChannel {
     let type_name = std::any::type_name::<T>();
     let state = init_channels_state();
-    let id = next_data_flow_id();
+    let id = next_channel_id();
 
     send_channel_event(
         &state.event_tx,

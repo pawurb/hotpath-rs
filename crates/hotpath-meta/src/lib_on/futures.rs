@@ -7,7 +7,7 @@ use crate::lib_on::hotpath_guard::{
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::instant::Instant;
@@ -21,6 +21,11 @@ pub(crate) use crate::json::{FutureLog, FutureLogsList, FutureState};
 pub use crate::Format;
 
 pub(crate) static FUTURE_CALL_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+static FUTURE_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+pub(crate) fn next_future_id() -> u32 {
+    FUTURE_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 use std::sync::LazyLock;
 
@@ -46,7 +51,7 @@ pub(crate) fn get_or_create_future_id(source: &'static str) -> (u32, bool) {
         return (future_id, false);
     }
 
-    let future_id = crate::lib_on::hotpath_guard::next_data_flow_id();
+    let future_id = next_future_id();
     write_guard.insert(source, future_id);
     (future_id, true)
 }
