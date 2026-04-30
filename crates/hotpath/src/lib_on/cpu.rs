@@ -51,10 +51,7 @@ pub(crate) fn report_cpu_attribution(
         .collect();
 
     if eligible_names.is_empty() {
-        eprintln!(
-            "[hotpath - cpu] no eligible measured functions found after excluding wrapper {}",
-            caller_name
-        );
+        eprintln!("[hotpath - cpu] no eligible measured functions found");
         return;
     }
 
@@ -90,9 +87,8 @@ fn attribute_exclusive_traces(
         for frame in &stack.frames {
             for sym in frame {
                 let symbol = format!("{sym}");
-                let normalized = strip_rust_hash_suffix(&symbol);
-                if instrumented_names.contains(normalized) {
-                    owner = Some(normalized.to_string());
+                if let Some(name) = instrumented_names.get(symbol.as_str()) {
+                    owner = Some((*name).to_string());
                     break;
                 }
             }
@@ -108,38 +104,4 @@ fn attribute_exclusive_traces(
     }
 
     attributed
-}
-
-#[inline]
-fn strip_rust_hash_suffix(symbol: &str) -> &str {
-    let Some((prefix, suffix)) = symbol.rsplit_once("::h") else {
-        return symbol;
-    };
-
-    if suffix.is_empty() || !suffix.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return symbol;
-    }
-
-    prefix
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::lib_on::cpu::strip_rust_hash_suffix;
-
-    #[test]
-    fn strips_rust_hash_suffix() {
-        assert_eq!(
-            strip_rust_hash_suffix("profile_cpu::heavy_work::h1234abcd"),
-            "profile_cpu::heavy_work"
-        );
-        assert_eq!(
-            strip_rust_hash_suffix("profile_cpu::heavy_work"),
-            "profile_cpu::heavy_work"
-        );
-        assert_eq!(
-            strip_rust_hash_suffix("profile_cpu::heavy_work::handler"),
-            "profile_cpu::heavy_work::handler"
-        );
-    }
 }
