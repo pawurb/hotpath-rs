@@ -25,9 +25,9 @@ async fn async_function(sleep: u64) {
 }
 
 #[tokio::main(flavor = "current_thread")]
-#[hotpath::main(format = "table")]
+#[hotpath::main(format = "json")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    for i in 0..1000 {
+    for i in 0..100 {
         sync_function(i);
         async_function(i * 2).await;
 
