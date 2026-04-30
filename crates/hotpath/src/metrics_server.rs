@@ -106,6 +106,19 @@ fn handle_request(request: Request) {
                 "Memory profiling not available - enable hotpath-alloc feature",
             ),
         },
+        Ok(Route::FunctionsCpu) => {
+            #[cfg(feature = "cpu")]
+            match crate::lib_on::cpu::build_cpu_report_live() {
+                Some(formatted) => respond_json(request, &formatted),
+                None => respond_error(request, 404, "CPU sampling report not available"),
+            }
+            #[cfg(not(feature = "cpu"))]
+            respond_error(
+                request,
+                404,
+                "CPU profiling not available - enable cpu feature",
+            );
+        }
         Ok(Route::FunctionTimingLogs { function_id }) => {
             match get_function_logs_timing(function_id) {
                 Some(logs) => {

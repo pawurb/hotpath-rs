@@ -268,6 +268,9 @@ impl RouteExt for Route {
             Route::ProfilerStatus => {
                 parse_json::<JsonProfilerStatus>(bytes).map(DataResponse::ProfilerStatus)
             }
+            Route::FunctionsCpu => Ok(DataResponse::Error(
+                "FunctionsCpu route not yet wired into TUI".to_string(),
+            )),
         }
         .unwrap_or_else(|e| DataResponse::Error(format!("JSON parse error: {}", e)))
     }

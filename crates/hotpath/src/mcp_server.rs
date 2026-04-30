@@ -132,6 +132,36 @@ Returns error if hotpath-alloc feature is not enabled. Cross-reference with func
     }
 
     #[tool(
+        description = r#"Get CPU sampling attribution per function (requires cpu feature).
+
+Returns JSON list with per-function fields:
+- id: matches functions_timing id
+- name: fully qualified function name
+- samples: number of CPU samples attributed exclusively to this function
+- percent: share of attributed samples
+- time: estimated wall-time (samples / sample_rate_hz)
+
+Use to identify CPU hotspots. Cross-reference with functions_timing to spot functions where wall-time and on-CPU time diverge (e.g. blocking I/O)."#
+    )]
+    async fn functions_cpu(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: functions_cpu");
+
+        #[cfg(feature = "cpu")]
+        match crate::lib_on::cpu::build_cpu_report_live() {
+            Some(formatted) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &formatted,
+            )?)])),
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "CPU sampling report not available",
+            )])),
+        }
+        #[cfg(not(feature = "cpu"))]
+        Ok(CallToolResult::error(vec![Content::text(
+            "CPU profiling not available - enable cpu feature",
+        )]))
+    }
+
+    #[tool(
         description = r#"Get metrics for all monitored async channels (tokio, crossbeam, std, futures-channel).
 
 Returns JSON array with:
