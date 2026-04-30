@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::{LazyLock, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use prettytable::{color, Attr, Cell, Row, Table};
 
@@ -20,6 +21,11 @@ pub(crate) static CPU_SAMPLE_RATE_HZ: LazyLock<u32> = LazyLock::new(|| {
 pub(crate) static PPROF_GUARD: OnceLock<Mutex<Option<pprof::ProfilerGuard<'static>>>> =
     OnceLock::new();
 
+const LIVE_REPORT_TTL: Duration = Duration::from_secs(2);
+
+static LIVE_REPORT_CACHE: LazyLock<Mutex<Option<(Instant, JsonFunctionsCpuList)>>> =
+    LazyLock::new(|| Mutex::new(None));
+
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn install_pprof_guard(guard: pprof::ProfilerGuard<'static>) {
     let _ = PPROF_GUARD.set(Mutex::new(Some(guard)));
@@ -32,6 +38,14 @@ pub(crate) fn take_pprof_guard() -> Option<pprof::ProfilerGuard<'static>> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn build_cpu_report_live() -> Option<JsonFunctionsCpuList> {
+    if let Ok(cache) = LIVE_REPORT_CACHE.lock() {
+        if let Some((stamped_at, ref cached)) = *cache {
+            if stamped_at.elapsed() < LIVE_REPORT_TTL {
+                return Some(cached.clone());
+            }
+        }
+    }
+
     let guard_slot = PPROF_GUARD.get()?;
     let guard = guard_slot.lock().ok()?;
     let pprof_guard = guard.as_ref()?;
@@ -44,12 +58,18 @@ pub(crate) fn build_cpu_report_live() -> Option<JsonFunctionsCpuList> {
 
     let report = build_cpu_report(pprof_guard, caller_name)?;
     let elapsed_ns = crate::lib_on::current_elapsed_ns();
-    Some(build_cpu_json(
+    let json = build_cpu_json(
         &report,
-        std::time::Duration::from_nanos(elapsed_ns),
+        Duration::from_nanos(elapsed_ns),
         elapsed_ns,
         0,
-    ))
+    );
+
+    if let Ok(mut cache) = LIVE_REPORT_CACHE.lock() {
+        *cache = Some((Instant::now(), json.clone()));
+    }
+
+    Some(json)
 }
 
 #[derive(Debug, Clone)]

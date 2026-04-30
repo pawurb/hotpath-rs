@@ -6,13 +6,14 @@ use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
     JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsCpuList,
-    JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus, JsonRuntimeSnapshot,
-    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus,
+    JsonRuntimeSnapshot, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{runtime::Runtime, task::JoinHandle};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::cmd::console::events::{AppEvent, DataRequest, DataResponse};
 
@@ -88,7 +89,11 @@ pub(crate) fn spawn_http_worker(
 
             if let Some(handle) = active_tasks.remove(&key) {
                 if !handle.is_finished() {
-                    trace!("Aborting in-flight request for {:?}", key);
+                    warn!(
+                        "Aborting in-flight request for {:?} - previous fetch did not complete \
+                         within refresh interval",
+                        key
+                    );
                     handle.abort();
                 }
             }
@@ -98,12 +103,19 @@ pub(crate) fn spawn_http_worker(
             let event_tx = event_tx.clone();
 
             let handle = rt.spawn(async move {
+                let started = std::time::Instant::now();
                 let response = hotpath::future!(
                     request.to_route().fetch(&client, &base_url),
                     log = true,
                     label = "tui_request"
                 )
                 .await;
+                let elapsed_ms = started.elapsed().as_millis();
+                if let DataResponse::Error(ref e) = response {
+                    warn!("Request {:?} errored after {}ms: {}", key, elapsed_ms, e);
+                } else {
+                    debug!("Request {:?} completed in {}ms", key, elapsed_ms);
+                }
                 let _ = event_tx.send(AppEvent::Data(response));
             });
 

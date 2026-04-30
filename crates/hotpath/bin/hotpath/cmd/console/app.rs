@@ -463,6 +463,7 @@ impl App {
         terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
     ) -> std::io::Result<()> {
         use crossbeam_channel::select;
+        use tracing::{debug, trace, warn};
 
         self.request_refresh_for_current_tab();
 
@@ -471,15 +472,31 @@ impl App {
 
             select! {
                 recv(self.event_rx) -> event => {
-                    if let Ok(event) = event {
-                        match event {
-                            AppEvent::Key(key_code) => self.handle_key_event(key_code),
-                            AppEvent::Data(response) => self.handle_data_response(response),
+                    match event {
+                        Ok(AppEvent::Key(key_code)) => {
+                            trace!("Key event: {:?}", key_code);
+                            self.handle_key_event(key_code);
+                        }
+                        Ok(AppEvent::Data(response)) => {
+                            debug!("Data event received");
+                            self.handle_data_response(response);
+                        }
+                        Err(e) => {
+                            warn!("event channel closed: {}", e);
                         }
                     }
                 }
                 default(self.refresh_interval) => {
                     if !self.paused {
+                        let stale_ms = self
+                            .last_successful_fetch
+                            .map(|t| t.elapsed().as_millis())
+                            .unwrap_or(0);
+                        debug!(
+                            "Refresh tick: tab={}, last_success={}ms ago",
+                            self.selected_tab.name(),
+                            stale_ms
+                        );
                         self.request_refresh_for_current_tab();
                     }
                 }
