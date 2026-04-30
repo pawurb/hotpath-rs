@@ -408,7 +408,8 @@ impl HotpathGuard {
                                         }
                                         let _ = response_tx.send(formatted);
                                     }
-                                    FunctionsQuery::RegisteredNames(response_tx) => {
+                                    #[cfg(feature = "cpu")]
+                                    FunctionsQuery::InstrumentedNames(response_tx) => {
                                         let names = name_to_id.keys().copied().collect();
                                         let _ = response_tx.send(names);
                                     }
@@ -596,77 +597,15 @@ fn build_timing_list(
 impl Drop for HotpathGuard {
     fn drop(&mut self) {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
-        let caller_name = self
-            .state
-            .read()
-            .map(|state| state.caller_name)
-            .unwrap_or("unknown");
 
         #[cfg(feature = "cpu")]
-        match self.pprof_guard.report().build() {
-            Ok(report) => {
-                let total: isize = report.data.values().sum();
-                eprintln!(
-                    "[hotpath - pprof] sampling report: {} unique stacks, {} total samples",
-                    report.data.len(),
-                    total
-                );
-                let mut stacks: Vec<_> = report.data.iter().collect();
-                stacks.sort_by(|a, b| b.1.cmp(a.1));
-                for (idx, (frames, count)) in stacks.iter().enumerate() {
-                    eprintln!(
-                        "\n[hotpath - pprof] stack #{} (samples: {}, thread: {} [{}])",
-                        idx + 1,
-                        count,
-                        frames.thread_name,
-                        frames.thread_id
-                    );
-                    for (depth, frame) in frames.frames.iter().enumerate() {
-                        for sym in frame {
-                            eprintln!("  #{:>2} {}", depth, sym);
-                        }
-                    }
-                }
-
-                if let Some(registered_names) = crate::functions::get_registered_function_names() {
-                    let eligible_names: std::collections::HashSet<&'static str> = registered_names
-                        .into_iter()
-                        .filter(|name| *name != caller_name)
-                        .collect();
-
-                    if eligible_names.is_empty() {
-                        eprintln!(
-                            "[hotpath - cpu] no eligible measured functions found after excluding wrapper {}",
-                            caller_name
-                        );
-                    } else {
-                        let attributed =
-                            crate::lib_on::cpu::attribute_exclusive_traces(&report, &eligible_names);
-                        if attributed.is_empty() {
-                            eprintln!(
-                                "[hotpath - cpu] no sampled stacks matched eligible measured functions"
-                            );
-                        } else {
-                            let mut attributed: Vec<_> = attributed.into_iter().collect();
-                            attributed.sort_by(|a, b| {
-                                b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0))
-                            });
-
-                            eprintln!("\n[hotpath - cpu] attributed traces:");
-                            for (name, count) in attributed {
-                                eprintln!("  {}: {}", name, count);
-                            }
-                        }
-                    }
-                } else {
-                    eprintln!(
-                        "[hotpath - cpu] failed to fetch registered measured function names before worker shutdown"
-                    );
-                }
-            }
-            Err(e) => {
-                eprintln!("[hotpath - pprof] failed to build report: {}", e);
-            }
+        {
+            let caller_name = self
+                .state
+                .read()
+                .map(|state| state.caller_name)
+                .unwrap_or("unknown");
+            crate::lib_on::cpu::report_cpu_attribution(&self.pprof_guard, caller_name);
         }
 
         if let Some(f) = self.before_shutdown.take() {
