@@ -65,6 +65,7 @@ pub(crate) enum FunctionsSubTab {
     #[default]
     Timing,
     Memory,
+    Cpu,
 }
 
 impl FunctionsSubTab {
@@ -72,13 +73,15 @@ impl FunctionsSubTab {
         match self {
             FunctionsSubTab::Timing => "Timing",
             FunctionsSubTab::Memory => "Memory",
+            FunctionsSubTab::Cpu => "CPU",
         }
     }
 
-    pub(crate) fn toggle(&self) -> Self {
+    pub(crate) fn cycle(&self) -> Self {
         match self {
             FunctionsSubTab::Timing => FunctionsSubTab::Memory,
-            FunctionsSubTab::Memory => FunctionsSubTab::Timing,
+            FunctionsSubTab::Memory => FunctionsSubTab::Cpu,
+            FunctionsSubTab::Cpu => FunctionsSubTab::Timing,
         }
     }
 }
@@ -172,6 +175,8 @@ pub(crate) struct App {
     pub(crate) timing_functions: JsonFunctionsList,
     pub(crate) memory_functions: JsonFunctionsList,
     pub(crate) memory_available: bool,
+    pub(crate) cpu_envelope: Option<hotpath::json::JsonFunctionsCpuEnvelope>,
+    pub(crate) cpu_table_state: TableState,
 
     pub(crate) timing_table_state: TableState,
     pub(crate) memory_table_state: TableState,
@@ -290,6 +295,8 @@ impl App {
             timing_functions: empty_functions.clone(),
             memory_functions: empty_functions,
             memory_available: true,
+            cpu_envelope: None,
+            cpu_table_state: TableState::default().with_selected(0),
             timing_table_state: TableState::default().with_selected(0),
             memory_table_state: TableState::default().with_selected(0),
             selected_tab: initial_tab,
@@ -371,10 +378,15 @@ impl App {
         self.exit = true;
     }
 
-    pub(crate) fn active_functions(&self) -> &JsonFunctionsList {
+    pub(crate) fn active_function_count(&self) -> usize {
         match self.functions_sub_tab {
-            FunctionsSubTab::Timing => &self.timing_functions,
-            FunctionsSubTab::Memory => &self.memory_functions,
+            FunctionsSubTab::Timing => self.timing_functions.data.len(),
+            FunctionsSubTab::Memory => self.memory_functions.data.len(),
+            FunctionsSubTab::Cpu => self
+                .cpu_envelope
+                .as_ref()
+                .and_then(|e| e.report.as_ref().map(|r| r.data.len()))
+                .unwrap_or(0),
         }
     }
 
@@ -383,6 +395,7 @@ impl App {
             SelectedTab::Functions => match self.functions_sub_tab {
                 FunctionsSubTab::Timing => &mut self.timing_table_state,
                 FunctionsSubTab::Memory => &mut self.memory_table_state,
+                FunctionsSubTab::Cpu => &mut self.cpu_table_state,
             },
             SelectedTab::DataFlow => match self.data_flow_sub_tab {
                 DataFlowSubTab::Channels => &mut self.channels_table_state,
@@ -450,7 +463,7 @@ impl App {
                     if let Ok(event) = event {
                         match event {
                             AppEvent::Key(key_code) => self.handle_key_event(key_code),
-                            AppEvent::Data(response) => self.handle_data_response(response),
+                            AppEvent::Data(response) => self.handle_data_response(*response),
                         }
                     }
                 }

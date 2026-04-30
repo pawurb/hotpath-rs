@@ -37,9 +37,12 @@ jobs:
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui
-      - name: Run functions tests
+      - name: Run functions_timing tests
         run: |
-          cargo test --features hotpath --test functions -- --nocapture --test-threads=1
+          cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
+      - name: Run functions_alloc tests
+        run: |
+          cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
       - name: Run streams tests
         run: |
           cargo test --features hotpath --test streams -- --nocapture --test-threads=1

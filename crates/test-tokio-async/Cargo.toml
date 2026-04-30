@@ -19,3 +19,5 @@ num-bigint = "0.4"
 default = []
 hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-cpu = ["hotpath/hotpath-cpu"]
+dev = ["hotpath/dev"]

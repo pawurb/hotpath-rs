@@ -4,6 +4,12 @@
 //! For a complete setup guide, examples, and advanced configuration, visit
 //! [hotpath.rs](https://hotpath.rs).
 
+#[cfg(all(
+    feature = "hotpath-cpu",
+    not(any(target_os = "macos", target_os = "linux"))
+))]
+compile_error!("the `hotpath-cpu` feature is only supported on macOS and Linux");
+
 #[cfg(feature = "hotpath")]
 #[doc(inline)]
 pub use lib_on::*;
@@ -69,3 +75,6 @@ pub use lib_off::threads;
 
 mod shared;
 pub use shared::{Format, IntoF64, Section};
+
+#[doc(hidden)]
+pub mod dev_logging;

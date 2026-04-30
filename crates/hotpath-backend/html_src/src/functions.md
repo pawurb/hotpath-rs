@@ -69,6 +69,7 @@ An attribute macro that instruments functions to send timing/memory measurements
 
 - `log = true` - logs the result value when the function returns (requires `std::fmt::Debug` on return type)
 - `label = "name"` - replaces the full reported identifier (instead of `module_path::<fn_name>`).
+- `impl_type = "Type"` - inserts the enclosing type segment so the registered name becomes `module_path::<Type>::<fn_name>`. Use this for bare `#[hotpath::measure]` on a method inside an `impl` not covered by `measure_all`. Required for correct CPU sampling attribution under `hotpath-cpu` (see [CPU profiling](./cpu_profiling.md)), since the demangled symbol contains the type segment.
 
 Example:
 
@@ -81,6 +82,12 @@ fn compute() -> i32 {
 
 #[hotpath::measure(label = "db_query")]
 fn fetch_user(id: u64) { /* ... */ }
+
+struct Worker;
+impl Worker {
+    #[hotpath::measure(impl_type = "Worker")]
+    fn run(&self) { /* ... */ }
+}
 ```
 
 <img loading="lazy" src="{{#asset-hash images/functions-log.png}}" alt="hotpath-rs TUI showing function return value logging">
@@ -112,6 +119,8 @@ mod math_operations {
 ```
 
 > **Note:** Once Rust stabilizes [`#![feature(proc_macro_hygiene)]`](https://doc.rust-lang.org/beta/unstable-book/language-features/proc-macro-hygiene.html?highlight=proc_macro_hygiene#proc_macro_hygiene) and [`#![feature(custom_inner_attributes)]`](https://doc.rust-lang.org/beta/unstable-book/language-features/custom-inner-attributes.html), it will be possible to use `#![measure_all]` as an inner attribute directly inside module files (e.g., at the top of `math_operations.rs`) to automatically instrument all functions in that module.
+
+> **Note (CPU sampling):** On inherent impl blocks (`impl Type { ... }`), `measure_all` auto-injects the type segment so methods are registered as `module_path::<Type>::<method>` — this matches the demangled symbol used by `hotpath-cpu` attribution. Trait impls (`impl Trait for Type`) are still instrumented for timing/allocation, but their demangled symbols use the `<Type as Trait>::method` form, so CPU sampling will not attribute samples to those methods.
 
 ## `#[hotpath::skip]` macro
 

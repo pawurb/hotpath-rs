@@ -4,6 +4,7 @@
 - [Sampling Comparison](./sampling_comparison.md)
 - [Profiling modes](./profiling_modes.md)
 - [Functions](./functions.md)
+- [CPU profiling](./cpu_profiling.md)
 - [A/B benchmarks](./benchmarks.md)
 - [Async Data Flow](./data_flow.md)
 - [Debug & Metrics](./debug.md)

@@ -23,6 +23,10 @@ name = "hotpath-crashtest"
 path = "bin/hotpath-crashtest/main.rs"
 required-features = ["tui", "hotpath", "hotpath-alloc"]
 
+[[bin]]
+name = "hotpath-samply"
+path = "bin/hotpath-samply/main.rs"
+
 [features]
 default = ["threads"]
 hotpath = [
@@ -51,7 +55,8 @@ futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-mu
 async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:async-channel"]
 crossbeam = []
 threads = []
-dev = ["dep:tracing", "dep:tracing-subscriber", "dep:time"]
+dev = ["dep:time"]
+hotpath-cpu = ["dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]
@@ -77,14 +82,15 @@ async-channel = { version = "2", optional = true }
 futures-util = { version = "0.3", features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
 libc = { version = "0.2.150", optional = true }
-tracing = { version = "0.1", optional = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"], optional = true }
-time = { version = "0.3", features = ["formatting", "local-offset"], optional = true }
+time = { version = "0.3", features = ["formatting", "local-offset", "macros"], optional = true }
 rmcp = { version = "0.13", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }
 hotpath-meta = { workspace = true, optional = true }
+object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }
+rustc-demangle = { version = "0.1", optional = true }
+flate2 = { version = "1", optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

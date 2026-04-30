@@ -90,9 +90,12 @@ jobs:
       - name: Run guards tests
         run: |
           cargo test --features hotpath --test guards -- --nocapture --test-threads=1
-      - name: Run functions tests
+      - name: Run functions_timing tests
         run: |
-          cargo test --features hotpath --test functions -- --nocapture --test-threads=1
+          cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
+      - name: Run functions_alloc tests
+        run: |
+          cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
       - name: Run all_noop example
         run: |
           cargo run --example all_noop 
@@ -126,3 +129,31 @@ jobs:
       - name: Run debug tests
         run: |
           cargo test --features hotpath --test debug -- --nocapture --test-threads=1
+
+  cpu-macos:
+    name: cpu tests (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-cpu
+      - name: Download samply binary from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.cargo/bin
+          gh release download samply-macos-release -p samply -D ~/.cargo/bin --repo ${{ github.repository }}
+          chmod +x ~/.cargo/bin/samply
+          sudo chown root:wheel ~/.cargo/bin/samply
+          sudo chmod u+s ~/.cargo/bin/samply
+      - name: Build hotpath-samply wrapper
+        run: |
+          cargo build -p hotpath --bin hotpath-samply --features "hotpath,hotpath-cpu"
+      - name: Run functions_cpu tests
+        env:
+          HOTPATH_SAMPLY_WRAPPER_BIN: ${{ github.workspace }}/target/debug/hotpath-samply
+        run: |
+          cargo test --features "hotpath,hotpath-cpu" --test functions_cpu -- --nocapture --test-threads=1

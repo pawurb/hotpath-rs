@@ -2,11 +2,12 @@
 
 use crate::cmd::console::app::{App, DataFlowLogs, DataFlowSubTab, FunctionsSubTab, SelectedTab};
 use crate::cmd::console::events::{DataRequest, DataResponse};
-use crate::cmd::console::log::{trace, warn};
+use hotpath::dev_logging::{trace, warn};
 use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
-    JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonFuturesList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList,
+    JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
+    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use std::time::Instant;
 
@@ -107,6 +108,12 @@ impl App {
         self.try_auto_expand_logs();
     }
 
+    pub(crate) fn update_cpu_envelope(&mut self, envelope: JsonFunctionsCpuEnvelope) {
+        self.cpu_envelope = Some(envelope);
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+    }
+
     pub(crate) fn set_error(&mut self, error: String) {
         self.error_message = Some(error);
     }
@@ -129,6 +136,7 @@ impl App {
         let (entries, table_state) = match self.functions_sub_tab {
             FunctionsSubTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
             FunctionsSubTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
+            FunctionsSubTab::Cpu => return None,
         };
         table_state
             .selected()
@@ -142,6 +150,7 @@ impl App {
         let (entries, table_state) = match self.functions_sub_tab {
             FunctionsSubTab::Timing => (self.get_timing_measurements(), &self.timing_table_state),
             FunctionsSubTab::Memory => (self.get_memory_measurements(), &self.memory_table_state),
+            FunctionsSubTab::Cpu => return None,
         };
         table_state
             .selected()
@@ -177,6 +186,7 @@ impl App {
                             .request_tx
                             .send(DataRequest::FetchFunctionLogsAlloc(function_id));
                     }
+                    FunctionsSubTab::Cpu => {}
                 }
             }
         }
@@ -453,6 +463,7 @@ impl App {
                 match self.functions_sub_tab {
                     FunctionsSubTab::Timing => DataRequest::RefreshTiming,
                     FunctionsSubTab::Memory => DataRequest::RefreshMemory,
+                    FunctionsSubTab::Cpu => DataRequest::RefreshCpu,
                 }
             }
             SelectedTab::DataFlow => {
@@ -504,6 +515,24 @@ impl App {
                 self.set_error(
                     "Memory profiling not available - enable hotpath-alloc feature".to_string(),
                 );
+            }
+            DataResponse::FunctionsCpu(envelope) => {
+                trace!("Received CPU envelope: status={:?}", envelope.status);
+                self.loading_functions = false;
+                self.update_cpu_envelope(envelope);
+            }
+            DataResponse::FunctionsCpuUnavailable => {
+                trace!("CPU profiling unavailable");
+                self.loading_functions = false;
+                self.set_error(
+                    "CPU profiling not available - enable hotpath-cpu feature".to_string(),
+                );
+            }
+            DataResponse::CpuSnapshotTriggered => {
+                trace!("CPU snapshot triggered");
+            }
+            DataResponse::CpuSnapshotBusy => {
+                trace!("CPU snapshot already in progress");
             }
             DataResponse::FunctionLogsTiming {
                 function_id: _,

@@ -4,12 +4,12 @@ use crate::cmd::console::app::{
     App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, InspectedFunctionLog,
     SelectedTab,
 };
-use crate::cmd::console::log::{debug, info};
+use hotpath::dev_logging::{debug, info};
 
 #[hotpath::measure_all]
 impl App {
     pub(crate) fn next_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_function_count();
         if function_count == 0 {
             return;
         }
@@ -23,7 +23,7 @@ impl App {
     }
 
     pub(crate) fn previous_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_function_count();
         if function_count == 0 {
             return;
         }
@@ -37,7 +37,7 @@ impl App {
     }
 
     pub(crate) fn first_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_function_count();
         if function_count == 0 {
             return;
         }
@@ -45,7 +45,7 @@ impl App {
     }
 
     pub(crate) fn last_function(&mut self) {
-        let function_count = self.active_functions().data.len();
+        let function_count = self.active_function_count();
         if function_count == 0 {
             return;
         }
@@ -76,11 +76,8 @@ impl App {
     }
 
     pub(crate) fn toggle_functions_sub_tab(&mut self) {
-        self.functions_sub_tab = self.functions_sub_tab.toggle();
-        debug!(
-            "Toggled functions subtab: {}",
-            self.functions_sub_tab.name()
-        );
+        self.functions_sub_tab = self.functions_sub_tab.cycle();
+        debug!("Cycled functions subtab: {}", self.functions_sub_tab.name());
         self.functions_focus = FunctionsFocus::Functions;
         self.function_logs_table_state.select(None);
         self.inspected_function_log = None;
@@ -107,6 +104,28 @@ impl App {
         self.function_logs_table_state.select(None);
     }
 
+    pub(crate) fn open_cpu_profile_in_samply(&self) {
+        let Some(path) = self
+            .cpu_envelope
+            .as_ref()
+            .and_then(|e| e.last_profile_path.clone())
+        else {
+            info!("samply load skipped: no captured profile yet");
+            return;
+        };
+        match std::process::Command::new("samply")
+            .arg("load")
+            .arg(&path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(child) => info!("samply load pid={} path={}", child.id(), path),
+            Err(e) => info!("samply load failed for {}: {}", path, e),
+        }
+    }
+
     fn function_logs_len(&self) -> usize {
         if self.selected_tab != SelectedTab::Functions {
             return 0;
@@ -122,6 +141,7 @@ impl App {
                 .as_ref()
                 .map(|l| l.logs.len())
                 .unwrap_or(0),
+            FunctionsSubTab::Cpu => 0,
         }
     }
 
@@ -150,6 +170,7 @@ impl App {
                     result: entry.result.clone(),
                 })
             }),
+            FunctionsSubTab::Cpu => None,
         }
     }
 

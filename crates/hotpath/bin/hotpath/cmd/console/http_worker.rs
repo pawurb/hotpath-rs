@@ -1,13 +1,13 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
-use crate::cmd::console::log::{error, info, trace, warn};
 use crossbeam_channel::{Receiver, Sender};
+use hotpath::dev_logging::{error, info, trace, warn};
 use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
-    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus, JsonRuntimeSnapshot,
-    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
+    JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
+    JsonProfilerStatus, JsonRuntimeSnapshot, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -22,6 +22,8 @@ const HTTP_TIMEOUT_MS: u64 = 2000;
 enum RequestKey {
     Timing,
     Memory,
+    Cpu,
+    CpuSnapshot,
     Channels,
     Streams,
     Futures,
@@ -44,6 +46,8 @@ impl DataRequest {
         match self {
             DataRequest::RefreshTiming => RequestKey::Timing,
             DataRequest::RefreshMemory => RequestKey::Memory,
+            DataRequest::RefreshCpu => RequestKey::Cpu,
+            DataRequest::TriggerCpuSnapshot => RequestKey::CpuSnapshot,
             DataRequest::RefreshChannels => RequestKey::Channels,
             DataRequest::RefreshStreams => RequestKey::Streams,
             DataRequest::RefreshFutures => RequestKey::Futures,
@@ -102,7 +106,7 @@ pub(crate) fn spawn_http_worker(
                     label = "tui_request"
                 )
                 .await;
-                let _ = event_tx.send(AppEvent::Data(response));
+                let _ = event_tx.send(AppEvent::Data(Box::new(response)));
             });
 
             active_tasks.insert(key, handle);
@@ -122,6 +126,28 @@ impl RouteExt for Route {
     async fn fetch(&self, client: &reqwest::Client, base_url: &str) -> DataResponse {
         let url = format!("{}{}", base_url, self.to_path());
         trace!("Fetching {}", url);
+
+        if matches!(self, Route::FunctionsCpuSnapshot) {
+            let resp = match client.post(&url).send().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    warn!("CPU snapshot trigger failed for {}: {}", url, e);
+                    return DataResponse::Error(format!("Request failed: {}", e));
+                }
+            };
+            let status = resp.status();
+            trace!("CPU snapshot response status {}", status);
+            if status == StatusCode::ACCEPTED {
+                return DataResponse::CpuSnapshotTriggered;
+            }
+            if status == StatusCode::CONFLICT {
+                return DataResponse::CpuSnapshotBusy;
+            }
+            if status == StatusCode::NOT_FOUND {
+                return DataResponse::FunctionsCpuUnavailable;
+            }
+            return DataResponse::Error(format!("CPU snapshot HTTP {}", status));
+        }
 
         let resp = match client.get(&url).send().await {
             Ok(resp) => resp,
@@ -171,6 +197,9 @@ impl RouteExt for Route {
     fn not_found_response(&self) -> Option<DataResponse> {
         match self {
             Route::FunctionsAlloc => Some(DataResponse::FunctionsAllocUnavailable),
+            Route::FunctionsCpu | Route::FunctionsCpuSnapshot => {
+                Some(DataResponse::FunctionsCpuUnavailable)
+            }
             Route::FunctionTimingLogs { function_id } => {
                 Some(DataResponse::FunctionLogsTimingNotFound(*function_id))
             }
@@ -205,6 +234,10 @@ impl RouteExt for Route {
             Route::FunctionsAlloc => {
                 parse_json::<JsonFunctionsList>(bytes).map(DataResponse::FunctionsAlloc)
             }
+            Route::FunctionsCpu => {
+                parse_json::<JsonFunctionsCpuEnvelope>(bytes).map(DataResponse::FunctionsCpu)
+            }
+            Route::FunctionsCpuSnapshot => Ok(DataResponse::CpuSnapshotTriggered),
             Route::Channels => parse_json::<JsonChannelsList>(bytes).map(DataResponse::Channels),
             Route::Streams => parse_json::<JsonStreamsList>(bytes).map(DataResponse::Streams),
             Route::Futures => parse_json::<JsonFuturesList>(bytes).map(DataResponse::Futures),

@@ -4,18 +4,13 @@
 //!
 //! Profile with hotpath:
 //! ```bash
-//! cargo run --example profile_cpu --features hotpath --profile profiling
-//! ```
-//!
-//! Profile with samply:
-//! ```bash
-//! cargo build --example profile_cpu --profile profiling
-//! samply record ./target/profiling/examples/profile_cpu
+//! cargo run --example cpu_basic --features hotpath --profile profiling
 //! ```
 
 use std::hint::black_box;
 
 #[hotpath::measure]
+#[inline(never)]
 fn heavy_work(iterations: u32) -> u64 {
     let mut result: u64 = 1;
     for i in 0..iterations {
@@ -26,6 +21,7 @@ fn heavy_work(iterations: u32) -> u64 {
 }
 
 #[hotpath::measure]
+#[inline(never)]
 fn light_work(iterations: u32) -> u64 {
     let mut result: u64 = 0;
     for i in 0..iterations {
@@ -39,7 +35,7 @@ fn main() {
     let mut total: u64 = 0;
 
     for _ in 0..1000 {
-        total = total.wrapping_add(heavy_work(500_000));
-        total = total.wrapping_add(light_work(100_000));
+        total = total.wrapping_add(heavy_work(200_000));
+        total = total.wrapping_add(light_work(50_000));
     }
 }

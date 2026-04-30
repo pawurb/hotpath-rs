@@ -24,7 +24,9 @@ compare_meta before after:
 test_all:
     cargo run -p test-all-features --example all_noop
     cargo test --features hotpath --test guards -- --nocapture --test-threads=1
-    cargo test --features hotpath --test functions -- --nocapture --test-threads=1
+    cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
+    cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
+    cargo test --features hotpath --test functions_cpu -- --nocapture --test-threads=1
     cargo test --features hotpath --test streams -- --nocapture --test-threads=1
     cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
     cargo test --features hotpath --test channels_ftc -- --nocapture --test-threads=1
