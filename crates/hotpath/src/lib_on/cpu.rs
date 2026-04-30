@@ -31,7 +31,7 @@ pub(crate) fn install_pprof_guard(guard: pprof::ProfilerGuard<'static>) {
     let _ = PPROF_GUARD.set(Mutex::new(Some(guard)));
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 pub(crate) fn take_pprof_guard() -> Option<pprof::ProfilerGuard<'static>> {
     PPROF_GUARD.get()?.lock().ok()?.take()
 }
@@ -58,12 +58,7 @@ pub(crate) fn build_cpu_report_live() -> Option<JsonFunctionsCpuList> {
 
     let report = build_cpu_report(pprof_guard, caller_name)?;
     let elapsed_ns = crate::lib_on::current_elapsed_ns();
-    let json = build_cpu_json(
-        &report,
-        Duration::from_nanos(elapsed_ns),
-        elapsed_ns,
-        0,
-    );
+    let json = build_cpu_json(&report, Duration::from_nanos(elapsed_ns), elapsed_ns, 0);
 
     if let Ok(mut cache) = LIVE_REPORT_CACHE.lock() {
         *cache = Some((Instant::now(), json.clone()));

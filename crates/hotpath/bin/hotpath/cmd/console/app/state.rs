@@ -77,10 +77,7 @@ impl App {
 
     pub(crate) fn cycle_functions_sub_tab(&mut self) {
         self.functions_sub_tab = self.functions_sub_tab.cycle();
-        debug!(
-            "Cycled functions subtab: {}",
-            self.functions_sub_tab.name()
-        );
+        debug!("Cycled functions subtab: {}", self.functions_sub_tab.name());
         self.functions_focus = FunctionsFocus::Functions;
         self.function_logs_table_state.select(None);
         self.inspected_function_log = None;
