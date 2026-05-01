@@ -51,6 +51,12 @@ cfg_if::cfg_if! {
 use crate::functions::MeasurementGuardSync;
 use crate::Format;
 
+macro_rules! cpu_log {
+    ($level:expr, $($arg:tt)*) => {{
+        eprintln!("[hotpath - cpu report - {}] {}", $level, format_args!($($arg)*));
+    }};
+}
+
 /// Builder for [`HotpathGuard`] — a programmatic alternative to the
 /// `#[hotpath::main]` macro for configuring and initializing the profiler.
 ///
@@ -611,9 +617,48 @@ impl Drop for HotpathGuard {
                 .read()
                 .map(|state| state.caller_name)
                 .unwrap_or("unknown");
-            crate::functions::cpu::autospawn::stop().and_then(|profile_path| {
-                crate::functions::cpu::build_cpu_report_from_path(caller_name, &profile_path)
-            })
+            cpu_log!(
+                "info",
+                "attempting CPU report generation for caller={caller_name}"
+            );
+            match crate::functions::cpu::autospawn::stop() {
+                Some(profile_path) => {
+                    cpu_log!(
+                        "info",
+                        "CPU profile path ready at {}; starting parse",
+                        profile_path.display()
+                    );
+                    let report = crate::functions::cpu::build_cpu_report_from_path(
+                        caller_name,
+                        &profile_path,
+                    );
+                    match report.as_ref() {
+                        Some(report) => cpu_log!(
+                            "info",
+                            "CPU report generated for caller={} total_samples={} attributed_samples={} stats_rows={}",
+                            caller_name,
+                            report.total_samples,
+                            report.attributed_samples,
+                            report.stats.len()
+                        ),
+                        None => cpu_log!(
+                            "warn",
+                            "CPU report generation returned no data for caller={} profile={}",
+                            caller_name,
+                            profile_path.display()
+                        ),
+                    }
+                    report
+                }
+                None => {
+                    cpu_log!(
+                        "warn",
+                        "CPU report skipped for caller={} because no finalized samply profile was available",
+                        caller_name
+                    );
+                    None
+                }
+            }
         } else {
             None
         };

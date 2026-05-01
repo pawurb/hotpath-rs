@@ -35,7 +35,7 @@ pub(crate) fn start() {
             return;
         }
     };
-    let session_dir = PathBuf::from("/tmp/.hotpath").join(&session_id);
+    let session_dir = PathBuf::from("/tmp/hotpath").join(&session_id);
     if let Err(e) = fs::create_dir_all(&session_dir) {
         log!(
             "failed to create CPU profiling session dir {}: {}",

@@ -9,25 +9,17 @@ use serde::Deserialize;
 
 use crate::lib_on::functions::cpu::{CpuFunctionStats, CpuReport, CPU_INCLUSIVE};
 
-#[cfg(feature = "dev")]
-use tracing::{debug, warn};
-
-#[cfg(not(feature = "dev"))]
-macro_rules! noop_log {
-    ($($tt:tt)*) => {{
-        let _ = format_args!($($tt)*);
+macro_rules! cpu_log {
+    ($level:expr, $($arg:tt)*) => {{
+        eprintln!("[hotpath - cpu report - {}] {}", $level, format_args!($($arg)*));
     }};
 }
-#[cfg(not(feature = "dev"))]
-use noop_log as debug;
-#[cfg(not(feature = "dev"))]
-use noop_log as warn;
 
 pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<CpuReport> {
     let path = match profile_path() {
         Some(p) => p,
         None => {
-            debug!("no samply profile found; skipping CPU report");
+            cpu_log!("warn", "no samply profile found; skipping CPU report");
             return None;
         }
     };
@@ -38,26 +30,43 @@ pub(crate) fn build_cpu_report_from_path(
     caller_name: &'static str,
     path: &Path,
 ) -> Option<CpuReport> {
-    debug!("loading samply profile from {}", path.display());
+    cpu_log!("info", "loading samply profile from {}", path.display());
 
     let profile = match load_profile(path) {
         Ok(p) => p,
         Err(e) => {
-            warn!("failed to load samply profile {}: {e}", path.display());
+            cpu_log!(
+                "warn",
+                "failed to load samply profile {}: {e}",
+                path.display()
+            );
             return None;
         }
     };
-    debug!(
+    cpu_log!(
+        "info",
         "profile loaded: {} libs, {} threads",
         profile.libs.len(),
         profile.threads.len()
     );
 
-    let display_to_id = crate::lib_on::functions::get_instrumented_names_and_ids()?;
-    debug!("instrumented functions: {}", display_to_id.len());
+    let display_to_id = match crate::lib_on::functions::get_instrumented_names_and_ids() {
+        Some(display_to_id) => display_to_id,
+        None => {
+            cpu_log!(
+                "warn",
+                "instrumented function registry unavailable; skipping CPU report"
+            );
+            return None;
+        }
+    };
+    cpu_log!("info", "instrumented functions: {}", display_to_id.len());
 
     if display_to_id.is_empty() {
-        warn!("no instrumented functions registered; CPU report empty");
+        cpu_log!(
+            "warn",
+            "no instrumented functions registered; CPU report empty"
+        );
         return None;
     }
 
@@ -75,22 +84,31 @@ pub(crate) fn build_cpu_report_from_path(
                 .or(lib.path.as_deref())
                 .unwrap_or("<missing>");
             let idx = build_lib_index(lib, &eligible_symbols).unwrap_or_default();
-            debug!("lib[{i}] {lib_path}: {} matching symbols", idx.ranges.len());
+            cpu_log!(
+                "info",
+                "lib[{i}] {lib_path}: {} matching symbols",
+                idx.ranges.len()
+            );
             if !idx.ranges.is_empty() {
                 let first = idx.ranges.first().unwrap();
                 let last = idx.ranges.last().unwrap();
-                debug!(
+                cpu_log!(
+                    "info",
                     "lib[{i}] range bounds: 0x{:x}..0x{:x} (first sym {:?}, last sym {:?})",
-                    first.0, last.1, first.2, last.2
+                    first.0,
+                    last.1,
+                    first.2,
+                    last.2
                 );
             }
             idx
         })
         .collect();
     let total_matches: usize = lib_indexes.iter().map(|i| i.ranges.len()).sum();
-    debug!("total matched symbols across libs: {total_matches}");
+    cpu_log!("info", "total matched symbols across libs: {total_matches}");
     if total_matches == 0 {
-        warn!(
+        cpu_log!(
+            "warn",
             "no instrumented symbols found in any sampled library - \
              ensure the binary was built with debug symbols and not stripped"
         );
@@ -202,11 +220,40 @@ pub(crate) fn build_cpu_report_from_path(
 
     stats.sort_by(|a, b| b.samples.cmp(&a.samples).then_with(|| a.name.cmp(b.name)));
 
-    debug!(
+    cpu_log!(
+        "info",
         "samples: total={total_samples} attributed={attributed_samples} stats_rows={}",
         stats.len()
     );
-    debug!("frames: seen={frames_seen} no_addr={frames_no_addr} no_lib={frames_no_lib}");
+    cpu_log!(
+        "info",
+        "frames: seen={frames_seen} no_addr={frames_no_addr} no_lib={frames_no_lib}"
+    );
+    if attributed_samples == 0 {
+        cpu_log!(
+            "warn",
+            "no samples were attributed to instrumented functions; total_samples={} matched_symbols={} frames_seen={}",
+            total_samples,
+            total_matches,
+            frames_seen
+        );
+    } else if stats.is_empty() {
+        cpu_log!(
+            "warn",
+            "CPU profile parsed but produced no stats rows; total_samples={} attributed_samples={} matched_symbols={}",
+            total_samples,
+            attributed_samples,
+            total_matches
+        );
+    } else {
+        cpu_log!(
+            "info",
+            "top CPU function={} samples={} total_rows={}",
+            stats[0].name,
+            stats[0].samples,
+            stats.len()
+        );
+    }
     let mut by_lib: Vec<(usize, u64)> = frames_with_lib.into_iter().collect();
     by_lib.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
 
@@ -221,7 +268,10 @@ pub(crate) fn build_cpu_report_from_path(
 fn profile_path() -> Option<PathBuf> {
     if let Ok(path) = env::var("HOTPATH_CPU_PROFILE_PATH") {
         if path.is_empty() {
-            debug!("HOTPATH_CPU_PROFILE_PATH is empty; skipping CPU report");
+            cpu_log!(
+                "warn",
+                "HOTPATH_CPU_PROFILE_PATH is empty; skipping CPU report"
+            );
             return None;
         }
 
@@ -230,7 +280,8 @@ fn profile_path() -> Option<PathBuf> {
             return Some(path);
         }
 
-        warn!(
+        cpu_log!(
+            "warn",
             "HOTPATH_CPU_PROFILE_PATH points to missing file {}; skipping CPU report",
             path.display()
         );
