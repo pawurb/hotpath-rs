@@ -91,12 +91,9 @@ pub(crate) fn build_cpu_report(
     pprof_guard: &pprof::ProfilerGuard<'static>,
     caller_name: &'static str,
 ) -> Option<CpuReport> {
-    let report = match pprof_guard.report().build() {
-        Ok(report) => report,
-        Err(e) => {
-            eprintln!("[hotpath - cpu] failed to build pprof report: {}", e);
-            return None;
-        }
+    let report = match build_pprof_report(pprof_guard) {
+        Some(report) => report,
+        None => return None,
     };
 
     let names_and_ids = crate::functions::get_instrumented_names_and_ids()?;
@@ -131,6 +128,17 @@ pub(crate) fn build_cpu_report(
         caller_name,
         stats,
     })
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn build_pprof_report(pprof_guard: &pprof::ProfilerGuard<'static>) -> Option<pprof::Report> {
+    match pprof_guard.report().build() {
+        Ok(report) => Some(report),
+        Err(e) => {
+            eprintln!("[hotpath - cpu] failed to build pprof report: {}", e);
+            None
+        }
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -260,12 +268,28 @@ pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFu
     let _ = writeln!(writer);
 }
 
+fn resolve_symbol<'a>(
+    sym: &pprof::Symbol,
+    eligible_names: &HashSet<&'static str>,
+    cache: &'a mut HashMap<Vec<u8>, Option<&'static str>>,
+) -> Option<&'static str> {
+    let raw = sym.raw_name();
+    if let Some(hit) = cache.get(raw) {
+        return *hit;
+    }
+    let demangled = sym.name();
+    let resolved = eligible_names.get(demangled.as_str()).copied();
+    cache.insert(raw.to_vec(), resolved);
+    resolved
+}
+
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn attribute_inclusive_traces(
     report: &pprof::Report,
     eligible_names: &HashSet<&'static str>,
 ) -> HashMap<&'static str, u64> {
     let mut attributed = HashMap::<&'static str, u64>::new();
+    let mut cache: HashMap<Vec<u8>, Option<&'static str>> = HashMap::new();
 
     for (stack, samples) in &report.data {
         let samples = match u64::try_from(*samples) {
@@ -276,9 +300,8 @@ fn attribute_inclusive_traces(
         let mut seen: HashSet<&'static str> = HashSet::new();
         for frame in &stack.frames {
             for sym in frame {
-                let symbol = format!("{sym}");
-                if let Some(name) = eligible_names.get(symbol.as_str()) {
-                    seen.insert(*name);
+                if let Some(name) = resolve_symbol(sym, eligible_names, &mut cache) {
+                    seen.insert(name);
                 }
             }
         }
@@ -297,6 +320,7 @@ fn attribute_exclusive_traces(
     eligible_names: &HashSet<&'static str>,
 ) -> HashMap<&'static str, u64> {
     let mut attributed = HashMap::<&'static str, u64>::new();
+    let mut cache: HashMap<Vec<u8>, Option<&'static str>> = HashMap::new();
 
     for (stack, samples) in &report.data {
         let samples = match u64::try_from(*samples) {
@@ -307,9 +331,8 @@ fn attribute_exclusive_traces(
         let mut owner: Option<&'static str> = None;
         for frame in &stack.frames {
             for sym in frame {
-                let symbol = format!("{sym}");
-                if let Some(name) = eligible_names.get(symbol.as_str()) {
-                    owner = Some(*name);
+                if let Some(name) = resolve_symbol(sym, eligible_names, &mut cache) {
+                    owner = Some(name);
                     break;
                 }
             }
