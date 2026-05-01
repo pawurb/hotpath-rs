@@ -6,9 +6,9 @@ use prettytable::{color, Attr, Cell, Row, Table};
 use crate::json::{JsonFunctionCpuEntry, JsonFunctionsCpuList};
 use crate::output::{format_duration, shorten_function_name};
 
+#[allow(dead_code)]
+pub(crate) mod autospawn;
 pub(crate) mod samply;
-
-pub(crate) const ENV_PROFILE_PATH: &str = "HOTPATH_CPU_PROFILE_PATH";
 
 pub(crate) static CPU_INCLUSIVE: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_CPU_INCLUSIVE"));

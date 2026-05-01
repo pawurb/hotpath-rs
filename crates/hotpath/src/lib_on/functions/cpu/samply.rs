@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs::File;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use object::{Object, ObjectSegment, ObjectSymbol, SymbolKind};
 use serde::Deserialize;
 
-use crate::lib_on::functions::cpu::{CpuFunctionStats, CpuReport, CPU_INCLUSIVE, ENV_PROFILE_PATH};
+use crate::lib_on::functions::cpu::{CpuFunctionStats, CpuReport, CPU_INCLUSIVE};
 
 #[cfg(feature = "dev")]
 use tracing::{debug, warn};
@@ -22,19 +24,19 @@ use noop_log as debug;
 use noop_log as warn;
 
 pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<CpuReport> {
-    let path = match std::env::var(ENV_PROFILE_PATH) {
-        Ok(p) => p,
-        Err(_) => {
-            debug!("{ENV_PROFILE_PATH} not set; skipping CPU report");
+    let path = match profile_path() {
+        Some(p) => p,
+        None => {
+            debug!("no samply profile found; skipping CPU report");
             return None;
         }
     };
-    debug!("loading samply profile from {path}");
+    debug!("loading samply profile from {}", path.display());
 
     let profile = match load_profile(&path) {
         Ok(p) => p,
         Err(e) => {
-            warn!("failed to load samply profile {path}: {e}");
+            warn!("failed to load samply profile {}: {e}", path.display());
             return None;
         }
     };
@@ -227,7 +229,34 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
     })
 }
 
-fn load_profile(path: &str) -> Result<Profile, Box<dyn std::error::Error>> {
+fn profile_path() -> Option<PathBuf> {
+    if let Ok(path) = env::var("HOTPATH_CPU_PROFILE_PATH") {
+        if path.is_empty() {
+            debug!("HOTPATH_CPU_PROFILE_PATH is empty; skipping CPU report");
+            return None;
+        }
+
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Some(path);
+        }
+
+        warn!(
+            "HOTPATH_CPU_PROFILE_PATH points to missing file {}; skipping CPU report",
+            path.display()
+        );
+        return None;
+    }
+
+    let default_path = Path::new("hp.json.gz");
+    if default_path.exists() {
+        return Some(default_path.to_path_buf());
+    }
+
+    None
+}
+
+fn load_profile(path: &std::path::Path) -> Result<Profile, Box<dyn std::error::Error>> {
     let mut file = File::open(path)?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
