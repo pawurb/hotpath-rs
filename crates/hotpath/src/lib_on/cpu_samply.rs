@@ -5,10 +5,7 @@ use std::io::Read;
 use object::{Object, ObjectSegment, ObjectSymbol, SymbolKind};
 use serde::Deserialize;
 
-use crate::lib_on::cpu::{
-    get_symbol_map, CpuFunctionStats, CpuReport, CPU_INCLUSIVE, CPU_SAMPLE_RATE_HZ,
-    ENV_PROFILE_PATH,
-};
+use crate::lib_on::cpu::{CpuFunctionStats, CpuReport, CPU_INCLUSIVE, ENV_PROFILE_PATH};
 
 #[cfg(feature = "dev")]
 use tracing::{debug, warn};
@@ -48,29 +45,14 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
     );
 
     let display_to_id = crate::lib_on::functions::get_instrumented_names_and_ids()?;
-    let display_to_symbol = get_symbol_map();
-    debug!(
-        "instrumented functions: {} display names, {} symbol mappings",
-        display_to_id.len(),
-        display_to_symbol.len()
-    );
+    debug!("instrumented functions: {}", display_to_id.len());
 
-    let mut symbol_to_meta: HashMap<&'static str, (u32, &'static str)> = HashMap::new();
-    for (display_name, id) in &display_to_id {
-        if let Some(symbol) = display_to_symbol.get(display_name) {
-            symbol_to_meta.insert(*symbol, (*id, *display_name));
-        } else {
-            debug!("no symbol mapping for display name {:?}", display_name);
-        }
-    }
-
-    if symbol_to_meta.is_empty() {
-        warn!("no instrumented functions had a symbol mapping; CPU report empty");
+    if display_to_id.is_empty() {
+        warn!("no instrumented functions registered; CPU report empty");
         return None;
     }
-    debug!("{} eligible (display, symbol) pairs", symbol_to_meta.len());
 
-    let eligible_symbols: HashSet<&'static str> = symbol_to_meta.keys().copied().collect();
+    let eligible_symbols: HashSet<&'static str> = display_to_id.keys().copied().collect();
 
     let lib_indexes: Vec<LibSymbolIndex> = profile
         .libs
@@ -200,14 +182,12 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
 
     let mut stats: Vec<CpuFunctionStats> = sample_counts
         .into_iter()
-        .filter_map(|(sym, samples)| {
-            symbol_to_meta
-                .get(sym)
-                .map(|(id, display)| CpuFunctionStats {
-                    name: display,
-                    id: *id,
-                    samples,
-                })
+        .filter_map(|(name, samples)| {
+            display_to_id.get(name).map(|id| CpuFunctionStats {
+                name,
+                id: *id,
+                samples,
+            })
         })
         .collect();
 
@@ -242,7 +222,6 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
     Some(CpuReport {
         total_samples,
         attributed_samples,
-        sample_rate_hz: *CPU_SAMPLE_RATE_HZ,
         caller_name,
         stats,
     })

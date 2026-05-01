@@ -120,7 +120,6 @@ pub struct JsonFunctionsCpuList {
     pub total_elapsed_ns: u64,
     pub total_samples: u64,
     pub attributed_samples: u64,
-    pub sample_rate_hz: u32,
     pub description: String,
     pub caller_name: String,
     pub data: Vec<JsonFunctionCpuEntry>,

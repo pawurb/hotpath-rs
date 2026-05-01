@@ -1,53 +1,15 @@
-use std::collections::HashMap;
 use std::io::Write;
-use std::sync::{LazyLock, Mutex, OnceLock, RwLock};
+use std::sync::LazyLock;
 
 use prettytable::{color, Attr, Cell, Row, Table};
 
 use crate::json::{JsonFunctionCpuEntry, JsonFunctionsCpuList};
 use crate::output::{format_duration, shorten_function_name};
 
-const DEFAULT_CPU_SAMPLE_RATE_HZ: u32 = 1000;
-
 pub(crate) const ENV_PROFILE_PATH: &str = "HOTPATH_CPU_PROFILE_PATH";
-
-static SYMBOL_MAP: LazyLock<RwLock<HashMap<&'static str, &'static str>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
-
-pub(crate) fn register_symbol(display: &'static str, symbol: &'static str) {
-    if let Ok(mut map) = SYMBOL_MAP.write() {
-        map.entry(display).or_insert(symbol);
-    }
-}
-
-pub(crate) fn get_symbol_map() -> HashMap<&'static str, &'static str> {
-    SYMBOL_MAP.read().map(|m| m.clone()).unwrap_or_default()
-}
-
-pub(crate) static CPU_SAMPLE_RATE_HZ: LazyLock<u32> = LazyLock::new(|| {
-    std::env::var("HOTPATH_CPU_SAMPLE_RATE_HZ")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or(DEFAULT_CPU_SAMPLE_RATE_HZ)
-});
 
 pub(crate) static CPU_INCLUSIVE: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_CPU_INCLUSIVE"));
-
-pub(crate) struct CpuSamplerHandle;
-
-pub(crate) static CPU_SAMPLER: OnceLock<Mutex<Option<CpuSamplerHandle>>> = OnceLock::new();
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-pub(crate) fn install_cpu_sampler() {
-    let _ = CPU_SAMPLER.set(Mutex::new(Some(CpuSamplerHandle)));
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-pub(crate) fn take_cpu_sampler() -> Option<CpuSamplerHandle> {
-    CPU_SAMPLER.get()?.lock().ok()?.take()
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct CpuFunctionStats {
@@ -60,16 +22,12 @@ pub(crate) struct CpuFunctionStats {
 pub(crate) struct CpuReport {
     pub(crate) total_samples: u64,
     pub(crate) attributed_samples: u64,
-    pub(crate) sample_rate_hz: u32,
     pub(crate) caller_name: &'static str,
     pub(crate) stats: Vec<CpuFunctionStats>,
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn build_cpu_report(
-    _sampler: &CpuSamplerHandle,
-    caller_name: &'static str,
-) -> Option<CpuReport> {
+pub(crate) fn build_cpu_report(caller_name: &'static str) -> Option<CpuReport> {
     crate::lib_on::cpu_samply::build_cpu_report_from_samply(caller_name)
 }
 
@@ -131,7 +89,6 @@ pub(crate) fn build_cpu_json(
         total_elapsed_ns: current_elapsed_ns,
         total_samples: report.total_samples,
         attributed_samples: report.attributed_samples,
-        sample_rate_hz: report.sample_rate_hz,
         description,
         caller_name: report.caller_name.to_string(),
         data: entries,

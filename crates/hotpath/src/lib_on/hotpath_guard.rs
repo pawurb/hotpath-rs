@@ -81,7 +81,6 @@ pub struct HotpathGuardBuilder {
     streams_limit: usize,
     futures_limit: usize,
     threads_limit: usize,
-    cpu_limit: usize,
     output_path: Option<PathBuf>,
     sections: Option<Vec<Section>>,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
@@ -115,7 +114,6 @@ impl HotpathGuardBuilder {
             streams_limit: 0,
             futures_limit: 0,
             threads_limit: 5,
-            cpu_limit: 15,
             output_path: None,
             sections: None,
             before_shutdown: None,
@@ -137,7 +135,6 @@ impl HotpathGuardBuilder {
         self.streams_limit = limit;
         self.futures_limit = limit;
         self.threads_limit = limit;
-        self.cpu_limit = limit;
         self
     }
 
@@ -168,12 +165,6 @@ impl HotpathGuardBuilder {
     /// Maximum number of threads shown in the report. Set to `0` for unlimited.
     pub fn threads_limit(mut self, limit: usize) -> Self {
         self.threads_limit = limit;
-        self
-    }
-
-    /// Maximum number of functions shown in the CPU sampling report. Set to `0` for unlimited.
-    pub fn cpu_limit(mut self, limit: usize) -> Self {
-        self.cpu_limit = limit;
         self
     }
 
@@ -243,7 +234,6 @@ impl HotpathGuardBuilder {
             self.streams_limit,
             self.futures_limit,
             self.threads_limit,
-            self.cpu_limit,
         )
     }
 
@@ -290,7 +280,6 @@ pub struct HotpathGuard {
     streams_limit: usize,
     futures_limit: usize,
     threads_limit: usize,
-    cpu_limit: usize,
 }
 
 impl HotpathGuard {
@@ -307,7 +296,6 @@ impl HotpathGuard {
         streams_limit: usize,
         futures_limit: usize,
         threads_limit: usize,
-        cpu_limit: usize,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
@@ -549,12 +537,6 @@ impl HotpathGuard {
         #[cfg(all(feature = "threads", feature = "hotpath-alloc"))]
         crate::functions::alloc::core::init_thread_alloc_tracking();
 
-        #[cfg(feature = "cpu")]
-        {
-            crate::lib_on::cpu::install_cpu_sampler();
-            crate::lib_on::cpu::register_symbol(caller_name, caller_name);
-        }
-
         Self {
             state: Arc::clone(&state_arc),
             format,
@@ -567,7 +549,6 @@ impl HotpathGuard {
             streams_limit,
             futures_limit,
             threads_limit,
-            cpu_limit,
         }
     }
 }
@@ -625,11 +606,8 @@ impl Drop for HotpathGuard {
                 .read()
                 .map(|state| state.caller_name)
                 .unwrap_or("unknown");
-            crate::lib_on::cpu::take_cpu_sampler()
-                .as_ref()
-                .and_then(|s| crate::lib_on::cpu::build_cpu_report(s, caller_name))
+            crate::lib_on::cpu::build_cpu_report(caller_name)
         } else {
-            crate::lib_on::cpu::take_cpu_sampler();
             None
         };
 
@@ -700,7 +678,6 @@ impl Drop for HotpathGuard {
             self.streams_limit = global;
             self.futures_limit = global;
             self.threads_limit = global;
-            self.cpu_limit = global;
         }
         if let Some(v) = parse_usize_env("HOTPATH_CHANNELS_LIMIT") {
             self.channels_limit = v;
@@ -713,9 +690,6 @@ impl Drop for HotpathGuard {
         }
         if let Some(v) = parse_usize_env("HOTPATH_THREADS_LIMIT") {
             self.threads_limit = v;
-        }
-        if let Some(v) = parse_usize_env("HOTPATH_CPU_LIMIT") {
-            self.cpu_limit = v;
         }
         let mut writer = match output.writer() {
             Ok(w) => w,
@@ -768,17 +742,17 @@ impl Drop for HotpathGuard {
                     {
                         #[cfg(feature = "cpu")]
                         if let Some(ref cpu) = cpu_report {
-                            let total_elapsed = state
-                                .read()
-                                .map(|s| end_time.duration_since(s.start_time))
-                                .unwrap_or(elapsed);
-                            let elapsed_ns = total_elapsed.as_nanos() as u64;
-                            report.functions_cpu = Some(crate::lib_on::cpu::build_cpu_json(
-                                cpu,
-                                total_elapsed,
-                                elapsed_ns,
-                                self.cpu_limit,
-                            ));
+                            if let Ok(state_guard) = state.read() {
+                                let total_elapsed = end_time.duration_since(state_guard.start_time);
+                                let elapsed_ns = total_elapsed.as_nanos() as u64;
+                                let config = make_functions_config(&state_guard, total_elapsed);
+                                report.functions_cpu = Some(crate::lib_on::cpu::build_cpu_json(
+                                    cpu,
+                                    total_elapsed,
+                                    elapsed_ns,
+                                    config.limit,
+                                ));
+                            }
                         }
                     }
                     Section::Channels => {
@@ -930,18 +904,22 @@ impl Drop for HotpathGuard {
                         #[cfg(feature = "cpu")]
                         if matches!(format, Format::Table) {
                             if let Some(ref cpu) = cpu_report {
-                                let total_elapsed = state
-                                    .read()
-                                    .map(|s| end_time.duration_since(s.start_time))
-                                    .unwrap_or(elapsed);
-                                let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                let list = crate::lib_on::cpu::build_cpu_json(
-                                    cpu,
-                                    total_elapsed,
-                                    elapsed_ns,
-                                    self.cpu_limit,
-                                );
-                                crate::lib_on::cpu::report_functions_cpu_table(&mut writer, &list);
+                                if let Ok(state_guard) = state.read() {
+                                    let total_elapsed =
+                                        end_time.duration_since(state_guard.start_time);
+                                    let elapsed_ns = total_elapsed.as_nanos() as u64;
+                                    let config = make_functions_config(&state_guard, total_elapsed);
+                                    let list = crate::lib_on::cpu::build_cpu_json(
+                                        cpu,
+                                        total_elapsed,
+                                        elapsed_ns,
+                                        config.limit,
+                                    );
+                                    crate::lib_on::cpu::report_functions_cpu_table(
+                                        &mut writer,
+                                        &list,
+                                    );
+                                }
                             }
                         }
                     }

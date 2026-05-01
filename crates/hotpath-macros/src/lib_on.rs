@@ -488,26 +488,13 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         None => quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) },
     };
 
-    let symbol_name = quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) };
-
-    let symbol_register = quote! {
-        {
-            static __HP_SYMBOL_REG: ::std::sync::OnceLock<()> = ::std::sync::OnceLock::new();
-            __HP_SYMBOL_REG.get_or_init(|| {
-                hotpath::functions::__register_symbol_for_cpu(#measurement_loc, #symbol_name);
-            });
-        }
-    };
-
     let wrapped_body = if !is_async_fn {
         if enable_result_logging {
             quote! {
-                #symbol_register
                 hotpath::functions::measure_sync_log(#measurement_loc, || #block)
             }
         } else {
             quote! {
-                #symbol_register
                 let _guard = hotpath::functions::build_measurement_guard_sync(#measurement_loc, false);
                 #block
             }
@@ -515,23 +502,19 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else if enable_future_tracking {
         if enable_result_logging {
             quote! {
-                #symbol_register
                 hotpath::functions::measure_async_future_log(#measurement_loc, async #block).await
             }
         } else {
             quote! {
-                #symbol_register
                 hotpath::functions::measure_async_future(#measurement_loc, async #block).await
             }
         }
     } else if enable_result_logging {
         quote! {
-            #symbol_register
             hotpath::functions::measure_async_log(#measurement_loc, async #block).await
         }
     } else {
         quote! {
-            #symbol_register
             hotpath::functions::measure_async(#measurement_loc, async #block).await
         }
     };
