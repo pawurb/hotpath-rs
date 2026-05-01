@@ -606,13 +606,14 @@ impl Drop for HotpathGuard {
 
         #[cfg(feature = "cpu")]
         let cpu_report = if self.sections.contains(&Section::FunctionsCpu) {
-            crate::functions::cpu::autospawn::stop();
             let caller_name = self
                 .state
                 .read()
                 .map(|state| state.caller_name)
                 .unwrap_or("unknown");
-            crate::functions::cpu::build_cpu_report(caller_name)
+            crate::functions::cpu::autospawn::stop().and_then(|profile_path| {
+                crate::functions::cpu::build_cpu_report_from_path(caller_name, &profile_path)
+            })
         } else {
             None
         };

@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::Path;
 use std::sync::LazyLock;
 
 use prettytable::{color, Attr, Cell, Row, Table};
@@ -31,6 +32,14 @@ pub(crate) struct CpuReport {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn build_cpu_report(caller_name: &'static str) -> Option<CpuReport> {
     samply::build_cpu_report_from_samply(caller_name)
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn build_cpu_report_from_path(
+    caller_name: &'static str,
+    path: &Path,
+) -> Option<CpuReport> {
+    samply::build_cpu_report_from_path(caller_name, path)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

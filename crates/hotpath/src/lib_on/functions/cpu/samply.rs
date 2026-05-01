@@ -31,9 +31,16 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
             return None;
         }
     };
+    build_cpu_report_from_path(caller_name, &path)
+}
+
+pub(crate) fn build_cpu_report_from_path(
+    caller_name: &'static str,
+    path: &Path,
+) -> Option<CpuReport> {
     debug!("loading samply profile from {}", path.display());
 
-    let profile = match load_profile(&path) {
+    let profile = match load_profile(path) {
         Ok(p) => p,
         Err(e) => {
             warn!("failed to load samply profile {}: {e}", path.display());

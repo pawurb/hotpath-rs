@@ -6,7 +6,7 @@ use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "dev")]
 use tracing::{error, info, warn};
@@ -60,31 +60,35 @@ fn detach_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         .parse::<u32>()
         .map_err(|e| format!("invalid pid: {e}"))?;
 
-    let output_path = args
-        .next()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("hp.json.gz"));
+    let session_dir = args.next().map(PathBuf::from).ok_or_else(usage)?;
     let current_exe =
         env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
     info!(
-        "detach requested pid={} output={} exe={}",
+        "detach requested pid={} session_dir={} exe={}",
         pid,
-        output_path.display(),
+        session_dir.display(),
         current_exe.display()
     );
 
-    let worker_stdout = open_log_file().map_err(|e| format!("failed to open worker stdout log: {e}"))?;
-    let worker_stderr = open_log_file().map_err(|e| format!("failed to open worker stderr log: {e}"))?;
+    let worker_stdout =
+        open_log_file().map_err(|e| format!("failed to open worker stdout log: {e}"))?;
+    let worker_stderr =
+        open_log_file().map_err(|e| format!("failed to open worker stderr log: {e}"))?;
 
     let child = Command::new(&current_exe)
         .arg("--worker")
         .arg(pid.to_string())
-        .arg(&output_path)
+        .arg(&session_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::from(worker_stdout))
         .stderr(Stdio::from(worker_stderr))
         .spawn()
-        .map_err(|e| format!("failed to spawn detached worker {}: {e}", current_exe.display()))?;
+        .map_err(|e| {
+            format!(
+                "failed to spawn detached worker {}: {e}",
+                current_exe.display()
+            )
+        })?;
     info!("detached worker pid={} for target pid={}", child.id(), pid);
 
     Ok(())
@@ -97,15 +101,14 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         .parse::<u32>()
         .map_err(|e| format!("invalid pid: {e}"))?;
 
-    let output_path = args
-        .next()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("hp.json.gz"));
-    let samply_bin =
-        env::var("HOTPATH_CPU_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string());
+    let session_dir = args.next().map(PathBuf::from).ok_or_else(usage)?;
+    let output_path = session_dir.join("hp.json.gz");
+    let stop_path = session_dir.join("stop-profiling");
+    let samply_bin = env::var("HOTPATH_CPU_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string());
     info!(
-        "worker starting target_pid={} output={} samply_bin={}",
+        "worker starting target_pid={} session_dir={} output={} samply_bin={}",
         pid,
+        session_dir.display(),
         output_path.display(),
         samply_bin
     );
@@ -135,10 +138,46 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         .stderr(Stdio::from(samply_stderr))
         .spawn()
         .map_err(|e| format!("failed to spawn {samply_bin}: {e}"))?;
-    info!("samply child pid={} attached to target pid={}", child.id(), pid);
+    info!(
+        "samply child pid={} attached to target pid={}",
+        child.id(),
+        pid
+    );
 
-    thread::sleep(Duration::from_secs(5));
-    info!("sampling window complete, sending SIGINT to samply pid={}", child.id());
+    let poll_started_at = Instant::now();
+    loop {
+        if stop_path.exists() {
+            info!(
+                "stop signal observed at {} after {:?}",
+                stop_path.display(),
+                poll_started_at.elapsed()
+            );
+            break;
+        }
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                info!(
+                    "samply exited before stop signal status={} output={}",
+                    status,
+                    output_path.display()
+                );
+                if !status.success() {
+                    return Err(format!(
+                        "samply exited with status {} while producing {}",
+                        status,
+                        output_path.display()
+                    ));
+                }
+                return Ok(());
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(100)),
+            Err(e) => {
+                return Err(format!("failed to poll samply child {}: {e}", child.id()));
+            }
+        }
+    }
+    info!("sending SIGINT to samply pid={}", child.id());
 
     #[cfg(unix)]
     {
@@ -161,7 +200,10 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if std::time::Instant::now() >= deadline => {
-                warn!("samply pid={} did not exit after SIGINT, sending SIGKILL", child.id());
+                warn!(
+                    "samply pid={} did not exit after SIGINT, sending SIGKILL",
+                    child.id()
+                );
                 let _ = child.kill();
                 warn!("SIGKILL sent to samply pid={}", child.id());
                 break child
@@ -207,7 +249,7 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: hotpath-pid-backend (--detach|--worker) <pid> [output_path]".to_string()
+    "usage: hotpath-pid-backend (--detach|--worker) <pid> <session_dir>".to_string()
 }
 
 fn open_log_file() -> std::io::Result<std::fs::File> {
