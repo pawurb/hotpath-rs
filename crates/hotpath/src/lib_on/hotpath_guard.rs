@@ -552,6 +552,7 @@ impl HotpathGuard {
         #[cfg(feature = "cpu")]
         {
             crate::lib_on::cpu::install_cpu_sampler();
+            crate::lib_on::cpu::register_symbol(caller_name, caller_name);
         }
 
         Self {

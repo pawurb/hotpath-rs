@@ -28,6 +28,8 @@ pub mod channels;
 #[cfg(feature = "cpu")]
 pub(crate) mod cpu;
 pub mod cpu_baseline;
+#[cfg(feature = "cpu")]
+pub(crate) mod cpu_samply;
 pub mod debug;
 pub mod futures;
 pub mod streams;

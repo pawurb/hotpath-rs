@@ -83,6 +83,19 @@ pub(crate) static EXCLUDE_WRAPPER: LazyLock<bool> = LazyLock::new(|| {
 });
 
 #[doc(hidden)]
+#[inline]
+pub fn __register_symbol_for_cpu(display: &'static str, symbol: &'static str) {
+    #[cfg(feature = "cpu")]
+    {
+        crate::lib_on::cpu::register_symbol(display, symbol);
+    }
+    #[cfg(not(feature = "cpu"))]
+    {
+        let _ = (display, symbol);
+    }
+}
+
+#[doc(hidden)]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 pub fn build_measurement_guard_sync(
     measurement_name: &'static str,

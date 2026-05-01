@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::io::Write;
-use std::sync::{LazyLock, Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock, RwLock};
 
 use prettytable::{color, Attr, Cell, Row, Table};
 
@@ -7,6 +8,21 @@ use crate::json::{JsonFunctionCpuEntry, JsonFunctionsCpuList};
 use crate::output::{format_duration, shorten_function_name};
 
 const DEFAULT_CPU_SAMPLE_RATE_HZ: u32 = 1000;
+
+pub(crate) const ENV_PROFILE_PATH: &str = "HOTPATH_CPU_PROFILE_PATH";
+
+static SYMBOL_MAP: LazyLock<RwLock<HashMap<&'static str, &'static str>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+pub(crate) fn register_symbol(display: &'static str, symbol: &'static str) {
+    if let Ok(mut map) = SYMBOL_MAP.write() {
+        map.entry(display).or_insert(symbol);
+    }
+}
+
+pub(crate) fn get_symbol_map() -> HashMap<&'static str, &'static str> {
+    SYMBOL_MAP.read().map(|m| m.clone()).unwrap_or_default()
+}
 
 pub(crate) static CPU_SAMPLE_RATE_HZ: LazyLock<u32> = LazyLock::new(|| {
     std::env::var("HOTPATH_CPU_SAMPLE_RATE_HZ")
@@ -57,9 +73,9 @@ pub(crate) struct CpuReport {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn build_cpu_report(
     _sampler: &CpuSamplerHandle,
-    _caller_name: &'static str,
+    caller_name: &'static str,
 ) -> Option<CpuReport> {
-    todo!("ingest external samply profile (Firefox-profile JSON) + attribute samples to instrumented functions");
+    crate::lib_on::cpu_samply::build_cpu_report_from_samply(caller_name)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

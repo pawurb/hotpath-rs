@@ -462,8 +462,8 @@ impl App {
         &mut self,
         terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
     ) -> std::io::Result<()> {
-        use crossbeam_channel::select;
         use crate::cmd::console::log::{debug, trace, warn};
+        use crossbeam_channel::select;
 
         self.request_refresh_for_current_tab();
 

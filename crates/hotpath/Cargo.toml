@@ -52,7 +52,7 @@ async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio
 crossbeam = []
 threads = []
 dev = ["dep:tracing", "dep:tracing-subscriber", "dep:time"]
-cpu = []
+cpu = ["dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]
@@ -87,6 +87,9 @@ axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }
 hotpath-meta = { workspace = true, optional = true }
 pprof = { path = "/Users/pablo/Programming/rust/pprof-rs", optional = true }
+object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }
+rustc-demangle = { version = "0.1", optional = true }
+flate2 = { version = "1", optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
