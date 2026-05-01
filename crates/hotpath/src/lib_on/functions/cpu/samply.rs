@@ -199,27 +199,9 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
         "samples: total={total_samples} attributed={attributed_samples} stats_rows={}",
         stats.len()
     );
-    debug!(
-        "frames: seen={frames_seen} no_addr={frames_no_addr} no_lib={frames_no_lib}"
-    );
+    debug!("frames: seen={frames_seen} no_addr={frames_no_addr} no_lib={frames_no_lib}");
     let mut by_lib: Vec<(usize, u64)> = frames_with_lib.into_iter().collect();
     by_lib.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
-    for (li, count) in by_lib.iter().take(10) {
-        debug!("frames_per_lib[{li}] = {count}");
-    }
-    for (li, addr) in sample_addrs.iter() {
-        debug!("sample frame: lib_idx={li} addr=0x{:x}", *addr as u64);
-    }
-    for (li, addr, sym) in lookup_logs.iter() {
-        debug!("lookup: lib_idx={li} addr=0x{addr:x} match={sym:?}");
-    }
-    for (i, idx) in lib_indexes.iter().enumerate() {
-        if !idx.ranges.is_empty() {
-            for (start, end, sym) in idx.ranges.iter().take(5) {
-                debug!("lib[{i}] range: 0x{start:x}..0x{end:x} {sym:?}");
-            }
-        }
-    }
 
     Some(CpuReport {
         total_samples,

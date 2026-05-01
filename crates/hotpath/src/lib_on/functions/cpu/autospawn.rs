@@ -17,11 +17,16 @@ static HANDLE: OnceLock<Mutex<Option<BackendHandle>>> = OnceLock::new();
 
 pub(crate) fn start() {
     let pid = std::process::id();
-    let cargo_bin = std::env::var("HOTPATH_CPU_BACKEND_CARGO_BIN")
-        .unwrap_or_else(|_| "cargo".to_string());
+    let backend_bin = match backend_bin() {
+        Some(path) => path,
+        None => {
+            log!("failed to resolve hotpath-pid-backend binary path");
+            return;
+        }
+    };
 
-    let child = match Command::new(&cargo_bin)
-        .args(["run", "-p", "hotpath", "--example", "pid_backend", "--", "--detach"])
+    let child = match Command::new(&backend_bin)
+        .arg("--detach")
         .arg(pid.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -30,7 +35,11 @@ pub(crate) fn start() {
     {
         Ok(child) => child,
         Err(e) => {
-            log!("failed to spawn backend process via {}: {}", cargo_bin, e);
+            log!(
+                "failed to spawn backend process via {}: {}",
+                backend_bin.display(),
+                e
+            );
             return;
         }
     };
@@ -62,4 +71,19 @@ pub(crate) fn stop() {
     }
 
     thread::sleep(Duration::from_millis(100));
+}
+
+fn backend_bin() -> Option<std::path::PathBuf> {
+    if let Ok(path) = std::env::var("HOTPATH_CPU_BACKEND_BIN") {
+        if !path.is_empty() {
+            return Some(std::path::PathBuf::from(path));
+        }
+    }
+
+    let current_exe = std::env::current_exe().ok()?;
+    let parent = current_exe.parent()?;
+    Some(parent.join(format!(
+        "hotpath-pid-backend{}",
+        std::env::consts::EXE_SUFFIX
+    )))
 }

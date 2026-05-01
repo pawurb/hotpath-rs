@@ -1,12 +1,35 @@
+#[path = "../dev_logging.rs"]
+mod dev_logging;
+
 use std::env;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
+#[cfg(feature = "dev")]
+use tracing::{error, info, warn};
+
+#[cfg(not(feature = "dev"))]
+macro_rules! noop_log {
+    ($($tt:tt)*) => {{
+        let _ = format_args!($($tt)*);
+    }};
+}
+#[cfg(not(feature = "dev"))]
+use noop_log as error;
+#[cfg(not(feature = "dev"))]
+use noop_log as info;
+#[cfg(not(feature = "dev"))]
+use noop_log as warn;
+
 fn main() {
+    dev_logging::init_logging();
+
     if let Err(err) = run() {
-        eprintln!("pid_backend error: {err}");
+        error!("hotpath-pid-backend failed: {err}");
+        eprintln!("hotpath-pid-backend error: {err}");
         std::process::exit(1);
     }
 }
@@ -17,6 +40,7 @@ fn run() -> Result<(), String> {
         Some(mode) => mode,
         None => return Err(usage()),
     };
+    info!("hotpath-pid-backend mode={mode}");
 
     if mode == "--detach" {
         return detach_worker(args);
@@ -42,18 +66,27 @@ fn detach_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         .unwrap_or_else(|| PathBuf::from("hp.json.gz"));
     let current_exe =
         env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
+    info!(
+        "detach requested pid={} output={} exe={}",
+        pid,
+        output_path.display(),
+        current_exe.display()
+    );
+
+    let worker_stdout = open_log_file().map_err(|e| format!("failed to open worker stdout log: {e}"))?;
+    let worker_stderr = open_log_file().map_err(|e| format!("failed to open worker stderr log: {e}"))?;
 
     let child = Command::new(&current_exe)
         .arg("--worker")
         .arg(pid.to_string())
         .arg(&output_path)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(worker_stdout))
+        .stderr(Stdio::from(worker_stderr))
         .spawn()
         .map_err(|e| format!("failed to spawn detached worker {}: {e}", current_exe.display()))?;
+    info!("detached worker pid={} for target pid={}", child.id(), pid);
 
-    let _ = child.id();
     Ok(())
 }
 
@@ -70,8 +103,21 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         .unwrap_or_else(|| PathBuf::from("hp.json.gz"));
     let samply_bin =
         env::var("HOTPATH_CPU_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string());
+    info!(
+        "worker starting target_pid={} output={} samply_bin={}",
+        pid,
+        output_path.display(),
+        samply_bin
+    );
+    info!("profile output path reserved at {}", output_path.display());
 
     thread::sleep(Duration::from_secs(3));
+    info!("worker delay complete, launching samply for pid={}", pid);
+
+    let samply_stdout =
+        open_log_file().map_err(|e| format!("failed to open samply stdout log: {e}"))?;
+    let samply_stderr =
+        open_log_file().map_err(|e| format!("failed to open samply stderr log: {e}"))?;
 
     let mut child = Command::new(&samply_bin)
         .args([
@@ -85,12 +131,14 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
                 .ok_or_else(|| format!("non-utf8 output path: {}", output_path.display()))?,
         ])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(samply_stdout))
+        .stderr(Stdio::from(samply_stderr))
         .spawn()
         .map_err(|e| format!("failed to spawn {samply_bin}: {e}"))?;
+    info!("samply child pid={} attached to target pid={}", child.id(), pid);
 
     thread::sleep(Duration::from_secs(5));
+    info!("sampling window complete, sending SIGINT to samply pid={}", child.id());
 
     #[cfg(unix)]
     {
@@ -105,6 +153,7 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
                 status
             ));
         }
+        info!("SIGINT delivered to samply pid={}", child.id());
     }
 
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -112,7 +161,9 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if std::time::Instant::now() >= deadline => {
+                warn!("samply pid={} did not exit after SIGINT, sending SIGKILL", child.id());
                 let _ = child.kill();
+                warn!("SIGKILL sent to samply pid={}", child.id());
                 break child
                     .wait()
                     .map_err(|e| format!("failed to wait for samply child {}: {e}", child.id()))?;
@@ -126,6 +177,24 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
             }
         }
     };
+    info!(
+        "samply exited status={} output={} target_pid={}",
+        status,
+        output_path.display(),
+        pid
+    );
+    match std::fs::metadata(&output_path) {
+        Ok(metadata) => info!(
+            "profile file created path={} size={} bytes",
+            output_path.display(),
+            metadata.len()
+        ),
+        Err(err) => warn!(
+            "profile file missing after samply exit path={} error={}",
+            output_path.display(),
+            err
+        ),
+    }
     if !status.success() {
         return Err(format!(
             "samply exited with status {} while producing {}",
@@ -138,6 +207,13 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: cargo run -p hotpath --example pid_backend -- (--detach|--worker) <pid> [output_path]"
-        .to_string()
+    "usage: hotpath-pid-backend (--detach|--worker) <pid> [output_path]".to_string()
+}
+
+fn open_log_file() -> std::io::Result<std::fs::File> {
+    std::fs::create_dir_all("log")?;
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("log/development.log")
 }

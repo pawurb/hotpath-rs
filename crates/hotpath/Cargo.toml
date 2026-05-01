@@ -23,6 +23,10 @@ name = "hotpath-crashtest"
 path = "bin/hotpath-crashtest/main.rs"
 required-features = ["tui", "hotpath", "hotpath-alloc"]
 
+[[bin]]
+name = "hotpath-pid-backend"
+path = "bin/hotpath-pid-backend/main.rs"
+
 [features]
 default = ["threads", "cpu"]
 hotpath = [
