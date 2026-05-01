@@ -232,6 +232,7 @@ pub(crate) struct App {
     pub(crate) loading_runtime: bool,
 
     pub(crate) program_uptime: Option<String>,
+    pub(crate) program_pid: Option<u32>,
     pub(crate) auto_expand_logs: bool,
     pub(crate) auto_select_index: Option<usize>,
 
@@ -359,6 +360,7 @@ impl App {
             loading_runtime: false,
 
             program_uptime: None,
+            program_pid: None,
             auto_expand_logs,
             auto_select_index,
             pending_g: None,

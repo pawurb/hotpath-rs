@@ -191,6 +191,7 @@ impl RouteExt for Route {
             | Route::DebugGaugeLogs { id } => Some(DataResponse::DebugLogsNotFound { id: *id }),
             Route::ProfilerStatus => Some(DataResponse::ProfilerStatus(JsonProfilerStatus {
                 uptime: String::new(),
+                pid: 0,
             })),
             _ => None,
         }

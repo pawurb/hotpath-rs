@@ -62,6 +62,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         app.error_message.is_some(),
         has_data,
         app.program_uptime.as_deref(),
+        app.program_pid,
     );
 
     match app.selected_tab {

@@ -592,6 +592,7 @@ pub struct JsonRuntimeWorker {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonProfilerStatus {
     pub uptime: String,
+    pub pid: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

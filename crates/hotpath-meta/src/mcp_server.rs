@@ -485,6 +485,7 @@ Use to check if the profiler is running and how long it has been active."#)]
 
         let status = JsonProfilerStatus {
             uptime: format_duration(get_current_elapsed_ns()),
+            pid: std::process::id(),
         };
         Ok(CallToolResult::success(vec![Content::text(to_json(
             &status,

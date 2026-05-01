@@ -600,8 +600,13 @@ impl App {
                 self.try_auto_expand_logs();
             }
             DataResponse::ProfilerStatus(status) => {
-                trace!("Received profiler status: uptime={}", status.uptime);
+                trace!(
+                    "Received profiler status: pid={} uptime={}",
+                    status.pid,
+                    status.uptime
+                );
                 self.program_uptime = Some(status.uptime);
+                self.program_pid = Some(status.pid);
             }
             DataResponse::Error(e) => {
                 warn!("Data fetch error: {}", e);

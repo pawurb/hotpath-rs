@@ -9,6 +9,7 @@ use ratatui::{
 use std::time::Instant;
 
 #[hotpath::measure]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_status_bar(
     frame: &mut Frame,
     area: Rect,
@@ -17,13 +18,20 @@ pub(crate) fn render_status_bar(
     has_error: bool,
     has_data: bool,
     program_uptime: Option<&str>,
+    program_pid: Option<u32>,
 ) {
-    let uptime_spans: Vec<Span> = match program_uptime {
-        Some(uptime) if !uptime.is_empty() => {
-            vec![" | ".dark_gray(), "Uptime: ".into(), uptime.cyan().bold()]
-        }
-        _ => vec![],
-    };
+    let mut info_spans: Vec<Span> = Vec::new();
+    if let Some(pid) = program_pid {
+        info_spans.push(" | ".dark_gray());
+        info_spans.push("PID: ".into());
+        info_spans.push(pid.to_string().yellow().bold());
+    }
+    if let Some(uptime) = program_uptime.filter(|s| !s.is_empty()) {
+        info_spans.push(" | ".dark_gray());
+        info_spans.push("Uptime: ".into());
+        info_spans.push(uptime.cyan().bold());
+    }
+    let uptime_spans = info_spans;
 
     let status_text = if is_paused {
         let mut spans: Vec<Span> = vec!["⏸ ".yellow(), "PAUSED".yellow().bold()];

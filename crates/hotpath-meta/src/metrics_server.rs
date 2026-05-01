@@ -205,6 +205,7 @@ fn handle_request(request: Request) {
         Ok(Route::ProfilerStatus) => {
             let status = JsonProfilerStatus {
                 uptime: format_duration(get_current_elapsed_ns()),
+                pid: std::process::id(),
             };
             respond_json(request, &status);
         }

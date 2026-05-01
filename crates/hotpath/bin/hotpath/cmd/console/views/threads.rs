@@ -48,19 +48,12 @@ pub(crate) fn render_threads_panel(
 
     let alloc_enabled = threads.iter().any(|t| t.alloc_bytes.is_some());
 
-    let pid = std::process::id();
     let rss_str = rss_bytes.unwrap_or("-");
 
-    let mut spans = vec![
-        Span::raw(" PID: "),
-        Span::styled(
-            pid.to_string(),
-            ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
-        ),
-    ];
+    let mut spans: Vec<Span> = Vec::new();
 
     if let Some(alloc) = total_alloc_bytes {
-        spans.push(Span::raw("  Alloc: "));
+        spans.push(Span::raw(" Alloc: "));
         spans.push(Span::styled(
             alloc,
             ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
@@ -76,9 +69,8 @@ pub(crate) fn render_threads_panel(
             ratatui::style::Style::default().fg(ratatui::style::Color::Green),
         ));
     } else if !alloc_enabled {
-        spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            "Enable 'hotpath-alloc' to track memory usage",
+            " Enable 'hotpath-alloc' to track memory usage",
             ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
         ));
     }
