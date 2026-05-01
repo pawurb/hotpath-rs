@@ -52,7 +52,7 @@ async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio
 crossbeam = []
 threads = []
 dev = ["dep:tracing", "dep:tracing-subscriber", "dep:time"]
-cpu = ["dep:pprof"]
+cpu = []
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]

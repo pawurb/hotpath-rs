@@ -551,12 +551,7 @@ impl HotpathGuard {
 
         #[cfg(feature = "cpu")]
         {
-            let pprof_guard = pprof::ProfilerGuardBuilder::default()
-                .frequency(*crate::lib_on::cpu::CPU_SAMPLE_RATE_HZ as i32)
-                .blocklist(&["libc", "libgcc", "pthread", "vdso"])
-                .build()
-                .expect("failed to start pprof profiler");
-            crate::lib_on::cpu::install_pprof_guard(pprof_guard);
+            crate::lib_on::cpu::install_cpu_sampler();
         }
 
         Self {
@@ -629,11 +624,11 @@ impl Drop for HotpathGuard {
                 .read()
                 .map(|state| state.caller_name)
                 .unwrap_or("unknown");
-            crate::lib_on::cpu::take_pprof_guard()
+            crate::lib_on::cpu::take_cpu_sampler()
                 .as_ref()
-                .and_then(|g| crate::lib_on::cpu::build_cpu_report(g, caller_name))
+                .and_then(|s| crate::lib_on::cpu::build_cpu_report(s, caller_name))
         } else {
-            crate::lib_on::cpu::take_pprof_guard();
+            crate::lib_on::cpu::take_cpu_sampler();
             None
         };
 

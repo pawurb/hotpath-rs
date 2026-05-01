@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::{LazyLock, Mutex, OnceLock};
 
@@ -20,20 +19,18 @@ pub(crate) static CPU_SAMPLE_RATE_HZ: LazyLock<u32> = LazyLock::new(|| {
 pub(crate) static CPU_INCLUSIVE: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_CPU_INCLUSIVE"));
 
-pub(crate) static PPROF_GUARD: OnceLock<Mutex<Option<pprof::ProfilerGuard<'static>>>> =
-    OnceLock::new();
+pub(crate) struct CpuSamplerHandle;
 
-static IP_ATTR_CACHE: LazyLock<Mutex<HashMap<usize, Option<&'static str>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub(crate) static CPU_SAMPLER: OnceLock<Mutex<Option<CpuSamplerHandle>>> = OnceLock::new();
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn install_pprof_guard(guard: pprof::ProfilerGuard<'static>) {
-    let _ = PPROF_GUARD.set(Mutex::new(Some(guard)));
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
+pub(crate) fn install_cpu_sampler() {
+    let _ = CPU_SAMPLER.set(Mutex::new(Some(CpuSamplerHandle)));
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-pub(crate) fn take_pprof_guard() -> Option<pprof::ProfilerGuard<'static>> {
-    PPROF_GUARD.get()?.lock().ok()?.take()
+pub(crate) fn take_cpu_sampler() -> Option<CpuSamplerHandle> {
+    CPU_SAMPLER.get()?.lock().ok()?.take()
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -59,52 +56,10 @@ pub(crate) struct CpuReport {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn build_cpu_report(
-    pprof_guard: &pprof::ProfilerGuard<'static>,
-    caller_name: &'static str,
+    _sampler: &CpuSamplerHandle,
+    _caller_name: &'static str,
 ) -> Option<CpuReport> {
-    let unresolved = match build_unresolved_report(pprof_guard) {
-        Some(report) => report,
-        None => return None,
-    };
-
-    let names_and_ids = crate::functions::get_instrumented_names_and_ids()?;
-    let mut eligible: HashMap<&'static str, u32> = names_and_ids;
-    let eligible_names: HashSet<&'static str> = eligible.keys().copied().collect();
-
-    let (total_samples, attributed) = attribute_unresolved(&unresolved, &eligible_names);
-    let attributed_samples: u64 = attributed.values().sum();
-
-    let mut stats: Vec<CpuFunctionStats> = attributed
-        .into_iter()
-        .map(|(name, samples)| CpuFunctionStats {
-            id: eligible.remove(name).unwrap_or(0),
-            name,
-            samples,
-        })
-        .collect();
-
-    stats.sort_by(|a, b| b.samples.cmp(&a.samples).then_with(|| a.name.cmp(b.name)));
-
-    Some(CpuReport {
-        total_samples,
-        attributed_samples,
-        sample_rate_hz: *CPU_SAMPLE_RATE_HZ,
-        caller_name,
-        stats,
-    })
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-fn build_unresolved_report(
-    pprof_guard: &pprof::ProfilerGuard<'static>,
-) -> Option<pprof::UnresolvedReport> {
-    match pprof_guard.report().build_unresolved() {
-        Ok(report) => Some(report),
-        Err(e) => {
-            eprintln!("[hotpath - cpu] failed to build pprof report: {}", e);
-            None
-        }
-    }
+    todo!("ingest external samply profile (Firefox-profile JSON) + attribute samples to instrumented functions");
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -223,79 +178,4 @@ pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFu
     let _ = writeln!(writer, "cpu - {} ({})", list.description, info);
     print_table(&table, writer);
     let _ = writeln!(writer);
-}
-
-fn resolve_ip<F: pprof::backtrace::Frame>(
-    frame: &F,
-    eligible_names: &HashSet<&'static str>,
-    cache: &mut HashMap<usize, Option<&'static str>>,
-) -> Option<&'static str> {
-    let ip = frame.ip();
-    if let Some(hit) = cache.get(&ip) {
-        return *hit;
-    }
-    let mut found: Option<&'static str> = None;
-    frame.resolve_symbol(|sym| {
-        if found.is_some() {
-            return;
-        }
-        let raw = match pprof::backtrace::Symbol::name(sym) {
-            Some(b) => b,
-            None => return,
-        };
-        let tmp = pprof::Symbol {
-            name: Some(raw),
-            addr: None,
-            lineno: None,
-            filename: None,
-        };
-        if let Some(name) = eligible_names.get(tmp.name().as_str()) {
-            found = Some(*name);
-        }
-    });
-    cache.insert(ip, found);
-    found
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn attribute_unresolved(
-    report: &pprof::UnresolvedReport,
-    eligible_names: &HashSet<&'static str>,
-) -> (u64, HashMap<&'static str, u64>) {
-    let mut total_samples: u64 = 0;
-    let mut attributed: HashMap<&'static str, u64> = HashMap::new();
-    let mut cache = match IP_ATTR_CACHE.lock() {
-        Ok(c) => c,
-        Err(_) => return (0, attributed),
-    };
-    let inclusive = *CPU_INCLUSIVE;
-
-    for (frames, count) in &report.data {
-        let count = match u64::try_from(*count) {
-            Ok(c) if c > 0 => c,
-            _ => continue,
-        };
-        total_samples += count;
-
-        if inclusive {
-            let mut seen: HashSet<&'static str> = HashSet::new();
-            for frame in frames.frames.iter() {
-                if let Some(name) = resolve_ip(frame, eligible_names, &mut cache) {
-                    seen.insert(name);
-                }
-            }
-            for name in seen {
-                *attributed.entry(name).or_default() += count;
-            }
-        } else {
-            for frame in frames.frames.iter() {
-                if let Some(name) = resolve_ip(frame, eligible_names, &mut cache) {
-                    *attributed.entry(name).or_default() += count;
-                    break;
-                }
-            }
-        }
-    }
-
-    (total_samples, attributed)
 }
