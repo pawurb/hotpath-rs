@@ -6,6 +6,8 @@ use prettytable::{color, Attr, Cell, Row, Table};
 use crate::json::{JsonFunctionCpuEntry, JsonFunctionsCpuList};
 use crate::output::{format_duration, shorten_function_name};
 
+pub(crate) mod samply;
+
 pub(crate) const ENV_PROFILE_PATH: &str = "HOTPATH_CPU_PROFILE_PATH";
 
 pub(crate) static CPU_INCLUSIVE: LazyLock<bool> =
@@ -28,7 +30,7 @@ pub(crate) struct CpuReport {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn build_cpu_report(caller_name: &'static str) -> Option<CpuReport> {
-    crate::lib_on::cpu_samply::build_cpu_report_from_samply(caller_name)
+    samply::build_cpu_report_from_samply(caller_name)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

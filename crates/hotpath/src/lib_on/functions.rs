@@ -13,6 +13,8 @@ use crate::metrics_server::RECV_TIMEOUT_MS;
 use crate::output::FunctionLogsList;
 
 pub(crate) mod batch;
+#[cfg(feature = "cpu")]
+pub(crate) mod cpu;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {

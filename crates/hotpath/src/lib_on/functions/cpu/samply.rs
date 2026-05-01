@@ -5,7 +5,7 @@ use std::io::Read;
 use object::{Object, ObjectSegment, ObjectSymbol, SymbolKind};
 use serde::Deserialize;
 
-use crate::lib_on::cpu::{CpuFunctionStats, CpuReport, CPU_INCLUSIVE, ENV_PROFILE_PATH};
+use crate::lib_on::functions::cpu::{CpuFunctionStats, CpuReport, CPU_INCLUSIVE, ENV_PROFILE_PATH};
 
 #[cfg(feature = "dev")]
 use tracing::{debug, warn};

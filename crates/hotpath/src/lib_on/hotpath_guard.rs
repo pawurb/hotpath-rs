@@ -358,7 +358,7 @@ impl HotpathGuard {
                 let mut local_stats = HashMap::<u32, FunctionStats>::new();
                 let mut name_to_id = HashMap::<&'static str, u32>::new();
                 #[cfg(feature = "cpu")]
-                if *crate::lib_on::cpu::CPU_INCLUSIVE {
+                if *crate::functions::cpu::CPU_INCLUSIVE {
                     name_to_id.insert(worker_caller_name, 0);
                 }
 
@@ -606,7 +606,7 @@ impl Drop for HotpathGuard {
                 .read()
                 .map(|state| state.caller_name)
                 .unwrap_or("unknown");
-            crate::lib_on::cpu::build_cpu_report(caller_name)
+            crate::functions::cpu::build_cpu_report(caller_name)
         } else {
             None
         };
@@ -746,7 +746,7 @@ impl Drop for HotpathGuard {
                                 let total_elapsed = end_time.duration_since(state_guard.start_time);
                                 let elapsed_ns = total_elapsed.as_nanos() as u64;
                                 let config = make_functions_config(&state_guard, total_elapsed);
-                                report.functions_cpu = Some(crate::lib_on::cpu::build_cpu_json(
+                                report.functions_cpu = Some(crate::functions::cpu::build_cpu_json(
                                     cpu,
                                     total_elapsed,
                                     elapsed_ns,
@@ -909,13 +909,13 @@ impl Drop for HotpathGuard {
                                         end_time.duration_since(state_guard.start_time);
                                     let elapsed_ns = total_elapsed.as_nanos() as u64;
                                     let config = make_functions_config(&state_guard, total_elapsed);
-                                    let list = crate::lib_on::cpu::build_cpu_json(
+                                    let list = crate::functions::cpu::build_cpu_json(
                                         cpu,
                                         total_elapsed,
                                         elapsed_ns,
                                         config.limit,
                                     );
-                                    crate::lib_on::cpu::report_functions_cpu_table(
+                                    crate::functions::cpu::report_functions_cpu_table(
                                         &mut writer,
                                         &list,
                                     );
