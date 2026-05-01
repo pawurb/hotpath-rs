@@ -49,11 +49,6 @@ pub(crate) fn take_cpu_sampler() -> Option<CpuSamplerHandle> {
     CPU_SAMPLER.get()?.lock().ok()?.take()
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn build_cpu_report_live() -> Option<JsonFunctionsCpuList> {
-    None
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct CpuFunctionStats {
     pub(crate) name: &'static str,

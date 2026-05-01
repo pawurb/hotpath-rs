@@ -63,7 +63,7 @@ fn init_logging() {
         time::format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]").unwrap();
     let timer = tracing_subscriber::fmt::time::OffsetTime::new(offset, time_format);
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,hotpath=trace"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("error"));
 
     std::fs::create_dir_all("log").expect("failed to create log directory");
     let log_file = std::fs::OpenOptions::new()

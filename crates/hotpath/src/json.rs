@@ -262,8 +262,6 @@ pub enum Route {
     FunctionsTiming,
     /// GET /functions_alloc - Returns allocation metrics for all functions
     FunctionsAlloc,
-    /// GET /functions_cpu - Returns CPU sampling attribution metrics for all functions
-    FunctionsCpu,
     /// GET /threads - Returns thread metrics
     Threads,
     /// GET /functions_timing/{id}/logs - Returns timing logs for a function
@@ -302,7 +300,6 @@ impl Route {
         match self {
             Route::FunctionsTiming => "/functions_timing".to_string(),
             Route::FunctionsAlloc => "/functions_alloc".to_string(),
-            Route::FunctionsCpu => "/functions_cpu".to_string(),
             Route::Threads => "/threads".to_string(),
             Route::FunctionTimingLogs { function_id } => {
                 format!("/functions_timing/{}/logs", function_id)
@@ -346,7 +343,6 @@ impl FromStr for Route {
         match path {
             "/functions_timing" => return Ok(Route::FunctionsTiming),
             "/functions_alloc" => return Ok(Route::FunctionsAlloc),
-            "/functions_cpu" => return Ok(Route::FunctionsCpu),
             "/threads" => return Ok(Route::Threads),
             "/debug" => return Ok(Route::Debug),
             "/channels" => return Ok(Route::Channels),

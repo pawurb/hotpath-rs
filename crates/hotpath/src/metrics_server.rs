@@ -21,8 +21,12 @@ pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
         .unwrap_or(6770)
 });
 
-pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
-    LazyLock::new(|| crate::shared::env_flag("HOTPATH_METRICS_SERVER_OFF"));
+pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("HOTPATH_METRICS_SERVER_OFF")
+        .ok()
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+});
 
 pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
 
@@ -102,19 +106,6 @@ fn handle_request(request: Request) {
                 "Memory profiling not available - enable hotpath-alloc feature",
             ),
         },
-        Ok(Route::FunctionsCpu) => {
-            #[cfg(feature = "cpu")]
-            match crate::lib_on::cpu::build_cpu_report_live() {
-                Some(formatted) => respond_json(request, &formatted),
-                None => respond_error(request, 404, "CPU sampling report not available"),
-            }
-            #[cfg(not(feature = "cpu"))]
-            respond_error(
-                request,
-                404,
-                "CPU profiling not available - enable cpu feature",
-            );
-        }
         Ok(Route::FunctionTimingLogs { function_id }) => {
             match get_function_logs_timing(function_id) {
                 Some(logs) => {

@@ -4,16 +4,14 @@ use crossterm::event::KeyCode;
 use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
-    JsonFunctionTimingLogsList, JsonFunctionsCpuList, JsonFunctionsList, JsonFutureLogsList,
-    JsonFuturesList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonStreamLogsList, JsonStreamsList,
-    JsonThreadsList,
+    JsonFunctionTimingLogsList, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
+    JsonProfilerStatus, JsonRuntimeSnapshot, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
 pub(crate) enum DataRequest {
     RefreshTiming,
     RefreshMemory,
-    RefreshCpu,
     RefreshChannels,
     RefreshStreams,
     RefreshFutures,
@@ -36,7 +34,6 @@ impl DataRequest {
         match self {
             DataRequest::RefreshTiming => Route::FunctionsTiming,
             DataRequest::RefreshMemory => Route::FunctionsAlloc,
-            DataRequest::RefreshCpu => Route::FunctionsCpu,
             DataRequest::RefreshChannels => Route::Channels,
             DataRequest::RefreshStreams => Route::Streams,
             DataRequest::RefreshFutures => Route::Futures,
@@ -66,8 +63,6 @@ pub(crate) enum DataResponse {
     FunctionsTiming(JsonFunctionsList),
     FunctionsAlloc(JsonFunctionsList),
     FunctionsAllocUnavailable,
-    FunctionsCpu(JsonFunctionsCpuList),
-    FunctionsCpuUnavailable,
     FunctionLogsTiming {
         function_id: u32,
         logs: JsonFunctionTimingLogsList,

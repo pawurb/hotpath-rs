@@ -209,8 +209,7 @@ impl IntoF64 for usize {
     }
 }
 
-/// Parses a boolean env var. Returns `true` if the value is `"true"` (case-insensitive)
-/// or `"1"`, `false` otherwise (including unset).
+#[cfg(all(feature = "hotpath", feature = "cpu"))]
 pub(crate) fn env_flag(name: &str) -> bool {
     std::env::var(name)
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")

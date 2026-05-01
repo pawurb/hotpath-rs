@@ -11,8 +11,7 @@ use crate::cmd::console::views::functions_timing::{
     inspect as timing_inspect, logs as timing_logs,
 };
 use crate::cmd::console::views::{
-    bottom_bar, data_flow, debug, functions_cpu, functions_memory, functions_timing, runtime,
-    threads, top_bar,
+    bottom_bar, data_flow, debug, functions_memory, functions_timing, runtime, threads, top_bar,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -40,7 +39,6 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         SelectedTab::Functions => match app.functions_sub_tab {
             FunctionsSubTab::Timing => !app.timing_functions.data.is_empty(),
             FunctionsSubTab::Memory => !app.memory_functions.data.is_empty(),
-            FunctionsSubTab::Cpu => !app.cpu_functions.data.is_empty(),
         },
         SelectedTab::DataFlow => app.data_flow_entries_len() > 0,
         SelectedTab::Threads => !app.threads.data.is_empty(),
@@ -91,7 +89,6 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         app.selected_tab,
         app.data_flow_focus,
         app.functions_focus,
-        app.functions_sub_tab,
         app.debug_focus,
     );
 }
@@ -163,9 +160,6 @@ fn render_functions_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 functions_memory::render_functions_table(frame, app, content_area);
             }
         }
-        FunctionsSubTab::Cpu => {
-            functions_cpu::render_functions_table(frame, app, content_area);
-        }
     }
 }
 
@@ -198,8 +192,6 @@ fn render_functions_subtabs(frame: &mut Frame, area: Rect, sub_tab: FunctionsSub
         label(FunctionsSubTab::Timing),
         Span::raw("|"),
         label(FunctionsSubTab::Memory),
-        Span::raw("|"),
-        label(FunctionsSubTab::Cpu),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }

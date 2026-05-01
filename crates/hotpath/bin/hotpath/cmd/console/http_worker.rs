@@ -1,13 +1,13 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
-use crate::cmd::console::log::{debug, error, info, trace, warn};
+use crate::cmd::console::log::{error, info, trace, warn};
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
-    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsCpuList,
-    JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus,
-    JsonRuntimeSnapshot, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
+    JsonFutureLogsList, JsonFuturesList, JsonProfilerStatus, JsonRuntimeSnapshot,
+    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -16,13 +16,12 @@ use tokio::{runtime::Runtime, task::JoinHandle};
 
 use crate::cmd::console::events::{AppEvent, DataRequest, DataResponse};
 
-const HTTP_TIMEOUT_MS: u64 = 5000;
+const HTTP_TIMEOUT_MS: u64 = 2000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum RequestKey {
     Timing,
     Memory,
-    Cpu,
     Channels,
     Streams,
     Futures,
@@ -45,7 +44,6 @@ impl DataRequest {
         match self {
             DataRequest::RefreshTiming => RequestKey::Timing,
             DataRequest::RefreshMemory => RequestKey::Memory,
-            DataRequest::RefreshCpu => RequestKey::Cpu,
             DataRequest::RefreshChannels => RequestKey::Channels,
             DataRequest::RefreshStreams => RequestKey::Streams,
             DataRequest::RefreshFutures => RequestKey::Futures,
@@ -88,11 +86,7 @@ pub(crate) fn spawn_http_worker(
 
             if let Some(handle) = active_tasks.remove(&key) {
                 if !handle.is_finished() {
-                    warn!(
-                        "Aborting in-flight request for {:?} - previous fetch did not complete \
-                         within refresh interval",
-                        key
-                    );
+                    trace!("Aborting in-flight request for {:?}", key);
                     handle.abort();
                 }
             }
@@ -102,19 +96,12 @@ pub(crate) fn spawn_http_worker(
             let event_tx = event_tx.clone();
 
             let handle = rt.spawn(async move {
-                let started = std::time::Instant::now();
                 let response = hotpath::future!(
                     request.to_route().fetch(&client, &base_url),
                     log = true,
                     label = "tui_request"
                 )
                 .await;
-                let elapsed_ms = started.elapsed().as_millis();
-                if let DataResponse::Error(ref e) = response {
-                    warn!("Request {:?} errored after {}ms: {}", key, elapsed_ms, e);
-                } else {
-                    debug!("Request {:?} completed in {}ms", key, elapsed_ms);
-                }
                 let _ = event_tx.send(AppEvent::Data(response));
             });
 
@@ -184,7 +171,6 @@ impl RouteExt for Route {
     fn not_found_response(&self) -> Option<DataResponse> {
         match self {
             Route::FunctionsAlloc => Some(DataResponse::FunctionsAllocUnavailable),
-            Route::FunctionsCpu => Some(DataResponse::FunctionsCpuUnavailable),
             Route::FunctionTimingLogs { function_id } => {
                 Some(DataResponse::FunctionLogsTimingNotFound(*function_id))
             }
@@ -281,9 +267,6 @@ impl RouteExt for Route {
             }
             Route::ProfilerStatus => {
                 parse_json::<JsonProfilerStatus>(bytes).map(DataResponse::ProfilerStatus)
-            }
-            Route::FunctionsCpu => {
-                parse_json::<JsonFunctionsCpuList>(bytes).map(DataResponse::FunctionsCpu)
             }
         }
         .unwrap_or_else(|e| DataResponse::Error(format!("JSON parse error: {}", e)))
