@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
 
-use object::{Object, ObjectSymbol, SymbolKind};
+use object::{Object, ObjectSegment, ObjectSymbol, SymbolKind};
 use serde::Deserialize;
 
 use crate::lib_on::cpu::{
@@ -114,6 +114,7 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
     let mut frames_no_lib: u64 = 0;
     let mut frames_no_addr: u64 = 0;
     let mut sample_addrs: Vec<(usize, i64)> = Vec::new();
+    let mut lookup_logs: Vec<(usize, u64, Option<&'static str>)> = Vec::new();
 
     for thread in &profile.threads {
         let stack = &thread.samples.stack;
@@ -166,7 +167,11 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
                 if address >= 0 {
                     if let Some(lib_idx) = lib_opt {
                         if let Some(idx) = lib_indexes.get(lib_idx) {
-                            if let Some(sym) = idx.lookup(address as u64) {
+                            let result = idx.lookup(address as u64);
+                            if !idx.ranges.is_empty() && lookup_logs.len() < 30 {
+                                lookup_logs.push((lib_idx, address as u64, result));
+                            }
+                            if let Some(sym) = result {
                                 if inclusive {
                                     matched.insert(sym);
                                 } else {
@@ -222,6 +227,16 @@ pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<
     }
     for (li, addr) in sample_addrs.iter() {
         debug!("sample frame: lib_idx={li} addr=0x{:x}", *addr as u64);
+    }
+    for (li, addr, sym) in lookup_logs.iter() {
+        debug!("lookup: lib_idx={li} addr=0x{addr:x} match={sym:?}");
+    }
+    for (i, idx) in lib_indexes.iter().enumerate() {
+        if !idx.ranges.is_empty() {
+            for (start, end, sym) in idx.ranges.iter().take(5) {
+                debug!("lib[{i}] range: 0x{start:x}..0x{end:x} {sym:?}");
+            }
+        }
     }
 
     Some(CpuReport {
@@ -283,7 +298,15 @@ fn build_lib_index(lib: &Lib, eligible: &HashSet<&'static str>) -> Option<LibSym
     let bytes = std::fs::read(path).ok()?;
     let parsed = object::File::parse(bytes.as_slice()).ok()?;
 
-    let base = parsed.relative_address_base();
+    let base = pick_image_base(&parsed);
+
+    let mut all_starts: Vec<u64> = parsed
+        .symbols()
+        .filter(|s| matches!(s.kind(), SymbolKind::Text))
+        .map(|s| s.address().saturating_sub(base))
+        .collect();
+    all_starts.sort_unstable();
+    all_starts.dedup();
 
     let mut ranges: Vec<(u64, u64, &'static str)> = Vec::new();
     for sym in parsed.symbols() {
@@ -298,7 +321,18 @@ fn build_lib_index(lib: &Lib, eligible: &HashSet<&'static str>) -> Option<LibSym
         let normalized = strip_hash_suffix(&demangled);
         if let Some(matched) = eligible.get(normalized) {
             let rel = sym.address().saturating_sub(base);
-            let size = sym.size().max(1);
+            let declared = sym.size();
+            let next = all_starts
+                .partition_point(|s| *s <= rel)
+                .checked_sub(0)
+                .and_then(|i| all_starts.get(i).copied());
+            let size = if declared > 0 {
+                declared
+            } else {
+                next.map(|n| n.saturating_sub(rel))
+                    .filter(|s| *s > 0)
+                    .unwrap_or(1)
+            };
             ranges.push((rel, rel.saturating_add(size), *matched));
         }
     }
@@ -306,6 +340,25 @@ fn build_lib_index(lib: &Lib, eligible: &HashSet<&'static str>) -> Option<LibSym
     ranges.sort_by_key(|(start, _, _)| *start);
 
     Some(LibSymbolIndex { ranges })
+}
+
+fn pick_image_base<'a>(file: &object::File<'a, &'a [u8]>) -> u64 {
+    let rel = file.relative_address_base();
+    if rel != 0 {
+        return rel;
+    }
+    file.segments()
+        .filter_map(|seg| {
+            let name = seg.name().ok().flatten()?;
+            if name == "__TEXT" || name == "__text" {
+                Some(seg.address())
+            } else {
+                None
+            }
+        })
+        .next()
+        .or_else(|| file.segments().map(|s| s.address()).min())
+        .unwrap_or(0)
 }
 
 fn strip_hash_suffix(s: &str) -> &str {
