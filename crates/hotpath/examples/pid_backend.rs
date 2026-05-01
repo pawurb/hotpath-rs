@@ -13,6 +13,51 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let mut args = env::args().skip(1);
+    let mode = match args.next() {
+        Some(mode) => mode,
+        None => return Err(usage()),
+    };
+
+    if mode == "--detach" {
+        return detach_worker(args);
+    }
+
+    if mode != "--worker" {
+        return Err(usage());
+    }
+
+    run_worker(args)
+}
+
+fn detach_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let pid = args
+        .next()
+        .ok_or_else(usage)?
+        .parse::<u32>()
+        .map_err(|e| format!("invalid pid: {e}"))?;
+
+    let output_path = args
+        .next()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("hp.json.gz"));
+    let current_exe =
+        env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
+
+    let child = Command::new(&current_exe)
+        .arg("--worker")
+        .arg(pid.to_string())
+        .arg(&output_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("failed to spawn detached worker {}: {e}", current_exe.display()))?;
+
+    let _ = child.id();
+    Ok(())
+}
+
+fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let pid = args
         .next()
         .ok_or_else(usage)?
@@ -26,12 +71,7 @@ fn run() -> Result<(), String> {
     let samply_bin =
         env::var("HOTPATH_CPU_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string());
 
-    eprintln!(
-        "[pid_backend] starting: bin={} pid={} output={} stderr=stdout",
-        samply_bin,
-        pid,
-        output_path.display()
-    );
+    thread::sleep(Duration::from_secs(3));
 
     let mut child = Command::new(&samply_bin)
         .args([
@@ -46,13 +86,11 @@ fn run() -> Result<(), String> {
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("failed to spawn {samply_bin}: {e}"))?;
 
-    eprintln!("[pid_backend] samply child pid={}", child.id());
     thread::sleep(Duration::from_secs(5));
-    eprintln!("[pid_backend] stopping samply after 5s with SIGINT");
 
     #[cfg(unix)]
     {
@@ -74,7 +112,6 @@ fn run() -> Result<(), String> {
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if std::time::Instant::now() >= deadline => {
-                eprintln!("[pid_backend] samply did not exit after SIGINT, sending SIGKILL");
                 let _ = child.kill();
                 break child
                     .wait()
@@ -89,16 +126,18 @@ fn run() -> Result<(), String> {
             }
         }
     };
-
-    eprintln!(
-        "[pid_backend] samply exited status={} output={} stderr=stdout",
-        status,
-        output_path.display()
-    );
+    if !status.success() {
+        return Err(format!(
+            "samply exited with status {} while producing {}",
+            status,
+            output_path.display()
+        ));
+    }
 
     Ok(())
 }
 
 fn usage() -> String {
-    "usage: cargo run -p hotpath --example pid_backend -- <pid> [output_path]".to_string()
+    "usage: cargo run -p hotpath --example pid_backend -- (--detach|--worker) <pid> [output_path]"
+        .to_string()
 }

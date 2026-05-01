@@ -537,6 +537,11 @@ impl HotpathGuard {
         #[cfg(all(feature = "threads", feature = "hotpath-alloc"))]
         crate::functions::alloc::core::init_thread_alloc_tracking();
 
+        #[cfg(feature = "cpu")]
+        if sections.contains(&Section::FunctionsCpu) {
+            crate::functions::cpu::autospawn::start();
+        }
+
         Self {
             state: Arc::clone(&state_arc),
             format,
@@ -601,6 +606,7 @@ impl Drop for HotpathGuard {
 
         #[cfg(feature = "cpu")]
         let cpu_report = if self.sections.contains(&Section::FunctionsCpu) {
+            crate::functions::cpu::autospawn::stop();
             let caller_name = self
                 .state
                 .read()
