@@ -101,11 +101,7 @@ pub(crate) fn build_cpu_report(
 
     let names_and_ids = crate::functions::get_instrumented_names_and_ids()?;
 
-    let total_samples: u64 = report
-        .data
-        .values()
-        .filter_map(|v| u64::try_from(*v).ok())
-        .sum();
+    let total_samples = compute_total_samples(&report);
 
     let mut eligible: HashMap<&'static str, u32> = names_and_ids;
 
@@ -137,6 +133,16 @@ pub(crate) fn build_cpu_report(
     })
 }
 
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn compute_total_samples(report: &pprof::Report) -> u64 {
+    report
+        .data
+        .values()
+        .filter_map(|v| u64::try_from(*v).ok())
+        .sum()
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn format_percent(numer: u64, denom: u64) -> String {
     if denom == 0 {
         "0.00%".to_string()
@@ -203,6 +209,7 @@ pub(crate) fn build_cpu_json(
     }
 }
 
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn styled_header(text: &str) -> Cell {
     if crate::output::use_colors() {
         Cell::new(text)
@@ -213,6 +220,7 @@ fn styled_header(text: &str) -> Cell {
     }
 }
 
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn print_table<W: Write>(table: &Table, writer: &mut W) {
     if crate::output::use_colors() {
         let _ = table.print_tty(false);
