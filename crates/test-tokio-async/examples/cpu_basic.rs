@@ -16,6 +16,7 @@
 use std::hint::black_box;
 
 #[hotpath::measure]
+#[inline(never)]
 fn heavy_work(iterations: u32) -> u64 {
     let mut result: u64 = 1;
     for i in 0..iterations {
@@ -26,6 +27,7 @@ fn heavy_work(iterations: u32) -> u64 {
 }
 
 #[hotpath::measure]
+#[inline(never)]
 fn light_work(iterations: u32) -> u64 {
     let mut result: u64 = 0;
     for i in 0..iterations {
@@ -38,7 +40,7 @@ fn light_work(iterations: u32) -> u64 {
 fn main() {
     let mut total: u64 = 0;
 
-    for _ in 0..1000 {
+    for _ in 0..5000 {
         total = total.wrapping_add(heavy_work(500_000));
         total = total.wrapping_add(light_work(100_000));
     }

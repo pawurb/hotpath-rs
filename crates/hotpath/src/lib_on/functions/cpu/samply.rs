@@ -127,6 +127,7 @@ pub(crate) fn build_cpu_report_from_path(
 
     for thread in &profile.threads {
         let stack = &thread.samples.stack;
+        let thread_cpu_deltas = thread.samples.thread_cpu_delta.as_ref();
         let weights = thread.samples.weight.as_ref();
         let prefix = &thread.stack_table.prefix;
         let stack_frame = &thread.stack_table.frame;
@@ -136,10 +137,7 @@ pub(crate) fn build_cpu_report_from_path(
         let resource_lib = &thread.resource_table.lib;
 
         for (i, root) in stack.iter().enumerate() {
-            let weight = weights
-                .and_then(|w| w.get(i).copied())
-                .map(|w| w.max(0) as u64)
-                .unwrap_or(1);
+            let weight = sample_cpu_weight(thread_cpu_deltas, weights, i);
             total_samples += weight;
 
             let mut matched: HashSet<&'static str> = HashSet::new();
@@ -367,7 +365,7 @@ fn build_lib_index(lib: &Lib, eligible: &HashSet<&'static str>) -> Option<LibSym
         };
         let demangled = rustc_demangle::demangle(raw_name).to_string();
         let normalized = strip_hash_suffix(&demangled);
-        if let Some(matched) = eligible.get(normalized) {
+        if let Some(matched) = match_eligible_symbol(normalized, eligible) {
             let rel = sym.address().saturating_sub(base);
             let declared = sym.size();
             let next = all_starts
@@ -420,6 +418,24 @@ fn strip_hash_suffix(s: &str) -> &str {
     s
 }
 
+fn match_eligible_symbol<'a>(
+    normalized: &str,
+    eligible: &'a HashSet<&'static str>,
+) -> Option<&'a &'static str> {
+    if let Some(exact) = eligible.get(normalized) {
+        return Some(exact);
+    }
+
+    eligible
+        .iter()
+        .filter(|candidate| {
+            normalized
+                .strip_prefix(**candidate)
+                .is_some_and(|rest| rest.starts_with("::"))
+        })
+        .max_by_key(|candidate| candidate.len())
+}
+
 #[derive(Deserialize)]
 struct Profile {
     #[serde(default)]
@@ -455,6 +471,23 @@ struct Samples {
     stack: Vec<Option<usize>>,
     #[serde(default)]
     weight: Option<Vec<i64>>,
+    #[serde(rename = "threadCPUDelta", default)]
+    thread_cpu_delta: Option<Vec<i64>>,
+}
+
+fn sample_cpu_weight(
+    thread_cpu_deltas: Option<&Vec<i64>>,
+    weights: Option<&Vec<i64>>,
+    index: usize,
+) -> u64 {
+    if let Some(delta) = thread_cpu_deltas.and_then(|deltas| deltas.get(index).copied()) {
+        return delta.max(0) as u64;
+    }
+
+    weights
+        .and_then(|weight_values| weight_values.get(index).copied())
+        .map(|weight| weight.max(0) as u64)
+        .unwrap_or(1)
 }
 
 #[derive(Deserialize)]
@@ -483,4 +516,53 @@ struct FuncTable {
 struct ResourceTable {
     #[serde(default)]
     lib: Vec<Option<i64>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use crate::lib_on::functions::cpu::samply::{match_eligible_symbol, strip_hash_suffix};
+
+    #[test]
+    fn strips_rust_hash_suffix() {
+        assert_eq!(
+            strip_hash_suffix("mevlog::main::h4096f6e9269ba5f4"),
+            "mevlog::main"
+        );
+        assert_eq!(strip_hash_suffix("mevlog::main"), "mevlog::main");
+    }
+
+    #[test]
+    fn matches_async_closure_symbol_by_prefix() {
+        let eligible = HashSet::from([
+            "mevlog::misc::rpc_tracing::rpc_tx_calls",
+            "mevlog::misc::shared_init::init_deps",
+        ]);
+
+        let matched = match_eligible_symbol(
+            "mevlog::misc::rpc_tracing::rpc_tx_calls::{{closure}}::{{closure}}",
+            &eligible,
+        );
+
+        assert_eq!(
+            matched.copied(),
+            Some("mevlog::misc::rpc_tracing::rpc_tx_calls")
+        );
+    }
+
+    #[test]
+    fn prefers_longest_prefix_match() {
+        let eligible = HashSet::from(["mevlog::misc", "mevlog::misc::rpc_tracing::rpc_tx_calls"]);
+
+        let matched = match_eligible_symbol(
+            "mevlog::misc::rpc_tracing::rpc_tx_calls::{{closure}}",
+            &eligible,
+        );
+
+        assert_eq!(
+            matched.copied(),
+            Some("mevlog::misc::rpc_tracing::rpc_tx_calls")
+        );
+    }
 }
