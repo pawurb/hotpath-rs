@@ -16,7 +16,7 @@ use tokio::{runtime::Runtime, task::JoinHandle};
 
 use crate::cmd::console::events::{AppEvent, DataRequest, DataResponse};
 
-const HTTP_TIMEOUT_MS: u64 = 2000;
+const HTTP_TIMEOUT_MS: u64 = 5000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum RequestKey {

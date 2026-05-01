@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::{LazyLock, Mutex, OnceLock};
-use std::time::{Duration, Instant};
 
 use prettytable::{color, Attr, Cell, Row, Table};
 
@@ -24,10 +23,8 @@ pub(crate) static CPU_INCLUSIVE: LazyLock<bool> =
 pub(crate) static PPROF_GUARD: OnceLock<Mutex<Option<pprof::ProfilerGuard<'static>>>> =
     OnceLock::new();
 
-const LIVE_REPORT_TTL: Duration = Duration::from_secs(2);
-
-static LIVE_REPORT_CACHE: LazyLock<Mutex<Option<(Instant, JsonFunctionsCpuList)>>> =
-    LazyLock::new(|| Mutex::new(None));
+static IP_ATTR_CACHE: LazyLock<Mutex<HashMap<usize, Option<&'static str>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn install_pprof_guard(guard: pprof::ProfilerGuard<'static>) {
@@ -41,33 +38,7 @@ pub(crate) fn take_pprof_guard() -> Option<pprof::ProfilerGuard<'static>> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn build_cpu_report_live() -> Option<JsonFunctionsCpuList> {
-    if let Ok(cache) = LIVE_REPORT_CACHE.lock() {
-        if let Some((stamped_at, ref cached)) = *cache {
-            if stamped_at.elapsed() < LIVE_REPORT_TTL {
-                return Some(cached.clone());
-            }
-        }
-    }
-
-    let guard_slot = PPROF_GUARD.get()?;
-    let guard = guard_slot.lock().ok()?;
-    let pprof_guard = guard.as_ref()?;
-
-    let caller_name = crate::lib_on::functions::FUNCTIONS_STATE
-        .get()?
-        .read()
-        .ok()?
-        .caller_name;
-
-    let report = build_cpu_report(pprof_guard, caller_name)?;
-    let elapsed_ns = crate::lib_on::current_elapsed_ns();
-    let json = build_cpu_json(&report, Duration::from_nanos(elapsed_ns), elapsed_ns, 0);
-
-    if let Ok(mut cache) = LIVE_REPORT_CACHE.lock() {
-        *cache = Some((Instant::now(), json.clone()));
-    }
-
-    Some(json)
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -91,23 +62,16 @@ pub(crate) fn build_cpu_report(
     pprof_guard: &pprof::ProfilerGuard<'static>,
     caller_name: &'static str,
 ) -> Option<CpuReport> {
-    let report = match build_pprof_report(pprof_guard) {
+    let unresolved = match build_unresolved_report(pprof_guard) {
         Some(report) => report,
         None => return None,
     };
 
     let names_and_ids = crate::functions::get_instrumented_names_and_ids()?;
-
-    let total_samples = compute_total_samples(&report);
-
     let mut eligible: HashMap<&'static str, u32> = names_and_ids;
-
     let eligible_names: HashSet<&'static str> = eligible.keys().copied().collect();
-    let attributed = if *CPU_INCLUSIVE {
-        attribute_inclusive_traces(&report, &eligible_names)
-    } else {
-        attribute_exclusive_traces(&report, &eligible_names)
-    };
+
+    let (total_samples, attributed) = attribute_unresolved(&unresolved, &eligible_names);
     let attributed_samples: u64 = attributed.values().sum();
 
     let mut stats: Vec<CpuFunctionStats> = attributed
@@ -130,24 +94,17 @@ pub(crate) fn build_cpu_report(
     })
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn build_pprof_report(pprof_guard: &pprof::ProfilerGuard<'static>) -> Option<pprof::Report> {
-    match pprof_guard.report().build() {
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
+fn build_unresolved_report(
+    pprof_guard: &pprof::ProfilerGuard<'static>,
+) -> Option<pprof::UnresolvedReport> {
+    match pprof_guard.report().build_unresolved() {
         Ok(report) => Some(report),
         Err(e) => {
             eprintln!("[hotpath - cpu] failed to build pprof report: {}", e);
             None
         }
     }
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn compute_total_samples(report: &pprof::Report) -> u64 {
-    report
-        .data
-        .values()
-        .filter_map(|v| u64::try_from(*v).ok())
-        .sum()
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -268,84 +225,77 @@ pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFu
     let _ = writeln!(writer);
 }
 
-fn resolve_symbol<'a>(
-    sym: &pprof::Symbol,
+fn resolve_ip<F: pprof::backtrace::Frame>(
+    frame: &F,
     eligible_names: &HashSet<&'static str>,
-    cache: &'a mut HashMap<Vec<u8>, Option<&'static str>>,
+    cache: &mut HashMap<usize, Option<&'static str>>,
 ) -> Option<&'static str> {
-    let raw = sym.raw_name();
-    if let Some(hit) = cache.get(raw) {
+    let ip = frame.ip();
+    if let Some(hit) = cache.get(&ip) {
         return *hit;
     }
-    let demangled = sym.name();
-    let resolved = eligible_names.get(demangled.as_str()).copied();
-    cache.insert(raw.to_vec(), resolved);
-    resolved
+    let mut found: Option<&'static str> = None;
+    frame.resolve_symbol(|sym| {
+        if found.is_some() {
+            return;
+        }
+        let raw = match pprof::backtrace::Symbol::name(sym) {
+            Some(b) => b,
+            None => return,
+        };
+        let tmp = pprof::Symbol {
+            name: Some(raw),
+            addr: None,
+            lineno: None,
+            filename: None,
+        };
+        if let Some(name) = eligible_names.get(tmp.name().as_str()) {
+            found = Some(*name);
+        }
+    });
+    cache.insert(ip, found);
+    found
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn attribute_inclusive_traces(
-    report: &pprof::Report,
+fn attribute_unresolved(
+    report: &pprof::UnresolvedReport,
     eligible_names: &HashSet<&'static str>,
-) -> HashMap<&'static str, u64> {
-    let mut attributed = HashMap::<&'static str, u64>::new();
-    let mut cache: HashMap<Vec<u8>, Option<&'static str>> = HashMap::new();
+) -> (u64, HashMap<&'static str, u64>) {
+    let mut total_samples: u64 = 0;
+    let mut attributed: HashMap<&'static str, u64> = HashMap::new();
+    let mut cache = match IP_ATTR_CACHE.lock() {
+        Ok(c) => c,
+        Err(_) => return (0, attributed),
+    };
+    let inclusive = *CPU_INCLUSIVE;
 
-    for (stack, samples) in &report.data {
-        let samples = match u64::try_from(*samples) {
-            Ok(samples) if samples > 0 => samples,
+    for (frames, count) in &report.data {
+        let count = match u64::try_from(*count) {
+            Ok(c) if c > 0 => c,
             _ => continue,
         };
+        total_samples += count;
 
-        let mut seen: HashSet<&'static str> = HashSet::new();
-        for frame in &stack.frames {
-            for sym in frame {
-                if let Some(name) = resolve_symbol(sym, eligible_names, &mut cache) {
+        if inclusive {
+            let mut seen: HashSet<&'static str> = HashSet::new();
+            for frame in frames.frames.iter() {
+                if let Some(name) = resolve_ip(frame, eligible_names, &mut cache) {
                     seen.insert(name);
                 }
             }
-        }
-
-        for name in seen {
-            *attributed.entry(name).or_default() += samples;
-        }
-    }
-
-    attributed
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn attribute_exclusive_traces(
-    report: &pprof::Report,
-    eligible_names: &HashSet<&'static str>,
-) -> HashMap<&'static str, u64> {
-    let mut attributed = HashMap::<&'static str, u64>::new();
-    let mut cache: HashMap<Vec<u8>, Option<&'static str>> = HashMap::new();
-
-    for (stack, samples) in &report.data {
-        let samples = match u64::try_from(*samples) {
-            Ok(samples) if samples > 0 => samples,
-            _ => continue,
-        };
-
-        let mut owner: Option<&'static str> = None;
-        for frame in &stack.frames {
-            for sym in frame {
-                if let Some(name) = resolve_symbol(sym, eligible_names, &mut cache) {
-                    owner = Some(name);
+            for name in seen {
+                *attributed.entry(name).or_default() += count;
+            }
+        } else {
+            for frame in frames.frames.iter() {
+                if let Some(name) = resolve_ip(frame, eligible_names, &mut cache) {
+                    *attributed.entry(name).or_default() += count;
                     break;
                 }
             }
-
-            if owner.is_some() {
-                break;
-            }
-        }
-
-        if let Some(owner) = owner {
-            *attributed.entry(owner).or_default() += samples;
         }
     }
 
-    attributed
+    (total_samples, attributed)
 }
