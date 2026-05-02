@@ -4,6 +4,7 @@ mod dev_logging;
 use dev_logging::{error, info, warn};
 
 use std::env;
+#[cfg(feature = "dev")]
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -14,8 +15,8 @@ fn main() {
     dev_logging::init_logging();
 
     if let Err(err) = run() {
-        error!("hotpath-pid-backend failed: {err}");
-        eprintln!("hotpath-pid-backend error: {err}");
+        error!("hotpath-samply failed: {err}");
+        eprintln!("hotpath-samply error: {err}");
         std::process::exit(1);
     }
 }
@@ -26,7 +27,7 @@ fn run() -> Result<(), String> {
         Some(mode) => mode,
         None => return Err(usage()),
     };
-    info!("hotpath-pid-backend mode={mode}");
+    info!("hotpath-samply mode={mode}");
 
     if mode == "--detach" {
         return detach_worker(args);
@@ -57,17 +58,17 @@ fn detach_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     );
 
     let worker_stdout =
-        open_log_file().map_err(|e| format!("failed to open worker stdout log: {e}"))?;
+        child_stdio().map_err(|e| format!("failed to open worker stdout log: {e}"))?;
     let worker_stderr =
-        open_log_file().map_err(|e| format!("failed to open worker stderr log: {e}"))?;
+        child_stdio().map_err(|e| format!("failed to open worker stderr log: {e}"))?;
 
     let child = Command::new(&current_exe)
         .arg("--worker")
         .arg(pid.to_string())
         .arg(&session_dir)
         .stdin(Stdio::null())
-        .stdout(Stdio::from(worker_stdout))
-        .stderr(Stdio::from(worker_stderr))
+        .stdout(worker_stdout)
+        .stderr(worker_stderr)
         .spawn()
         .map_err(|e| {
             format!(
@@ -90,7 +91,7 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let session_dir = args.next().map(PathBuf::from).ok_or_else(usage)?;
     let output_path = session_dir.join("hp.json.gz");
     let stop_path = session_dir.join("stop-profiling");
-    let samply_bin = env::var("HOTPATH_CPU_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string());
+    let samply_bin = env::var("HOTPATH_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string());
     info!(
         "worker starting target_pid={} session_dir={} output={} samply_bin={}",
         pid,
@@ -104,9 +105,9 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     info!("worker delay complete, launching samply for pid={}", pid);
 
     let samply_stdout =
-        open_log_file().map_err(|e| format!("failed to open samply stdout log: {e}"))?;
+        child_stdio().map_err(|e| format!("failed to open samply stdout log: {e}"))?;
     let samply_stderr =
-        open_log_file().map_err(|e| format!("failed to open samply stderr log: {e}"))?;
+        child_stdio().map_err(|e| format!("failed to open samply stderr log: {e}"))?;
 
     let mut child = Command::new(&samply_bin)
         .args([
@@ -120,8 +121,8 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
                 .ok_or_else(|| format!("non-utf8 output path: {}", output_path.display()))?,
         ])
         .stdin(Stdio::null())
-        .stdout(Stdio::from(samply_stdout))
-        .stderr(Stdio::from(samply_stderr))
+        .stdout(samply_stdout)
+        .stderr(samply_stderr)
         .spawn()
         .map_err(|e| format!("failed to spawn {samply_bin}: {e}"))?;
     info!(
@@ -235,13 +236,20 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: hotpath-pid-backend (--detach|--worker) <pid> <session_dir>".to_string()
+    "usage: hotpath-samply (--detach|--worker) <pid> <session_dir>".to_string()
 }
 
-fn open_log_file() -> std::io::Result<std::fs::File> {
+#[cfg(feature = "dev")]
+fn child_stdio() -> std::io::Result<Stdio> {
     std::fs::create_dir_all("log")?;
-    OpenOptions::new()
+    let file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open("log/development.log")
+        .open("log/development.log")?;
+    Ok(Stdio::from(file))
+}
+
+#[cfg(not(feature = "dev"))]
+fn child_stdio() -> std::io::Result<Stdio> {
+    Ok(Stdio::null())
 }

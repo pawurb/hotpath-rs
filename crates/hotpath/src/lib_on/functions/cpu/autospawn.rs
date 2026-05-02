@@ -24,7 +24,7 @@ pub(crate) fn start() {
     let backend_bin = match backend_bin() {
         Some(path) => path,
         None => {
-            log!("failed to resolve hotpath-pid-backend binary path");
+            log!("failed to resolve hotpath-samply binary path");
             return;
         }
     };
@@ -122,7 +122,7 @@ fn backend_bin() -> Option<std::path::PathBuf> {
     let current_exe = std::env::current_exe().ok()?;
     let parent = current_exe.parent()?;
     Some(parent.join(format!(
-        "hotpath-pid-backend{}",
+        "hotpath-samply{}",
         std::env::consts::EXE_SUFFIX
     )))
 }
