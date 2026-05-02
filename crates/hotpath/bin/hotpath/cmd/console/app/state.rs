@@ -4,7 +4,7 @@ use crate::cmd::console::app::{
     App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, InspectedFunctionLog,
     SelectedTab,
 };
-use crate::cmd::console::log::{debug, info};
+use crate::cmd::console::dev_logging::{debug, info};
 
 #[hotpath::measure_all]
 impl App {

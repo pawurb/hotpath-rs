@@ -1,28 +1,14 @@
 #[path = "../dev_logging.rs"]
 mod dev_logging;
 
+use dev_logging::{error, info, warn};
+
 use std::env;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
-
-#[cfg(feature = "dev")]
-use tracing::{error, info, warn};
-
-#[cfg(not(feature = "dev"))]
-macro_rules! noop_log {
-    ($($tt:tt)*) => {{
-        let _ = format_args!($($tt)*);
-    }};
-}
-#[cfg(not(feature = "dev"))]
-use noop_log as error;
-#[cfg(not(feature = "dev"))]
-use noop_log as info;
-#[cfg(not(feature = "dev"))]
-use noop_log as warn;
 
 fn main() {
     dev_logging::init_logging();
