@@ -11,6 +11,7 @@ struct BackendHandle {
     session_dir: PathBuf,
     stop_path: PathBuf,
     profile_path: PathBuf,
+    sidecar_path: PathBuf,
 }
 
 static HANDLE: OnceLock<Mutex<Option<BackendHandle>>> = OnceLock::new();
@@ -47,6 +48,7 @@ pub(crate) fn start() {
     }
     let stop_path = session_dir.join("stop-profiling");
     let profile_path = session_dir.join("hp.json.gz");
+    let sidecar_path = session_dir.join("hp.json.syms.json");
 
     let _child = match Command::new(backend_bin)
         .arg("--detach")
@@ -72,6 +74,7 @@ pub(crate) fn start() {
         session_dir,
         stop_path,
         profile_path,
+        sidecar_path,
     };
     let slot = HANDLE.get_or_init(|| Mutex::new(None));
     if let Ok(mut guard) = slot.lock() {
@@ -96,15 +99,16 @@ pub(crate) fn stop() -> Option<PathBuf> {
     let t0 = Instant::now();
     let deadline = t0 + Duration::from_secs(15);
     loop {
-        if handle.profile_path.exists() {
+        if handle.profile_path.exists() && handle.sidecar_path.exists() {
             return Some(handle.profile_path);
         }
 
         if Instant::now() >= deadline {
             warn!(
-                "timed out waiting for CPU profile {} in session {}",
-                handle.profile_path.display(),
-                handle.session_dir.display()
+                "timed out waiting for CPU profile/sidecar in session {} (profile_exists={} sidecar_exists={})",
+                handle.session_dir.display(),
+                handle.profile_path.exists(),
+                handle.sidecar_path.exists()
             );
             return None;
         }

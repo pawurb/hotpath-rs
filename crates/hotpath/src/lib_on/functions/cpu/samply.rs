@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use object::{Object, ObjectSegment, ObjectSymbol, SymbolKind};
 use serde::Deserialize;
 
 use crate::lib_on::functions::cpu::{log, CpuFunctionStats, CpuReport, CPU_INCLUSIVE};
@@ -33,6 +32,29 @@ pub(crate) fn build_cpu_report_from_path(
         ),
     );
 
+    let sidecar_path = sidecar_path_for(path);
+    let sidecar = match load_sidecar(&sidecar_path) {
+        Ok(s) => s,
+        Err(e) => {
+            log(
+                "warn",
+                format!(
+                    "failed to load symbols sidecar {}: {e} - samply must be invoked with --unstable-presymbolicate",
+                    sidecar_path.display()
+                ),
+            );
+            return None;
+        }
+    };
+    log(
+        "info",
+        format!(
+            "sidecar loaded: {} libs, {} strings",
+            sidecar.data.len(),
+            sidecar.string_table.len()
+        ),
+    );
+
     let display_to_id = match crate::lib_on::functions::get_instrumented_names_and_ids() {
         Some(display_to_id) => display_to_id,
         None => {
@@ -43,7 +65,10 @@ pub(crate) fn build_cpu_report_from_path(
             return None;
         }
     };
-    log("info", format!("instrumented functions: {}", display_to_id.len()));
+    log(
+        "info",
+        format!("instrumented functions: {}", display_to_id.len()),
+    );
 
     if display_to_id.is_empty() {
         log("warn", "no instrumented functions registered; CPU report empty");
@@ -52,37 +77,11 @@ pub(crate) fn build_cpu_report_from_path(
 
     let eligible_symbols: HashSet<&'static str> = display_to_id.keys().copied().collect();
 
-    let lib_indexes: Vec<LibSymbolIndex> = profile
-        .libs
+    let lib_indexes = build_lib_indexes(&profile, &sidecar, &eligible_symbols);
+    let total_matches: usize = lib_indexes
         .iter()
-        .enumerate()
-        .map(|(i, lib)| {
-            let lib_path = lib
-                .debug_path
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .or(lib.path.as_deref())
-                .unwrap_or("<missing>");
-            let idx = build_lib_index(lib, &eligible_symbols).unwrap_or_default();
-            log(
-                "info",
-                format!("lib[{i}] {lib_path}: {} matching symbols", idx.ranges.len()),
-            );
-            if !idx.ranges.is_empty() {
-                let first = idx.ranges.first().unwrap();
-                let last = idx.ranges.last().unwrap();
-                log(
-                    "info",
-                    format!(
-                        "lib[{i}] range bounds: 0x{:x}..0x{:x} (first sym {:?}, last sym {:?})",
-                        first.0, last.1, first.2, last.2
-                    ),
-                );
-            }
-            idx
-        })
-        .collect();
-    let total_matches: usize = lib_indexes.iter().map(|i| i.ranges.len()).sum();
+        .filter_map(|i| i.as_ref().map(|x| x.ranges.len()))
+        .sum();
     log(
         "info",
         format!("total matched symbols across libs: {total_matches}"),
@@ -90,7 +89,7 @@ pub(crate) fn build_cpu_report_from_path(
     if total_matches == 0 {
         log(
             "warn",
-            "no instrumented symbols found in any sampled library - ensure the binary was built with debug symbols and not stripped",
+            "no instrumented symbols found in sidecar - check eligible names match samply's resolved names",
         );
     }
 
@@ -99,11 +98,6 @@ pub(crate) fn build_cpu_report_from_path(
     let mut attributed_samples: u64 = 0;
     let inclusive = *CPU_INCLUSIVE;
     let mut frames_seen: u64 = 0;
-    let mut frames_with_lib: HashMap<usize, u64> = HashMap::new();
-    let mut frames_no_lib: u64 = 0;
-    let mut frames_no_addr: u64 = 0;
-    let mut sample_addrs: Vec<(usize, i64)> = Vec::new();
-    let mut lookup_logs: Vec<(usize, u64, Option<&'static str>)> = Vec::new();
 
     for thread in &profile.threads {
         let stack = &thread.samples.stack;
@@ -129,36 +123,20 @@ pub(crate) fn build_cpu_report_from_path(
                     None => break,
                 };
                 let address = frame_addr.get(frame_idx).copied().unwrap_or(-1);
-                let func_idx = frame_func.get(frame_idx).copied();
-                let lib_opt = func_idx
-                    .and_then(|fi| func_resource.get(fi).copied())
+                let lib_opt = frame_func
+                    .get(frame_idx)
+                    .and_then(|fi| func_resource.get(*fi).copied())
                     .filter(|r| *r >= 0)
                     .and_then(|r| resource_lib.get(r as usize).copied().flatten())
                     .filter(|l| *l >= 0)
                     .map(|l| l as usize);
 
                 frames_seen += 1;
-                if address < 0 {
-                    frames_no_addr += 1;
-                }
-                match lib_opt {
-                    Some(li) => {
-                        *frames_with_lib.entry(li).or_insert(0) += 1;
-                        if address >= 0 && sample_addrs.len() < 20 {
-                            sample_addrs.push((li, address));
-                        }
-                    }
-                    None => frames_no_lib += 1,
-                }
 
                 if address >= 0 {
                     if let Some(lib_idx) = lib_opt {
-                        if let Some(idx) = lib_indexes.get(lib_idx) {
-                            let result = idx.lookup(address as u64);
-                            if !idx.ranges.is_empty() && lookup_logs.len() < 30 {
-                                lookup_logs.push((lib_idx, address as u64, result));
-                            }
-                            if let Some(sym) = result {
+                        if let Some(Some(idx)) = lib_indexes.get(lib_idx) {
+                            if let Some(sym) = idx.lookup(address as u64) {
                                 if inclusive {
                                     matched.insert(sym);
                                 } else {
@@ -201,43 +179,26 @@ pub(crate) fn build_cpu_report_from_path(
     log(
         "info",
         format!(
-            "samples: total={total_samples} attributed={attributed_samples} stats_rows={}",
+            "samples: total={total_samples} attributed={attributed_samples} stats_rows={} frames_seen={frames_seen}",
             stats.len()
         ),
-    );
-    log(
-        "info",
-        format!("frames: seen={frames_seen} no_addr={frames_no_addr} no_lib={frames_no_lib}"),
     );
     if attributed_samples == 0 {
         log(
             "warn",
             format!(
-                "no samples were attributed to instrumented functions; total_samples={} matched_symbols={} frames_seen={}",
-                total_samples, total_matches, frames_seen
+                "no samples were attributed to instrumented functions; total_samples={total_samples} matched_symbols={total_matches}"
             ),
         );
-    } else if stats.is_empty() {
-        log(
-            "warn",
-            format!(
-                "CPU profile parsed but produced no stats rows; total_samples={} attributed_samples={} matched_symbols={}",
-                total_samples, attributed_samples, total_matches
-            ),
-        );
-    } else {
+    } else if !stats.is_empty() {
         log(
             "info",
             format!(
                 "top CPU function={} samples={} total_rows={}",
-                stats[0].name,
-                stats[0].samples,
-                stats.len()
+                stats[0].name, stats[0].samples, stats.len()
             ),
         );
     }
-    let mut by_lib: Vec<(usize, u64)> = frames_with_lib.into_iter().collect();
-    by_lib.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
 
     Some(CpuReport {
         total_samples,
@@ -247,7 +208,11 @@ pub(crate) fn build_cpu_report_from_path(
     })
 }
 
-fn load_profile(path: &std::path::Path) -> Result<Profile, Box<dyn std::error::Error>> {
+fn sidecar_path_for(profile_path: &Path) -> PathBuf {
+    profile_path.with_extension("syms.json")
+}
+
+fn load_profile(path: &Path) -> Result<Profile, Box<dyn std::error::Error>> {
     let mut file = File::open(path)?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
@@ -262,6 +227,11 @@ fn load_profile(path: &std::path::Path) -> Result<Profile, Box<dyn std::error::E
     };
 
     Ok(serde_json::from_slice::<Profile>(&bytes)?)
+}
+
+fn load_sidecar(path: &Path) -> Result<Sidecar, Box<dyn std::error::Error>> {
+    let bytes = std::fs::read(path)?;
+    Ok(serde_json::from_slice::<Sidecar>(&bytes)?)
 }
 
 #[derive(Default)]
@@ -287,102 +257,52 @@ impl LibSymbolIndex {
     }
 }
 
-fn build_lib_index(lib: &Lib, eligible: &HashSet<&'static str>) -> Option<LibSymbolIndex> {
-    let path = lib
-        .debug_path
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .or(lib.path.as_deref())?;
-
-    let bytes = std::fs::read(path).ok()?;
-    let parsed = object::File::parse(bytes.as_slice()).ok()?;
-
-    let base = pick_image_base(&parsed);
-
-    let mut all_starts: Vec<u64> = parsed
-        .symbols()
-        .filter(|s| matches!(s.kind(), SymbolKind::Text))
-        .map(|s| s.address().saturating_sub(base))
-        .collect();
-    all_starts.sort_unstable();
-    all_starts.dedup();
-
-    let mut ranges: Vec<(u64, u64, &'static str)> = Vec::new();
-    for sym in parsed.symbols() {
-        if !matches!(sym.kind(), SymbolKind::Text) {
-            continue;
-        }
-        let raw_name = match sym.name() {
-            Ok(n) if !n.is_empty() => n,
-            _ => continue,
-        };
-        let demangled = rustc_demangle::demangle(raw_name).to_string();
-        let normalized = strip_hash_suffix(&demangled);
-        if let Some(matched) = match_eligible_symbol(normalized, eligible) {
-            let rel = sym.address().saturating_sub(base);
-            let declared = sym.size();
-            let next = all_starts
-                .partition_point(|s| *s <= rel)
-                .checked_sub(0)
-                .and_then(|i| all_starts.get(i).copied());
-            let size = if declared > 0 {
-                declared
-            } else {
-                next.map(|n| n.saturating_sub(rel))
-                    .filter(|s| *s > 0)
-                    .unwrap_or(1)
-            };
-            ranges.push((rel, rel.saturating_add(size), *matched));
-        }
+fn build_lib_indexes(
+    profile: &Profile,
+    sidecar: &Sidecar,
+    eligible: &HashSet<&'static str>,
+) -> Vec<Option<LibSymbolIndex>> {
+    let mut sidecar_by_name: HashMap<&str, &SidecarLib> = HashMap::new();
+    for lib in &sidecar.data {
+        sidecar_by_name.insert(lib.debug_name.as_str(), lib);
     }
 
-    ranges.sort_by_key(|(start, _, _)| *start);
-
-    Some(LibSymbolIndex { ranges })
-}
-
-fn pick_image_base<'a>(file: &object::File<'a, &'a [u8]>) -> u64 {
-    let rel = file.relative_address_base();
-    if rel != 0 {
-        return rel;
-    }
-    file.segments()
-        .filter_map(|seg| {
-            let name = seg.name().ok().flatten()?;
-            if name == "__TEXT" || name == "__text" {
-                Some(seg.address())
-            } else {
-                None
-            }
+    profile
+        .libs
+        .iter()
+        .map(|lib| {
+            let key = lib.debug_name.as_deref()?;
+            let sl = sidecar_by_name.get(key)?;
+            let mut ranges: Vec<(u64, u64, &'static str)> = sl
+                .symbol_table
+                .iter()
+                .filter_map(|sym| {
+                    let raw = sidecar.string_table.get(sym.symbol as usize)?;
+                    let matched = match_eligible_symbol(raw, eligible)?;
+                    let size = sym.size.unwrap_or(0) as u64;
+                    let start = sym.rva as u64;
+                    let end = if size > 0 { start + size } else { start + 1 };
+                    Some((start, end, *matched))
+                })
+                .collect();
+            ranges.sort_by_key(|(start, _, _)| *start);
+            Some(LibSymbolIndex { ranges })
         })
-        .next()
-        .or_else(|| file.segments().map(|s| s.address()).min())
-        .unwrap_or(0)
-}
-
-fn strip_hash_suffix(s: &str) -> &str {
-    if let Some(idx) = s.rfind("::h") {
-        let suffix = &s[idx + 3..];
-        if !suffix.is_empty() && suffix.len() <= 16 && suffix.bytes().all(|b| b.is_ascii_hexdigit())
-        {
-            return &s[..idx];
-        }
-    }
-    s
+        .collect()
 }
 
 fn match_eligible_symbol<'a>(
-    normalized: &str,
+    resolved: &str,
     eligible: &'a HashSet<&'static str>,
 ) -> Option<&'a &'static str> {
-    if let Some(exact) = eligible.get(normalized) {
+    if let Some(exact) = eligible.get(resolved) {
         return Some(exact);
     }
 
     eligible
         .iter()
         .filter(|candidate| {
-            normalized
+            resolved
                 .strip_prefix(**candidate)
                 .is_some_and(|rest| rest.starts_with("::"))
         })
@@ -397,12 +317,10 @@ struct Profile {
     threads: Vec<Thread>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize)]
 struct Lib {
-    #[serde(default)]
-    path: Option<String>,
-    #[serde(rename = "debugPath", default)]
-    debug_path: Option<String>,
+    #[serde(rename = "debugName", default)]
+    debug_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -471,20 +389,35 @@ struct ResourceTable {
     lib: Vec<Option<i64>>,
 }
 
+#[derive(Deserialize)]
+struct Sidecar {
+    #[serde(default)]
+    data: Vec<SidecarLib>,
+    #[serde(default)]
+    string_table: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct SidecarLib {
+    debug_name: String,
+    #[serde(default)]
+    symbol_table: Vec<SidecarSymbol>,
+}
+
+#[derive(Deserialize)]
+struct SidecarSymbol {
+    rva: u32,
+    #[serde(default)]
+    size: Option<u32>,
+    symbol: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
 
-    use crate::lib_on::functions::cpu::samply::{match_eligible_symbol, strip_hash_suffix};
-
-    #[test]
-    fn strips_rust_hash_suffix() {
-        assert_eq!(
-            strip_hash_suffix("mevlog::main::h4096f6e9269ba5f4"),
-            "mevlog::main"
-        );
-        assert_eq!(strip_hash_suffix("mevlog::main"), "mevlog::main");
-    }
+    use crate::lib_on::functions::cpu::samply::{match_eligible_symbol, sidecar_path_for};
+    use std::path::Path;
 
     #[test]
     fn matches_async_closure_symbol_by_prefix() {
@@ -516,6 +449,25 @@ mod tests {
         assert_eq!(
             matched.copied(),
             Some("mevlog::misc::rpc_tracing::rpc_tx_calls")
+        );
+    }
+
+    #[test]
+    fn matches_exact_symbol() {
+        let eligible = HashSet::from(["mevlog::main"]);
+        let matched = match_eligible_symbol("mevlog::main", &eligible);
+        assert_eq!(matched.copied(), Some("mevlog::main"));
+    }
+
+    #[test]
+    fn sidecar_path_strips_gz() {
+        assert_eq!(
+            sidecar_path_for(Path::new("/tmp/hp.json.gz")),
+            Path::new("/tmp/hp.json.syms.json")
+        );
+        assert_eq!(
+            sidecar_path_for(Path::new("/tmp/hp.json")),
+            Path::new("/tmp/hp.syms.json")
         );
     }
 }

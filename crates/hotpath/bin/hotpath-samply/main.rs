@@ -114,6 +114,7 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
             "--pid",
             &pid.to_string(),
             "--save-only",
+            "--unstable-presymbolicate",
             "-o",
             output_path
                 .to_str()
