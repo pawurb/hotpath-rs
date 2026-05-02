@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::path::Path;
+use std::fmt::Display;
 use std::sync::LazyLock;
 
 use prettytable::{color, Attr, Cell, Row, Table};
@@ -7,10 +8,8 @@ use prettytable::{color, Attr, Cell, Row, Table};
 use crate::json::{JsonFunctionCpuEntry, JsonFunctionsCpuList};
 use crate::output::{format_duration, shorten_function_name};
 
-macro_rules! cpu_log {
-    ($level:expr, $($arg:tt)*) => {{
-        eprintln!("[hotpath - cpu report - {}] {}", $level, format_args!($($arg)*));
-    }};
+pub(crate) fn log(level: &str, message: impl Display) {
+    eprintln!("[hotpath - cpu report - {}] {}", level, message);
 }
 
 #[allow(dead_code)]
@@ -108,15 +107,17 @@ pub(crate) fn build_cpu_json(
         total_count,
     };
 
-    cpu_log!(
+    log(
         "info",
-        "built CPU json caller={} total_samples={} attributed_samples={} total_count={} displayed_count={} rendered_rows={}",
-        report.caller_name,
-        list.total_samples,
-        list.attributed_samples,
-        list.total_count,
-        list.displayed_count,
-        list.data.len()
+        format!(
+            "built CPU json caller={} total_samples={} attributed_samples={} total_count={} displayed_count={} rendered_rows={}",
+            report.caller_name,
+            list.total_samples,
+            list.attributed_samples,
+            list.total_count,
+            list.displayed_count,
+            list.data.len()
+        ),
     );
 
     list
@@ -145,13 +146,15 @@ fn print_table<W: Write>(table: &Table, writer: &mut W) {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFunctionsCpuList) {
     if list.data.is_empty() {
-        cpu_log!(
+        log(
             "warn",
-            "CPU report table suppressed because there were no rendered rows caller={} total_samples={} attributed_samples={} total_count={}",
-            list.caller_name,
-            list.total_samples,
-            list.attributed_samples,
-            list.total_count
+            format!(
+                "CPU report table suppressed because there were no rendered rows caller={} total_samples={} attributed_samples={} total_count={}",
+                list.caller_name,
+                list.total_samples,
+                list.attributed_samples,
+                list.total_count
+            ),
         );
         return;
     }

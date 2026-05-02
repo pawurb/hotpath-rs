@@ -5,8 +5,12 @@ use std::env;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, Instant};
+
+static SAMPLY_BIN: LazyLock<String> =
+    LazyLock::new(|| env::var("HOTPATH_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string()));
 
 fn main() {
     hotpath::dev_logging::init_logging();
@@ -88,13 +92,12 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let session_dir = args.next().map(PathBuf::from).ok_or_else(usage)?;
     let output_path = session_dir.join("hp.json.gz");
     let stop_path = session_dir.join("stop-profiling");
-    let samply_bin = env::var("HOTPATH_SAMPLY_BIN").unwrap_or_else(|_| "samply".to_string());
     info!(
         "worker starting target_pid={} session_dir={} output={} samply_bin={}",
         pid,
         session_dir.display(),
         output_path.display(),
-        samply_bin
+        *SAMPLY_BIN
     );
     info!("profile output path reserved at {}", output_path.display());
 
@@ -106,7 +109,7 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let samply_stderr =
         child_stdio().map_err(|e| format!("failed to open samply stderr log: {e}"))?;
 
-    let mut child = Command::new(&samply_bin)
+    let mut child = Command::new(&*SAMPLY_BIN)
         .args([
             "record",
             "--pid",
@@ -121,7 +124,7 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         .stdout(samply_stdout)
         .stderr(samply_stderr)
         .spawn()
-        .map_err(|e| format!("failed to spawn {samply_bin}: {e}"))?;
+        .map_err(|e| format!("failed to spawn {}: {e}", *SAMPLY_BIN))?;
     info!(
         "samply child pid={} attached to target pid={}",
         child.id(),

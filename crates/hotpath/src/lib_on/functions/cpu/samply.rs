@@ -6,55 +6,47 @@ use std::path::Path;
 use object::{Object, ObjectSegment, ObjectSymbol, SymbolKind};
 use serde::Deserialize;
 
-use crate::lib_on::functions::cpu::{CpuFunctionStats, CpuReport, CPU_INCLUSIVE};
-
-macro_rules! cpu_log {
-    ($level:expr, $($arg:tt)*) => {{
-        eprintln!("[hotpath - cpu report - {}] {}", $level, format_args!($($arg)*));
-    }};
-}
+use crate::lib_on::functions::cpu::{log, CpuFunctionStats, CpuReport, CPU_INCLUSIVE};
 
 pub(crate) fn build_cpu_report_from_path(
     caller_name: &'static str,
     path: &Path,
 ) -> Option<CpuReport> {
-    cpu_log!("info", "loading samply profile from {}", path.display());
+    log("info", format!("loading samply profile from {}", path.display()));
 
     let profile = match load_profile(path) {
         Ok(p) => p,
         Err(e) => {
-            cpu_log!(
+            log(
                 "warn",
-                "failed to load samply profile {}: {e}",
-                path.display()
+                format!("failed to load samply profile {}: {e}", path.display()),
             );
             return None;
         }
     };
-    cpu_log!(
+    log(
         "info",
-        "profile loaded: {} libs, {} threads",
-        profile.libs.len(),
-        profile.threads.len()
+        format!(
+            "profile loaded: {} libs, {} threads",
+            profile.libs.len(),
+            profile.threads.len()
+        ),
     );
 
     let display_to_id = match crate::lib_on::functions::get_instrumented_names_and_ids() {
         Some(display_to_id) => display_to_id,
         None => {
-            cpu_log!(
+            log(
                 "warn",
-                "instrumented function registry unavailable; skipping CPU report"
+                "instrumented function registry unavailable; skipping CPU report",
             );
             return None;
         }
     };
-    cpu_log!("info", "instrumented functions: {}", display_to_id.len());
+    log("info", format!("instrumented functions: {}", display_to_id.len()));
 
     if display_to_id.is_empty() {
-        cpu_log!(
-            "warn",
-            "no instrumented functions registered; CPU report empty"
-        );
+        log("warn", "no instrumented functions registered; CPU report empty");
         return None;
     }
 
@@ -72,33 +64,33 @@ pub(crate) fn build_cpu_report_from_path(
                 .or(lib.path.as_deref())
                 .unwrap_or("<missing>");
             let idx = build_lib_index(lib, &eligible_symbols).unwrap_or_default();
-            cpu_log!(
+            log(
                 "info",
-                "lib[{i}] {lib_path}: {} matching symbols",
-                idx.ranges.len()
+                format!("lib[{i}] {lib_path}: {} matching symbols", idx.ranges.len()),
             );
             if !idx.ranges.is_empty() {
                 let first = idx.ranges.first().unwrap();
                 let last = idx.ranges.last().unwrap();
-                cpu_log!(
+                log(
                     "info",
-                    "lib[{i}] range bounds: 0x{:x}..0x{:x} (first sym {:?}, last sym {:?})",
-                    first.0,
-                    last.1,
-                    first.2,
-                    last.2
+                    format!(
+                        "lib[{i}] range bounds: 0x{:x}..0x{:x} (first sym {:?}, last sym {:?})",
+                        first.0, last.1, first.2, last.2
+                    ),
                 );
             }
             idx
         })
         .collect();
     let total_matches: usize = lib_indexes.iter().map(|i| i.ranges.len()).sum();
-    cpu_log!("info", "total matched symbols across libs: {total_matches}");
+    log(
+        "info",
+        format!("total matched symbols across libs: {total_matches}"),
+    );
     if total_matches == 0 {
-        cpu_log!(
+        log(
             "warn",
-            "no instrumented symbols found in any sampled library - \
-             ensure the binary was built with debug symbols and not stripped"
+            "no instrumented symbols found in any sampled library - ensure the binary was built with debug symbols and not stripped",
         );
     }
 
@@ -206,38 +198,42 @@ pub(crate) fn build_cpu_report_from_path(
 
     stats.sort_by(|a, b| b.samples.cmp(&a.samples).then_with(|| a.name.cmp(b.name)));
 
-    cpu_log!(
+    log(
         "info",
-        "samples: total={total_samples} attributed={attributed_samples} stats_rows={}",
-        stats.len()
+        format!(
+            "samples: total={total_samples} attributed={attributed_samples} stats_rows={}",
+            stats.len()
+        ),
     );
-    cpu_log!(
+    log(
         "info",
-        "frames: seen={frames_seen} no_addr={frames_no_addr} no_lib={frames_no_lib}"
+        format!("frames: seen={frames_seen} no_addr={frames_no_addr} no_lib={frames_no_lib}"),
     );
     if attributed_samples == 0 {
-        cpu_log!(
+        log(
             "warn",
-            "no samples were attributed to instrumented functions; total_samples={} matched_symbols={} frames_seen={}",
-            total_samples,
-            total_matches,
-            frames_seen
+            format!(
+                "no samples were attributed to instrumented functions; total_samples={} matched_symbols={} frames_seen={}",
+                total_samples, total_matches, frames_seen
+            ),
         );
     } else if stats.is_empty() {
-        cpu_log!(
+        log(
             "warn",
-            "CPU profile parsed but produced no stats rows; total_samples={} attributed_samples={} matched_symbols={}",
-            total_samples,
-            attributed_samples,
-            total_matches
+            format!(
+                "CPU profile parsed but produced no stats rows; total_samples={} attributed_samples={} matched_symbols={}",
+                total_samples, attributed_samples, total_matches
+            ),
         );
     } else {
-        cpu_log!(
+        log(
             "info",
-            "top CPU function={} samples={} total_rows={}",
-            stats[0].name,
-            stats[0].samples,
-            stats.len()
+            format!(
+                "top CPU function={} samples={} total_rows={}",
+                stats[0].name,
+                stats[0].samples,
+                stats.len()
+            ),
         );
     }
     let mut by_lib: Vec<(usize, u64)> = frames_with_lib.into_iter().collect();
