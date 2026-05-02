@@ -63,10 +63,10 @@ pub fn init_logging() {
         .with_target(false)
         .with_thread_ids(false);
 
-    tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(env_filter)
         .with(file_layer)
-        .init();
+        .try_init();
 }
 
 #[cfg(not(feature = "dev"))]

@@ -220,6 +220,9 @@ impl HotpathGuardBuilder {
     ///
     /// Panics if another `HotpathGuard` is already alive.
     pub fn build(self) -> HotpathGuard {
+        #[cfg(feature = "dev")]
+        crate::dev_logging::init_logging();
+
         let sections = self.resolve_sections();
 
         HotpathGuard::new(

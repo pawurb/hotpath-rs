@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -15,15 +15,20 @@ struct BackendHandle {
 
 static HANDLE: OnceLock<Mutex<Option<BackendHandle>>> = OnceLock::new();
 
+static BACKEND_BIN: LazyLock<PathBuf> = LazyLock::new(|| {
+    std::env::var("HOTPATH_SAMPLY_WRAPPER_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(format!(
+                "hotpath-samply{}",
+                std::env::consts::EXE_SUFFIX
+            ))
+        })
+});
+
 pub(crate) fn start() {
     let pid = std::process::id();
-    let backend_bin = match backend_bin() {
-        Some(path) => path,
-        None => {
-            warn!("failed to resolve hotpath-samply binary path");
-            return;
-        }
-    };
+    let backend_bin = &*BACKEND_BIN;
     let session_id = match session_id() {
         Some(id) => id,
         None => {
@@ -43,7 +48,7 @@ pub(crate) fn start() {
     let stop_path = session_dir.join("stop-profiling");
     let profile_path = session_dir.join("hp.json.gz");
 
-    let _child = match Command::new(&backend_bin)
+    let _child = match Command::new(backend_bin)
         .arg("--detach")
         .arg(pid.to_string())
         .arg(&session_dir)
@@ -106,21 +111,6 @@ pub(crate) fn stop() -> Option<PathBuf> {
 
         thread::sleep(Duration::from_millis(100));
     }
-}
-
-fn backend_bin() -> Option<std::path::PathBuf> {
-    if let Ok(path) = std::env::var("HOTPATH_CPU_BACKEND_BIN") {
-        if !path.is_empty() {
-            return Some(std::path::PathBuf::from(path));
-        }
-    }
-
-    let current_exe = std::env::current_exe().ok()?;
-    let parent = current_exe.parent()?;
-    Some(parent.join(format!(
-        "hotpath-samply{}",
-        std::env::consts::EXE_SUFFIX
-    )))
 }
 
 fn session_id() -> Option<String> {
