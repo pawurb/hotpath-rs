@@ -13,7 +13,7 @@ use crate::metrics_server::RECV_TIMEOUT_MS;
 use crate::output::FunctionLogsList;
 
 pub(crate) mod batch;
-#[cfg(feature = "cpu")]
+#[cfg(feature = "hotpath-cpu")]
 pub(crate) mod cpu;
 
 cfg_if::cfg_if! {
@@ -331,7 +331,7 @@ pub(crate) enum FunctionsQuery {
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
     Alloc(Sender<Option<JsonFunctionsList>>),
     /// Request the names + worker-assigned ids of functions that have been registered
-    #[cfg(feature = "cpu")]
+    #[cfg(feature = "hotpath-cpu")]
     NamesAndIds(Sender<std::collections::HashMap<&'static str, u32>>),
     /// Request timing function logs for a specific function by ID
     LogsTiming {
@@ -389,7 +389,7 @@ pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
     query_functions_state(FunctionsQuery::Alloc).flatten()
 }
 
-#[cfg(feature = "cpu")]
+#[cfg(feature = "hotpath-cpu")]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_instrumented_names_and_ids(
 ) -> Option<std::collections::HashMap<&'static str, u32>> {

@@ -82,9 +82,7 @@ pub(crate) fn stop() -> Option<PathBuf> {
     let handle = HANDLE
         .get()
         .and_then(|m| m.lock().ok().and_then(|mut g| g.take()));
-    let Some(handle) = handle else {
-        return None;
-    };
+    let handle = handle?;
     if let Err(e) = fs::write(&handle.stop_path, b"") {
         log!(
             "failed to create stop signal {}: {}",

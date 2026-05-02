@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::fs::File;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use object::{Object, ObjectSegment, ObjectSymbol, SymbolKind};
 use serde::Deserialize;
@@ -13,17 +12,6 @@ macro_rules! cpu_log {
     ($level:expr, $($arg:tt)*) => {{
         eprintln!("[hotpath - cpu report - {}] {}", $level, format_args!($($arg)*));
     }};
-}
-
-pub(crate) fn build_cpu_report_from_samply(caller_name: &'static str) -> Option<CpuReport> {
-    let path = match profile_path() {
-        Some(p) => p,
-        None => {
-            cpu_log!("warn", "no samply profile found; skipping CPU report");
-            return None;
-        }
-    };
-    build_cpu_report_from_path(caller_name, &path)
 }
 
 pub(crate) fn build_cpu_report_from_path(
@@ -261,37 +249,6 @@ pub(crate) fn build_cpu_report_from_path(
         caller_name,
         stats,
     })
-}
-
-fn profile_path() -> Option<PathBuf> {
-    if let Ok(path) = env::var("HOTPATH_CPU_PROFILE_PATH") {
-        if path.is_empty() {
-            cpu_log!(
-                "warn",
-                "HOTPATH_CPU_PROFILE_PATH is empty; skipping CPU report"
-            );
-            return None;
-        }
-
-        let path = PathBuf::from(path);
-        if path.exists() {
-            return Some(path);
-        }
-
-        cpu_log!(
-            "warn",
-            "HOTPATH_CPU_PROFILE_PATH points to missing file {}; skipping CPU report",
-            path.display()
-        );
-        return None;
-    }
-
-    let default_path = Path::new("hp.json.gz");
-    if default_path.exists() {
-        return Some(default_path.to_path_buf());
-    }
-
-    None
 }
 
 fn load_profile(path: &std::path::Path) -> Result<Profile, Box<dyn std::error::Error>> {

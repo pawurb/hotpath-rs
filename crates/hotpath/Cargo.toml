@@ -28,7 +28,7 @@ name = "hotpath-pid-backend"
 path = "bin/hotpath-pid-backend/main.rs"
 
 [features]
-default = ["threads", "cpu"]
+default = ["threads"]
 hotpath = [
   "hotpath-macros/hotpath",
   "dep:cfg-if",
@@ -56,7 +56,7 @@ async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio
 crossbeam = []
 threads = []
 dev = ["dep:tracing", "dep:tracing-subscriber", "dep:time"]
-cpu = ["dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
+hotpath-cpu = ["dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]

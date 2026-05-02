@@ -51,6 +51,7 @@ cfg_if::cfg_if! {
 use crate::functions::MeasurementGuardSync;
 use crate::Format;
 
+#[cfg(feature = "hotpath-cpu")]
 macro_rules! cpu_log {
     ($level:expr, $($arg:tt)*) => {{
         eprintln!("[hotpath - cpu report - {}] {}", $level, format_args!($($arg)*));
@@ -208,11 +209,11 @@ impl HotpathGuardBuilder {
         }
 
         cfg_if::cfg_if! {
-            if #[cfg(all(feature = "hotpath-alloc", feature = "cpu"))] {
+            if #[cfg(all(feature = "hotpath-alloc", feature = "hotpath-cpu"))] {
                 vec![Section::FunctionsTiming, Section::FunctionsAlloc, Section::FunctionsCpu, Section::Threads]
             } else if #[cfg(feature = "hotpath-alloc")] {
                 vec![Section::FunctionsTiming, Section::FunctionsAlloc, Section::Threads]
-            } else if #[cfg(feature = "cpu")] {
+            } else if #[cfg(feature = "hotpath-cpu")] {
                 vec![Section::FunctionsTiming, Section::FunctionsCpu, Section::Threads]
             } else {
                 vec![Section::FunctionsTiming, Section::Threads]
@@ -363,7 +364,7 @@ impl HotpathGuard {
 
                 let mut local_stats = HashMap::<u32, FunctionStats>::new();
                 let mut name_to_id = HashMap::<&'static str, u32>::new();
-                #[cfg(feature = "cpu")]
+                #[cfg(feature = "hotpath-cpu")]
                 if *crate::functions::cpu::CPU_INCLUSIVE {
                     name_to_id.insert(worker_caller_name, 0);
                 }
@@ -420,7 +421,7 @@ impl HotpathGuard {
                                         }
                                         let _ = response_tx.send(formatted);
                                     }
-                                    #[cfg(feature = "cpu")]
+                                    #[cfg(feature = "hotpath-cpu")]
                                     FunctionsQuery::NamesAndIds(response_tx) => {
                                         let map: std::collections::HashMap<&'static str, u32> =
                                             name_to_id
@@ -543,7 +544,7 @@ impl HotpathGuard {
         #[cfg(all(feature = "threads", feature = "hotpath-alloc"))]
         crate::functions::alloc::core::init_thread_alloc_tracking();
 
-        #[cfg(feature = "cpu")]
+        #[cfg(feature = "hotpath-cpu")]
         if sections.contains(&Section::FunctionsCpu) {
             crate::functions::cpu::autospawn::start();
         }
@@ -610,7 +611,7 @@ impl Drop for HotpathGuard {
     fn drop(&mut self) {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
-        #[cfg(feature = "cpu")]
+        #[cfg(feature = "hotpath-cpu")]
         let cpu_report = if self.sections.contains(&Section::FunctionsCpu) {
             let caller_name = self
                 .state
@@ -792,7 +793,7 @@ impl Drop for HotpathGuard {
                     }
                     Section::FunctionsCpu =>
                     {
-                        #[cfg(feature = "cpu")]
+                        #[cfg(feature = "hotpath-cpu")]
                         if let Some(ref cpu) = cpu_report {
                             if let Ok(state_guard) = state.read() {
                                 let total_elapsed = end_time.duration_since(state_guard.start_time);
@@ -953,7 +954,7 @@ impl Drop for HotpathGuard {
                     }
                     Section::FunctionsCpu =>
                     {
-                        #[cfg(feature = "cpu")]
+                        #[cfg(feature = "hotpath-cpu")]
                         if matches!(format, Format::Table) {
                             if let Some(ref cpu) = cpu_report {
                                 if let Ok(state_guard) = state.read() {
