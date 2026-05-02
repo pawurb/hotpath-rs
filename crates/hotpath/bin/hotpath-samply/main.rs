@@ -24,31 +24,27 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let mut args = env::args().skip(1);
-    let mode = match args.next() {
-        Some(mode) => mode,
-        None => return Err(usage()),
-    };
+    let mode = args.next().ok_or("missing mode argument")?;
     info!("hotpath-samply mode={mode}");
 
-    if mode == "--detach" {
-        return detach_worker(args);
+    match mode.as_str() {
+        "--detach" => detach_worker(args),
+        "--worker" => run_worker(args),
+        other => Err(format!("unknown mode: {other}")),
     }
-
-    if mode != "--worker" {
-        return Err(usage());
-    }
-
-    run_worker(args)
 }
 
 fn detach_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let pid = args
         .next()
-        .ok_or_else(usage)?
+        .ok_or("missing pid argument")?
         .parse::<u32>()
         .map_err(|e| format!("invalid pid: {e}"))?;
 
-    let session_dir = args.next().map(PathBuf::from).ok_or_else(usage)?;
+    let session_dir = args
+        .next()
+        .map(PathBuf::from)
+        .ok_or("missing session_dir argument")?;
     let current_exe =
         env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
     info!(
@@ -85,11 +81,14 @@ fn detach_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
 fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let pid = args
         .next()
-        .ok_or_else(usage)?
+        .ok_or("missing pid argument")?
         .parse::<u32>()
         .map_err(|e| format!("invalid pid: {e}"))?;
 
-    let session_dir = args.next().map(PathBuf::from).ok_or_else(usage)?;
+    let session_dir = args
+        .next()
+        .map(PathBuf::from)
+        .ok_or("missing session_dir argument")?;
     let output_path = session_dir.join("hp.json.gz");
     let stop_path = session_dir.join("stop-profiling");
     info!(
@@ -233,10 +232,6 @@ fn run_worker(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     }
 
     Ok(())
-}
-
-fn usage() -> String {
-    "usage: hotpath-samply (--detach|--worker) <pid> <session_dir>".to_string()
 }
 
 #[cfg(feature = "dev")]
