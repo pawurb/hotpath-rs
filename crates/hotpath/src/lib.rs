@@ -70,5 +70,8 @@ pub use lib_off::threads;
 mod shared;
 pub use shared::{Format, IntoF64, Section};
 
+#[doc(hidden)]
+pub mod dev_logging;
+
 #[cfg(all(feature = "hotpath-cpu", not(target_os = "macos")))]
 compile_error!("hotpath-cpu feature is only supported on macOS");

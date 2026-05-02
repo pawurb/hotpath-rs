@@ -1,6 +1,3 @@
-#[path = "../../dev_logging.rs"]
-mod dev_logging;
-
 mod app;
 mod constants;
 #[cfg(feature = "hotpath")]
@@ -39,7 +36,7 @@ pub struct ConsoleArgs {
 #[hotpath::measure_all]
 impl ConsoleArgs {
     pub fn run(&self) -> Result<()> {
-        dev_logging::init_logging();
+        hotpath::dev_logging::init_logging();
 
         #[cfg(feature = "hotpath")]
         demo::init();

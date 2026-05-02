@@ -1,6 +1,6 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
-use crate::cmd::console::dev_logging::{error, info, trace, warn};
+use hotpath::dev_logging::{error, info, trace, warn};
 use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::Route;
 use hotpath::json::{

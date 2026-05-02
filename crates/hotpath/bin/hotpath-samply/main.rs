@@ -1,7 +1,4 @@
-#[path = "../dev_logging.rs"]
-mod dev_logging;
-
-use dev_logging::{error, info, warn};
+use hotpath::dev_logging::{error, info, warn};
 
 use std::env;
 #[cfg(feature = "dev")]
@@ -12,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 fn main() {
-    dev_logging::init_logging();
+    hotpath::dev_logging::init_logging();
 
     if let Err(err) = run() {
         error!("hotpath-samply failed: {err}");
@@ -241,11 +238,13 @@ fn usage() -> String {
 
 #[cfg(feature = "dev")]
 fn child_stdio() -> std::io::Result<Stdio> {
-    std::fs::create_dir_all("log")?;
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("log/development.log")?;
+    let path = &*hotpath::dev_logging::DEV_LOG_PATH;
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    let file = OpenOptions::new().create(true).append(true).open(path)?;
     Ok(Stdio::from(file))
 }
 

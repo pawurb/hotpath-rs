@@ -1,7 +1,7 @@
 //! Data management - fetching, updating, and transforming functions/data flow
 
 use crate::cmd::console::app::{App, DataFlowLogs, DataFlowSubTab, FunctionsSubTab, SelectedTab};
-use crate::cmd::console::dev_logging::{trace, warn};
+use hotpath::dev_logging::{trace, warn};
 use crate::cmd::console::events::{DataRequest, DataResponse};
 use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,

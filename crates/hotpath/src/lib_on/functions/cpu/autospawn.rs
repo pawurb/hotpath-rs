@@ -5,11 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-macro_rules! log {
-    ($($arg:tt)*) => {{
-        eprintln!("[hotpath - cpu autospawn] {}", format_args!($($arg)*));
-    }};
-}
+use crate::dev_logging::warn;
 
 struct BackendHandle {
     session_dir: PathBuf,
@@ -24,20 +20,20 @@ pub(crate) fn start() {
     let backend_bin = match backend_bin() {
         Some(path) => path,
         None => {
-            log!("failed to resolve hotpath-samply binary path");
+            warn!("failed to resolve hotpath-samply binary path");
             return;
         }
     };
     let session_id = match session_id() {
         Some(id) => id,
         None => {
-            log!("failed to generate CPU profiling session id");
+            warn!("failed to generate CPU profiling session id");
             return;
         }
     };
     let session_dir = PathBuf::from("/tmp/hotpath").join(&session_id);
     if let Err(e) = fs::create_dir_all(&session_dir) {
-        log!(
+        warn!(
             "failed to create CPU profiling session dir {}: {}",
             session_dir.display(),
             e
@@ -58,7 +54,7 @@ pub(crate) fn start() {
     {
         Ok(child) => child,
         Err(e) => {
-            log!(
+            warn!(
                 "failed to spawn backend process via {}: {}",
                 backend_bin.display(),
                 e
@@ -84,7 +80,7 @@ pub(crate) fn stop() -> Option<PathBuf> {
         .and_then(|m| m.lock().ok().and_then(|mut g| g.take()));
     let handle = handle?;
     if let Err(e) = fs::write(&handle.stop_path, b"") {
-        log!(
+        warn!(
             "failed to create stop signal {}: {}",
             handle.stop_path.display(),
             e
@@ -100,7 +96,7 @@ pub(crate) fn stop() -> Option<PathBuf> {
         }
 
         if Instant::now() >= deadline {
-            log!(
+            warn!(
                 "timed out waiting for CPU profile {} in session {}",
                 handle.profile_path.display(),
                 handle.session_dir.display()
