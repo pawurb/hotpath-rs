@@ -440,6 +440,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut enable_result_logging = false;
     let mut enable_future_tracking = false;
     let mut label: Option<syn::LitStr> = None;
+    let mut impl_type: Option<syn::LitStr> = None;
 
     if !attr.is_empty() {
         let parser = syn::meta::parser(|meta| {
@@ -467,8 +468,19 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return Ok(());
             }
 
-            Err(meta
-                .error("Unknown parameter. Supported: log = true, future = true, label = \"name\""))
+            if meta.path.is_ident("impl_type") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let lit: syn::LitStr = meta.input.parse()?;
+                if lit.value().is_empty() {
+                    return Err(meta.error("impl_type must be a non-empty string literal"));
+                }
+                impl_type = Some(lit);
+                return Ok(());
+            }
+
+            Err(meta.error(
+                "Unknown parameter. Supported: log = true, future = true, label = \"name\", impl_type = \"Type\"",
+            ))
         });
 
         if let Err(e) = parser.parse2(proc_macro2::TokenStream::from(attr)) {
@@ -485,9 +497,31 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    let measurement_loc = match &label {
-        Some(lit) => quote! { #lit },
-        None => quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) },
+    let measurement_loc = match (&label, &impl_type) {
+        (Some(lit), _) => quote! { #lit },
+        (None, Some(ty)) => {
+            quote! { concat!(module_path!(), "::", #ty, "::", stringify!(#fn_ident)) }
+        }
+        (None, None) => quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) },
+    };
+
+    let cpu_alias_register = if label.is_some() {
+        let symbol_loc = match &impl_type {
+            Some(ty) => {
+                quote! { concat!(module_path!(), "::", #ty, "::", stringify!(#fn_ident)) }
+            }
+            None => quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) },
+        };
+        quote! {
+            {
+                static __HOTPATH_CPU_ALIAS_ONCE: ::std::sync::Once = ::std::sync::Once::new();
+                __HOTPATH_CPU_ALIAS_ONCE.call_once(|| {
+                    hotpath_meta::functions::register_cpu_label_alias(#measurement_loc, #symbol_loc);
+                });
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let wrapped_body = if !is_async_fn {
@@ -523,6 +557,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let output = quote! {
         #(#attrs)*
         #vis #sig {
+            #cpu_alias_register
             #wrapped_body
         }
     };
@@ -734,11 +769,16 @@ pub fn measure_all_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
             TokenStream::from(quote!(#module))
         }
         Item::Impl(mut impl_block) => {
+            let type_name = extract_self_type_name(&impl_block.self_ty);
             for item in impl_block.items.iter_mut() {
                 if let ImplItem::Fn(method) = item {
                     if !has_hotpath_skip_or_measure(&method.attrs) {
                         let func_tokens = TokenStream::from(quote!(#method));
-                        let transformed = measure_impl(TokenStream::new(), func_tokens);
+                        let attr_ts = match &type_name {
+                            Some(name) => TokenStream::from(quote!(impl_type = #name)),
+                            None => TokenStream::new(),
+                        };
+                        let transformed = measure_impl(attr_ts, func_tokens);
                         *method = syn::parse_macro_input!(transformed as syn::ImplItemFn);
                     }
                 }
@@ -746,6 +786,13 @@ pub fn measure_all_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
             TokenStream::from(quote!(#impl_block))
         }
         _ => panic!("measure_all can only be applied to modules or impl blocks"),
+    }
+}
+
+fn extract_self_type_name(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Path(tp) => tp.path.segments.last().map(|s| s.ident.to_string()),
+        _ => None,
     }
 }
 

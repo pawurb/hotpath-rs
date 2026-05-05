@@ -155,8 +155,12 @@ impl HotpathGuardBuilder {
         }
 
         cfg_if::cfg_if! {
-            if #[cfg(feature = "hotpath-alloc-meta")] {
+            if #[cfg(all(feature = "hotpath-alloc-meta", feature = "hotpath-cpu-meta"))] {
+                vec![Section::FunctionsTiming, Section::FunctionsAlloc, Section::FunctionsCpu, Section::Threads]
+            } else if #[cfg(feature = "hotpath-alloc-meta")] {
                 vec![Section::FunctionsTiming, Section::FunctionsAlloc, Section::Threads]
+            } else if #[cfg(feature = "hotpath-cpu-meta")] {
+                vec![Section::FunctionsTiming, Section::FunctionsCpu, Section::Threads]
             } else {
                 vec![Section::FunctionsTiming, Section::Threads]
             }
@@ -267,6 +271,10 @@ impl HotpathGuard {
                 let _suspend = crate::lib_on::SuspendAllocTracking::new();
                 let mut local_stats = HashMap::<u32, FunctionStats>::new();
                 let mut name_to_id = HashMap::<&'static str, u32>::new();
+                #[cfg(feature = "hotpath-cpu-meta")]
+                if *crate::functions::cpu::CPU_INCLUSIVE {
+                    name_to_id.insert(worker_caller_name, 0);
+                }
 
                 loop {
                     select! {
@@ -319,6 +327,15 @@ impl HotpathGuard {
                                             }
                                         }
                                         let _ = response_tx.send(formatted);
+                                    }
+                                    #[cfg(feature = "hotpath-cpu-meta")]
+                                    FunctionsQuery::NamesAndIds(response_tx) => {
+                                        let map: HashMap<&'static str, u32> =
+                                            name_to_id
+                                                .iter()
+                                                .map(|(name, id)| (*name, *id))
+                                                .collect();
+                                        let _ = response_tx.send(map);
                                     }
                                     FunctionsQuery::LogsTiming { function_id, response_tx } => {
                                         let response = local_stats.get(&function_id)
@@ -434,6 +451,11 @@ impl HotpathGuard {
         #[cfg(all(feature = "threads", feature = "hotpath-alloc-meta"))]
         crate::functions::alloc::core::init_thread_alloc_tracking();
 
+        #[cfg(feature = "hotpath-cpu-meta")]
+        if sections.contains(&Section::FunctionsCpu) {
+            crate::functions::cpu::autospawn::start();
+        }
+
         Self {
             state: Arc::clone(&state_arc),
             format,
@@ -495,6 +517,33 @@ fn build_timing_list(
 impl Drop for HotpathGuard {
     fn drop(&mut self) {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
+
+        #[cfg(feature = "hotpath-cpu-meta")]
+        let cpu_report: Option<Result<crate::functions::cpu::CpuReport, String>> =
+            if self.sections.contains(&Section::FunctionsCpu) {
+                let caller_name = self
+                    .state
+                    .read()
+                    .map(|state| state.caller_name)
+                    .unwrap_or("unknown");
+                match crate::functions::cpu::autospawn::stop() {
+                    Ok(profile_path) => {
+                        match crate::functions::cpu::build_cpu_report_from_path(
+                            caller_name,
+                            &profile_path,
+                        ) {
+                            Some(r) => Some(Ok(r)),
+                            None => Some(Err(format!(
+                                "no data parsed from samply profile {}",
+                                profile_path.display()
+                            ))),
+                        }
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            } else {
+                None
+            };
 
         if let Some(f) = self.before_shutdown.take() {
             f();
@@ -621,6 +670,34 @@ impl Drop for HotpathGuard {
                                     }
                                 }
                             }
+                        }
+                    }
+                    Section::FunctionsCpu =>
+                    {
+                        #[cfg(feature = "hotpath-cpu-meta")]
+                        match cpu_report.as_ref() {
+                            Some(Ok(cpu)) => {
+                                if let Ok(state_guard) = state.read() {
+                                    let total_elapsed =
+                                        end_time.duration_since(state_guard.start_time);
+                                    let elapsed_ns = total_elapsed.as_nanos() as u64;
+                                    let config = make_functions_config(&state_guard, total_elapsed);
+                                    let list = crate::functions::cpu::build_cpu_json(
+                                        cpu,
+                                        total_elapsed,
+                                        elapsed_ns,
+                                        config.limit,
+                                    );
+                                    report.functions_cpu =
+                                        Some(crate::json::JsonFunctionsCpu::Ok(list));
+                                }
+                            }
+                            Some(Err(msg)) => {
+                                report.functions_cpu = Some(crate::json::JsonFunctionsCpu::Error {
+                                    message: msg.clone(),
+                                });
+                            }
+                            None => {}
                         }
                     }
                     Section::Channels => {
@@ -764,6 +841,40 @@ impl Drop for HotpathGuard {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    Section::FunctionsCpu =>
+                    {
+                        #[cfg(feature = "hotpath-cpu-meta")]
+                        if matches!(format, Format::Table) {
+                            match cpu_report.as_ref() {
+                                Some(Ok(cpu)) => {
+                                    if let Ok(state_guard) = state.read() {
+                                        let total_elapsed =
+                                            end_time.duration_since(state_guard.start_time);
+                                        let elapsed_ns = total_elapsed.as_nanos() as u64;
+                                        let config =
+                                            make_functions_config(&state_guard, total_elapsed);
+                                        let list = crate::functions::cpu::build_cpu_json(
+                                            cpu,
+                                            total_elapsed,
+                                            elapsed_ns,
+                                            config.limit,
+                                        );
+                                        crate::functions::cpu::report_functions_cpu_table(
+                                            &mut writer,
+                                            &list,
+                                        );
+                                    }
+                                }
+                                Some(Err(msg)) => {
+                                    crate::functions::cpu::report_functions_cpu_error_table(
+                                        &mut writer,
+                                        msg,
+                                    );
+                                }
+                                None => {}
                             }
                         }
                     }

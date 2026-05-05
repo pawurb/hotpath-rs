@@ -8,6 +8,10 @@ readme = "README.md"
 license = "MIT"
 categories = ["development-tools"]
 
+[[bin]]
+name = "hotpath-samply-meta"
+path = "bin/hotpath-samply-meta/main.rs"
+
 [features]
 default = ["threads"]
 hotpath-meta = [
@@ -30,13 +34,14 @@ hotpath-meta = [
 hotpath-alloc-meta = ["dep:tokio"]
 hotpath-alloc = []
 hotpath-off-meta = ["hotpath-macros-meta/hotpath-off-meta"]
+hotpath-cpu-meta = ["dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
 tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:base64", "dep:regex", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:futures-channel"]
 async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/time", "tokio/rt-multi-thread", "dep:async-channel"]
 crossbeam = []
 threads = []
-dev = ["dep:tracing", "dep:tracing-subscriber", "dep:time"]
+dev-meta = ["dep:time"]
 hotpath-mcp-meta = ["hotpath-meta", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]
@@ -64,13 +69,14 @@ futures-util = { version = "0.3", features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
 regex = { version = "1", optional = true }
 libc = { version = "0.2.150", optional = true }
-tracing = { version = "0.1", optional = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"], optional = true }
-time = { version = "0.3", features = ["formatting", "local-offset"], optional = true }
+time = { version = "0.3", features = ["formatting", "local-offset", "macros"], optional = true }
 rmcp = { version = "0.13", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }
+object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }
+rustc-demangle = { version = "0.1", optional = true }
+flate2 = { version = "1", optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

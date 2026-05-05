@@ -627,7 +627,7 @@ pub(crate) fn start_mcp_server_once() {
     });
 }
 
-#[cfg(feature = "dev")]
+#[cfg(feature = "dev-meta")]
 fn log_debug(msg: &str) {
     use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -651,7 +651,7 @@ fn log_debug(msg: &str) {
     }
 }
 
-#[cfg(not(feature = "dev"))]
+#[cfg(not(feature = "dev-meta"))]
 fn log_debug(_msg: &str) {}
 
 #[cfg(test)]

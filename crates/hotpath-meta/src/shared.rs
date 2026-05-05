@@ -4,6 +4,7 @@ use std::str::FromStr;
 pub enum Section {
     FunctionsTiming,
     FunctionsAlloc,
+    FunctionsCpu,
     Channels,
     Streams,
     Futures,
@@ -16,6 +17,7 @@ impl Section {
         vec![
             Section::FunctionsTiming,
             Section::FunctionsAlloc,
+            Section::FunctionsCpu,
             Section::Channels,
             Section::Streams,
             Section::Futures,
@@ -28,6 +30,7 @@ impl Section {
         match self {
             Section::FunctionsTiming => "timing",
             Section::FunctionsAlloc => "alloc",
+            Section::FunctionsCpu => "cpu",
             Section::Channels => "channels",
             Section::Streams => "streams",
             Section::Futures => "futures",
@@ -40,6 +43,7 @@ impl Section {
         match s.trim() {
             "functions-timing" => Some(Section::FunctionsTiming),
             "functions-alloc" => Some(Section::FunctionsAlloc),
+            "functions-cpu" => Some(Section::FunctionsCpu),
             "channels" => Some(Section::Channels),
             "streams" => Some(Section::Streams),
             "futures" => Some(Section::Futures),
@@ -202,6 +206,13 @@ impl IntoF64 for usize {
     fn into_f64(self) -> f64 {
         self as f64
     }
+}
+
+#[cfg(all(feature = "hotpath-meta", feature = "hotpath-cpu-meta"))]
+pub(crate) fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
 }
 
 #[cfg(feature = "hotpath-meta")]

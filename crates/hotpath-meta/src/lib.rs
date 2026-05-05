@@ -8,6 +8,12 @@
 // depending on feature combinations (e.g. alloc code without global_allocator).
 #![allow(dead_code)]
 
+#[cfg(all(
+    feature = "hotpath-cpu-meta",
+    not(any(target_os = "macos", target_os = "linux"))
+))]
+compile_error!("the `hotpath-cpu-meta` feature is only supported on macOS and Linux");
+
 #[cfg(feature = "hotpath-meta")]
 #[doc(inline)]
 pub use lib_on::*;
@@ -73,3 +79,6 @@ pub use lib_off::threads;
 
 mod shared;
 pub use shared::{Format, IntoF64, Section};
+
+#[doc(hidden)]
+pub mod dev_logging;

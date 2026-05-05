@@ -1,5 +1,6 @@
 //! Function profiling module - measures execution time and memory allocations per function.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -13,6 +14,8 @@ use crate::metrics_server::RECV_TIMEOUT_MS;
 use crate::output::FunctionLogsList;
 
 pub(crate) mod batch;
+#[cfg(feature = "hotpath-cpu-meta")]
+pub(crate) mod cpu;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc-meta")] {
@@ -299,6 +302,24 @@ pub(crate) static FUNCTIONS_STATE: OnceLock<Arc<RwLock<FunctionsState>>> = OnceL
 
 pub(crate) static FUNCTIONS_QUERY_TX: OnceLock<Sender<FunctionsQuery>> = OnceLock::new();
 
+static CPU_LABEL_ALIASES: OnceLock<RwLock<HashMap<&'static str, &'static str>>> = OnceLock::new();
+
+#[doc(hidden)]
+pub fn register_cpu_label_alias(label: &'static str, symbol: &'static str) {
+    let map = CPU_LABEL_ALIASES.get_or_init(|| RwLock::new(HashMap::new()));
+    if let Ok(mut w) = map.write() {
+        w.entry(label).or_insert(symbol);
+    }
+}
+
+#[cfg(feature = "hotpath-cpu-meta")]
+pub(crate) fn get_cpu_label_aliases() -> HashMap<&'static str, &'static str> {
+    CPU_LABEL_ALIASES
+        .get()
+        .and_then(|m| m.read().ok().map(|g| g.clone()))
+        .unwrap_or_default()
+}
+
 /// Query request sent from TUI HTTP server to profiler worker thread
 #[derive(Debug)]
 pub(crate) enum FunctionsQuery {
@@ -306,6 +327,9 @@ pub(crate) enum FunctionsQuery {
     Timing(Sender<JsonFunctionsList>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc-meta not enabled
     Alloc(Sender<Option<JsonFunctionsList>>),
+    /// Request the names + worker-assigned ids of functions that have been registered
+    #[cfg(feature = "hotpath-cpu-meta")]
+    NamesAndIds(Sender<HashMap<&'static str, u32>>),
     /// Request timing function logs for a specific function by ID
     LogsTiming {
         function_id: u32,
@@ -355,6 +379,11 @@ pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsL
 
 pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
     query_functions_state(FunctionsQuery::Alloc).flatten()
+}
+
+#[cfg(feature = "hotpath-cpu-meta")]
+pub(crate) fn get_instrumented_names_and_ids() -> Option<HashMap<&'static str, u32>> {
+    query_functions_state(FunctionsQuery::NamesAndIds)
 }
 
 pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<FunctionLogsList> {

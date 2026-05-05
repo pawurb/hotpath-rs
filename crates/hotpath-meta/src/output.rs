@@ -183,6 +183,15 @@ pub(crate) fn use_colors() -> bool {
     *USE_COLORS.get().unwrap_or(&false)
 }
 
+#[cfg(feature = "hotpath-cpu-meta")]
+pub(crate) fn cyan(text: &str) -> String {
+    if use_colors() {
+        format!("\x1b[1;36m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
 impl OutputDestination {
     /// Creates a writer for this destination.
     ///

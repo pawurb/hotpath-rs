@@ -40,6 +40,8 @@ use serde::Serialize;
 use std::fmt::Display;
 use std::sync::OnceLock;
 use std::thread;
+#[cfg(feature = "hotpath-cpu-meta")]
+use tiny_http::Method;
 use tiny_http::{Header, Request, Response, Server};
 
 static HTTP_SERVER_STARTED: OnceLock<()> = OnceLock::new();
@@ -201,6 +203,43 @@ fn handle_request(request: Request) {
             }
             #[cfg(not(feature = "tokio"))]
             respond_error(request, 404, TOKIO_RUNTIME_HINT);
+        }
+        #[cfg(feature = "hotpath-cpu-meta")]
+        Ok(Route::FunctionsCpu) => {
+            let envelope = crate::functions::cpu::get_cpu_envelope();
+            respond_json(request, &envelope);
+        }
+        #[cfg(not(feature = "hotpath-cpu-meta"))]
+        Ok(Route::FunctionsCpu) => {
+            respond_error(
+                request,
+                404,
+                "CPU profiling not available - enable hotpath-cpu-meta feature",
+            );
+        }
+        #[cfg(feature = "hotpath-cpu-meta")]
+        Ok(Route::FunctionsCpuSnapshot) => {
+            if request.method() != &Method::Post {
+                respond_error(request, 405, "Method not allowed - use POST");
+            } else if crate::functions::cpu::try_spawn_snapshot() {
+                let body = r#"{"status":"capturing"}"#;
+                let mut response = Response::from_string(body).with_status_code(202);
+                response.add_header(
+                    Header::from_bytes(b"Content-Type".as_slice(), b"application/json".as_slice())
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
+            } else {
+                respond_error(request, 409, "Snapshot already in progress");
+            }
+        }
+        #[cfg(not(feature = "hotpath-cpu-meta"))]
+        Ok(Route::FunctionsCpuSnapshot) => {
+            respond_error(
+                request,
+                404,
+                "CPU profiling not available - enable hotpath-cpu-meta feature",
+            );
         }
         Ok(Route::ProfilerStatus) => {
             let status = JsonProfilerStatus {

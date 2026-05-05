@@ -107,6 +107,63 @@ impl JsonFunctionsList {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonFunctionCpuEntry {
+    pub id: u32,
+    pub name: String,
+    pub samples: u64,
+    pub percent: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonFunctionsCpuList {
+    pub time_elapsed: String,
+    pub total_elapsed_ns: u64,
+    pub total_samples: u64,
+    pub attributed_samples: u64,
+    pub description: String,
+    pub caller_name: String,
+    pub data: Vec<JsonFunctionCpuEntry>,
+    pub profile_path: String,
+    #[serde(skip)]
+    pub displayed_count: usize,
+    #[serde(skip)]
+    pub total_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JsonFunctionsCpu {
+    Ok(JsonFunctionsCpuList),
+    Error { message: String },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CpuSnapshotStatus {
+    Idle,
+    Capturing,
+    Ready,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonFunctionsCpuEnvelope {
+    pub status: CpuSnapshotStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub captured_at_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capture_duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report: Option<JsonFunctionsCpuList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_session_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionTimingLog {
     pub invocation: u64,
     pub duration: String,
@@ -634,6 +691,8 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub functions_alloc: Option<JsonFunctionsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub functions_cpu: Option<JsonFunctionsCpu>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub channels: Option<JsonChannelsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub streams: Option<JsonStreamsList>,
@@ -654,6 +713,7 @@ impl Default for JsonReport {
             label: None,
             functions_timing: None,
             functions_alloc: None,
+            functions_cpu: None,
             channels: None,
             streams: None,
             futures: None,
