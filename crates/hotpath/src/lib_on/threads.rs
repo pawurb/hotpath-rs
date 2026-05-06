@@ -49,6 +49,9 @@ struct ThreadsState {
     start_time: Instant,
     /// Peak CPU percentage per thread (keyed by os_tid)
     max_cpu_percent: HashMap<u64, f64>,
+    /// Per-thread baseline (cpu_total, timestamp) at first observation, so
+    /// cpu_percent_avg excludes CPU accumulated before profiler started.
+    baseline_cpu: HashMap<u64, (f64, Instant)>,
 }
 
 type ThreadsStateRef = Arc<RwLock<ThreadsState>>;
@@ -79,6 +82,7 @@ pub(crate) fn init_threads_monitoring() {
             sample_interval,
             start_time,
             max_cpu_percent: HashMap::new(),
+            baseline_cpu: HashMap::new(),
         }));
 
         let state_clone = Arc::clone(&state);
@@ -106,7 +110,6 @@ fn collector_loop(state: ThreadsStateRef, interval: Duration) {
                     Err(_) => continue,
                 };
                 let elapsed_secs = state_guard.last_sample_time.elapsed().as_secs_f64();
-                let profiler_elapsed = state_guard.start_time.elapsed().as_secs_f64();
 
                 // Calculate CPU percentages by comparing with previous sample
                 let mut new_metrics = Vec::with_capacity(raw_metrics.len());
@@ -128,9 +131,16 @@ fn collector_loop(state: ThreadsStateRef, interval: Duration) {
                         m_with_percent.mem_diff = Some(alloc as i64 - dealloc as i64);
                     }
 
-                    if profiler_elapsed > 0.0 {
+                    let now = Instant::now();
+                    let (baseline_cpu, baseline_at) = *state_guard
+                        .baseline_cpu
+                        .entry(m_with_percent.os_tid)
+                        .or_insert((m_with_percent.cpu_total, now));
+                    let observed_secs = now.duration_since(baseline_at).as_secs_f64();
+                    if observed_secs > 0.0 {
+                        let cpu_since_baseline = m_with_percent.cpu_total - baseline_cpu;
                         m_with_percent.cpu_percent_avg =
-                            Some((m_with_percent.cpu_total / profiler_elapsed) * 100.0);
+                            Some((cpu_since_baseline / observed_secs) * 100.0);
                     }
 
                     if let Some(pct) = m_with_percent.cpu_percent {
