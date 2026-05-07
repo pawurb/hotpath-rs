@@ -84,6 +84,9 @@ jobs:
       - name: Check utils build
         run: |
           cargo check -p hotpath --bin hotpath-utils --features=utils
+      - name: Build tests
+        run: |
+          cargo build --tests
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui
