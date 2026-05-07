@@ -107,6 +107,7 @@ pub mod tests {
     }
 
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-futures --example basic_futures --features hotpath
+    #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::JsonFuturesList;

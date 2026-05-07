@@ -1,11 +1,11 @@
 #[cfg(test)]
 pub mod tests {
-    use hotpath::json::JsonThreadsList;
-    use std::process::Command;
-    use std::thread::sleep;
-    use std::time::Duration;
+    #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
+    use {hotpath::json::JsonThreadsList, std::thread::sleep, std::time::Duration};
 
+    use std::process::Command;
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-tokio-async --example basic --features hotpath
+    #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
     #[test]
     fn test_threads_endpoint() {
         let mut child = Command::new("cargo")

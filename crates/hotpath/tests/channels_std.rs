@@ -178,6 +178,7 @@ pub mod tests {
     }
 
     // HOTPATH_METRICS_PORT=6770 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-std --example basic_std --features hotpath
+    #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::JsonChannelsList;

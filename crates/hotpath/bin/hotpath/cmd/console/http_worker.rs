@@ -169,7 +169,7 @@ impl RouteExt for Route {
             let msg = serde_json::from_str::<serde_json::Value>(&body)
                 .ok()
                 .and_then(|v| v.get("error")?.as_str().map(String::from))
-                .unwrap_or(body);
+                .unwrap_or_else(|| body.to_string());
             return DataResponse::Error(msg);
         }
 
