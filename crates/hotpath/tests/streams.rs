@@ -81,7 +81,7 @@ pub mod tests {
     }
 
     // HOTPATH_METRICS_PORT=6774 TEST_SLEEP_SECONDS=10 cargo run -p test-streams --example basic_streams --features hotpath
-    #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
+    #[cfg(feature = "hotpath")]
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::JsonStreamsList;
