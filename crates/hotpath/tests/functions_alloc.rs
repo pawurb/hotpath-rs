@@ -496,4 +496,53 @@ pub mod tests {
         );
         assert_bytes("instrumented_1kb", 1024);
     }
+
+    // cargo run -p test-tokio-async --example custom_allocator --features hotpath,hotpath-alloc
+    #[test]
+    fn test_custom_allocator_via_main_macro() {
+        use hotpath::json::JsonReport;
+
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "custom_allocator",
+                "--features",
+                "hotpath,hotpath-alloc",
+            ])
+            .env("HOTPATH_REPORT", "functions-alloc")
+            .env("HOTPATH_OUTPUT_FORMAT", "json")
+            .env("HOTPATH_METRICS_SERVER_OFF", "true")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let report: JsonReport = serde_json::from_str(stdout.lines().last().expect("no output"))
+            .expect("Failed to parse JSON output");
+
+        let alloc = report
+            .functions_alloc
+            .expect("Expected functions_alloc in report");
+
+        let alloc_work = alloc
+            .data
+            .iter()
+            .find(|f| f.name == "custom_allocator::alloc_demo::alloc_work")
+            .expect("Expected custom_allocator::alloc_demo::alloc_work in alloc data");
+
+        let total_bytes = hotpath::parse_bytes(&alloc_work.total)
+            .expect("Failed to parse total bytes for custom_allocator::alloc_demo::alloc_work");
+        assert!(
+            total_bytes > 0,
+            "expected alloc_work to report allocated bytes"
+        );
+    }
 }

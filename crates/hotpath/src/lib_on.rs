@@ -1,7 +1,6 @@
 #[doc(hidden)]
 pub use cfg_if::cfg_if;
 pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
-
 use std::sync::OnceLock;
 
 use crate::instant::Instant;
@@ -43,18 +42,13 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 pub mod hotpath_guard;
 pub(crate) mod report;
 
+#[cfg(feature = "hotpath-alloc")]
+pub use functions::alloc::allocator::CountingAllocator;
 pub use functions::{
     measure_async, measure_async_future, measure_async_future_log, measure_async_log,
     measure_sync_log, MeasurementGuardAsync, MeasurementGuardSync,
 };
 pub use hotpath_guard::{HotpathGuard, HotpathGuardBuilder};
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "hotpath-alloc")] {
-        #[global_allocator]
-        static GLOBAL: functions::alloc::allocator::CountingAllocator = functions::alloc::allocator::CountingAllocator {};
-    }
-}
 
 #[must_use = "guard is dropped immediately without suspending tracking"]
 pub(crate) struct SuspendAllocTracking {

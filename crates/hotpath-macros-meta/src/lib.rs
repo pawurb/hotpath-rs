@@ -28,6 +28,8 @@ mod lib_off;
 /// * `threads_limit` - Maximum number of threads shown in the report. Overrides `limit` for threads.
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_META_OUTPUT_PATH` env var.
 /// * `report` - Comma-separated sections to include: `"functions-timing"`, `"functions-alloc"`, `"channels"`, `"streams"`, `"futures"`, `"threads"`, `"debug"`, or `"all"`. Overridden by `HOTPATH_META_REPORT` env var.
+/// * `allocator` - Optional allocator type path used when `hotpath-alloc-meta` is enabled.
+///   Defaults to `std::alloc::System`.
 ///
 /// Environment variable precedence for report output:
 /// `HOTPATH_META_LIMIT`, `HOTPATH_META_FUNCTIONS_LIMIT`,

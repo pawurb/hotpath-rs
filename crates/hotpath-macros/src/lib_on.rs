@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use std::sync::LazyLock;
 use syn::parse::Parser;
-use syn::{parse_macro_input, ImplItem, Item, ItemFn, Lit, LitInt, LitStr};
+use syn::{parse_macro_input, ImplItem, Item, ItemFn, Lit, LitInt, LitStr, Path};
 
 fn env_flag(name: &str) -> bool {
     std::env::var(name)
@@ -50,6 +50,8 @@ impl Format {
 /// * `threads_limit` - Maximum number of threads shown in the report. Overrides `limit` for threads.
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_OUTPUT_PATH` env var.
 /// * `report` - Comma-separated sections to include. Overridden by `HOTPATH_REPORT` env var.
+/// * `allocator` - Optional allocator type path used when `hotpath-alloc` is enabled.
+///   Defaults to `std::alloc::System`.
 ///
 /// Environment variable precedence for report output:
 /// `HOTPATH_LIMIT`, `HOTPATH_FUNCTIONS_LIMIT`, `HOTPATH_CHANNELS_LIMIT`,
@@ -152,6 +154,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut threads_limit: Option<usize> = None;
     let mut output_path: Option<String> = None;
     let mut report_sections: Option<String> = None;
+    let mut allocator: Option<Path> = None;
 
     // Parse named args like: percentiles=[..], format="..", report=".."
     if !attr.is_empty() {
@@ -258,8 +261,14 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return Ok(());
             }
 
+            if meta.path.is_ident("allocator") {
+                meta.input.parse::<syn::Token![=]>()?;
+                allocator = Some(meta.input.parse()?);
+                return Ok(());
+            }
+
             Err(meta.error(
-                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, functions_limit=N, channels_limit=N, streams_limit=N, futures_limit=N, threads_limit=N, output_path=\"..\", report=\"..\"",
+                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, functions_limit=N, channels_limit=N, streams_limit=N, futures_limit=N, threads_limit=N, output_path=\"..\", report=\"..\", allocator=TypePath",
             ))
         });
 
@@ -365,6 +374,17 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         };
     };
 
+    let allocator_path = allocator
+        .map(|path| quote! { #path })
+        .unwrap_or_else(|| quote! { ::std::alloc::System });
+
+    let allocator_item = quote! {
+        #[cfg(feature = "hotpath-alloc")]
+        #[global_allocator]
+        static __HOTPATH_GLOBAL_ALLOCATOR: hotpath::CountingAllocator<#allocator_path> =
+            hotpath::CountingAllocator::new();
+    };
+
     let body = quote! {
         #guard_init
         #block
@@ -377,6 +397,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let output = quote! {
+        #allocator_item
         #vis #sig {
             #wrapped_body
         }
