@@ -502,6 +502,7 @@ pub mod tests {
     }
 
     // cargo run -p test-tokio-async --example custom_allocator --features hotpath,hotpath-alloc
+    #[cfg(feature = "hotpath")]
     #[test]
     fn test_custom_allocator_via_main_macro() {
         use hotpath::json::JsonReport;
