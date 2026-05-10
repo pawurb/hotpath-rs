@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    if: false
+    # if: false
     name: test ${{ matrix.rust }}
     runs-on: windows-latest
     timeout-minutes: 18
@@ -44,3 +44,6 @@ jobs:
       - name: Run functions_alloc tests
         run: |
           cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
+      - name: Run threads tests
+        run: |
+          cargo test --features hotpath --test threads -- --nocapture --test-threads=1
