@@ -44,6 +44,7 @@ unsafe extern "system" {
     fn CloseHandle(h_object: HANDLE) -> BOOL;
     fn GetCurrentProcessId() -> DWORD;
     fn GetProcessIdOfThread(thread: HANDLE) -> DWORD;
+    fn GetLastError() -> DWORD;
 }
 
 const INVALID_HANDLE_VALUE: HANDLE = !0 as HANDLE;
@@ -90,8 +91,15 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
 
         let _snapshot_guard = AutoHandle(snapshot);
 
-        let mut thread_entry: THREADENTRY32 = mem::zeroed();
-        thread_entry.dw_size = mem::size_of::<THREADENTRY32>() as DWORD;
+        let mut thread_entry = THREADENTRY32 {
+            dw_size: mem::size_of::<THREADENTRY32>() as DWORD,
+            c_usage: 0,
+            th32_thread_id: 0,
+            th32_owner_process_id: 0,
+            tp_base_pri: 0,
+            tp_delta_pri: 0,
+            dw_flags: 0,
+        };
 
         let mut metrics = Vec::new();
 
