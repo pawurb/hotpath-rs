@@ -145,10 +145,10 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
         return Err("Thread ID was reassigned to another process".to_string());
     }
 
-    let mut creation_time: FILETIME = unsafe { mem::zeroed() };
-    let mut exit_time: FILETIME = unsafe { mem::zeroed() };
-    let mut kernel_time: FILETIME = unsafe { mem::zeroed() };
-    let mut user_time: FILETIME = unsafe { mem::zeroed() };
+    let mut creation_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
+    let mut exit_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
+    let mut kernel_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
+    let mut user_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
 
     let result = unsafe {
         GetThreadTimes(
