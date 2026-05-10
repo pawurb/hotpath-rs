@@ -44,11 +44,24 @@ extern "system" {
     ) -> BOOL;
     fn CloseHandle(h_object: HANDLE) -> BOOL;
     fn GetCurrentProcessId() -> DWORD;
+    fn GetProcessIdOfThread(thread: HANDLE) -> DWORD;
     fn GetLastError() -> DWORD;
 }
 
 const INVALID_HANDLE_VALUE: HANDLE = !0 as HANDLE;
 const ERROR_NO_MORE_FILES: DWORD = 18;
+const ERROR_BAD_LENGTH: DWORD = 24;
+
+/// RAII wrapper for Windows HANDLE to ensure cleanup on drop/panic
+struct AutoHandle(HANDLE);
+
+impl Drop for AutoHandle {
+    fn drop(&mut self) {
+        if self.0 != INVALID_HANDLE_VALUE && !self.0.is_null() {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+}
 
 fn filetime_to_seconds(ft: &FILETIME) -> f64 {
     let ticks = ((ft.dw_high_date_time as u64) << 32) | (ft.dw_low_date_time as u64);
@@ -60,12 +73,24 @@ fn filetime_to_seconds(ft: &FILETIME) -> f64 {
 pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
     unsafe {
         let current_pid = GetCurrentProcessId();
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
 
-        if snapshot == INVALID_HANDLE_VALUE {
-            let error = GetLastError();
-            return Err(format!("Failed to create thread snapshot: error {}", error));
+        // Retry snapshot creation if ERROR_BAD_LENGTH occurs (rapid process/thread churn)
+        let mut snapshot = INVALID_HANDLE_VALUE;
+        let mut retries = 0;
+
+        while snapshot == INVALID_HANDLE_VALUE && retries < 5 {
+            snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if snapshot == INVALID_HANDLE_VALUE {
+                let error = GetLastError();
+                if error != ERROR_BAD_LENGTH || retries >= 4 {
+                    return Err(format!("Failed to create thread snapshot: error {}", error));
+                }
+                retries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
+
+        let _snapshot_guard = AutoHandle(snapshot);
 
         let mut thread_entry: THREADENTRY32 = mem::zeroed();
         thread_entry.dw_size = mem::size_of::<THREADENTRY32>() as DWORD;
@@ -74,14 +99,13 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
 
         if Thread32First(snapshot, &mut thread_entry) == 0 {
             let error = GetLastError();
-            CloseHandle(snapshot);
             return Err(format!("Thread32First failed: error {}", error));
         }
 
         loop {
             // Only process threads from our own process
             if thread_entry.th32_owner_process_id == current_pid {
-                match get_thread_info(thread_entry.th32_thread_id) {
+                match get_thread_info(thread_entry.th32_thread_id, current_pid) {
                     Ok(metric) => metrics.push(metric),
                     Err(_) => {
                         // Thread may have exited - this is normal
@@ -92,24 +116,29 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
             if Thread32Next(snapshot, &mut thread_entry) == 0 {
                 let error = GetLastError();
                 if error != ERROR_NO_MORE_FILES {
-                    CloseHandle(snapshot);
                     return Err(format!("Thread32Next failed: error {}", error));
                 }
                 break;
             }
         }
 
-        CloseHandle(snapshot);
         Ok(metrics)
     }
 }
 
-unsafe fn get_thread_info(thread_id: DWORD) -> Result<ThreadMetrics, String> {
+unsafe fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics, String> {
     let h_thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, 0, thread_id);
 
     if h_thread.is_null() {
         let error = GetLastError();
         return Err(format!("Failed to open thread {}: error {}", thread_id, error));
+    }
+
+    let _thread_guard = AutoHandle(h_thread);
+
+    // Verify the thread still belongs to our process (guard against TID reuse)
+    if GetProcessIdOfThread(h_thread) != current_pid {
+        return Err("Thread ID was reassigned to another process".to_string());
     }
 
     let mut creation_time: FILETIME = mem::zeroed();
@@ -124,8 +153,6 @@ unsafe fn get_thread_info(thread_id: DWORD) -> Result<ThreadMetrics, String> {
         &mut kernel_time,
         &mut user_time,
     );
-
-    CloseHandle(h_thread);
 
     if result == 0 {
         let error = GetLastError();
