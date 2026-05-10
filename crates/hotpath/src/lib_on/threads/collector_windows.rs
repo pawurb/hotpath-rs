@@ -44,7 +44,6 @@ unsafe extern "system" {
     fn CloseHandle(h_object: HANDLE) -> BOOL;
     fn GetCurrentProcessId() -> DWORD;
     fn GetProcessIdOfThread(thread: HANDLE) -> DWORD;
-    fn GetLastError() -> DWORD;
 }
 
 const INVALID_HANDLE_VALUE: HANDLE = !0 as HANDLE;
@@ -129,8 +128,7 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     let h_thread = unsafe { OpenThread(THREAD_QUERY_LIMITED_INFORMATION, 0, thread_id) };
 
     if h_thread.is_null() {
-        let error = unsafe { GetLastError() };
-        return Err(format!("Failed to open thread {}: error {}", thread_id, error));
+        return Err(format!("Failed to open thread {}: {}", thread_id, std::io::Error::last_os_error()));
     }
 
     let _thread_guard = AutoHandle(h_thread);
@@ -138,8 +136,7 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     // Verify the thread still belongs to our process (guard against TID reuse)
     let process_id = unsafe { GetProcessIdOfThread(h_thread) };
     if process_id == 0 {
-        let error = unsafe { GetLastError() };
-        return Err(format!("GetProcessIdOfThread failed for thread {}: error {}", thread_id, error));
+        return Err(format!("GetProcessIdOfThread failed for thread {}: {}", thread_id, std::io::Error::last_os_error()));
     }
     if process_id != current_pid {
         return Err("Thread ID was reassigned to another process".to_string());
@@ -161,8 +158,7 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     };
 
     if result == 0 {
-        let error = unsafe { GetLastError() };
-        return Err(format!("GetThreadTimes failed for thread {}: error {}", thread_id, error));
+        return Err(format!("GetThreadTimes failed for thread {}: {}", thread_id, std::io::Error::last_os_error()));
     }
 
     let cpu_user = filetime_to_seconds(&user_time);
