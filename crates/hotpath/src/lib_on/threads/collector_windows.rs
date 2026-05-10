@@ -136,7 +136,11 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     let h_thread = unsafe { OpenThread(THREAD_QUERY_LIMITED_INFORMATION, 0, thread_id) };
 
     if h_thread.is_null() {
-        return Err(format!("Failed to open thread {}: {}", thread_id, std::io::Error::last_os_error()));
+        return Err(format!(
+            "Failed to open thread {}: {}",
+            thread_id,
+            std::io::Error::last_os_error()
+        ));
     }
 
     let _thread_guard = AutoHandle(h_thread);
@@ -144,16 +148,32 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     // Verify the thread still belongs to our process (guard against TID reuse)
     let process_id = unsafe { GetProcessIdOfThread(h_thread) };
     if process_id == 0 {
-        return Err(format!("GetProcessIdOfThread failed for thread {}: {}", thread_id, std::io::Error::last_os_error()));
+        return Err(format!(
+            "GetProcessIdOfThread failed for thread {}: {}",
+            thread_id,
+            std::io::Error::last_os_error()
+        ));
     }
     if process_id != current_pid {
         return Err("Thread ID was reassigned to another process".to_string());
     }
 
-    let mut creation_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
-    let mut exit_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
-    let mut kernel_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
-    let mut user_time = FILETIME { dw_low_date_time: 0, dw_high_date_time: 0 };
+    let mut creation_time = FILETIME {
+        dw_low_date_time: 0,
+        dw_high_date_time: 0,
+    };
+    let mut exit_time = FILETIME {
+        dw_low_date_time: 0,
+        dw_high_date_time: 0,
+    };
+    let mut kernel_time = FILETIME {
+        dw_low_date_time: 0,
+        dw_high_date_time: 0,
+    };
+    let mut user_time = FILETIME {
+        dw_low_date_time: 0,
+        dw_high_date_time: 0,
+    };
 
     let result = unsafe {
         GetThreadTimes(
@@ -166,7 +186,11 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     };
 
     if result == 0 {
-        return Err(format!("GetThreadTimes failed for thread {}: {}", thread_id, std::io::Error::last_os_error()));
+        return Err(format!(
+            "GetThreadTimes failed for thread {}: {}",
+            thread_id,
+            std::io::Error::last_os_error()
+        ));
     }
 
     let cpu_user = filetime_to_seconds(&user_time);
