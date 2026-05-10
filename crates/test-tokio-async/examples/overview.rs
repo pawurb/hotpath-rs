@@ -24,11 +24,6 @@ fn sync_alloc() {
 }
 
 #[hotpath::measure]
-fn sync_sleep() {
-    std::thread::sleep(Duration::from_millis(10));
-}
-
-#[hotpath::measure]
 async fn async_sleep() {
     tokio::time::sleep(Duration::from_millis(10)).await;
 }
@@ -39,7 +34,6 @@ async fn main() {
     for _ in 0..1000 {
         sync_work();
         sync_alloc();
-        sync_sleep();
         async_sleep().await;
     }
 }
