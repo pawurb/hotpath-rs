@@ -9,7 +9,6 @@ type HANDLE = *mut std::ffi::c_void;
 type BOOL = i32;
 
 const TH32CS_SNAPTHREAD: DWORD = 0x00000004;
-const THREAD_QUERY_INFORMATION: DWORD = 0x0040;
 const THREAD_QUERY_LIMITED_INFORMATION: DWORD = 0x0800;
 
 #[repr(C)]
@@ -30,7 +29,7 @@ struct FILETIME {
 }
 
 #[link(name = "kernel32")]
-extern "system" {
+unsafe extern "system" {
     fn CreateToolhelp32Snapshot(dw_flags: DWORD, th32_process_id: DWORD) -> HANDLE;
     fn Thread32First(h_snapshot: HANDLE, lp_te: *mut THREADENTRY32) -> BOOL;
     fn Thread32Next(h_snapshot: HANDLE, lp_te: *mut THREADENTRY32) -> BOOL;
@@ -126,36 +125,43 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
     }
 }
 
-unsafe fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics, String> {
-    let h_thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, 0, thread_id);
+fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics, String> {
+    let h_thread = unsafe { OpenThread(THREAD_QUERY_LIMITED_INFORMATION, 0, thread_id) };
 
     if h_thread.is_null() {
-        let error = GetLastError();
+        let error = unsafe { GetLastError() };
         return Err(format!("Failed to open thread {}: error {}", thread_id, error));
     }
 
     let _thread_guard = AutoHandle(h_thread);
 
     // Verify the thread still belongs to our process (guard against TID reuse)
-    if GetProcessIdOfThread(h_thread) != current_pid {
+    let process_id = unsafe { GetProcessIdOfThread(h_thread) };
+    if process_id == 0 {
+        let error = unsafe { GetLastError() };
+        return Err(format!("GetProcessIdOfThread failed for thread {}: error {}", thread_id, error));
+    }
+    if process_id != current_pid {
         return Err("Thread ID was reassigned to another process".to_string());
     }
 
-    let mut creation_time: FILETIME = mem::zeroed();
-    let mut exit_time: FILETIME = mem::zeroed();
-    let mut kernel_time: FILETIME = mem::zeroed();
-    let mut user_time: FILETIME = mem::zeroed();
+    let mut creation_time: FILETIME = unsafe { mem::zeroed() };
+    let mut exit_time: FILETIME = unsafe { mem::zeroed() };
+    let mut kernel_time: FILETIME = unsafe { mem::zeroed() };
+    let mut user_time: FILETIME = unsafe { mem::zeroed() };
 
-    let result = GetThreadTimes(
-        h_thread,
-        &mut creation_time,
-        &mut exit_time,
-        &mut kernel_time,
-        &mut user_time,
-    );
+    let result = unsafe {
+        GetThreadTimes(
+            h_thread,
+            &mut creation_time,
+            &mut exit_time,
+            &mut kernel_time,
+            &mut user_time,
+        )
+    };
 
     if result == 0 {
-        let error = GetLastError();
+        let error = unsafe { GetLastError() };
         return Err(format!("GetThreadTimes failed for thread {}: error {}", thread_id, error));
     }
 
@@ -198,7 +204,7 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
     }
 
     #[link(name = "psapi")]
-    extern "system" {
+    unsafe extern "system" {
         fn GetProcessMemoryInfo(
             h_process: HANDLE,
             ppsm_memcounters: *mut PROCESS_MEMORY_COUNTERS_EX,
@@ -207,7 +213,7 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
     }
 
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn GetCurrentProcess() -> HANDLE;
     }
 
