@@ -148,9 +148,7 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
 
 use crate::channels::InstrumentChannel;
 
-impl<T: Send + 'static> InstrumentChannel
-    for (flume::Sender<T>, flume::Receiver<T>)
-{
+impl<T: Send + 'static> InstrumentChannel for (flume::Sender<T>, flume::Receiver<T>) {
     type Output = (flume::Sender<T>, flume::Receiver<T>);
     fn instrument(
         self,
