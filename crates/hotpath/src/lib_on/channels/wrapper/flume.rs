@@ -1,10 +1,10 @@
-use flume::{self, Receiver, Sender};
+use flume::{Receiver, Sender};
 
 use crate::channels::{
-    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant, RegisteredChannel,
+    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant, RegisteredChannel, RT,
 };
 
-/// Internal implementation for wrapping bounded crossbeam channels with optional logging.
+/// Internal implementation for wrapping bounded flume channels with optional logging.
 fn wrap_bounded_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -23,8 +23,8 @@ where
         register_channel::<T>(source, label, ChannelType::Bounded(capacity));
 
     // Single forwarder: inner_rx -> proxy_tx
-    std::thread::spawn(move || {
-        while let Ok(msg) = inner_rx.recv() {
+    RT.spawn(async move {
+        while let Ok(msg) = inner_rx.recv_async().await {
             let log = log_on_send(&msg);
             send_channel_event(
                 &stats_tx,
@@ -34,7 +34,7 @@ where
                     timestamp: Instant::now(),
                 },
             );
-            if proxy_tx.send(msg).is_ok() {
+            if proxy_tx.send_async(msg).await.is_ok() {
                 send_channel_event(
                     &stats_tx,
                     ChannelEvent::MessageReceived {
@@ -50,11 +50,12 @@ where
         send_channel_event(&stats_tx, ChannelEvent::Closed { id });
     });
 
+    // User sends to inner_tx directly, receives from proxy_rx
     (inner_tx, proxy_rx)
 }
 
-/// Wrap a bounded crossbeam channel with proxy ends. Returns (outer_tx, outer_rx).
-/// All messages pass through a single forwarder thread.
+/// Wrap the inner flume channel with proxy ends. Returns (outer_tx, outer_rx).
+/// All messages pass through a single forwarder task.
 pub(crate) fn wrap_bounded<T: Send + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -64,7 +65,7 @@ pub(crate) fn wrap_bounded<T: Send + 'static>(
     wrap_bounded_impl(inner, source, label, capacity, |_| None)
 }
 
-/// Wrap a bounded crossbeam channel with logging enabled. Returns (outer_tx, outer_rx).
+/// Wrap a bounded flume channel with logging enabled. Returns (outer_tx, outer_rx).
 pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -76,7 +77,7 @@ pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
     })
 }
 
-/// Internal implementation for wrapping unbounded crossbeam channels with optional logging.
+/// Internal implementation for wrapping unbounded flume channels with optional logging.
 /// Uses single proxy design: User -> [Original] -> Thread -> [Proxy unbounded] -> User
 fn wrap_unbounded_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
@@ -95,8 +96,8 @@ where
         register_channel::<T>(source, label, ChannelType::Unbounded);
 
     // Single forwarder: inner_rx -> proxy_tx
-    std::thread::spawn(move || {
-        while let Ok(msg) = inner_rx.recv() {
+    RT.spawn(async move {
+        while let Ok(msg) = inner_rx.recv_async().await {
             let log = log_on_send(&msg);
             send_channel_event(
                 &stats_tx,
@@ -106,8 +107,7 @@ where
                     timestamp: Instant::now(),
                 },
             );
-            // MessageReceived logged before user receives
-            if proxy_tx.send(msg).is_ok() {
+            if proxy_tx.send_async(msg).await.is_ok() {
                 send_channel_event(
                     &stats_tx,
                     ChannelEvent::MessageReceived {
@@ -126,7 +126,7 @@ where
     (inner_tx, proxy_rx)
 }
 
-/// Wrap an unbounded crossbeam channel with proxy ends. Returns (outer_tx, outer_rx).
+/// Wrap an unbounded flume channel with proxy ends. Returns (outer_tx, outer_rx).
 pub(crate) fn wrap_unbounded<T: Send + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -135,7 +135,7 @@ pub(crate) fn wrap_unbounded<T: Send + 'static>(
     wrap_unbounded_impl(inner, source, label, |_| None)
 }
 
-/// Wrap an unbounded crossbeam channel with logging enabled. Returns (outer_tx, outer_rx).
+/// Wrap an unbounded flume channel with logging enabled. Returns (outer_tx, outer_rx).
 pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -148,16 +148,14 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
 
 use crate::channels::InstrumentChannel;
 
-impl<T: Send + 'static> InstrumentChannel for (flume::Sender<T>, flume::Receiver<T>) {
-    type Output = (flume::Sender<T>, flume::Receiver<T>);
+impl<T: Send + 'static> InstrumentChannel for (Sender<T>, Receiver<T>) {
+    type Output = (Sender<T>, Receiver<T>);
     fn instrument(
         self,
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
     ) -> Self::Output {
-        // Crossbeam uses the same Sender/Receiver types for both bounded and unbounded
-        // We check the capacity to determine which type it is
         match self.0.capacity() {
             Some(capacity) => wrap_bounded(self, source, label, capacity),
             None => wrap_unbounded(self, source, label),
@@ -167,18 +165,14 @@ impl<T: Send + 'static> InstrumentChannel for (flume::Sender<T>, flume::Receiver
 
 use crate::channels::InstrumentChannelLog;
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
-    for (flume::Sender<T>, flume::Receiver<T>)
-{
-    type Output = (flume::Sender<T>, flume::Receiver<T>);
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog for (Sender<T>, Receiver<T>) {
+    type Output = (Sender<T>, Receiver<T>);
     fn instrument_log(
         self,
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
     ) -> Self::Output {
-        // Crossbeam uses the same Sender/Receiver types for both bounded and unbounded
-        // We check the capacity to determine which type it is
         match self.0.capacity() {
             Some(capacity) => wrap_bounded_log(self, source, label, capacity),
             None => wrap_unbounded_log(self, source, label),
