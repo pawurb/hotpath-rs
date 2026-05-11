@@ -2,6 +2,8 @@
 pub(crate) mod asc;
 #[cfg(feature = "crossbeam")]
 pub(crate) mod crossbeam;
+#[cfg(feature = "flume")]
+pub(crate) mod flume;
 #[cfg(feature = "futures")]
 pub(crate) mod ftc;
 pub(crate) mod std;
