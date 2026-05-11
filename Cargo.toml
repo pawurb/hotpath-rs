@@ -9,6 +9,7 @@ members = [
     "crates/test-channels-asc",
     "crates/test-channels-crossbeam",
     "crates/test-channels-ftc",
+    "crates/test-channels-flume",
     "crates/test-channels-std",
     "crates/test-streams",
     "crates/test-channels-tokio",
