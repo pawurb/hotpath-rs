@@ -1,10 +1,10 @@
-use flume::{self, Receiver, Sender};
+use flume::{Receiver, Sender};
 
 use crate::channels::{
     register_channel, send_channel_event, ChannelEvent, ChannelType, Instant, RegisteredChannel,
 };
 
-/// Internal implementation for wrapping bounded crossbeam channels with optional logging.
+/// Internal implementation for wrapping bounded async channels with optional logging.
 fn wrap_bounded_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -50,11 +50,12 @@ where
         send_channel_event(&stats_tx, ChannelEvent::Closed { id });
     });
 
+    // User sends to inner_tx directly, receives from proxy_rx
     (inner_tx, proxy_rx)
 }
 
-/// Wrap a bounded crossbeam channel with proxy ends. Returns (outer_tx, outer_rx).
-/// All messages pass through a single forwarder thread.
+/// Wrap the inner async channel with proxy ends. Returns (outer_tx, outer_rx).
+/// All messages pass through a single forwarder task.
 pub(crate) fn wrap_bounded<T: Send + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -64,7 +65,7 @@ pub(crate) fn wrap_bounded<T: Send + 'static>(
     wrap_bounded_impl(inner, source, label, capacity, |_| None)
 }
 
-/// Wrap a bounded crossbeam channel with logging enabled. Returns (outer_tx, outer_rx).
+/// Wrap a bounded async channel with logging enabled. Returns (outer_tx, outer_rx).
 pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -76,7 +77,7 @@ pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
     })
 }
 
-/// Internal implementation for wrapping unbounded crossbeam channels with optional logging.
+/// Internal implementation for wrapping unbounded async channels with optional logging.
 /// Uses single proxy design: User -> [Original] -> Thread -> [Proxy unbounded] -> User
 fn wrap_unbounded_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
@@ -126,7 +127,7 @@ where
     (inner_tx, proxy_rx)
 }
 
-/// Wrap an unbounded crossbeam channel with proxy ends. Returns (outer_tx, outer_rx).
+/// Wrap an unbounded async channel with proxy ends. Returns (outer_tx, outer_rx).
 pub(crate) fn wrap_unbounded<T: Send + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -135,7 +136,7 @@ pub(crate) fn wrap_unbounded<T: Send + 'static>(
     wrap_unbounded_impl(inner, source, label, |_| None)
 }
 
-/// Wrap an unbounded crossbeam channel with logging enabled. Returns (outer_tx, outer_rx).
+/// Wrap an unbounded async channel with logging enabled. Returns (outer_tx, outer_rx).
 pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
@@ -148,15 +149,15 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
 
 use crate::channels::InstrumentChannel;
 
-impl<T: Send + 'static> InstrumentChannel for (flume::Sender<T>, flume::Receiver<T>) {
-    type Output = (flume::Sender<T>, flume::Receiver<T>);
+impl<T: Send + 'static> InstrumentChannel for (Sender<T>, Receiver<T>) {
+    type Output = (Sender<T>, Receiver<T>);
     fn instrument(
         self,
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
     ) -> Self::Output {
-        // Crossbeam uses the same Sender/Receiver types for both bounded and unbounded
+        // async-channel uses the same Sender/Receiver types for both bounded and unbounded
         // We check the capacity to determine which type it is
         match self.0.capacity() {
             Some(capacity) => wrap_bounded(self, source, label, capacity),
@@ -167,18 +168,14 @@ impl<T: Send + 'static> InstrumentChannel for (flume::Sender<T>, flume::Receiver
 
 use crate::channels::InstrumentChannelLog;
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
-    for (flume::Sender<T>, flume::Receiver<T>)
-{
-    type Output = (flume::Sender<T>, flume::Receiver<T>);
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog for (Sender<T>, Receiver<T>) {
+    type Output = (Sender<T>, Receiver<T>);
     fn instrument_log(
         self,
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
     ) -> Self::Output {
-        // Crossbeam uses the same Sender/Receiver types for both bounded and unbounded
-        // We check the capacity to determine which type it is
         match self.0.capacity() {
             Some(capacity) => wrap_bounded_log(self, source, label, capacity),
             None => wrap_unbounded_log(self, source, label),
