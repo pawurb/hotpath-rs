@@ -7,6 +7,8 @@ use std::mem;
 type DWORD = u32;
 type HANDLE = *mut std::ffi::c_void;
 type BOOL = i32;
+type HRESULT = i32;
+type PWSTR = *mut u16;
 
 const TH32CS_SNAPTHREAD: DWORD = 0x00000004;
 const THREAD_QUERY_LIMITED_INFORMATION: DWORD = 0x0800;
@@ -45,6 +47,8 @@ unsafe extern "system" {
     fn GetCurrentProcessId() -> DWORD;
     fn GetProcessIdOfThread(thread: HANDLE) -> DWORD;
     fn GetLastError() -> DWORD;
+    fn GetThreadDescription(h_thread: HANDLE, ppsz_thread_description: *mut PWSTR) -> HRESULT;
+    fn LocalFree(h_mem: HANDLE) -> HANDLE;
 }
 
 const INVALID_HANDLE_VALUE: HANDLE = !0 as HANDLE;
@@ -132,6 +136,22 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
     }
 }
 
+fn read_thread_description(h_thread: HANDLE) -> Option<String> {
+    let mut desc_ptr: PWSTR = std::ptr::null_mut();
+    let hr = unsafe { GetThreadDescription(h_thread, &mut desc_ptr) };
+    if hr < 0 || desc_ptr.is_null() {
+        return None;
+    }
+    let mut len = 0usize;
+    while unsafe { *desc_ptr.add(len) } != 0 {
+        len += 1;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(desc_ptr, len) };
+    let name = String::from_utf16_lossy(slice);
+    unsafe { LocalFree(desc_ptr as HANDLE) };
+    Some(name)
+}
+
 fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics, String> {
     let h_thread = unsafe { OpenThread(THREAD_QUERY_LIMITED_INFORMATION, 0, thread_id) };
 
@@ -196,9 +216,9 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     let cpu_user = filetime_to_seconds(&user_time);
     let cpu_sys = filetime_to_seconds(&kernel_time);
 
-    // Windows doesn't provide thread names or state easily through these APIs
-    // Thread state would require NtQuerySystemInformation which is more complex
-    let name = format!("thread_{}", thread_id);
+    let name = read_thread_description(h_thread)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("thread_{}", thread_id));
     let status = "Unknown".to_string();
     let status_code = "".to_string();
 
