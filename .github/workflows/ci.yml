@@ -36,7 +36,7 @@ jobs:
           cargo check --all-features
       - name: Check hotpath crate with all features
         run: |
-          cargo check -p hotpath --all-features 
+          cargo check -p hotpath --all-features
       - name: Check hotpath feature (time mode)
         run: |
           cargo check --features hotpath
@@ -101,10 +101,10 @@ jobs:
           cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
       - name: Run all_noop example
         run: |
-          cargo run --example all_noop 
+          cargo run --example all_noop
       - name: Run noop example
         run: |
-          cargo run --example basic_std 
+          cargo run --example basic_std
       - name: Run streams tests
         run: |
           cargo test --features hotpath --test streams -- --nocapture --test-threads=1
@@ -123,6 +123,9 @@ jobs:
       - name: Run channels tokio tests
         run: |
           cargo test --features hotpath --test channels_tokio -- --nocapture --test-threads=1
+      - name: Run channels flume tests
+        run: |
+          cargo test --features hotpath --test channels_flume -- --nocapture --test-threads=1
       - name: Run threads tests
         run: |
           cargo test --features hotpath --test threads -- --nocapture --test-threads=1
