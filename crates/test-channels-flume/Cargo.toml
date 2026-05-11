@@ -12,7 +12,3 @@ smol = "2.0"
 
 [features]
 hotpath = ["hotpath/hotpath"]
-
-[dev-dependencies]
-ureq = { version = "3", features = ["json"] }
-serde_json = "1.0"
