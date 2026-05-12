@@ -25,19 +25,53 @@ async fn main() {
 }
 ```
 
-[std::sync](https://doc.rust-lang.org/stable/std/sync/mpsc/index.html) channels can be instrumented by default. Enable `tokio`, `futures`, `crossbeam`, or `async-channel` features for [Tokio](https://github.com/tokio-rs/tokio), [futures-rs](https://github.com/rust-lang/futures-rs), [crossbeam](https://github.com/crossbeam-rs/crossbeam), and [async-channel](https://github.com/smol-rs/async-channel) channels, respectively.
+### Supported channel libraries
 
-**Supported channel types:**
+[std::sync](https://doc.rust-lang.org/stable/std/sync/mpsc/index.html) channels are instrumented by default. Enable the matching feature flag for each third-party library.
+
+#### [std](https://github.com/rust-lang/rust)
+
+Built-in, no feature flag required.
+
+- [`std::sync::mpsc::channel`](https://doc.rust-lang.org/stable/std/sync/mpsc/fn.channel.html)
+- [`std::sync::mpsc::sync_channel`](https://doc.rust-lang.org/stable/std/sync/mpsc/fn.sync_channel.html)
+
+#### [Tokio](https://github.com/tokio-rs/tokio)
+
+Enable the `tokio` feature.
+
 - [`tokio::sync::mpsc::channel`](https://docs.rs/tokio/latest/tokio/sync/mpsc/fn.channel.html)
 - [`tokio::sync::mpsc::unbounded_channel`](https://docs.rs/tokio/latest/tokio/sync/mpsc/fn.unbounded_channel.html)
 - [`tokio::sync::oneshot::channel`](https://docs.rs/tokio/latest/tokio/sync/oneshot/fn.channel.html)
+
+#### [futures-rs](https://github.com/rust-lang/futures-rs)
+
+Enable the `futures` feature.
+
 - [`futures_channel::mpsc::channel`](https://docs.rs/futures-channel/latest/futures_channel/mpsc/fn.channel.html)
 - [`futures_channel::mpsc::unbounded`](https://docs.rs/futures-channel/latest/futures_channel/mpsc/fn.unbounded.html)
 - [`futures_channel::oneshot::channel`](https://docs.rs/futures-channel/latest/futures_channel/oneshot/fn.channel.html)
+
+#### [async-channel](https://github.com/smol-rs/async-channel)
+
+Enable the `async-channel` feature.
+
 - [`async_channel::bounded`](https://docs.rs/async-channel/latest/async_channel/fn.bounded.html)
 - [`async_channel::unbounded`](https://docs.rs/async-channel/latest/async_channel/fn.unbounded.html)
+
+#### [crossbeam](https://github.com/crossbeam-rs/crossbeam)
+
+Enable the `crossbeam` feature.
+
 - [`crossbeam_channel::bounded`](https://docs.rs/crossbeam/latest/crossbeam/channel/fn.bounded.html)
 - [`crossbeam_channel::unbounded`](https://docs.rs/crossbeam/latest/crossbeam/channel/fn.unbounded.html)
+
+#### [flume](https://github.com/zesterer/flume)
+
+Enable the `flume` feature.
+
+- [`flume::bounded`](https://docs.rs/flume/latest/flume/fn.bounded.html)
+- [`flume::unbounded`](https://docs.rs/flume/latest/flume/fn.unbounded.html)
 
 
 ### Optional config
