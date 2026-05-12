@@ -439,7 +439,6 @@ cfg_if::cfg_if! {
     if #[cfg(any(feature = "tokio", feature = "futures", feature = "async-channel", feature = "flume"))] {
         pub(crate) static RT: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
             tokio::runtime::Builder::new_multi_thread()
-                .enable_time()
                 .build()
                 .unwrap()
         });
