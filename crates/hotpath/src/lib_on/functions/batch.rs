@@ -1,6 +1,6 @@
 use crossbeam_channel::Sender;
 
-pub(crate) const BATCH_SIZE: usize = 64;
+pub(crate) const BATCH_SIZE: usize = 1;
 pub(crate) const FLUSH_INTERVAL_MS: u64 = 50;
 pub(crate) const FLUSH_INTERVAL_NS: u64 = FLUSH_INTERVAL_MS * 1_000_000;
 
