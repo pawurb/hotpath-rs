@@ -314,6 +314,11 @@ pub mod parking_lot {
     pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 }
 
+#[cfg(feature = "async-lock")]
+pub mod async_lock {
+    pub use async_lock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+}
+
 #[macro_export]
 macro_rules! rw_lock {
     ($expr:expr) => {

@@ -347,13 +347,16 @@ pub trait InstrumentRwLock {
     fn instrument(self, source: &'static str, label: Option<String>) -> Self::Output;
 }
 
-/// Instrument an [`std::sync::RwLock`] or [`parking_lot::RwLock`] for read/write profiling.
+/// Instrument an [`std::sync::RwLock`], [`parking_lot::RwLock`], or `async_lock::RwLock`
+/// for read/write profiling.
 ///
 /// Returns an instrumented drop-in replacement that proxies to the wrapped lock and records
 /// how long read and write locks are held. The wrapper type matches the API of the underlying
-/// lock (`std::sync::RwLock` returns `LockResult`s; `parking_lot::RwLock` returns guards directly).
+/// lock (`std::sync::RwLock` returns `LockResult`s; `parking_lot::RwLock` returns guards directly;
+/// `async_lock::RwLock` exposes async `read`/`write` returning guards).
 ///
-/// `parking_lot::RwLock` support requires the `parking_lot` feature.
+/// `parking_lot::RwLock` support requires the `parking_lot` feature; `async_lock::RwLock`
+/// support requires the `async-lock` feature.
 ///
 /// # Examples
 ///

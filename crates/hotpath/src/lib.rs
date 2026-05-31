@@ -97,6 +97,16 @@ pub mod wrap {
             RwLock, RwLockReadGuard, RwLockWriteGuard,
         };
     }
+
+    #[cfg(feature = "async-lock")]
+    pub mod async_lock {
+        #[cfg(not(feature = "hotpath"))]
+        pub use crate::lib_off::async_lock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+        #[cfg(feature = "hotpath")]
+        pub use crate::lib_on::rw_locks::wrapper::async_lock::{
+            RwLock, RwLockReadGuard, RwLockWriteGuard,
+        };
+    }
 }
 
 mod shared;
