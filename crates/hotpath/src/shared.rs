@@ -36,7 +36,7 @@ impl Section {
             Section::Channels => "channels",
             Section::Streams => "streams",
             Section::Futures => "futures",
-            Section::RwLocks => "rwlocks",
+            Section::RwLocks => "rw_locks",
             Section::Threads => "threads",
             Section::Debug => "debug",
         }
@@ -50,7 +50,7 @@ impl Section {
             "channels" => Some(Section::Channels),
             "streams" => Some(Section::Streams),
             "futures" => Some(Section::Futures),
-            "rwlocks" => Some(Section::RwLocks),
+            "rw_locks" => Some(Section::RwLocks),
             "threads" => Some(Section::Threads),
             "debug" => Some(Section::Debug),
             _ => None,

@@ -2,7 +2,7 @@
 pub mod tests {
     use std::process::Command;
 
-    // cargo run -p test-rw-lock-std --example locks_std_basic --features hotpath
+    // cargo run -p test-rw-lock-std --example rw_lock_std_basic --features hotpath
     #[test]
     fn test_basic_output() {
         let output = Command::new("cargo")
@@ -11,7 +11,7 @@ pub mod tests {
                 "-p",
                 "test-rw-lock-std",
                 "--example",
-                "locks_std_basic",
+                "rw_lock_std_basic",
                 "--features",
                 "hotpath",
             ])
@@ -28,7 +28,7 @@ pub mod tests {
 
         let all_expected = [
             "Std RwLock example completed!",
-            "rwlocks",
+            "rw_locks",
             "counter",
             "Reads",
             "Writes",
@@ -41,7 +41,7 @@ pub mod tests {
         }
     }
 
-    // cargo run -p test-rw-lock-std --example locks_std_basic --features hotpath (json)
+    // cargo run -p test-rw-lock-std --example rw_lock_std_basic --features hotpath (json)
     #[test]
     fn test_json_output() {
         let output = Command::new("cargo")
@@ -50,7 +50,7 @@ pub mod tests {
                 "-p",
                 "test-rw-lock-std",
                 "--example",
-                "locks_std_basic",
+                "rw_lock_std_basic",
                 "--features",
                 "hotpath",
             ])
@@ -66,7 +66,7 @@ pub mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let all_expected = [
-            "\"rwlocks\"",
+            "\"rw_locks\"",
             "\"label\":\"counter\"",
             "\"read_count\":6",
             "\"write_count\":3",

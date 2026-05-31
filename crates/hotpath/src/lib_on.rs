@@ -27,7 +27,7 @@ pub mod channels;
 pub mod cpu_baseline;
 pub mod debug;
 pub mod futures;
-pub mod locks;
+pub mod rw_locks;
 pub mod streams;
 #[cfg(feature = "threads")]
 pub mod threads;

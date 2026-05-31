@@ -263,7 +263,7 @@ impl HotpathGuardBuilder {
         self
     }
 
-    pub fn rwlocks_limit(self, _limit: usize) -> Self {
+    pub fn rw_locks_limit(self, _limit: usize) -> Self {
         self
     }
 
@@ -305,7 +305,7 @@ pub mod threads {}
 
 pub mod futures {}
 
-pub mod locks {
+pub mod rw_locks {
     pub use std::sync::RwLock;
 }
 

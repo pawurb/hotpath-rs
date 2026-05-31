@@ -313,13 +313,13 @@ pub struct JsonChannelEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JsonLocksList {
+pub struct JsonRwLocksList {
     pub current_elapsed_ns: u64,
-    pub data: Vec<JsonLockEntry>,
+    pub data: Vec<JsonRwLockEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JsonLockEntry {
+pub struct JsonRwLockEntry {
     pub id: u32,
     pub source: String,
     pub label: String,
@@ -721,7 +721,7 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub futures: Option<JsonFuturesList>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rwlocks: Option<JsonLocksList>,
+    pub rw_locks: Option<JsonRwLocksList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<JsonThreadsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -741,7 +741,7 @@ impl Default for JsonReport {
             channels: None,
             streams: None,
             futures: None,
-            rwlocks: None,
+            rw_locks: None,
             threads: None,
             debug: None,
             cpu_baseline: None,

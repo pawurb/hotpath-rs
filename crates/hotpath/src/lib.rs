@@ -80,9 +80,9 @@ pub mod wrap {
     pub mod std {
         pub mod sync {
             #[cfg(not(feature = "hotpath"))]
-            pub use crate::lib_off::locks::RwLock;
+            pub use crate::lib_off::rw_locks::RwLock;
             #[cfg(feature = "hotpath")]
-            pub use crate::lib_on::locks::RwLock;
+            pub use crate::lib_on::rw_locks::RwLock;
         }
     }
 }

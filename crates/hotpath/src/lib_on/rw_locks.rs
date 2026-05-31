@@ -6,22 +6,22 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
 
 use crate::instant::Instant;
-use crate::json::JsonLockEntry;
+use crate::json::JsonRwLockEntry;
 use crate::lib_on::hotpath_guard::{
     WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
 };
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
-static LOCK_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+static RW_LOCK_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-fn next_lock_id() -> u32 {
-    LOCK_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+fn next_rw_lock_id() -> u32 {
+    RW_LOCK_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
 /// Whether an acquisition was a shared (read) or exclusive (write) lock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LockKind {
+pub(crate) enum RwLockKind {
     Read,
     Write,
 }
@@ -36,10 +36,14 @@ pub(crate) enum RwLockEvent {
         type_name: &'static str,
     },
     /// Emitted when a guard is dropped. `nanos` is the hold duration.
-    Released { id: u32, kind: LockKind, nanos: u64 },
+    Released {
+        id: u32,
+        kind: RwLockKind,
+        nanos: u64,
+    },
 }
 
-/// Handle returned by [`register_rwlock`] giving a wrapper its id and a sender
+/// Handle returned by [`register_rw_lock`] giving a wrapper its id and a sender
 /// to emit [`RwLockEvent`]s to the background worker.
 pub(crate) struct RegisteredRwLock {
     pub(crate) id: u32,
@@ -48,7 +52,7 @@ pub(crate) struct RegisteredRwLock {
 
 /// Statistics for a single instrumented RwLock.
 #[derive(Debug, Clone)]
-pub(crate) struct LockEntry {
+pub(crate) struct RwLockEntry {
     pub(crate) id: u32,
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
@@ -62,7 +66,7 @@ pub(crate) struct LockEntry {
     pub(crate) iter: u32,
 }
 
-impl LockEntry {
+impl RwLockEntry {
     pub(crate) fn read_avg_nanos(&self) -> u64 {
         self.read_total_nanos
             .checked_div(self.read_count)
@@ -76,12 +80,12 @@ impl LockEntry {
     }
 }
 
-impl From<&LockEntry> for JsonLockEntry {
-    fn from(stats: &LockEntry) -> Self {
+impl From<&RwLockEntry> for JsonRwLockEntry {
+    fn from(stats: &RwLockEntry) -> Self {
         let label =
             crate::channels::resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
-        JsonLockEntry {
+        JsonRwLockEntry {
             id: stats.id,
             source: stats.source.to_string(),
             label,
@@ -98,26 +102,26 @@ impl From<&LockEntry> for JsonLockEntry {
     }
 }
 
-pub(crate) struct LocksInternalState {
-    pub(crate) stats: HashMap<u32, LockEntry>,
+pub(crate) struct RwLocksInternalState {
+    pub(crate) stats: HashMap<u32, RwLockEntry>,
 }
 
-pub(crate) struct LocksState {
+pub(crate) struct RwLocksState {
     pub(crate) event_tx: CbSender<RwLockEvent>,
-    pub(crate) inner: Arc<StdRwLock<LocksInternalState>>,
+    pub(crate) inner: Arc<StdRwLock<RwLocksInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
 
-pub(crate) static LOCKS_STATE: OnceLock<LocksState> = OnceLock::new();
+pub(crate) static RW_LOCKS_STATE: OnceLock<RwLocksState> = OnceLock::new();
 
 #[inline]
-pub(crate) fn send_lock_event(stats_tx: &CbSender<RwLockEvent>, event: RwLockEvent) {
+pub(crate) fn send_rw_lock_event(stats_tx: &CbSender<RwLockEvent>, event: RwLockEvent) {
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let _ = stats_tx.send(event);
 }
 
-fn process_lock_event(state: &mut LocksInternalState, event: RwLockEvent) {
+fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
     match event {
         RwLockEvent::Created {
             id,
@@ -128,7 +132,7 @@ fn process_lock_event(state: &mut LocksInternalState, event: RwLockEvent) {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
             state.stats.insert(
                 id,
-                LockEntry {
+                RwLockEntry {
                     id,
                     source,
                     label,
@@ -146,12 +150,12 @@ fn process_lock_event(state: &mut LocksInternalState, event: RwLockEvent) {
         RwLockEvent::Released { id, kind, nanos } => {
             if let Some(entry) = state.stats.get_mut(&id) {
                 match kind {
-                    LockKind::Read => {
+                    RwLockKind::Read => {
                         entry.read_count += 1;
                         entry.read_total_nanos += nanos;
                         entry.read_max_nanos = entry.read_max_nanos.max(nanos);
                     }
-                    LockKind::Write => {
+                    RwLockKind::Write => {
                         entry.write_count += 1;
                         entry.write_total_nanos += nanos;
                         entry.write_max_nanos = entry.write_max_nanos.max(nanos);
@@ -163,12 +167,12 @@ fn process_lock_event(state: &mut LocksInternalState, event: RwLockEvent) {
 }
 
 /// Registers a new RwLock with the profiling subsystem.
-pub(crate) fn register_rwlock<T>(source: &'static str, label: Option<String>) -> RegisteredRwLock {
+pub(crate) fn register_rw_lock<T>(source: &'static str, label: Option<String>) -> RegisteredRwLock {
     let type_name = std::any::type_name::<T>();
-    let state = init_locks_state();
-    let id = next_lock_id();
+    let state = init_rw_locks_state();
+    let id = next_rw_lock_id();
 
-    send_lock_event(
+    send_rw_lock_event(
         &state.event_tx,
         RwLockEvent::Created {
             id,
@@ -185,21 +189,21 @@ pub(crate) fn register_rwlock<T>(source: &'static str, label: Option<String>) ->
 }
 
 /// Initialize the lock statistics collection system (called on first instrumented lock).
-pub(crate) fn init_locks_state() -> &'static LocksState {
-    LOCKS_STATE.get_or_init(|| {
+pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
+    RW_LOCKS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
         let (event_tx, event_rx) = unbounded::<RwLockEvent>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
-        let inner = Arc::new(StdRwLock::new(LocksInternalState {
+        let inner = Arc::new(StdRwLock::new(RwLocksInternalState {
             stats: HashMap::new(),
         }));
         let inner_clone = Arc::clone(&inner);
 
         std::thread::Builder::new()
-            .name("hp-locks".into())
+            .name("hp-rw-locks".into())
             .spawn(move || {
                 let mut local_buffer: Vec<RwLockEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
                 let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
@@ -213,7 +217,7 @@ pub(crate) fn init_locks_state() -> &'static LocksState {
                                     if local_buffer.len() >= WORKER_BATCH_SIZE {
                                         if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
-                                                process_lock_event(&mut shared, e);
+                                                process_rw_lock_event(&mut shared, e);
                                             }
                                         }
                                     }
@@ -222,7 +226,7 @@ pub(crate) fn init_locks_state() -> &'static LocksState {
                                     if !local_buffer.is_empty() {
                                         if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
-                                                process_lock_event(&mut shared, e);
+                                                process_rw_lock_event(&mut shared, e);
                                             }
                                         }
                                     }
@@ -241,10 +245,10 @@ pub(crate) fn init_locks_state() -> &'static LocksState {
 
                             if let Ok(mut shared) = inner_clone.write() {
                                 for e in local_buffer.drain(..) {
-                                    process_lock_event(&mut shared, e);
+                                    process_rw_lock_event(&mut shared, e);
                                 }
                                 for event in drained_events {
-                                    process_lock_event(&mut shared, event);
+                                    process_rw_lock_event(&mut shared, event);
                                 }
                             }
                             break;
@@ -253,7 +257,7 @@ pub(crate) fn init_locks_state() -> &'static LocksState {
                             if !local_buffer.is_empty() {
                                 if let Ok(mut shared) = inner_clone.write() {
                                     for e in local_buffer.drain(..) {
-                                        process_lock_event(&mut shared, e);
+                                        process_rw_lock_event(&mut shared, e);
                                     }
                                 }
                             }
@@ -263,11 +267,11 @@ pub(crate) fn init_locks_state() -> &'static LocksState {
 
                 let _ = completion_tx.send(());
             })
-            .expect("Failed to spawn lock-stats-collector thread");
+            .expect("Failed to spawn rw_lock-stats-collector thread");
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
-        LocksState {
+        RwLocksState {
             event_tx,
             inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
@@ -277,7 +281,7 @@ pub(crate) fn init_locks_state() -> &'static LocksState {
 }
 
 /// Compare two lock stats for sorting. Custom labels first, then by source and iter.
-pub(crate) fn compare_lock_entries(a: &LockEntry, b: &LockEntry) -> std::cmp::Ordering {
+pub(crate) fn compare_rw_lock_entries(a: &RwLockEntry, b: &RwLockEntry) -> std::cmp::Ordering {
     match (a.label.is_some(), b.label.is_some()) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
@@ -307,7 +311,7 @@ impl<T> RwLock<T> {
         source: &'static str,
         label: Option<String>,
     ) -> Self {
-        let RegisteredRwLock { id, stats_tx } = register_rwlock::<T>(source, label);
+        let RegisteredRwLock { id, stats_tx } = register_rw_lock::<T>(source, label);
         Self {
             inner,
             id,
@@ -407,11 +411,11 @@ impl<T> std::ops::Deref for HotpathReadGuard<'_, T> {
 impl<T> Drop for HotpathReadGuard<'_, T> {
     fn drop(&mut self) {
         let nanos = self.start.elapsed().as_nanos() as u64;
-        send_lock_event(
+        send_rw_lock_event(
             &self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
-                kind: LockKind::Read,
+                kind: RwLockKind::Read,
                 nanos,
             },
         );
@@ -443,11 +447,11 @@ impl<T> std::ops::DerefMut for HotpathWriteGuard<'_, T> {
 impl<T> Drop for HotpathWriteGuard<'_, T> {
     fn drop(&mut self) {
         let nanos = self.start.elapsed().as_nanos() as u64;
-        send_lock_event(
+        send_rw_lock_event(
             &self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
-                kind: LockKind::Write,
+                kind: RwLockKind::Write,
                 nanos,
             },
         );

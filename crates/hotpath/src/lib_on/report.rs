@@ -9,12 +9,12 @@ use crate::debug::{
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
 use crate::json::JsonDebugEntry;
 use crate::json::{
-    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonLockEntry,
-    JsonLocksList, JsonStreamEntry, JsonStreamsList,
+    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonRwLockEntry,
+    JsonRwLocksList, JsonStreamEntry, JsonStreamsList,
 };
-use crate::locks::{compare_lock_entries, LockEntry, LOCKS_STATE};
 use crate::output::{format_bytes, format_duration};
 use crate::output_on::write_section_header;
+use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RW_LOCKS_STATE};
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
 
 fn styled_header(text: &str) -> Cell {
@@ -116,8 +116,8 @@ pub(crate) fn collect_channels_json(
     }
 }
 
-pub(crate) fn shutdown_locks() -> Vec<LockEntry> {
-    LOCKS_STATE
+pub(crate) fn shutdown_rw_locks() -> Vec<RwLockEntry> {
+    RW_LOCKS_STATE
         .get()
         .and_then(|state| {
             if let Ok(mut guard) = state.shutdown_tx.lock() {
@@ -137,23 +137,27 @@ pub(crate) fn shutdown_locks() -> Vec<LockEntry> {
                 .ok()
                 .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
         })
-        .map(|mut locks| {
-            locks.sort_by(compare_lock_entries);
-            locks
+        .map(|mut rw_locks| {
+            rw_locks.sort_by(compare_rw_lock_entries);
+            rw_locks
         })
         .unwrap_or_default()
 }
 
-pub(crate) fn report_rwlocks_table(
-    locks: &[LockEntry],
+pub(crate) fn report_rw_locks_table(
+    rw_locks: &[RwLockEntry],
     total_count: usize,
     writer: &mut dyn Write,
 ) {
-    if locks.is_empty() {
+    if rw_locks.is_empty() {
         return;
     }
 
-    write_section_header(writer, "rwlocks", "RwLock read/write hold time statistics.");
+    write_section_header(
+        writer,
+        "rw_locks",
+        "RwLock read/write hold time statistics.",
+    );
 
     let mut table = Table::new();
     table.add_row(Row::new(vec![
@@ -166,34 +170,34 @@ pub(crate) fn report_rwlocks_table(
         styled_header("Write max"),
     ]));
 
-    for lock in locks {
-        let label = resolve_label(lock.source, lock.label.as_deref(), Some(lock.iter));
+    for rw_lock in rw_locks {
+        let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
         table.add_row(Row::new(vec![
             Cell::new(&label),
-            Cell::new(&lock.read_count.to_string()),
-            Cell::new(&format_duration(lock.read_avg_nanos())),
-            Cell::new(&format_duration(lock.read_max_nanos)),
-            Cell::new(&lock.write_count.to_string()),
-            Cell::new(&format_duration(lock.write_avg_nanos())),
-            Cell::new(&format_duration(lock.write_max_nanos)),
+            Cell::new(&rw_lock.read_count.to_string()),
+            Cell::new(&format_duration(rw_lock.read_avg_nanos())),
+            Cell::new(&format_duration(rw_lock.read_max_nanos)),
+            Cell::new(&rw_lock.write_count.to_string()),
+            Cell::new(&format_duration(rw_lock.write_avg_nanos())),
+            Cell::new(&format_duration(rw_lock.write_max_nanos)),
         ]));
     }
 
-    if locks.len() < total_count {
-        let _ = write!(writer, " ({}/{})", locks.len(), total_count);
+    if rw_locks.len() < total_count {
+        let _ = write!(writer, " ({}/{})", rw_locks.len(), total_count);
     }
     let _ = writeln!(writer);
     print_table(&table, writer);
     let _ = writeln!(writer);
 }
 
-pub(crate) fn collect_rwlocks_json(
-    locks: &[LockEntry],
+pub(crate) fn collect_rw_locks_json(
+    rw_locks: &[RwLockEntry],
     elapsed: std::time::Duration,
-) -> JsonLocksList {
-    JsonLocksList {
+) -> JsonRwLocksList {
+    JsonRwLocksList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
-        data: locks.iter().map(JsonLockEntry::from).collect(),
+        data: rw_locks.iter().map(JsonRwLockEntry::from).collect(),
     }
 }
 
