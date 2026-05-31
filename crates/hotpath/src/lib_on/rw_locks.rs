@@ -1,12 +1,12 @@
 //! RwLock instrumentation module - tracks read/write lock acquisitions and hold durations.
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
+use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
 
 use crate::instant::Instant;
-use crate::json::JsonRwLockEntry;
 use crate::lib_on::hotpath_guard::{
     WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
 };
@@ -61,12 +61,37 @@ pub(crate) struct RwLockEntry {
     pub(crate) write_count: u64,
     pub(crate) read_total_nanos: u64,
     pub(crate) write_total_nanos: u64,
-    pub(crate) read_max_nanos: u64,
-    pub(crate) write_max_nanos: u64,
+    read_hist: Option<Histogram<u64>>,
+    write_hist: Option<Histogram<u64>>,
     pub(crate) iter: u32,
 }
 
 impl RwLockEntry {
+    const LOW_NS: u64 = 1;
+    const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
+    const SIGFIGS: u8 = 3;
+
+    fn new_histogram() -> Histogram<u64> {
+        Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
+            .expect("hdrhistogram init")
+    }
+
+    #[inline]
+    fn record_read(&mut self, nanos: u64) {
+        if let Some(ref mut hist) = self.read_hist {
+            hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
+                .unwrap();
+        }
+    }
+
+    #[inline]
+    fn record_write(&mut self, nanos: u64) {
+        if let Some(ref mut hist) = self.write_hist {
+            hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
+                .unwrap();
+        }
+    }
+
     pub(crate) fn read_avg_nanos(&self) -> u64 {
         self.read_total_nanos
             .checked_div(self.read_count)
@@ -78,26 +103,18 @@ impl RwLockEntry {
             .checked_div(self.write_count)
             .unwrap_or(0)
     }
-}
 
-impl From<&RwLockEntry> for JsonRwLockEntry {
-    fn from(stats: &RwLockEntry) -> Self {
-        let label =
-            crate::channels::resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
+    pub(crate) fn read_percentile_nanos(&self, p: f64) -> u64 {
+        match &self.read_hist {
+            Some(hist) if self.read_count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
+            _ => 0,
+        }
+    }
 
-        JsonRwLockEntry {
-            id: stats.id,
-            source: stats.source.to_string(),
-            label,
-            has_custom_label: stats.label.is_some(),
-            type_name: stats.type_name.to_string(),
-            read_count: stats.read_count,
-            write_count: stats.write_count,
-            read_avg: crate::output::format_duration(stats.read_avg_nanos()),
-            write_avg: crate::output::format_duration(stats.write_avg_nanos()),
-            read_max: crate::output::format_duration(stats.read_max_nanos),
-            write_max: crate::output::format_duration(stats.write_max_nanos),
-            iter: stats.iter,
+    pub(crate) fn write_percentile_nanos(&self, p: f64) -> u64 {
+        match &self.write_hist {
+            Some(hist) if self.write_count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
+            _ => 0,
         }
     }
 }
@@ -141,8 +158,8 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
                     write_count: 0,
                     read_total_nanos: 0,
                     write_total_nanos: 0,
-                    read_max_nanos: 0,
-                    write_max_nanos: 0,
+                    read_hist: Some(RwLockEntry::new_histogram()),
+                    write_hist: Some(RwLockEntry::new_histogram()),
                     iter,
                 },
             );
@@ -153,12 +170,12 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
                     RwLockKind::Read => {
                         entry.read_count += 1;
                         entry.read_total_nanos += nanos;
-                        entry.read_max_nanos = entry.read_max_nanos.max(nanos);
+                        entry.record_read(nanos);
                     }
                     RwLockKind::Write => {
                         entry.write_count += 1;
                         entry.write_total_nanos += nanos;
-                        entry.write_max_nanos = entry.write_max_nanos.max(nanos);
+                        entry.record_write(nanos);
                     }
                 }
             }

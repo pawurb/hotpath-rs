@@ -692,6 +692,10 @@ impl Drop for HotpathGuard {
 
         let state: Arc<RwLock<FunctionsState>> = Arc::clone(&self.state);
         let elapsed = self.start_time.elapsed();
+        let percentiles = state
+            .read()
+            .map(|s| s.percentiles.clone())
+            .unwrap_or_default();
 
         let (shutdown_tx, completion_rx, end_time) = {
             let Ok(mut state_guard) = state.write() else {
@@ -877,6 +881,7 @@ impl Drop for HotpathGuard {
                             report.rw_locks = Some(report::collect_rw_locks_json(
                                 &rw_locks_data[..limit],
                                 elapsed,
+                                &percentiles,
                             ));
                         }
                     }
@@ -1071,6 +1076,7 @@ impl Drop for HotpathGuard {
                             report::report_rw_locks_table(
                                 &rw_locks_data[..limit],
                                 total,
+                                &percentiles,
                                 &mut writer,
                             );
                         }
