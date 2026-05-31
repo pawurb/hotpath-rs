@@ -64,6 +64,9 @@ jobs:
       - name: Run channels flume tests
         run: |
           cargo test --features hotpath --test channels_flume -- --nocapture --test-threads=1
+      - name: Run rwlocks std tests
+        run: |
+          cargo test --features hotpath --test rw_lock_std -- --nocapture --test-threads=1
       - name: Run threads tests
         run: |
           cargo test --features hotpath --test threads -- --nocapture --test-threads=1

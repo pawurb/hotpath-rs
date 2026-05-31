@@ -11,6 +11,7 @@ members = [
     "crates/test-channels-ftc",
     "crates/test-channels-flume",
     "crates/test-channels-std",
+    "crates/test-rw-lock-std",
     "crates/test-streams",
     "crates/test-channels-tokio",
     "crates/test-futures",

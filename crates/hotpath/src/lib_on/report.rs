@@ -9,9 +9,10 @@ use crate::debug::{
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
 use crate::json::JsonDebugEntry;
 use crate::json::{
-    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonStreamEntry,
-    JsonStreamsList,
+    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonLockEntry,
+    JsonLocksList, JsonStreamEntry, JsonStreamsList,
 };
+use crate::locks::{compare_lock_entries, LockEntry, LOCKS_STATE};
 use crate::output::{format_bytes, format_duration};
 use crate::output_on::write_section_header;
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
@@ -112,6 +113,87 @@ pub(crate) fn collect_channels_json(
     JsonChannelsList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         data: channels.iter().map(JsonChannelEntry::from).collect(),
+    }
+}
+
+pub(crate) fn shutdown_locks() -> Vec<LockEntry> {
+    LOCKS_STATE
+        .get()
+        .and_then(|state| {
+            if let Ok(mut guard) = state.shutdown_tx.lock() {
+                if let Some(tx) = guard.take() {
+                    let _ = tx.send(());
+                }
+            }
+            state
+                .completion_rx
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take())
+                .and_then(|rx| rx.recv().ok());
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+        })
+        .map(|mut locks| {
+            locks.sort_by(compare_lock_entries);
+            locks
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn report_rwlocks_table(
+    locks: &[LockEntry],
+    total_count: usize,
+    writer: &mut dyn Write,
+) {
+    if locks.is_empty() {
+        return;
+    }
+
+    write_section_header(writer, "rwlocks", "RwLock read/write hold time statistics.");
+
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+        styled_header("RwLock"),
+        styled_header("Reads"),
+        styled_header("Read avg"),
+        styled_header("Read max"),
+        styled_header("Writes"),
+        styled_header("Write avg"),
+        styled_header("Write max"),
+    ]));
+
+    for lock in locks {
+        let label = resolve_label(lock.source, lock.label.as_deref(), Some(lock.iter));
+        table.add_row(Row::new(vec![
+            Cell::new(&label),
+            Cell::new(&lock.read_count.to_string()),
+            Cell::new(&format_duration(lock.read_avg_nanos())),
+            Cell::new(&format_duration(lock.read_max_nanos)),
+            Cell::new(&lock.write_count.to_string()),
+            Cell::new(&format_duration(lock.write_avg_nanos())),
+            Cell::new(&format_duration(lock.write_max_nanos)),
+        ]));
+    }
+
+    if locks.len() < total_count {
+        let _ = write!(writer, " ({}/{})", locks.len(), total_count);
+    }
+    let _ = writeln!(writer);
+    print_table(&table, writer);
+    let _ = writeln!(writer);
+}
+
+pub(crate) fn collect_rwlocks_json(
+    locks: &[LockEntry],
+    elapsed: std::time::Duration,
+) -> JsonLocksList {
+    JsonLocksList {
+        current_elapsed_ns: elapsed.as_nanos() as u64,
+        data: locks.iter().map(JsonLockEntry::from).collect(),
     }
 }
 

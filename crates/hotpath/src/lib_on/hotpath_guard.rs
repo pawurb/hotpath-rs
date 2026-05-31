@@ -83,6 +83,7 @@ pub struct HotpathGuardBuilder {
     channels_limit: usize,
     streams_limit: usize,
     futures_limit: usize,
+    rwlocks_limit: usize,
     threads_limit: usize,
     output_path: Option<PathBuf>,
     sections: Option<Vec<Section>>,
@@ -116,6 +117,7 @@ impl HotpathGuardBuilder {
             channels_limit: 0,
             streams_limit: 0,
             futures_limit: 0,
+            rwlocks_limit: 0,
             threads_limit: 5,
             output_path: None,
             sections: None,
@@ -137,6 +139,7 @@ impl HotpathGuardBuilder {
         self.channels_limit = limit;
         self.streams_limit = limit;
         self.futures_limit = limit;
+        self.rwlocks_limit = limit;
         self.threads_limit = limit;
         self
     }
@@ -162,6 +165,12 @@ impl HotpathGuardBuilder {
     /// Maximum number of futures shown in the report. Set to `0` for unlimited.
     pub fn futures_limit(mut self, limit: usize) -> Self {
         self.futures_limit = limit;
+        self
+    }
+
+    /// Maximum number of rwlocks shown in the report. Set to `0` for unlimited.
+    pub fn rwlocks_limit(mut self, limit: usize) -> Self {
+        self.rwlocks_limit = limit;
         self
     }
 
@@ -239,6 +248,7 @@ impl HotpathGuardBuilder {
             self.channels_limit,
             self.streams_limit,
             self.futures_limit,
+            self.rwlocks_limit,
             self.threads_limit,
         )
     }
@@ -285,6 +295,7 @@ pub struct HotpathGuard {
     channels_limit: usize,
     streams_limit: usize,
     futures_limit: usize,
+    rwlocks_limit: usize,
     threads_limit: usize,
     #[cfg(feature = "hotpath-meta")]
     _meta_guard: Option<hotpath_meta::HotpathGuard>,
@@ -303,6 +314,7 @@ impl HotpathGuard {
         channels_limit: usize,
         streams_limit: usize,
         futures_limit: usize,
+        rwlocks_limit: usize,
         threads_limit: usize,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
@@ -569,6 +581,7 @@ impl HotpathGuard {
             channels_limit,
             streams_limit,
             futures_limit,
+            rwlocks_limit,
             threads_limit,
             #[cfg(feature = "hotpath-meta")]
             _meta_guard,
@@ -718,6 +731,12 @@ impl Drop for HotpathGuard {
             Vec::new()
         };
 
+        let rwlocks_data = if self.sections.contains(&Section::RwLocks) {
+            report::shutdown_locks()
+        } else {
+            Vec::new()
+        };
+
         let output = OutputDestination::from_path(self.output_path.take());
         crate::output::set_use_colors(
             matches!(output, OutputDestination::Stdout) && std::env::var("NO_COLOR").is_err(),
@@ -732,6 +751,7 @@ impl Drop for HotpathGuard {
             self.channels_limit = global;
             self.streams_limit = global;
             self.futures_limit = global;
+            self.rwlocks_limit = global;
             self.threads_limit = global;
         }
         if let Some(v) = parse_usize_env("HOTPATH_CHANNELS_LIMIT") {
@@ -742,6 +762,9 @@ impl Drop for HotpathGuard {
         }
         if let Some(v) = parse_usize_env("HOTPATH_FUTURES_LIMIT") {
             self.futures_limit = v;
+        }
+        if let Some(v) = parse_usize_env("HOTPATH_RWLOCKS_LIMIT") {
+            self.rwlocks_limit = v;
         }
         if let Some(v) = parse_usize_env("HOTPATH_THREADS_LIMIT") {
             self.threads_limit = v;
@@ -844,6 +867,15 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(futures_data.len(), self.futures_limit);
                             report.futures = Some(report::collect_futures_json(
                                 &futures_data[..limit],
+                                elapsed,
+                            ));
+                        }
+                    }
+                    Section::RwLocks => {
+                        if !rwlocks_data.is_empty() {
+                            let limit = apply_limit(rwlocks_data.len(), self.rwlocks_limit);
+                            report.rwlocks = Some(report::collect_rwlocks_json(
+                                &rwlocks_data[..limit],
                                 elapsed,
                             ));
                         }
@@ -1027,6 +1059,17 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(total, self.futures_limit);
                             report::report_futures_table(
                                 &futures_data[..limit],
+                                total,
+                                &mut writer,
+                            );
+                        }
+                    }
+                    Section::RwLocks => {
+                        if matches!(format, Format::Table) {
+                            let total = rwlocks_data.len();
+                            let limit = apply_limit(total, self.rwlocks_limit);
+                            report::report_rwlocks_table(
+                                &rwlocks_data[..limit],
                                 total,
                                 &mut writer,
                             );

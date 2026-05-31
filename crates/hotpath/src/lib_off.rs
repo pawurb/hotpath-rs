@@ -263,6 +263,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn rwlocks_limit(self, _limit: usize) -> Self {
+        self
+    }
+
     pub fn limit(self, _limit: usize) -> Self {
         self
     }
@@ -300,3 +304,17 @@ pub mod streams {}
 pub mod threads {}
 
 pub mod futures {}
+
+pub mod locks {
+    pub use std::sync::RwLock;
+}
+
+#[macro_export]
+macro_rules! rw_lock {
+    ($expr:expr) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr) => {
+        $expr
+    };
+}
