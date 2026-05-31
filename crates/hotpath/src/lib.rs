@@ -80,10 +80,22 @@ pub mod wrap {
     pub mod std {
         pub mod sync {
             #[cfg(not(feature = "hotpath"))]
-            pub use crate::lib_off::rw_locks::RwLock;
+            pub use crate::lib_off::rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
             #[cfg(feature = "hotpath")]
-            pub use crate::lib_on::rw_locks::RwLock;
+            pub use crate::lib_on::rw_locks::wrapper::std::{
+                RwLock, RwLockReadGuard, RwLockWriteGuard,
+            };
         }
+    }
+
+    #[cfg(feature = "parking_lot")]
+    pub mod parking_lot {
+        #[cfg(not(feature = "hotpath"))]
+        pub use crate::lib_off::parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+        #[cfg(feature = "hotpath")]
+        pub use crate::lib_on::rw_locks::wrapper::parking_lot::{
+            RwLock, RwLockReadGuard, RwLockWriteGuard,
+        };
     }
 }
 

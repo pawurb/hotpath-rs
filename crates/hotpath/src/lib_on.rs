@@ -38,6 +38,7 @@ pub mod functions;
 
 pub use channels::{InstrumentChannel, InstrumentChannelLog};
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
+pub use rw_locks::InstrumentRwLock;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 pub mod hotpath_guard;

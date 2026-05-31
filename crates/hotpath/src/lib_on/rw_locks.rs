@@ -13,6 +13,11 @@ use crate::lib_on::hotpath_guard::{
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
+pub(crate) mod wrapper;
+
+// Re-exported to keep the std wrapper reachable at `hotpath::rw_locks::*` for downstream code.
+pub use wrapper::std::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 static RW_LOCK_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 fn next_rw_lock_id() -> u32 {
@@ -312,173 +317,23 @@ pub(crate) fn compare_rw_lock_entries(a: &RwLockEntry, b: &RwLockEntry) -> std::
     }
 }
 
-/// Instrumented drop-in replacement for [`std::sync::RwLock`].
+/// Trait for instrumenting RwLocks. Dispatches on the type of the wrapped lock
+/// (e.g. [`std::sync::RwLock`] or [`parking_lot::RwLock`]).
 ///
-/// Not constructed directly - use the [`rw_lock!`](crate::rw_lock) macro.
-pub struct RwLock<T> {
-    inner: StdRwLock<T>,
-    id: u32,
-    stats_tx: CbSender<RwLockEvent>,
+/// This trait is not intended for direct use. Use the `rw_lock!` macro instead.
+#[doc(hidden)]
+pub trait InstrumentRwLock {
+    type Output;
+    fn instrument(self, source: &'static str, label: Option<String>) -> Self::Output;
 }
 
-impl<T> RwLock<T> {
-    #[doc(hidden)]
-    pub fn __new_instrumented(
-        inner: StdRwLock<T>,
-        source: &'static str,
-        label: Option<String>,
-    ) -> Self {
-        let RegisteredRwLock { id, stats_tx } = register_rw_lock::<T>(source, label);
-        Self {
-            inner,
-            id,
-            stats_tx,
-        }
-    }
-
-    pub fn read(&self) -> std::sync::LockResult<HotpathReadGuard<'_, T>> {
-        // Stamp the clock after acquisition so the guard measures hold time, not wait time.
-        match self.inner.read() {
-            Ok(inner) => Ok(self.read_guard(inner)),
-            Err(poison) => Err(std::sync::PoisonError::new(
-                self.read_guard(poison.into_inner()),
-            )),
-        }
-    }
-
-    pub fn try_read(&self) -> std::sync::TryLockResult<HotpathReadGuard<'_, T>> {
-        match self.inner.try_read() {
-            Ok(inner) => Ok(self.read_guard(inner)),
-            Err(std::sync::TryLockError::Poisoned(poison)) => {
-                Err(std::sync::TryLockError::Poisoned(
-                    std::sync::PoisonError::new(self.read_guard(poison.into_inner())),
-                ))
-            }
-            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
-        }
-    }
-
-    pub fn write(&self) -> std::sync::LockResult<HotpathWriteGuard<'_, T>> {
-        match self.inner.write() {
-            Ok(inner) => Ok(self.write_guard(inner)),
-            Err(poison) => Err(std::sync::PoisonError::new(
-                self.write_guard(poison.into_inner()),
-            )),
-        }
-    }
-
-    pub fn try_write(&self) -> std::sync::TryLockResult<HotpathWriteGuard<'_, T>> {
-        match self.inner.try_write() {
-            Ok(inner) => Ok(self.write_guard(inner)),
-            Err(std::sync::TryLockError::Poisoned(poison)) => {
-                Err(std::sync::TryLockError::Poisoned(
-                    std::sync::PoisonError::new(self.write_guard(poison.into_inner())),
-                ))
-            }
-            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
-        }
-    }
-
-    pub fn into_inner(self) -> std::sync::LockResult<T> {
-        self.inner.into_inner()
-    }
-
-    pub fn get_mut(&mut self) -> std::sync::LockResult<&mut T> {
-        self.inner.get_mut()
-    }
-
-    fn read_guard<'a>(&self, inner: std::sync::RwLockReadGuard<'a, T>) -> HotpathReadGuard<'a, T> {
-        HotpathReadGuard {
-            inner,
-            start: Instant::now(),
-            id: self.id,
-            stats_tx: self.stats_tx.clone(),
-        }
-    }
-
-    fn write_guard<'a>(
-        &self,
-        inner: std::sync::RwLockWriteGuard<'a, T>,
-    ) -> HotpathWriteGuard<'a, T> {
-        HotpathWriteGuard {
-            inner,
-            start: Instant::now(),
-            id: self.id,
-            stats_tx: self.stats_tx.clone(),
-        }
-    }
-}
-
-/// Guard returned by [`RwLock::read`]. Emits the hold duration on drop.
-#[must_use = "if unused the RwLock will immediately unlock"]
-pub struct HotpathReadGuard<'a, T> {
-    inner: std::sync::RwLockReadGuard<'a, T>,
-    start: Instant,
-    id: u32,
-    stats_tx: CbSender<RwLockEvent>,
-}
-
-impl<T> std::ops::Deref for HotpathReadGuard<'_, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.inner
-    }
-}
-
-impl<T> Drop for HotpathReadGuard<'_, T> {
-    fn drop(&mut self) {
-        let nanos = self.start.elapsed().as_nanos() as u64;
-        send_rw_lock_event(
-            &self.stats_tx,
-            RwLockEvent::Released {
-                id: self.id,
-                kind: RwLockKind::Read,
-                nanos,
-            },
-        );
-    }
-}
-
-/// Guard returned by [`RwLock::write`]. Emits the hold duration on drop.
-#[must_use = "if unused the RwLock will immediately unlock"]
-pub struct HotpathWriteGuard<'a, T> {
-    inner: std::sync::RwLockWriteGuard<'a, T>,
-    start: Instant,
-    id: u32,
-    stats_tx: CbSender<RwLockEvent>,
-}
-
-impl<T> std::ops::Deref for HotpathWriteGuard<'_, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.inner
-    }
-}
-
-impl<T> std::ops::DerefMut for HotpathWriteGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.inner
-    }
-}
-
-impl<T> Drop for HotpathWriteGuard<'_, T> {
-    fn drop(&mut self) {
-        let nanos = self.start.elapsed().as_nanos() as u64;
-        send_rw_lock_event(
-            &self.stats_tx,
-            RwLockEvent::Released {
-                id: self.id,
-                kind: RwLockKind::Write,
-                nanos,
-            },
-        );
-    }
-}
-
-/// Instrument an [`std::sync::RwLock`] for read/write profiling.
+/// Instrument an [`std::sync::RwLock`] or [`parking_lot::RwLock`] for read/write profiling.
 ///
-/// Returns a [`hotpath::wrap::std::sync::RwLock`](crate::wrap::std::sync::RwLock) that proxies
-/// to the wrapped lock and records how long read and write locks are held.
+/// Returns an instrumented drop-in replacement that proxies to the wrapped lock and records
+/// how long read and write locks are held. The wrapper type matches the API of the underlying
+/// lock (`std::sync::RwLock` returns `LockResult`s; `parking_lot::RwLock` returns guards directly).
+///
+/// `parking_lot::RwLock` support requires the `parking_lot` feature.
 ///
 /// # Examples
 ///
@@ -491,15 +346,11 @@ impl<T> Drop for HotpathWriteGuard<'_, T> {
 macro_rules! rw_lock {
     ($expr:expr) => {{
         const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::wrap::std::sync::RwLock::__new_instrumented($expr, RW_LOCK_ID, None)
+        $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, None)
     }};
 
     ($expr:expr, label = $label:expr) => {{
         const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::wrap::std::sync::RwLock::__new_instrumented(
-            $expr,
-            RW_LOCK_ID,
-            Some($label.to_string()),
-        )
+        $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, Some($label.to_string()))
     }};
 }

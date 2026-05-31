@@ -306,7 +306,12 @@ pub mod threads {}
 pub mod futures {}
 
 pub mod rw_locks {
-    pub use std::sync::RwLock;
+    pub use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+}
+
+#[cfg(feature = "parking_lot")]
+pub mod parking_lot {
+    pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 }
 
 #[macro_export]

@@ -12,6 +12,7 @@ members = [
     "crates/test-channels-flume",
     "crates/test-channels-std",
     "crates/test-rw-lock-std",
+    "crates/test-rw-lock-parking-lot",
     "crates/test-streams",
     "crates/test-channels-tokio",
     "crates/test-futures",

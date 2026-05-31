@@ -1,0 +1,13 @@
+[package]
+name = "test-rw-lock-parking-lot"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for parking_lot RwLock instrumentation."
+
+[dependencies]
+hotpath = { workspace = true }
+parking_lot = "0.12"
+
+[features]
+hotpath = ["hotpath/hotpath", "hotpath/parking_lot"]
