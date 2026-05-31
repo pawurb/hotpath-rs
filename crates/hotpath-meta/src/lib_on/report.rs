@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Write;
 
 use prettytable::{color, Attr, Cell, Row, Table};
@@ -9,11 +10,14 @@ use crate::debug::{
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
 use crate::json::JsonDebugEntry;
 use crate::json::{
-    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonStreamEntry,
-    JsonStreamsList,
+    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonRwLockEntry,
+    JsonRwLocksList, JsonStreamEntry, JsonStreamsList,
 };
-use crate::output::{format_bytes, format_duration};
+use crate::output::{
+    format_bytes, format_duration, format_percentile_header, format_percentile_key,
+};
 use crate::output_on::write_section_header;
+use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RW_LOCKS_STATE};
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
 
 fn styled_header(text: &str) -> Cell {
@@ -112,6 +116,148 @@ pub(crate) fn collect_channels_json(
     JsonChannelsList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         data: channels.iter().map(JsonChannelEntry::from).collect(),
+    }
+}
+
+pub(crate) fn shutdown_rw_locks() -> Vec<RwLockEntry> {
+    RW_LOCKS_STATE
+        .get()
+        .and_then(|state| {
+            if let Ok(mut guard) = state.shutdown_tx.lock() {
+                if let Some(tx) = guard.take() {
+                    let _ = tx.send(());
+                }
+            }
+            state
+                .completion_rx
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take())
+                .and_then(|rx| rx.recv().ok());
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+        })
+        .map(|mut rw_locks| {
+            rw_locks.sort_by(compare_rw_lock_entries);
+            rw_locks
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn report_rw_locks_table(
+    rw_locks: &[RwLockEntry],
+    total_count: usize,
+    percentiles: &[f64],
+    writer: &mut dyn Write,
+) {
+    if rw_locks.is_empty() {
+        return;
+    }
+
+    write_section_header(
+        writer,
+        "rw_locks",
+        "RwLock read/write hold time statistics.",
+    );
+
+    let mut header = vec![
+        styled_header("RwLock"),
+        styled_header("Reads"),
+        styled_header("Read avg"),
+    ];
+    for &p in percentiles {
+        header.push(styled_header(&format!(
+            "Read {}",
+            format_percentile_header(p)
+        )));
+    }
+    header.push(styled_header("Writes"));
+    header.push(styled_header("Write avg"));
+    for &p in percentiles {
+        header.push(styled_header(&format!(
+            "Write {}",
+            format_percentile_header(p)
+        )));
+    }
+
+    let mut table = Table::new();
+    table.add_row(Row::new(header));
+
+    for rw_lock in rw_locks {
+        let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
+        let mut row = vec![
+            Cell::new(&label),
+            Cell::new(&rw_lock.read_count.to_string()),
+            Cell::new(&format_duration(rw_lock.read_avg_nanos())),
+        ];
+        for &p in percentiles {
+            row.push(Cell::new(&format_duration(
+                rw_lock.read_percentile_nanos(p),
+            )));
+        }
+        row.push(Cell::new(&rw_lock.write_count.to_string()));
+        row.push(Cell::new(&format_duration(rw_lock.write_avg_nanos())));
+        for &p in percentiles {
+            row.push(Cell::new(&format_duration(
+                rw_lock.write_percentile_nanos(p),
+            )));
+        }
+        table.add_row(Row::new(row));
+    }
+
+    if rw_locks.len() < total_count {
+        let _ = write!(writer, " ({}/{})", rw_locks.len(), total_count);
+    }
+    let _ = writeln!(writer);
+    print_table(&table, writer);
+    let _ = writeln!(writer);
+}
+
+fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntry {
+    let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
+
+    let mut read_percentiles = HashMap::new();
+    let mut write_percentiles = HashMap::new();
+    for &p in percentiles {
+        let key = format_percentile_key(p);
+        read_percentiles.insert(
+            key.clone(),
+            format_duration(rw_lock.read_percentile_nanos(p)),
+        );
+        write_percentiles.insert(key, format_duration(rw_lock.write_percentile_nanos(p)));
+    }
+
+    JsonRwLockEntry {
+        id: rw_lock.id,
+        source: rw_lock.source.to_string(),
+        label,
+        has_custom_label: rw_lock.label.is_some(),
+        type_name: rw_lock.type_name.to_string(),
+        read_count: rw_lock.read_count,
+        write_count: rw_lock.write_count,
+        read_avg: format_duration(rw_lock.read_avg_nanos()),
+        write_avg: format_duration(rw_lock.write_avg_nanos()),
+        read_percentiles,
+        write_percentiles,
+        iter: rw_lock.iter,
+    }
+}
+
+pub(crate) fn collect_rw_locks_json(
+    rw_locks: &[RwLockEntry],
+    elapsed: std::time::Duration,
+    percentiles: &[f64],
+) -> JsonRwLocksList {
+    JsonRwLocksList {
+        current_elapsed_ns: elapsed.as_nanos() as u64,
+        percentiles: percentiles.to_vec(),
+        data: rw_locks
+            .iter()
+            .map(|rw_lock| rw_lock_to_json(rw_lock, percentiles))
+            .collect(),
     }
 }
 

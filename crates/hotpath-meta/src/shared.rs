@@ -8,6 +8,7 @@ pub enum Section {
     Channels,
     Streams,
     Futures,
+    RwLocks,
     Threads,
     Debug,
 }
@@ -21,6 +22,7 @@ impl Section {
             Section::Channels,
             Section::Streams,
             Section::Futures,
+            Section::RwLocks,
             Section::Threads,
             Section::Debug,
         ]
@@ -34,6 +36,7 @@ impl Section {
             Section::Channels => "channels",
             Section::Streams => "streams",
             Section::Futures => "futures",
+            Section::RwLocks => "rw_locks",
             Section::Threads => "threads",
             Section::Debug => "debug",
         }
@@ -47,6 +50,7 @@ impl Section {
             "channels" => Some(Section::Channels),
             "streams" => Some(Section::Streams),
             "futures" => Some(Section::Futures),
+            "rw_locks" => Some(Section::RwLocks),
             "threads" => Some(Section::Threads),
             "debug" => Some(Section::Debug),
             _ => None,

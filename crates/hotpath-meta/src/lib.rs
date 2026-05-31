@@ -77,6 +77,22 @@ pub use lib_off::streams;
 #[cfg(not(feature = "hotpath-meta"))]
 pub use lib_off::threads;
 
+/// Mirror of `std` paths so instrumented types can be used as drop-in
+/// replacements by prefixing imports with `hotpath_meta::wrap::` (e.g.
+/// `hotpath_meta::wrap::std::sync::RwLock`).
+pub mod wrap {
+    pub mod std {
+        pub mod sync {
+            #[cfg(not(feature = "hotpath-meta"))]
+            pub use crate::lib_off::rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+            #[cfg(feature = "hotpath-meta")]
+            pub use crate::lib_on::rw_locks::wrapper::std::{
+                RwLock, RwLockReadGuard, RwLockWriteGuard,
+            };
+        }
+    }
+}
+
 mod shared;
 pub use shared::{env_flag, Format, IntoF64, Section};
 

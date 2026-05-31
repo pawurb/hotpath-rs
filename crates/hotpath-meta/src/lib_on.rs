@@ -28,6 +28,7 @@ pub mod channels;
 pub mod cpu_baseline;
 pub mod debug;
 pub mod futures;
+pub mod rw_locks;
 pub mod streams;
 #[cfg(feature = "threads")]
 pub mod threads;
@@ -38,6 +39,7 @@ pub mod functions;
 
 pub use channels::{InstrumentChannel, InstrumentChannelLog};
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
+pub use rw_locks::InstrumentRwLock;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 pub mod hotpath_guard;
