@@ -2,7 +2,7 @@
 pub mod tests {
     use std::process::Command;
 
-    // cargo run -p test-rw-lock-std --example rw_lock_std_basic --features hotpath
+    // cargo run -p test-rw-lock-std --example basic_rw_lock_std --features hotpath
     #[test]
     fn test_basic_output() {
         let output = Command::new("cargo")
@@ -11,7 +11,7 @@ pub mod tests {
                 "-p",
                 "test-rw-lock-std",
                 "--example",
-                "rw_lock_std_basic",
+                "basic_rw_lock_std",
                 "--features",
                 "hotpath",
             ])
@@ -41,7 +41,7 @@ pub mod tests {
         }
     }
 
-    // cargo run -p test-rw-lock-std --example rw_lock_std_basic --features hotpath (json)
+    // cargo run -p test-rw-lock-std --example basic_rw_lock_std --features hotpath (json)
     #[test]
     fn test_json_output() {
         let output = Command::new("cargo")
@@ -50,7 +50,7 @@ pub mod tests {
                 "-p",
                 "test-rw-lock-std",
                 "--example",
-                "rw_lock_std_basic",
+                "basic_rw_lock_std",
                 "--features",
                 "hotpath",
             ])
