@@ -309,6 +309,12 @@ pub struct JsonChannelEntry {
     pub received_count: u64,
     pub type_name: String,
     pub type_size: usize,
+    #[serde(default)]
+    pub wrap: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_size: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_queue_size: Option<usize>,
     pub iter: u32,
 }
 

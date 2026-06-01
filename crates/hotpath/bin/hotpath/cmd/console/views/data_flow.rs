@@ -98,6 +98,7 @@ pub(crate) fn render_channels_panel(
         Cell::from("Label"),
         Cell::from("State"),
         Cell::from("Sent/Recv"),
+        Cell::from("Queue/Max"),
     ])
     .style(common_styles::HEADER_STYLE_CYAN)
     .height(1);
@@ -106,11 +107,17 @@ pub(crate) fn render_channels_panel(
         .iter()
         .map(|entry| {
             let type_text = format!("Channel[{}]", channel_capacity(&entry.channel_type));
+            // Queue depth is only tracked for wrap channels; proxy channels show `-`.
+            let queue_text = match (entry.queue_size, entry.max_queue_size) {
+                (Some(queue), Some(max)) => format!("{queue}/{max}"),
+                _ => "-".to_string(),
+            };
             Row::new(vec![
                 Cell::from(type_text).style(Style::default().fg(Color::Cyan)),
                 Cell::from(truncate_left(&entry.label, label_width)),
                 Cell::from(entry.state.clone()).style(state_style(&entry.state)),
                 Cell::from(format!("{}/{}", entry.sent_count, entry.received_count)),
+                Cell::from(queue_text),
             ])
         })
         .collect();
@@ -120,6 +127,7 @@ pub(crate) fn render_channels_panel(
         Constraint::Percentage(55),
         Constraint::Length(10),
         Constraint::Length(14),
+        Constraint::Length(12),
     ];
 
     let table = Table::new(rows, widths)

@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::instant::Instant;
 
-mod wrapper;
+pub(crate) mod wrapper;
 
 use std::mem;
 
@@ -48,6 +48,26 @@ pub(crate) fn register_channel<T>(
     label: Option<String>,
     channel_type: ChannelType,
 ) -> u32 {
+    register_channel_inner::<T>(source, label, channel_type, false)
+}
+
+/// Like [`register_channel`] but marks the channel as endpoint-wrapped
+/// (`wrap = true`). Used by the instrumented endpoint wrappers in
+/// `wrapper/*_wrap.rs`.
+pub(crate) fn register_channel_wrap<T>(
+    source: &'static str,
+    label: Option<String>,
+    channel_type: ChannelType,
+) -> u32 {
+    register_channel_inner::<T>(source, label, channel_type, true)
+}
+
+fn register_channel_inner<T>(
+    source: &'static str,
+    label: Option<String>,
+    channel_type: ChannelType,
+    wrap: bool,
+) -> u32 {
     let type_name = std::any::type_name::<T>();
     init_channels_state();
     let id = next_channel_id();
@@ -59,6 +79,7 @@ pub(crate) fn register_channel<T>(
         channel_type,
         type_name,
         type_size: mem::size_of::<T>(),
+        wrap,
     });
 
     id
@@ -91,7 +112,9 @@ impl BatchedMeasurement for ChannelEvent {
     fn elapsed_since_start_ns(&self) -> u64 {
         match self {
             ChannelEvent::MessageSent { timestamp, .. }
-            | ChannelEvent::MessageReceived { timestamp, .. } => timestamp_nanos(*timestamp),
+            | ChannelEvent::MessageReceived { timestamp, .. }
+            | ChannelEvent::WrapMessageSent { timestamp, .. }
+            | ChannelEvent::WrapMessageReceived { timestamp, .. } => timestamp_nanos(*timestamp),
             _ => 0,
         }
     }
@@ -123,6 +146,10 @@ pub(crate) struct ChannelEntry {
     pub(crate) received_count: u64,
     pub(crate) type_name: &'static str,
     pub(crate) type_size: usize,
+    pub(crate) wrap: bool,
+    /// Exact channel depth, only tracked for `wrap` channels. `None` for proxy channels.
+    pub(crate) queue_size: Option<usize>,
+    pub(crate) max_queue_size: Option<usize>,
     pub(crate) iter: u32,
 }
 
@@ -161,6 +188,9 @@ impl From<&ChannelEntry> for JsonChannelEntry {
             received_count: stats.received_count,
             type_name: stats.type_name.to_string(),
             type_size: stats.type_size,
+            wrap: stats.wrap,
+            queue_size: stats.queue_size,
+            max_queue_size: stats.max_queue_size,
             iter: stats.iter,
         }
     }
@@ -168,6 +198,7 @@ impl From<&ChannelEntry> for JsonChannelEntry {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl ChannelEntry {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         id: u32,
         source: &'static str,
@@ -175,6 +206,7 @@ impl ChannelEntry {
         channel_type: ChannelType,
         type_name: &'static str,
         type_size: usize,
+        wrap: bool,
         iter: u32,
     ) -> Self {
         Self {
@@ -187,7 +219,17 @@ impl ChannelEntry {
             received_count: 0,
             type_name,
             type_size,
+            wrap,
+            queue_size: None,
+            max_queue_size: None,
             iter,
+        }
+    }
+
+    fn record_queue(&mut self, queue_size: usize) {
+        self.queue_size = Some(queue_size);
+        if queue_size > self.max_queue_size.unwrap_or(0) {
+            self.max_queue_size = Some(queue_size);
         }
     }
 
@@ -209,6 +251,7 @@ pub(crate) enum ChannelEvent {
         channel_type: ChannelType,
         type_name: &'static str,
         type_size: usize,
+        wrap: bool,
     },
     MessageSent {
         id: u32,
@@ -218,6 +261,21 @@ pub(crate) enum ChannelEvent {
     MessageReceived {
         id: u32,
         timestamp: Instant,
+    },
+    /// Real send on a `wrap` wrapper, carrying a snapshot of the channel length taken
+    /// right after the send (exact single-threaded; may skew under concurrent ops).
+    WrapMessageSent {
+        id: u32,
+        log: Option<String>,
+        timestamp: Instant,
+        queue_len: usize,
+    },
+    /// Real receive on a `wrap` wrapper, carrying a snapshot of the channel length taken
+    /// right after the receive (exact single-threaded; may skew under concurrent ops).
+    WrapMessageReceived {
+        id: u32,
+        timestamp: Instant,
+        queue_len: usize,
     },
     Closed {
         id: u32,
@@ -251,6 +309,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             channel_type,
             type_name,
             type_size,
+            wrap,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
             state.stats.insert(
@@ -262,6 +321,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
                     channel_type,
                     type_name,
                     type_size,
+                    wrap,
                     iter,
                 ),
             );
@@ -290,6 +350,55 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.received_count += 1;
                 channel_stats.update_state();
+            }
+            if let Some(entry_logs) = state.logs.get_mut(&id) {
+                let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
+                let limit = *LOGS_LIMIT;
+                if entry_logs.received_logs.len() >= limit {
+                    entry_logs.received_logs.pop_front();
+                }
+                entry_logs.received_logs.push_back(DataFlowLogEntry::new(
+                    received_count,
+                    timestamp_nanos(timestamp),
+                    None,
+                    None,
+                ));
+            }
+        }
+        ChannelEvent::WrapMessageSent {
+            id,
+            log,
+            timestamp,
+            queue_len,
+        } => {
+            if let Some(channel_stats) = state.stats.get_mut(&id) {
+                channel_stats.sent_count += 1;
+                channel_stats.update_state();
+                channel_stats.record_queue(queue_len);
+            }
+            if let Some(entry_logs) = state.logs.get_mut(&id) {
+                let sent_count = state.stats.get(&id).map_or(0, |s| s.sent_count);
+                let limit = *LOGS_LIMIT;
+                if entry_logs.sent_logs.len() >= limit {
+                    entry_logs.sent_logs.pop_front();
+                }
+                entry_logs.sent_logs.push_back(DataFlowLogEntry::new(
+                    sent_count,
+                    timestamp_nanos(timestamp),
+                    log,
+                    None,
+                ));
+            }
+        }
+        ChannelEvent::WrapMessageReceived {
+            id,
+            timestamp,
+            queue_len,
+        } => {
+            if let Some(channel_stats) = state.stats.get_mut(&id) {
+                channel_stats.received_count += 1;
+                channel_stats.update_state();
+                channel_stats.record_queue(queue_len);
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
                 let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
@@ -483,6 +592,37 @@ pub trait InstrumentChannelLog {
     ) -> Self::Output;
 }
 
+/// Trait for instrumenting channels by wrapping their endpoints directly.
+///
+/// Returns wrapper types (`hotpath::wrap::<backend>::{Sender, Receiver}`) instead of
+/// the original channel types, so queue depth is measured exactly with no forwarder.
+/// Not intended for direct use. Use the `channel!` macro with `wrap = true` instead.
+#[doc(hidden)]
+pub trait InstrumentChannelWrap {
+    type Output;
+    fn instrument_wrap(
+        self,
+        source: &'static str,
+        label: Option<String>,
+        capacity: Option<usize>,
+    ) -> Self::Output;
+}
+
+/// Trait for instrumenting channels by wrapping their endpoints, with message logging.
+///
+/// This trait is not intended for direct use. Use the `channel!` macro with
+/// `wrap = true, log = true` instead.
+#[doc(hidden)]
+pub trait InstrumentChannelWrapLog {
+    type Output;
+    fn instrument_wrap_log(
+        self,
+        source: &'static str,
+        label: Option<String>,
+        capacity: Option<usize>,
+    ) -> Self::Output;
+}
+
 cfg_if::cfg_if! {
     if #[cfg(any(feature = "tokio", feature = "futures", feature = "async-channel", feature = "flume"))] {
         pub(crate) static RT: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
@@ -513,6 +653,49 @@ cfg_if::cfg_if! {
 /// ```
 #[macro_export]
 macro_rules! channel {
+    // Wrap mode (`wrap = true`) returns instrumented endpoint wrappers
+    // (`hotpath::wrap::<backend>::{Sender, Receiver}`) for exact queue tracking.
+    // `wrap = true` must be the first option after the channel expression.
+    ($expr:expr, wrap = true) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, None)
+    }};
+
+    ($expr:expr, wrap = true, label = $label:expr) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        $crate::InstrumentChannelWrap::instrument_wrap(
+            $expr,
+            CHANNEL_ID,
+            Some($label.to_string()),
+            None,
+        )
+    }};
+
+    ($expr:expr, wrap = true, log = true) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log($expr, CHANNEL_ID, None, None)
+    }};
+
+    ($expr:expr, wrap = true, label = $label:expr, log = true) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
+            $expr,
+            CHANNEL_ID,
+            Some($label.to_string()),
+            None,
+        )
+    }};
+
+    ($expr:expr, wrap = true, log = true, label = $label:expr) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
+            $expr,
+            CHANNEL_ID,
+            Some($label.to_string()),
+            None,
+        )
+    }};
+
     ($expr:expr) => {{
         const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
         $crate::InstrumentChannel::instrument($expr, CHANNEL_ID, None, None)

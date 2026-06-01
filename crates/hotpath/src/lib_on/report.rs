@@ -86,6 +86,8 @@ pub(crate) fn report_channels_table(
         styled_header("State"),
         styled_header("Sent"),
         styled_header("Received"),
+        styled_header("Queue"),
+        styled_header("Max queue"),
     ]));
 
     for channel_stats in channels {
@@ -94,12 +96,21 @@ pub(crate) fn report_channels_table(
             channel_stats.label.as_deref(),
             Some(channel_stats.iter),
         );
+        // Queue depth is only tracked for `wrap = true` channels; proxy channels show `-`.
+        let queue = channel_stats
+            .queue_size
+            .map_or_else(|| "-".to_string(), |q| q.to_string());
+        let max_queue = channel_stats
+            .max_queue_size
+            .map_or_else(|| "-".to_string(), |q| q.to_string());
         table.add_row(Row::new(vec![
             Cell::new(&label),
             Cell::new(&channel_stats.channel_type.to_string()),
             Cell::new(channel_stats.state.as_str()),
             Cell::new(&channel_stats.sent_count.to_string()),
             Cell::new(&channel_stats.received_count.to_string()),
+            Cell::new(&queue),
+            Cell::new(&max_queue),
         ]));
     }
 

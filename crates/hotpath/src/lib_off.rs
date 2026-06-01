@@ -63,6 +63,21 @@ impl GaugeHandle {
 
 #[macro_export]
 macro_rules! channel {
+    ($expr:expr, wrap = true) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, label = $label:expr) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, log = true) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, label = $label:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, log = true, label = $label:expr) => {
+        $expr
+    };
     ($expr:expr) => {
         $expr
     };
