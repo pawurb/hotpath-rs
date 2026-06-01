@@ -336,11 +336,16 @@ pub trait InstrumentMutex {
     fn instrument(self, source: &'static str, label: Option<String>) -> Self::Output;
 }
 
-/// Instrument an [`std::sync::Mutex`] for lock wait & acquire profiling.
+/// Instrument an [`std::sync::Mutex`], `tokio::sync::Mutex`, or `async_lock::Mutex` for lock
+/// wait & acquire profiling.
 ///
 /// Returns an instrumented drop-in replacement that proxies to the wrapped lock and records
 /// how long the lock is waited for and held. The wrapper type matches the API of the underlying
-/// lock (`std::sync::Mutex` returns `LockResult`s).
+/// lock (`std::sync::Mutex` returns `LockResult`s; `tokio::sync::Mutex` and `async_lock::Mutex`
+/// expose an async `lock` returning the guard directly).
+///
+/// `tokio::sync::Mutex` support requires the `tokio` feature; `async_lock::Mutex` support
+/// requires the `async-lock` feature.
 ///
 /// # Examples
 ///

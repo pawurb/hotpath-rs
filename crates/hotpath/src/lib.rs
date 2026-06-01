@@ -112,7 +112,11 @@ pub mod wrap {
     #[cfg(feature = "async-lock")]
     pub mod async_lock {
         #[cfg(not(feature = "hotpath"))]
-        pub use crate::lib_off::async_lock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+        pub use crate::lib_off::async_lock::{
+            Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        };
+        #[cfg(feature = "hotpath")]
+        pub use crate::lib_on::mutexes::wrapper::async_lock::{Mutex, MutexGuard};
         #[cfg(feature = "hotpath")]
         pub use crate::lib_on::rw_locks::wrapper::async_lock::{
             RwLock, RwLockReadGuard, RwLockWriteGuard,

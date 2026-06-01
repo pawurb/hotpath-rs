@@ -324,7 +324,7 @@ pub mod parking_lot {
 
 #[cfg(feature = "async-lock")]
 pub mod async_lock {
-    pub use async_lock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+    pub use async_lock::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 }
 
 #[cfg(feature = "tokio")]
