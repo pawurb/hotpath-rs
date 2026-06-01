@@ -6,8 +6,8 @@ use crossbeam_channel::Sender as CbSender;
 
 use crate::instant::Instant;
 use crate::rw_locks::{
-    register_rw_lock, send_rw_lock_event, InstrumentRwLock, RegisteredRwLock, RwLockEvent,
-    RwLockKind,
+    elapsed_nanos, register_rw_lock, send_rw_lock_event, InstrumentRwLock, RegisteredRwLock,
+    RwLockEvent, RwLockKind,
 };
 
 /// Instrumented drop-in replacement for [`parking_lot::RwLock`].
@@ -35,20 +35,30 @@ impl<T> RwLock<T> {
     }
 
     pub fn read(&self) -> RwLockReadGuard<'_, T> {
-        // Stamp the clock after acquisition so the guard measures hold time, not wait time.
-        self.read_guard(self.inner.read())
+        // Stamp before acquisition to measure wait time; the guard then measures acquire time.
+        let wait_start = Instant::now();
+        let inner = self.inner.read();
+        self.read_guard(inner, elapsed_nanos(wait_start))
     }
 
     pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
-        self.inner.try_read().map(|inner| self.read_guard(inner))
+        let wait_start = Instant::now();
+        self.inner
+            .try_read()
+            .map(|inner| self.read_guard(inner, elapsed_nanos(wait_start)))
     }
 
     pub fn write(&self) -> RwLockWriteGuard<'_, T> {
-        self.write_guard(self.inner.write())
+        let wait_start = Instant::now();
+        let inner = self.inner.write();
+        self.write_guard(inner, elapsed_nanos(wait_start))
     }
 
     pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
-        self.inner.try_write().map(|inner| self.write_guard(inner))
+        let wait_start = Instant::now();
+        self.inner
+            .try_write()
+            .map(|inner| self.write_guard(inner, elapsed_nanos(wait_start)))
     }
 
     pub fn into_inner(self) -> T {
@@ -59,10 +69,15 @@ impl<T> RwLock<T> {
         self.inner.get_mut()
     }
 
-    fn read_guard<'a>(&self, inner: parking_lot::RwLockReadGuard<'a, T>) -> RwLockReadGuard<'a, T> {
+    fn read_guard<'a>(
+        &self,
+        inner: parking_lot::RwLockReadGuard<'a, T>,
+        wait_nanos: u64,
+    ) -> RwLockReadGuard<'a, T> {
         RwLockReadGuard {
             inner,
             start: Instant::now(),
+            wait_nanos,
             id: self.id,
             stats_tx: self.stats_tx.clone(),
         }
@@ -71,21 +86,24 @@ impl<T> RwLock<T> {
     fn write_guard<'a>(
         &self,
         inner: parking_lot::RwLockWriteGuard<'a, T>,
+        wait_nanos: u64,
     ) -> RwLockWriteGuard<'a, T> {
         RwLockWriteGuard {
             inner,
             start: Instant::now(),
+            wait_nanos,
             id: self.id,
             stats_tx: self.stats_tx.clone(),
         }
     }
 }
 
-/// Guard returned by [`RwLock::read`]. Emits the hold duration on drop.
+/// Guard returned by [`RwLock::read`]. Emits wait and acquire durations on drop.
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockReadGuard<'a, T> {
     inner: parking_lot::RwLockReadGuard<'a, T>,
     start: Instant,
+    wait_nanos: u64,
     id: u32,
     stats_tx: CbSender<RwLockEvent>,
 }
@@ -99,23 +117,24 @@ impl<T> std::ops::Deref for RwLockReadGuard<'_, T> {
 
 impl<T> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
-        let nanos = self.start.elapsed().as_nanos() as u64;
         send_rw_lock_event(
             &self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
                 kind: RwLockKind::Read,
-                nanos,
+                wait_nanos: self.wait_nanos,
+                acquire_nanos: elapsed_nanos(self.start),
             },
         );
     }
 }
 
-/// Guard returned by [`RwLock::write`]. Emits the hold duration on drop.
+/// Guard returned by [`RwLock::write`]. Emits wait and acquire durations on drop.
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockWriteGuard<'a, T> {
     inner: parking_lot::RwLockWriteGuard<'a, T>,
     start: Instant,
+    wait_nanos: u64,
     id: u32,
     stats_tx: CbSender<RwLockEvent>,
 }
@@ -135,13 +154,13 @@ impl<T> std::ops::DerefMut for RwLockWriteGuard<'_, T> {
 
 impl<T> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
-        let nanos = self.start.elapsed().as_nanos() as u64;
         send_rw_lock_event(
             &self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
                 kind: RwLockKind::Write,
-                nanos,
+                wait_nanos: self.wait_nanos,
+                acquire_nanos: elapsed_nanos(self.start),
             },
         );
     }

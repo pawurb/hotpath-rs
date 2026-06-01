@@ -37,6 +37,32 @@ fn spawn_rw_locks() {
             thread::sleep(Duration::from_millis(delay_ms));
         });
     }
+
+    // Second lock: write-heavy with longer holds than the counter.
+    let config = Arc::new(hotpath::rw_lock!(
+        std::sync::RwLock::new(0u64),
+        label = "demo-config"
+    ));
+
+    let cfg_writer = Arc::clone(&config);
+    thread::spawn(move || loop {
+        {
+            let mut w = cfg_writer.write().unwrap();
+            *w += 1;
+            thread::sleep(Duration::from_millis(15));
+        }
+        thread::sleep(Duration::from_millis(50));
+    });
+
+    let cfg_reader = Arc::clone(&config);
+    thread::spawn(move || loop {
+        {
+            let r = cfg_reader.read().unwrap();
+            std::hint::black_box(*r);
+            thread::sleep(Duration::from_millis(1));
+        }
+        thread::sleep(Duration::from_millis(200));
+    });
 }
 
 async fn sleep_ms(ms: u64) {

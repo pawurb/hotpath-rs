@@ -32,6 +32,8 @@ pub mod tests {
             "counter",
             "Reads",
             "Writes",
+            "Wait avg",
+            "Acq avg",
         ];
         for expected in all_expected {
             assert!(
@@ -70,6 +72,14 @@ pub mod tests {
             "\"label\":\"counter\"",
             "\"read_count\":6",
             "\"write_count\":3",
+            "\"read_wait_avg\"",
+            "\"write_wait_avg\"",
+            "\"read_acquire_avg\"",
+            "\"write_acquire_avg\"",
+            "\"read_wait_percentiles\"",
+            "\"write_wait_percentiles\"",
+            "\"read_acquire_percentiles\"",
+            "\"write_acquire_percentiles\"",
         ];
         for expected in all_expected {
             assert!(

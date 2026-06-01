@@ -17,7 +17,7 @@ use crate::output::{
     format_bytes, format_duration, format_percentile_header, format_percentile_key,
 };
 use crate::output_on::write_section_header;
-use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RW_LOCKS_STATE};
+use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS_STATE};
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
 
 fn styled_header(text: &str) -> Cell {
@@ -157,28 +157,47 @@ pub(crate) fn report_rw_locks_table(
         return;
     }
 
-    write_section_header(
-        writer,
-        "rw_locks",
-        "RwLock read/write hold time statistics.",
-    );
+    write_section_header(writer, "rw_locks", "RwLock wait & acquire time statistics.");
+    if rw_locks.len() < total_count {
+        let _ = write!(writer, " ({}/{})", rw_locks.len(), total_count);
+    }
+    let _ = writeln!(writer);
+
+    report_rw_locks_subtable(rw_locks, RwLockKind::Read, percentiles, writer);
+    report_rw_locks_subtable(rw_locks, RwLockKind::Write, percentiles, writer);
+}
+
+fn report_rw_locks_subtable(
+    rw_locks: &[RwLockEntry],
+    kind: RwLockKind,
+    percentiles: &[f64],
+    writer: &mut dyn Write,
+) {
+    let rows: Vec<&RwLockEntry> = rw_locks.iter().filter(|l| l.count(kind) > 0).collect();
+    if rows.is_empty() {
+        return;
+    }
+
+    let count_label = match kind {
+        RwLockKind::Read => "Reads",
+        RwLockKind::Write => "Writes",
+    };
 
     let mut header = vec![
         styled_header("RwLock"),
-        styled_header("Reads"),
-        styled_header("Read avg"),
+        styled_header(count_label),
+        styled_header("Wait avg"),
     ];
     for &p in percentiles {
         header.push(styled_header(&format!(
-            "Read {}",
+            "Wait {}",
             format_percentile_header(p)
         )));
     }
-    header.push(styled_header("Writes"));
-    header.push(styled_header("Write avg"));
+    header.push(styled_header("Acq avg"));
     for &p in percentiles {
         header.push(styled_header(&format!(
-            "Write {}",
+            "Acq {}",
             format_percentile_header(p)
         )));
     }
@@ -186,32 +205,27 @@ pub(crate) fn report_rw_locks_table(
     let mut table = Table::new();
     table.add_row(Row::new(header));
 
-    for rw_lock in rw_locks {
+    for rw_lock in rows {
         let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
         let mut row = vec![
             Cell::new(&label),
-            Cell::new(&rw_lock.read_count.to_string()),
-            Cell::new(&format_duration(rw_lock.read_avg_nanos())),
+            Cell::new(&rw_lock.count(kind).to_string()),
+            Cell::new(&format_duration(rw_lock.wait_avg_nanos(kind))),
         ];
         for &p in percentiles {
             row.push(Cell::new(&format_duration(
-                rw_lock.read_percentile_nanos(p),
+                rw_lock.wait_percentile_nanos(kind, p),
             )));
         }
-        row.push(Cell::new(&rw_lock.write_count.to_string()));
-        row.push(Cell::new(&format_duration(rw_lock.write_avg_nanos())));
+        row.push(Cell::new(&format_duration(rw_lock.acquire_avg_nanos(kind))));
         for &p in percentiles {
             row.push(Cell::new(&format_duration(
-                rw_lock.write_percentile_nanos(p),
+                rw_lock.acquire_percentile_nanos(kind, p),
             )));
         }
         table.add_row(Row::new(row));
     }
 
-    if rw_locks.len() < total_count {
-        let _ = write!(writer, " ({}/{})", rw_locks.len(), total_count);
-    }
-    let _ = writeln!(writer);
     print_table(&table, writer);
     let _ = writeln!(writer);
 }
@@ -219,15 +233,28 @@ pub(crate) fn report_rw_locks_table(
 fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntry {
     let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
 
-    let mut read_percentiles = HashMap::new();
-    let mut write_percentiles = HashMap::new();
+    let mut read_wait_percentiles = HashMap::new();
+    let mut write_wait_percentiles = HashMap::new();
+    let mut read_acquire_percentiles = HashMap::new();
+    let mut write_acquire_percentiles = HashMap::new();
     for &p in percentiles {
         let key = format_percentile_key(p);
-        read_percentiles.insert(
+        read_wait_percentiles.insert(
             key.clone(),
-            format_duration(rw_lock.read_percentile_nanos(p)),
+            format_duration(rw_lock.wait_percentile_nanos(RwLockKind::Read, p)),
         );
-        write_percentiles.insert(key, format_duration(rw_lock.write_percentile_nanos(p)));
+        write_wait_percentiles.insert(
+            key.clone(),
+            format_duration(rw_lock.wait_percentile_nanos(RwLockKind::Write, p)),
+        );
+        read_acquire_percentiles.insert(
+            key.clone(),
+            format_duration(rw_lock.acquire_percentile_nanos(RwLockKind::Read, p)),
+        );
+        write_acquire_percentiles.insert(
+            key,
+            format_duration(rw_lock.acquire_percentile_nanos(RwLockKind::Write, p)),
+        );
     }
 
     JsonRwLockEntry {
@@ -238,10 +265,14 @@ fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntr
         type_name: rw_lock.type_name.to_string(),
         read_count: rw_lock.read_count,
         write_count: rw_lock.write_count,
-        read_avg: format_duration(rw_lock.read_avg_nanos()),
-        write_avg: format_duration(rw_lock.write_avg_nanos()),
-        read_percentiles,
-        write_percentiles,
+        read_wait_avg: format_duration(rw_lock.wait_avg_nanos(RwLockKind::Read)),
+        write_wait_avg: format_duration(rw_lock.wait_avg_nanos(RwLockKind::Write)),
+        read_acquire_avg: format_duration(rw_lock.acquire_avg_nanos(RwLockKind::Read)),
+        write_acquire_avg: format_duration(rw_lock.acquire_avg_nanos(RwLockKind::Write)),
+        read_wait_percentiles,
+        write_wait_percentiles,
+        read_acquire_percentiles,
+        write_acquire_percentiles,
         iter: rw_lock.iter,
     }
 }

@@ -40,11 +40,14 @@ pub(crate) enum RwLockEvent {
         label: Option<String>,
         type_name: &'static str,
     },
-    /// Emitted when a guard is dropped. `nanos` is the hold duration.
+    /// Emitted when a guard is dropped. `wait_nanos` is the time blocked
+    /// before the lock was granted; `acquire_nanos` is the held duration
+    /// (granted -> released).
     Released {
         id: u32,
         kind: RwLockKind,
-        nanos: u64,
+        wait_nanos: u64,
+        acquire_nanos: u64,
     },
 }
 
@@ -64,10 +67,14 @@ pub(crate) struct RwLockEntry {
     pub(crate) type_name: &'static str,
     pub(crate) read_count: u64,
     pub(crate) write_count: u64,
-    pub(crate) read_total_nanos: u64,
-    pub(crate) write_total_nanos: u64,
-    read_hist: Option<Histogram<u64>>,
-    write_hist: Option<Histogram<u64>>,
+    pub(crate) read_wait_total_nanos: u64,
+    pub(crate) write_wait_total_nanos: u64,
+    pub(crate) read_acquire_total_nanos: u64,
+    pub(crate) write_acquire_total_nanos: u64,
+    read_wait_hist: Option<Histogram<u64>>,
+    write_wait_hist: Option<Histogram<u64>>,
+    read_acquire_hist: Option<Histogram<u64>>,
+    write_acquire_hist: Option<Histogram<u64>>,
     pub(crate) iter: u32,
 }
 
@@ -82,45 +89,57 @@ impl RwLockEntry {
     }
 
     #[inline]
-    fn record_read(&mut self, nanos: u64) {
-        if let Some(ref mut hist) = self.read_hist {
+    fn record(hist: &mut Option<Histogram<u64>>, nanos: u64) {
+        if let Some(ref mut hist) = hist {
             hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
                 .unwrap();
         }
     }
 
-    #[inline]
-    fn record_write(&mut self, nanos: u64) {
-        if let Some(ref mut hist) = self.write_hist {
-            hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
-                .unwrap();
+    pub(crate) fn count(&self, kind: RwLockKind) -> u64 {
+        match kind {
+            RwLockKind::Read => self.read_count,
+            RwLockKind::Write => self.write_count,
         }
     }
 
-    pub(crate) fn read_avg_nanos(&self) -> u64 {
-        self.read_total_nanos
-            .checked_div(self.read_count)
-            .unwrap_or(0)
+    pub(crate) fn wait_avg_nanos(&self, kind: RwLockKind) -> u64 {
+        let (total, count) = match kind {
+            RwLockKind::Read => (self.read_wait_total_nanos, self.read_count),
+            RwLockKind::Write => (self.write_wait_total_nanos, self.write_count),
+        };
+        total.checked_div(count).unwrap_or(0)
     }
 
-    pub(crate) fn write_avg_nanos(&self) -> u64 {
-        self.write_total_nanos
-            .checked_div(self.write_count)
-            .unwrap_or(0)
+    pub(crate) fn acquire_avg_nanos(&self, kind: RwLockKind) -> u64 {
+        let (total, count) = match kind {
+            RwLockKind::Read => (self.read_acquire_total_nanos, self.read_count),
+            RwLockKind::Write => (self.write_acquire_total_nanos, self.write_count),
+        };
+        total.checked_div(count).unwrap_or(0)
     }
 
-    pub(crate) fn read_percentile_nanos(&self, p: f64) -> u64 {
-        match &self.read_hist {
-            Some(hist) if self.read_count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
+    fn percentile(hist: &Option<Histogram<u64>>, count: u64, p: f64) -> u64 {
+        match hist {
+            Some(hist) if count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
             _ => 0,
         }
     }
 
-    pub(crate) fn write_percentile_nanos(&self, p: f64) -> u64 {
-        match &self.write_hist {
-            Some(hist) if self.write_count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
-            _ => 0,
-        }
+    pub(crate) fn wait_percentile_nanos(&self, kind: RwLockKind, p: f64) -> u64 {
+        let (hist, count) = match kind {
+            RwLockKind::Read => (&self.read_wait_hist, self.read_count),
+            RwLockKind::Write => (&self.write_wait_hist, self.write_count),
+        };
+        Self::percentile(hist, count, p)
+    }
+
+    pub(crate) fn acquire_percentile_nanos(&self, kind: RwLockKind, p: f64) -> u64 {
+        let (hist, count) = match kind {
+            RwLockKind::Read => (&self.read_acquire_hist, self.read_count),
+            RwLockKind::Write => (&self.write_acquire_hist, self.write_count),
+        };
+        Self::percentile(hist, count, p)
     }
 }
 
@@ -158,6 +177,11 @@ pub(crate) fn get_rw_locks_json() -> crate::json::JsonRwLocksList {
 }
 
 #[inline]
+pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
+    start.elapsed().as_nanos() as u64
+}
+
+#[inline]
 pub(crate) fn send_rw_lock_event(stats_tx: &CbSender<RwLockEvent>, event: RwLockEvent) {
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let _ = stats_tx.send(event);
@@ -181,26 +205,39 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
                     type_name,
                     read_count: 0,
                     write_count: 0,
-                    read_total_nanos: 0,
-                    write_total_nanos: 0,
-                    read_hist: Some(RwLockEntry::new_histogram()),
-                    write_hist: Some(RwLockEntry::new_histogram()),
+                    read_wait_total_nanos: 0,
+                    write_wait_total_nanos: 0,
+                    read_acquire_total_nanos: 0,
+                    write_acquire_total_nanos: 0,
+                    read_wait_hist: Some(RwLockEntry::new_histogram()),
+                    write_wait_hist: Some(RwLockEntry::new_histogram()),
+                    read_acquire_hist: Some(RwLockEntry::new_histogram()),
+                    write_acquire_hist: Some(RwLockEntry::new_histogram()),
                     iter,
                 },
             );
         }
-        RwLockEvent::Released { id, kind, nanos } => {
+        RwLockEvent::Released {
+            id,
+            kind,
+            wait_nanos,
+            acquire_nanos,
+        } => {
             if let Some(entry) = state.stats.get_mut(&id) {
                 match kind {
                     RwLockKind::Read => {
                         entry.read_count += 1;
-                        entry.read_total_nanos += nanos;
-                        entry.record_read(nanos);
+                        entry.read_wait_total_nanos += wait_nanos;
+                        entry.read_acquire_total_nanos += acquire_nanos;
+                        RwLockEntry::record(&mut entry.read_wait_hist, wait_nanos);
+                        RwLockEntry::record(&mut entry.read_acquire_hist, acquire_nanos);
                     }
                     RwLockKind::Write => {
                         entry.write_count += 1;
-                        entry.write_total_nanos += nanos;
-                        entry.record_write(nanos);
+                        entry.write_wait_total_nanos += wait_nanos;
+                        entry.write_acquire_total_nanos += acquire_nanos;
+                        RwLockEntry::record(&mut entry.write_wait_hist, wait_nanos);
+                        RwLockEntry::record(&mut entry.write_acquire_hist, acquire_nanos);
                     }
                 }
             }

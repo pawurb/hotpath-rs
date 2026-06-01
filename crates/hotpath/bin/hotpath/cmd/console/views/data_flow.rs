@@ -6,7 +6,7 @@ use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_left;
 use hotpath::json::{JsonChannelEntry, JsonFutureEntry, JsonRwLockEntry, JsonStreamEntry};
 use ratatui::{
-    layout::{Constraint, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     symbols::border,
     text::Span,
@@ -259,11 +259,58 @@ pub(crate) fn render_futures_panel(
     frame.render_stateful_widget(table, area, table_state);
 }
 
+/// Whether to read a lock's read or write columns when building a sub-table.
+#[derive(Clone, Copy)]
+enum RwKind {
+    Read,
+    Write,
+}
+
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_rw_locks_panel(
     entries: &[JsonRwLockEntry],
     percentiles: &[f64],
+    area: Rect,
+    frame: &mut Frame,
+    table_state: &mut TableState,
+    position: usize,
+    total: usize,
+) {
+    // Stack a reads table over a writes table; both list every lock in the same
+    // order so the shared cursor highlights the same lock in both halves.
+    let halves = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+
+    render_rw_locks_subtable(
+        entries,
+        percentiles,
+        RwKind::Read,
+        halves[0],
+        frame,
+        table_state,
+        position,
+        total,
+    );
+    render_rw_locks_subtable(
+        entries,
+        percentiles,
+        RwKind::Write,
+        halves[1],
+        frame,
+        table_state,
+        position,
+        total,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_rw_locks_subtable(
+    entries: &[JsonRwLockEntry],
+    percentiles: &[f64],
+    kind: RwKind,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -278,22 +325,26 @@ pub(crate) fn render_rw_locks_panel(
         .map(|p| hotpath::format_percentile_key(*p))
         .collect();
 
+    let (count_label, title) = match kind {
+        RwKind::Read => ("Reads", " RwLocks reads - wait & acquire time "),
+        RwKind::Write => ("Writes", " RwLocks writes - wait & acquire time "),
+    };
+
     let mut header_cells = vec![
         Cell::from("Lock"),
-        Cell::from("Reads"),
-        Cell::from("Read avg"),
+        Cell::from(count_label),
+        Cell::from("Wait avg"),
     ];
     for p in percentiles {
         header_cells.push(Cell::from(format!(
-            "R {}",
+            "Wait {}",
             hotpath::format_percentile_header(*p)
         )));
     }
-    header_cells.push(Cell::from("Writes"));
-    header_cells.push(Cell::from("Write avg"));
+    header_cells.push(Cell::from("Acq avg"));
     for p in percentiles {
         header_cells.push(Cell::from(format!(
-            "W {}",
+            "Acq {}",
             hotpath::format_percentile_header(*p)
         )));
     }
@@ -304,25 +355,37 @@ pub(crate) fn render_rw_locks_panel(
     let rows: Vec<Row> = entries
         .iter()
         .map(|entry| {
+            let (count, wait_avg, wait_percentiles, acq_avg, acq_percentiles) = match kind {
+                RwKind::Read => (
+                    entry.read_count,
+                    &entry.read_wait_avg,
+                    &entry.read_wait_percentiles,
+                    &entry.read_acquire_avg,
+                    &entry.read_acquire_percentiles,
+                ),
+                RwKind::Write => (
+                    entry.write_count,
+                    &entry.write_wait_avg,
+                    &entry.write_wait_percentiles,
+                    &entry.write_acquire_avg,
+                    &entry.write_acquire_percentiles,
+                ),
+            };
+
             let mut cells = vec![
                 Cell::from(truncate_left(&entry.label, label_width)),
-                Cell::from(entry.read_count.to_string()),
-                Cell::from(entry.read_avg.clone()),
+                Cell::from(count.to_string()),
+                Cell::from(wait_avg.clone()),
             ];
             for key in &percentile_keys {
                 cells.push(Cell::from(
-                    entry.read_percentiles.get(key).cloned().unwrap_or_default(),
+                    wait_percentiles.get(key).cloned().unwrap_or_default(),
                 ));
             }
-            cells.push(Cell::from(entry.write_count.to_string()));
-            cells.push(Cell::from(entry.write_avg.clone()));
+            cells.push(Cell::from(acq_avg.clone()));
             for key in &percentile_keys {
                 cells.push(Cell::from(
-                    entry
-                        .write_percentiles
-                        .get(key)
-                        .cloned()
-                        .unwrap_or_default(),
+                    acq_percentiles.get(key).cloned().unwrap_or_default(),
                 ));
             }
             Row::new(cells)
@@ -337,7 +400,6 @@ pub(crate) fn render_rw_locks_panel(
     for _ in percentiles {
         widths.push(Constraint::Length(10));
     }
-    widths.push(Constraint::Length(8));
     widths.push(Constraint::Length(10));
     for _ in percentiles {
         widths.push(Constraint::Length(10));
@@ -346,7 +408,7 @@ pub(crate) fn render_rw_locks_panel(
     let table = Table::new(rows, widths)
         .header(header)
         .block(list_block(
-            " RwLocks - read/write hold time ",
+            title,
             false,
             DataFlowFocus::List,
             position,

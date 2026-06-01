@@ -328,10 +328,14 @@ pub struct JsonRwLockEntry {
     pub type_name: String,
     pub read_count: u64,
     pub write_count: u64,
-    pub read_avg: String,
-    pub write_avg: String,
-    pub read_percentiles: HashMap<String, String>,
-    pub write_percentiles: HashMap<String, String>,
+    pub read_wait_avg: String,
+    pub write_wait_avg: String,
+    pub read_acquire_avg: String,
+    pub write_acquire_avg: String,
+    pub read_wait_percentiles: HashMap<String, String>,
+    pub write_wait_percentiles: HashMap<String, String>,
+    pub read_acquire_percentiles: HashMap<String, String>,
+    pub write_acquire_percentiles: HashMap<String, String>,
     pub iter: u32,
 }
 
