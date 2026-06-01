@@ -330,7 +330,7 @@ pub mod async_lock {
 #[cfg(feature = "tokio")]
 pub mod tokio {
     pub mod sync {
-        pub use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+        pub use tokio::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
     }
 }
 

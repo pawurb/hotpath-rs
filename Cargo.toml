@@ -16,6 +16,7 @@ members = [
     "crates/test-rw-lock-async-lock",
     "crates/test-rw-lock-tokio",
     "crates/test-mutex-std",
+    "crates/test-mutex-tokio",
     "crates/test-streams",
     "crates/test-channels-tokio",
     "crates/test-futures",

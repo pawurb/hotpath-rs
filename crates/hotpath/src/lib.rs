@@ -118,7 +118,11 @@ pub mod wrap {
     pub mod tokio {
         pub mod sync {
             #[cfg(not(feature = "hotpath"))]
-            pub use crate::lib_off::tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+            pub use crate::lib_off::tokio::sync::{
+                Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+            };
+            #[cfg(feature = "hotpath")]
+            pub use crate::lib_on::mutexes::wrapper::tokio::{Mutex, MutexGuard};
             #[cfg(feature = "hotpath")]
             pub use crate::lib_on::rw_locks::wrapper::tokio::{
                 RwLock, RwLockReadGuard, RwLockWriteGuard,
