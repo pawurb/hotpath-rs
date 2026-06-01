@@ -6,9 +6,9 @@ edition = "2021"
 description = "Tests for async-lock RwLock instrumentation."
 
 [dependencies]
-hotpath = { workspace = true }
+hotpath = { workspace = true, features = ["async-lock"] }
 async-lock = "3"
 futures-lite = "2"
 
 [features]
-hotpath = ["hotpath/hotpath", "hotpath/async-lock"]
+hotpath = ["hotpath/hotpath"]

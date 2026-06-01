@@ -6,8 +6,8 @@ edition = "2021"
 description = "Tests for tokio::sync::Mutex instrumentation."
 
 [dependencies]
-hotpath = { workspace = true }
+hotpath = { workspace = true, features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
 
 [features]
-hotpath = ["hotpath/hotpath", "hotpath/tokio"]
+hotpath = ["hotpath/hotpath"]

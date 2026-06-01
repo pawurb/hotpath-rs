@@ -7,13 +7,9 @@ async fn main() {
         .sections(vec![hotpath::Section::RwLocks])
         .build();
 
-    // wrap-prefix drop-in smoke test (instrumented build)
-    #[cfg(feature = "hotpath")]
-    {
-        #[allow(deprecated)]
-        let wrapped = hotpath::wrap::tokio::sync::RwLock::new(0u64);
-        let _ = *wrapped.read().await;
-    }
+    #[allow(deprecated)]
+    let wrapped = hotpath::wrap::tokio::sync::RwLock::new(0u64);
+    let _ = *wrapped.read().await;
 
     let lock = Arc::new(hotpath::rw_lock!(
         tokio::sync::RwLock::new(0u64),
