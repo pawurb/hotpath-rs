@@ -6,8 +6,8 @@ use crossbeam_channel::Sender as CbSender;
 
 use crate::instant::Instant;
 use crate::rw_locks::{
-    register_rw_lock, send_rw_lock_event, InstrumentRwLock, RegisteredRwLock, RwLockEvent,
-    RwLockKind,
+    elapsed_nanos, register_rw_lock, send_rw_lock_event, InstrumentRwLock, RegisteredRwLock,
+    RwLockEvent, RwLockKind,
 };
 
 /// Instrumented drop-in replacement for [`std::sync::RwLock`].
@@ -20,6 +20,17 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
+    /// Drop-in constructor for the `hotpath_meta::wrap` prefix migration. Captures the
+    /// caller location as the registered source.
+    #[track_caller]
+    #[deprecated(note = "construct via the hotpath_meta::rw_lock! macro instead of new()")]
+    pub fn new(value: T) -> Self {
+        let loc = std::panic::Location::caller();
+        let source: &'static str =
+            Box::leak(format!("{}:{}", loc.file(), loc.line()).into_boxed_str());
+        Self::__new_instrumented(StdRwLock::new(value), source, None)
+    }
+
     #[doc(hidden)]
     pub fn __new_instrumented(
         inner: StdRwLock<T>,
@@ -35,44 +46,48 @@ impl<T> RwLock<T> {
     }
 
     pub fn read(&self) -> std::sync::LockResult<RwLockReadGuard<'_, T>> {
-        // Stamp the clock after acquisition so the guard measures hold time, not wait time.
+        // Stamp before acquisition to measure wait time; the guard then measures acquire time.
+        let wait_start = Instant::now();
         match self.inner.read() {
-            Ok(inner) => Ok(self.read_guard(inner)),
+            Ok(inner) => Ok(self.read_guard(inner, elapsed_nanos(wait_start))),
             Err(poison) => Err(std::sync::PoisonError::new(
-                self.read_guard(poison.into_inner()),
+                self.read_guard(poison.into_inner(), elapsed_nanos(wait_start)),
             )),
         }
     }
 
     pub fn try_read(&self) -> std::sync::TryLockResult<RwLockReadGuard<'_, T>> {
+        let wait_start = Instant::now();
         match self.inner.try_read() {
-            Ok(inner) => Ok(self.read_guard(inner)),
-            Err(std::sync::TryLockError::Poisoned(poison)) => {
-                Err(std::sync::TryLockError::Poisoned(
-                    std::sync::PoisonError::new(self.read_guard(poison.into_inner())),
-                ))
-            }
+            Ok(inner) => Ok(self.read_guard(inner, elapsed_nanos(wait_start))),
+            Err(std::sync::TryLockError::Poisoned(poison)) => Err(
+                std::sync::TryLockError::Poisoned(std::sync::PoisonError::new(
+                    self.read_guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                )),
+            ),
             Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
         }
     }
 
     pub fn write(&self) -> std::sync::LockResult<RwLockWriteGuard<'_, T>> {
+        let wait_start = Instant::now();
         match self.inner.write() {
-            Ok(inner) => Ok(self.write_guard(inner)),
+            Ok(inner) => Ok(self.write_guard(inner, elapsed_nanos(wait_start))),
             Err(poison) => Err(std::sync::PoisonError::new(
-                self.write_guard(poison.into_inner()),
+                self.write_guard(poison.into_inner(), elapsed_nanos(wait_start)),
             )),
         }
     }
 
     pub fn try_write(&self) -> std::sync::TryLockResult<RwLockWriteGuard<'_, T>> {
+        let wait_start = Instant::now();
         match self.inner.try_write() {
-            Ok(inner) => Ok(self.write_guard(inner)),
-            Err(std::sync::TryLockError::Poisoned(poison)) => {
-                Err(std::sync::TryLockError::Poisoned(
-                    std::sync::PoisonError::new(self.write_guard(poison.into_inner())),
-                ))
-            }
+            Ok(inner) => Ok(self.write_guard(inner, elapsed_nanos(wait_start))),
+            Err(std::sync::TryLockError::Poisoned(poison)) => Err(
+                std::sync::TryLockError::Poisoned(std::sync::PoisonError::new(
+                    self.write_guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                )),
+            ),
             Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
         }
     }
@@ -85,10 +100,15 @@ impl<T> RwLock<T> {
         self.inner.get_mut()
     }
 
-    fn read_guard<'a>(&self, inner: std::sync::RwLockReadGuard<'a, T>) -> RwLockReadGuard<'a, T> {
+    fn read_guard<'a>(
+        &self,
+        inner: std::sync::RwLockReadGuard<'a, T>,
+        wait_nanos: u64,
+    ) -> RwLockReadGuard<'a, T> {
         RwLockReadGuard {
             inner,
             start: Instant::now(),
+            wait_nanos,
             id: self.id,
             stats_tx: self.stats_tx.clone(),
         }
@@ -97,21 +117,24 @@ impl<T> RwLock<T> {
     fn write_guard<'a>(
         &self,
         inner: std::sync::RwLockWriteGuard<'a, T>,
+        wait_nanos: u64,
     ) -> RwLockWriteGuard<'a, T> {
         RwLockWriteGuard {
             inner,
             start: Instant::now(),
+            wait_nanos,
             id: self.id,
             stats_tx: self.stats_tx.clone(),
         }
     }
 }
 
-/// Guard returned by [`RwLock::read`]. Emits the hold duration on drop.
+/// Guard returned by [`RwLock::read`]. Emits wait and acquire durations on drop.
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockReadGuard<'a, T> {
     inner: std::sync::RwLockReadGuard<'a, T>,
     start: Instant,
+    wait_nanos: u64,
     id: u32,
     stats_tx: CbSender<RwLockEvent>,
 }
@@ -125,23 +148,24 @@ impl<T> std::ops::Deref for RwLockReadGuard<'_, T> {
 
 impl<T> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
-        let nanos = self.start.elapsed().as_nanos() as u64;
         send_rw_lock_event(
             &self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
                 kind: RwLockKind::Read,
-                nanos,
+                wait_nanos: self.wait_nanos,
+                acquire_nanos: elapsed_nanos(self.start),
             },
         );
     }
 }
 
-/// Guard returned by [`RwLock::write`]. Emits the hold duration on drop.
+/// Guard returned by [`RwLock::write`]. Emits wait and acquire durations on drop.
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockWriteGuard<'a, T> {
     inner: std::sync::RwLockWriteGuard<'a, T>,
     start: Instant,
+    wait_nanos: u64,
     id: u32,
     stats_tx: CbSender<RwLockEvent>,
 }
@@ -161,13 +185,13 @@ impl<T> std::ops::DerefMut for RwLockWriteGuard<'_, T> {
 
 impl<T> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
-        let nanos = self.start.elapsed().as_nanos() as u64;
         send_rw_lock_event(
             &self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
                 kind: RwLockKind::Write,
-                nanos,
+                wait_nanos: self.wait_nanos,
+                acquire_nanos: elapsed_nanos(self.start),
             },
         );
     }

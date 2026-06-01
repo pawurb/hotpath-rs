@@ -294,6 +294,8 @@ pub enum Route {
     FutureLogs { future_id: u32 },
     /// GET /rw_locks - Returns RwLock statistics
     RwLocks,
+    /// GET /mutexes - Returns Mutex statistics
+    Mutexes,
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
     /// GET /profiler_status - Returns profiler uptime
@@ -326,6 +328,7 @@ impl Route {
             Route::Futures => "/futures".to_string(),
             Route::FutureLogs { future_id } => format!("/futures/{}/logs", future_id),
             Route::RwLocks => "/rw_locks".to_string(),
+            Route::Mutexes => "/mutexes".to_string(),
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
         }
@@ -360,6 +363,7 @@ impl FromStr for Route {
             "/streams" => return Ok(Route::Streams),
             "/futures" => return Ok(Route::Futures),
             "/rw_locks" => return Ok(Route::RwLocks),
+            "/mutexes" => return Ok(Route::Mutexes),
             "/tokio_runtime" => return Ok(Route::TokioRuntime),
             "/profiler_status" => return Ok(Route::ProfilerStatus),
             _ => {}

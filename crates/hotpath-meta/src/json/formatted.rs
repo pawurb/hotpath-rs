@@ -328,10 +328,36 @@ pub struct JsonRwLockEntry {
     pub type_name: String,
     pub read_count: u64,
     pub write_count: u64,
-    pub read_avg: String,
-    pub write_avg: String,
-    pub read_percentiles: HashMap<String, String>,
-    pub write_percentiles: HashMap<String, String>,
+    pub read_wait_avg: String,
+    pub write_wait_avg: String,
+    pub read_acquire_avg: String,
+    pub write_acquire_avg: String,
+    pub read_wait_percentiles: HashMap<String, String>,
+    pub write_wait_percentiles: HashMap<String, String>,
+    pub read_acquire_percentiles: HashMap<String, String>,
+    pub write_acquire_percentiles: HashMap<String, String>,
+    pub iter: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonMutexesList {
+    pub current_elapsed_ns: u64,
+    pub percentiles: Vec<f64>,
+    pub data: Vec<JsonMutexEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonMutexEntry {
+    pub id: u32,
+    pub source: String,
+    pub label: String,
+    pub has_custom_label: bool,
+    pub type_name: String,
+    pub count: u64,
+    pub wait_avg: String,
+    pub acquire_avg: String,
+    pub wait_percentiles: HashMap<String, String>,
+    pub acquire_percentiles: HashMap<String, String>,
     pub iter: u32,
 }
 
@@ -724,6 +750,8 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rw_locks: Option<JsonRwLocksList>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub mutexes: Option<JsonMutexesList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<JsonThreadsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug: Option<JsonDebugList>,
@@ -743,6 +771,7 @@ impl Default for JsonReport {
             streams: None,
             futures: None,
             rw_locks: None,
+            mutexes: None,
             threads: None,
             debug: None,
             cpu_baseline: None,

@@ -25,6 +25,8 @@ pub use lib_on::channels;
 #[cfg(feature = "hotpath-meta")]
 pub use lib_on::futures;
 #[cfg(feature = "hotpath-meta")]
+pub use lib_on::mutexes;
+#[cfg(feature = "hotpath-meta")]
 pub use lib_on::streams;
 #[cfg(all(feature = "hotpath-meta", feature = "threads"))]
 pub use lib_on::threads;
@@ -84,7 +86,11 @@ pub mod wrap {
     pub mod std {
         pub mod sync {
             #[cfg(not(feature = "hotpath-meta"))]
+            pub use crate::lib_off::mutexes::{Mutex, MutexGuard};
+            #[cfg(not(feature = "hotpath-meta"))]
             pub use crate::lib_off::rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+            #[cfg(feature = "hotpath-meta")]
+            pub use crate::lib_on::mutexes::wrapper::std::{Mutex, MutexGuard};
             #[cfg(feature = "hotpath-meta")]
             pub use crate::lib_on::rw_locks::wrapper::std::{
                 RwLock, RwLockReadGuard, RwLockWriteGuard,

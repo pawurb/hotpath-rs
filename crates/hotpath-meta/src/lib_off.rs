@@ -272,6 +272,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn mutexes_limit(self, _limit: usize) -> Self {
+        self
+    }
+
     pub fn limit(self, _limit: usize) -> Self {
         self
     }
@@ -314,8 +318,22 @@ pub mod rw_locks {
     pub use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 }
 
+pub mod mutexes {
+    pub use std::sync::{Mutex, MutexGuard};
+}
+
 #[macro_export]
 macro_rules! rw_lock {
+    ($expr:expr) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr) => {
+        $expr
+    };
+}
+
+#[macro_export]
+macro_rules! mutex {
     ($expr:expr) => {
         $expr
     };

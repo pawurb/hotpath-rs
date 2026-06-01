@@ -71,6 +71,7 @@ pub struct HotpathGuardBuilder {
     streams_limit: usize,
     futures_limit: usize,
     rw_locks_limit: usize,
+    mutexes_limit: usize,
     threads_limit: usize,
     output_path: Option<PathBuf>,
     sections: Option<Vec<Section>>,
@@ -88,6 +89,7 @@ impl HotpathGuardBuilder {
             streams_limit: 0,
             futures_limit: 0,
             rw_locks_limit: 0,
+            mutexes_limit: 0,
             threads_limit: 5,
             output_path: None,
             sections: None,
@@ -109,6 +111,7 @@ impl HotpathGuardBuilder {
         self.streams_limit = limit;
         self.futures_limit = limit;
         self.rw_locks_limit = limit;
+        self.mutexes_limit = limit;
         self.threads_limit = limit;
         self
     }
@@ -136,6 +139,12 @@ impl HotpathGuardBuilder {
     /// Maximum number of rw_locks shown in the report. Set to `0` for unlimited.
     pub fn rw_locks_limit(mut self, limit: usize) -> Self {
         self.rw_locks_limit = limit;
+        self
+    }
+
+    /// Maximum number of mutexes shown in the report. Set to `0` for unlimited.
+    pub fn mutexes_limit(mut self, limit: usize) -> Self {
+        self.mutexes_limit = limit;
         self
     }
 
@@ -201,6 +210,7 @@ impl HotpathGuardBuilder {
             self.streams_limit,
             self.futures_limit,
             self.rw_locks_limit,
+            self.mutexes_limit,
             self.threads_limit,
         )
     }
@@ -239,6 +249,7 @@ pub struct HotpathGuard {
     streams_limit: usize,
     futures_limit: usize,
     rw_locks_limit: usize,
+    mutexes_limit: usize,
     threads_limit: usize,
 }
 
@@ -256,6 +267,7 @@ impl HotpathGuard {
         streams_limit: usize,
         futures_limit: usize,
         rw_locks_limit: usize,
+        mutexes_limit: usize,
         threads_limit: usize,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
@@ -491,6 +503,7 @@ impl HotpathGuard {
             streams_limit,
             futures_limit,
             rw_locks_limit,
+            mutexes_limit,
             threads_limit,
         }
     }
@@ -631,6 +644,12 @@ impl Drop for HotpathGuard {
             Vec::new()
         };
 
+        let mutexes_data = if self.sections.contains(&Section::Mutexes) {
+            report::shutdown_mutexes()
+        } else {
+            Vec::new()
+        };
+
         let output = OutputDestination::from_path(self.output_path.take());
         crate::output::set_use_colors(
             matches!(output, OutputDestination::Stdout) && std::env::var("NO_COLOR").is_err(),
@@ -646,6 +665,7 @@ impl Drop for HotpathGuard {
             self.streams_limit = global;
             self.futures_limit = global;
             self.rw_locks_limit = global;
+            self.mutexes_limit = global;
             self.threads_limit = global;
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_CHANNELS_LIMIT") {
@@ -659,6 +679,9 @@ impl Drop for HotpathGuard {
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_RW_LOCKS_LIMIT") {
             self.rw_locks_limit = v;
+        }
+        if let Some(v) = parse_usize_env("HOTPATH_META_MUTEXES_LIMIT") {
+            self.mutexes_limit = v;
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_THREADS_LIMIT") {
             self.threads_limit = v;
@@ -770,6 +793,16 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(rw_locks_data.len(), self.rw_locks_limit);
                             report.rw_locks = Some(report::collect_rw_locks_json(
                                 &rw_locks_data[..limit],
+                                elapsed,
+                                &percentiles,
+                            ));
+                        }
+                    }
+                    Section::Mutexes => {
+                        if !mutexes_data.is_empty() {
+                            let limit = apply_limit(mutexes_data.len(), self.mutexes_limit);
+                            report.mutexes = Some(report::collect_mutexes_json(
+                                &mutexes_data[..limit],
                                 elapsed,
                                 &percentiles,
                             ));
@@ -965,6 +998,18 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(total, self.rw_locks_limit);
                             report::report_rw_locks_table(
                                 &rw_locks_data[..limit],
+                                total,
+                                &percentiles,
+                                &mut writer,
+                            );
+                        }
+                    }
+                    Section::Mutexes => {
+                        if matches!(format, Format::Table) {
+                            let total = mutexes_data.len();
+                            let limit = apply_limit(total, self.mutexes_limit);
+                            report::report_mutexes_table(
+                                &mutexes_data[..limit],
                                 total,
                                 &percentiles,
                                 &mut writer,
