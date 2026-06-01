@@ -1,0 +1,13 @@
+[package]
+name = "test-rw-lock-tokio"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for tokio::sync::RwLock instrumentation."
+
+[dependencies]
+hotpath = { workspace = true }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
+
+[features]
+hotpath = ["hotpath/hotpath", "hotpath/tokio"]

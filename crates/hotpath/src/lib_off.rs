@@ -319,6 +319,13 @@ pub mod async_lock {
     pub use async_lock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 }
 
+#[cfg(feature = "tokio")]
+pub mod tokio {
+    pub mod sync {
+        pub use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+    }
+}
+
 #[macro_export]
 macro_rules! rw_lock {
     ($expr:expr) => {

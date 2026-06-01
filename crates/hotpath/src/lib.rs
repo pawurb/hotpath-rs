@@ -107,6 +107,18 @@ pub mod wrap {
             RwLock, RwLockReadGuard, RwLockWriteGuard,
         };
     }
+
+    #[cfg(feature = "tokio")]
+    pub mod tokio {
+        pub mod sync {
+            #[cfg(not(feature = "hotpath"))]
+            pub use crate::lib_off::tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+            #[cfg(feature = "hotpath")]
+            pub use crate::lib_on::rw_locks::wrapper::tokio::{
+                RwLock, RwLockReadGuard, RwLockWriteGuard,
+            };
+        }
+    }
 }
 
 mod shared;
