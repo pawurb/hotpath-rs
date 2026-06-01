@@ -4,7 +4,9 @@ pub(crate) mod logs;
 use crate::cmd::console::app::DataFlowFocus;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_left;
-use hotpath::json::{JsonChannelEntry, JsonFutureEntry, JsonRwLockEntry, JsonStreamEntry};
+use hotpath::json::{
+    JsonChannelEntry, JsonFutureEntry, JsonMutexEntry, JsonRwLockEntry, JsonStreamEntry,
+};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -409,6 +411,104 @@ fn render_rw_locks_subtable(
         .header(header)
         .block(list_block(
             title,
+            false,
+            DataFlowFocus::List,
+            position,
+            total,
+        ))
+        .column_spacing(1)
+        .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
+        .highlight_symbol(">> ")
+        .highlight_spacing(HighlightSpacing::Always);
+
+    frame.render_stateful_widget(table, area, table_state);
+}
+
+#[hotpath::measure]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_mutexes_panel(
+    entries: &[JsonMutexEntry],
+    percentiles: &[f64],
+    area: Rect,
+    frame: &mut Frame,
+    table_state: &mut TableState,
+    position: usize,
+    total: usize,
+) {
+    let available_width = area.width.saturating_sub(10);
+    let label_width = ((available_width as f32 * 0.30) as usize).max(16);
+
+    let percentile_keys: Vec<String> = percentiles
+        .iter()
+        .map(|p| hotpath::format_percentile_key(*p))
+        .collect();
+
+    let mut header_cells = vec![
+        Cell::from("Mutex"),
+        Cell::from("Locks"),
+        Cell::from("Wait avg"),
+    ];
+    for p in percentiles {
+        header_cells.push(Cell::from(format!(
+            "Wait {}",
+            hotpath::format_percentile_header(*p)
+        )));
+    }
+    header_cells.push(Cell::from("Acq avg"));
+    for p in percentiles {
+        header_cells.push(Cell::from(format!(
+            "Acq {}",
+            hotpath::format_percentile_header(*p)
+        )));
+    }
+    let header = Row::new(header_cells)
+        .style(common_styles::HEADER_STYLE_CYAN)
+        .height(1);
+
+    let rows: Vec<Row> = entries
+        .iter()
+        .map(|entry| {
+            let mut cells = vec![
+                Cell::from(truncate_left(&entry.label, label_width)),
+                Cell::from(entry.count.to_string()),
+                Cell::from(entry.wait_avg.clone()),
+            ];
+            for key in &percentile_keys {
+                cells.push(Cell::from(
+                    entry.wait_percentiles.get(key).cloned().unwrap_or_default(),
+                ));
+            }
+            cells.push(Cell::from(entry.acquire_avg.clone()));
+            for key in &percentile_keys {
+                cells.push(Cell::from(
+                    entry
+                        .acquire_percentiles
+                        .get(key)
+                        .cloned()
+                        .unwrap_or_default(),
+                ));
+            }
+            Row::new(cells)
+        })
+        .collect();
+
+    let mut widths = vec![
+        Constraint::Percentage(30),
+        Constraint::Length(8),
+        Constraint::Length(10),
+    ];
+    for _ in percentiles {
+        widths.push(Constraint::Length(10));
+    }
+    widths.push(Constraint::Length(10));
+    for _ in percentiles {
+        widths.push(Constraint::Length(10));
+    }
+
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(list_block(
+            " Mutexes - wait & acquire time ",
             false,
             DataFlowFocus::List,
             position,

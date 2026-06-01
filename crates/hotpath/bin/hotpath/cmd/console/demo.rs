@@ -6,6 +6,27 @@ use std::time::Duration;
 pub fn init() {
     spawn_tokio_demo();
     spawn_rw_locks();
+    spawn_mutexes();
+}
+
+fn spawn_mutexes() {
+    let lock = Arc::new(hotpath::mutex!(
+        std::sync::Mutex::new(0u64),
+        label = "demo-mutex"
+    ));
+
+    // A few contending threads holding the lock for varying durations.
+    for delay_ms in [60u64, 90, 130] {
+        let lock = Arc::clone(&lock);
+        thread::spawn(move || loop {
+            {
+                let mut v = lock.lock().unwrap();
+                *v += 1;
+                thread::sleep(Duration::from_millis(8));
+            }
+            thread::sleep(Duration::from_millis(delay_ms));
+        });
+    }
 }
 
 fn spawn_rw_locks() {

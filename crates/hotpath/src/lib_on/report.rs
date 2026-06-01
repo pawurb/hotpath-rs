@@ -10,9 +10,10 @@ use crate::debug::{
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
 use crate::json::JsonDebugEntry;
 use crate::json::{
-    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonRwLockEntry,
-    JsonRwLocksList, JsonStreamEntry, JsonStreamsList,
+    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonMutexEntry,
+    JsonMutexesList, JsonRwLockEntry, JsonRwLocksList, JsonStreamEntry, JsonStreamsList,
 };
+use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
     format_bytes, format_duration, format_percentile_header, format_percentile_key,
 };
@@ -288,6 +289,137 @@ pub(crate) fn collect_rw_locks_json(
         data: rw_locks
             .iter()
             .map(|rw_lock| rw_lock_to_json(rw_lock, percentiles))
+            .collect(),
+    }
+}
+
+pub(crate) fn shutdown_mutexes() -> Vec<MutexEntry> {
+    MUTEXES_STATE
+        .get()
+        .and_then(|state| {
+            if let Ok(mut guard) = state.shutdown_tx.lock() {
+                if let Some(tx) = guard.take() {
+                    let _ = tx.send(());
+                }
+            }
+            state
+                .completion_rx
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take())
+                .and_then(|rx| rx.recv().ok());
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+        })
+        .map(|mut mutexes| {
+            mutexes.sort_by(compare_mutex_entries);
+            mutexes
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn report_mutexes_table(
+    mutexes: &[MutexEntry],
+    total_count: usize,
+    percentiles: &[f64],
+    writer: &mut dyn Write,
+) {
+    let rows: Vec<&MutexEntry> = mutexes.iter().filter(|l| l.count > 0).collect();
+    if rows.is_empty() {
+        return;
+    }
+
+    write_section_header(writer, "mutexes", "Mutex wait & acquire time statistics.");
+    if mutexes.len() < total_count {
+        let _ = write!(writer, " ({}/{})", mutexes.len(), total_count);
+    }
+    let _ = writeln!(writer);
+
+    let mut header = vec![
+        styled_header("Mutex"),
+        styled_header("Locks"),
+        styled_header("Wait avg"),
+    ];
+    for &p in percentiles {
+        header.push(styled_header(&format!(
+            "Wait {}",
+            format_percentile_header(p)
+        )));
+    }
+    header.push(styled_header("Acq avg"));
+    for &p in percentiles {
+        header.push(styled_header(&format!(
+            "Acq {}",
+            format_percentile_header(p)
+        )));
+    }
+
+    let mut table = Table::new();
+    table.add_row(Row::new(header));
+
+    for mutex in rows {
+        let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
+        let mut row = vec![
+            Cell::new(&label),
+            Cell::new(&mutex.count.to_string()),
+            Cell::new(&format_duration(mutex.wait_avg_nanos())),
+        ];
+        for &p in percentiles {
+            row.push(Cell::new(&format_duration(mutex.wait_percentile_nanos(p))));
+        }
+        row.push(Cell::new(&format_duration(mutex.acquire_avg_nanos())));
+        for &p in percentiles {
+            row.push(Cell::new(&format_duration(
+                mutex.acquire_percentile_nanos(p),
+            )));
+        }
+        table.add_row(Row::new(row));
+    }
+
+    print_table(&table, writer);
+    let _ = writeln!(writer);
+}
+
+fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64]) -> JsonMutexEntry {
+    let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
+
+    let mut wait_percentiles = HashMap::new();
+    let mut acquire_percentiles = HashMap::new();
+    for &p in percentiles {
+        let key = format_percentile_key(p);
+        wait_percentiles.insert(key.clone(), format_duration(mutex.wait_percentile_nanos(p)));
+        acquire_percentiles.insert(key, format_duration(mutex.acquire_percentile_nanos(p)));
+    }
+
+    JsonMutexEntry {
+        id: mutex.id,
+        source: mutex.source.to_string(),
+        label,
+        has_custom_label: mutex.label.is_some(),
+        type_name: mutex.type_name.to_string(),
+        count: mutex.count,
+        wait_avg: format_duration(mutex.wait_avg_nanos()),
+        acquire_avg: format_duration(mutex.acquire_avg_nanos()),
+        wait_percentiles,
+        acquire_percentiles,
+        iter: mutex.iter,
+    }
+}
+
+pub(crate) fn collect_mutexes_json(
+    mutexes: &[MutexEntry],
+    elapsed: std::time::Duration,
+    percentiles: &[f64],
+) -> JsonMutexesList {
+    JsonMutexesList {
+        current_elapsed_ns: elapsed.as_nanos() as u64,
+        percentiles: percentiles.to_vec(),
+        data: mutexes
+            .iter()
+            .map(|mutex| mutex_to_json(mutex, percentiles))
             .collect(),
     }
 }

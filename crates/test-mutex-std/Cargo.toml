@@ -1,0 +1,12 @@
+[package]
+name = "test-mutex-std"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for std Mutex instrumentation."
+
+[dependencies]
+hotpath = { workspace = true }
+
+[features]
+hotpath = ["hotpath/hotpath"]

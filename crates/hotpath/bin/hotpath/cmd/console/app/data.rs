@@ -7,7 +7,7 @@ use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
     JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList,
     JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
-    JsonRwLocksList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonMutexesList, JsonRwLocksList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use std::time::Instant;
 
@@ -299,6 +299,19 @@ impl App {
         }
     }
 
+    pub(crate) fn update_mutexes(&mut self, mutexes: JsonMutexesList) {
+        self.mutexes = mutexes;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        let len = self.mutexes.data.len();
+        if let Some(selected) = self.mutexes_table_state.selected() {
+            if selected >= len && len > 0 {
+                self.mutexes_table_state.select(Some(len - 1));
+            }
+        }
+    }
+
     pub(crate) fn request_data_flow_logs(&self) {
         if self.paused {
             return;
@@ -321,6 +334,7 @@ impl App {
                 .and_then(|i| self.futures.data.get(i))
                 .map(|e| DataRequest::FetchFutureLogs(e.id)),
             DataFlowSubTab::RwLocks => None,
+            DataFlowSubTab::Mutexes => None,
         };
 
         if let Some(req) = request {
@@ -487,6 +501,7 @@ impl App {
                     DataFlowSubTab::Streams => DataRequest::RefreshStreams,
                     DataFlowSubTab::Futures => DataRequest::RefreshFutures,
                     DataFlowSubTab::RwLocks => DataRequest::RefreshRwLocks,
+                    DataFlowSubTab::Mutexes => DataRequest::RefreshMutexes,
                 }
             }
             SelectedTab::Threads => {
@@ -584,6 +599,11 @@ impl App {
                 trace!("Received rw_locks: {} entries", data.data.len());
                 self.loading_data_flow = false;
                 self.update_rw_locks(data);
+            }
+            DataResponse::Mutexes(data) => {
+                trace!("Received mutexes: {} entries", data.data.len());
+                self.loading_data_flow = false;
+                self.update_mutexes(data);
             }
             DataResponse::ChannelLogs { id, logs } => {
                 trace!(

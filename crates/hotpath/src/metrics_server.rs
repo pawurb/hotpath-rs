@@ -152,6 +152,10 @@ fn handle_request(request: Request) {
             let rw_locks = crate::rw_locks::get_rw_locks_json();
             respond_json(request, &rw_locks);
         }
+        Ok(Route::Mutexes) => {
+            let mutexes = crate::mutexes::get_mutexes_json();
+            respond_json(request, &mutexes);
+        }
         Ok(Route::ChannelLogs { channel_id }) => match get_channel_logs(channel_id) {
             Some(logs) => {
                 let formatted = JsonChannelLogsList::from_logs(&logs, get_current_elapsed_ns());

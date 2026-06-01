@@ -240,6 +240,8 @@ fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, sub_tab: DataFlowSubT
         label(DataFlowSubTab::Futures),
         Span::raw("|"),
         label(DataFlowSubTab::RwLocks),
+        Span::raw("|"),
+        label(DataFlowSubTab::Mutexes),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }
@@ -295,6 +297,12 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 Line::from("No RwLocks found").yellow().centered(),
                 Line::from(""),
                 Line::from("Use the rw_lock! macro to instrument RwLocks").centered(),
+            ],
+            DataFlowSubTab::Mutexes => vec![
+                Line::from(""),
+                Line::from("No Mutexes found").yellow().centered(),
+                Line::from(""),
+                Line::from("Use the mutex! macro to instrument Mutexes").centered(),
             ],
         };
 
@@ -354,6 +362,7 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
             })
             .unwrap_or_else(|| "Unknown".to_string()),
         DataFlowSubTab::RwLocks => String::new(),
+        DataFlowSubTab::Mutexes => String::new(),
     };
 
     match app.data_flow_sub_tab {
@@ -393,6 +402,15 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
             table_area,
             frame,
             &mut app.rw_locks_table_state,
+            position,
+            total,
+        ),
+        DataFlowSubTab::Mutexes => data_flow::render_mutexes_panel(
+            &app.mutexes.data,
+            &app.mutexes.percentiles,
+            table_area,
+            frame,
+            &mut app.mutexes_table_state,
             position,
             total,
         ),

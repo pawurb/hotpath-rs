@@ -4,8 +4,8 @@ use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
-    JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonRuntimeSnapshot, JsonRwLocksList,
-    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonMutexesList, JsonRuntimeSnapshot,
+    JsonRwLocksList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -93,6 +93,7 @@ pub(crate) enum DataFlowSubTab {
     Streams,
     Futures,
     RwLocks,
+    Mutexes,
 }
 
 impl DataFlowSubTab {
@@ -102,6 +103,7 @@ impl DataFlowSubTab {
             DataFlowSubTab::Streams => "Streams",
             DataFlowSubTab::Futures => "Futures",
             DataFlowSubTab::RwLocks => "RwLocks",
+            DataFlowSubTab::Mutexes => "Mutexes",
         }
     }
 
@@ -110,13 +112,14 @@ impl DataFlowSubTab {
             DataFlowSubTab::Channels => DataFlowSubTab::Streams,
             DataFlowSubTab::Streams => DataFlowSubTab::Futures,
             DataFlowSubTab::Futures => DataFlowSubTab::RwLocks,
-            DataFlowSubTab::RwLocks => DataFlowSubTab::Channels,
+            DataFlowSubTab::RwLocks => DataFlowSubTab::Mutexes,
+            DataFlowSubTab::Mutexes => DataFlowSubTab::Channels,
         }
     }
 
-    /// RwLocks have no per-event logs, so the logs/inspect panes don't apply.
+    /// RwLocks and Mutexes have no per-event logs, so the logs/inspect panes don't apply.
     pub(crate) fn has_logs(&self) -> bool {
-        !matches!(self, DataFlowSubTab::RwLocks)
+        !matches!(self, DataFlowSubTab::RwLocks | DataFlowSubTab::Mutexes)
     }
 }
 
@@ -222,10 +225,12 @@ pub(crate) struct App {
     pub(crate) streams: JsonStreamsList,
     pub(crate) futures: JsonFuturesList,
     pub(crate) rw_locks: JsonRwLocksList,
+    pub(crate) mutexes: JsonMutexesList,
     pub(crate) channels_table_state: TableState,
     pub(crate) streams_table_state: TableState,
     pub(crate) futures_table_state: TableState,
     pub(crate) rw_locks_table_state: TableState,
+    pub(crate) mutexes_table_state: TableState,
     pub(crate) data_flow_focus: DataFlowFocus,
     pub(crate) show_data_flow_logs: bool,
     pub(crate) data_flow_logs: Option<DataFlowLogs>,
@@ -352,10 +357,16 @@ impl App {
                 percentiles: vec![],
                 data: vec![],
             },
+            mutexes: JsonMutexesList {
+                current_elapsed_ns: 0,
+                percentiles: vec![],
+                data: vec![],
+            },
             channels_table_state: TableState::default().with_selected(0),
             streams_table_state: TableState::default().with_selected(0),
             futures_table_state: TableState::default().with_selected(0),
             rw_locks_table_state: TableState::default().with_selected(0),
+            mutexes_table_state: TableState::default().with_selected(0),
             data_flow_focus: DataFlowFocus::List,
             show_data_flow_logs: false,
             data_flow_logs: None,
@@ -420,6 +431,7 @@ impl App {
                 DataFlowSubTab::Streams => &mut self.streams_table_state,
                 DataFlowSubTab::Futures => &mut self.futures_table_state,
                 DataFlowSubTab::RwLocks => &mut self.rw_locks_table_state,
+                DataFlowSubTab::Mutexes => &mut self.mutexes_table_state,
             },
             SelectedTab::Threads => &mut self.threads_table_state,
             SelectedTab::Debug => &mut self.debug_table_state,
@@ -433,6 +445,7 @@ impl App {
             DataFlowSubTab::Streams => self.streams.data.len(),
             DataFlowSubTab::Futures => self.futures.data.len(),
             DataFlowSubTab::RwLocks => self.rw_locks.data.len(),
+            DataFlowSubTab::Mutexes => self.mutexes.data.len(),
         }
     }
 
@@ -442,6 +455,7 @@ impl App {
             DataFlowSubTab::Streams => &self.streams_table_state,
             DataFlowSubTab::Futures => &self.futures_table_state,
             DataFlowSubTab::RwLocks => &self.rw_locks_table_state,
+            DataFlowSubTab::Mutexes => &self.mutexes_table_state,
         }
     }
 
@@ -451,6 +465,7 @@ impl App {
             DataFlowSubTab::Streams => &mut self.streams_table_state,
             DataFlowSubTab::Futures => &mut self.futures_table_state,
             DataFlowSubTab::RwLocks => &mut self.rw_locks_table_state,
+            DataFlowSubTab::Mutexes => &mut self.mutexes_table_state,
         }
     }
 
