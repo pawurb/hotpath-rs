@@ -36,6 +36,8 @@ test_all:
     cargo test --features hotpath --test channels_flume -- --nocapture --test-threads=1
     cargo test --features hotpath --test rw_lock_std -- --nocapture --test-threads=1
     cargo test --features hotpath --test rw_lock_parking_lot -- --nocapture --test-threads=1
+    cargo test --features hotpath --test rw_lock_async_lock -- --nocapture --test-threads=1
+    cargo test --features hotpath --test rw_lock_tokio -- --nocapture --test-threads=1
     cargo test --features hotpath --test mutex_std -- --nocapture --test-threads=1
     cargo test --features hotpath --test mutex_tokio -- --nocapture --test-threads=1
     cargo test --features hotpath --test mutex_async_lock -- --nocapture --test-threads=1

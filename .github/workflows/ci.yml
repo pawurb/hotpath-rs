@@ -135,6 +135,12 @@ jobs:
       - name: Run rwlocks parking_lot tests
         run: |
           cargo test --features hotpath --test rw_lock_parking_lot -- --nocapture --test-threads=1
+      - name: Run rwlocks async_lock tests
+        run: |
+          cargo test --features hotpath --test rw_lock_async_lock -- --nocapture --test-threads=1
+      - name: Run rwlocks tokio tests
+        run: |
+          cargo test --features hotpath --test rw_lock_tokio -- --nocapture --test-threads=1
       - name: Run mutex std tests
         run: |
           cargo test --features hotpath --test mutex_std -- --nocapture --test-threads=1
