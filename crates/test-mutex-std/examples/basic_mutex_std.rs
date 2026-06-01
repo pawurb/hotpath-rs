@@ -7,6 +7,14 @@ fn main() {
         .sections(vec![hotpath::Section::Mutexes])
         .build();
 
+    // wrap-prefix drop-in smoke test (instrumented build)
+    #[cfg(feature = "hotpath")]
+    {
+        #[allow(deprecated)]
+        let wrapped = hotpath::wrap::std::sync::Mutex::new(0u64);
+        let _ = *wrapped.lock().unwrap();
+    }
+
     let lock = Arc::new(hotpath::mutex!(
         std::sync::Mutex::new(0u64),
         label = "counter"

@@ -13,6 +13,14 @@ fn main() {
             label = "counter"
         ));
 
+        // wrap-prefix drop-in smoke test (instrumented build)
+        #[cfg(feature = "hotpath")]
+        {
+            #[allow(deprecated)]
+            let wrapped = hotpath::wrap::async_lock::RwLock::new(0u64);
+            let _ = *wrapped.read().await;
+        }
+
         for _ in 0..3 {
             let mut w = lock.write().await;
             *w += 1;

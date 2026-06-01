@@ -78,6 +78,11 @@ pub use lib_off::threads;
 /// Mirror of `std` paths so instrumented types can be used as drop-in
 /// replacements by prefixing imports with `hotpath::wrap::` (e.g.
 /// `hotpath::wrap::std::sync::RwLock`).
+///
+/// These types expose `new(value)` (capturing the caller location as the
+/// registered source) so existing `Type::new(..)` call sites keep compiling,
+/// but it is deprecated: prefer the [`mutex!`](crate::mutex) /
+/// [`rw_lock!`](crate::rw_lock) macros, which also accept a `label`.
 pub mod wrap {
     pub mod std {
         pub mod sync {

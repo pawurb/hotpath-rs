@@ -7,6 +7,14 @@ fn main() {
         .sections(vec![hotpath::Section::RwLocks])
         .build();
 
+    // wrap-prefix drop-in smoke test (instrumented build)
+    #[cfg(feature = "hotpath")]
+    {
+        #[allow(deprecated)]
+        let wrapped = hotpath::wrap::parking_lot::RwLock::new(0u64);
+        let _ = *wrapped.read();
+    }
+
     let lock = Arc::new(hotpath::rw_lock!(
         parking_lot::RwLock::new(0u64),
         label = "counter"

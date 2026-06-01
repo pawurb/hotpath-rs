@@ -20,6 +20,17 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
+    /// Drop-in constructor for the `hotpath::wrap` prefix migration. Captures the
+    /// caller location as the registered source.
+    #[track_caller]
+    #[deprecated(note = "construct via the hotpath::rw_lock! macro instead of new()")]
+    pub fn new(value: T) -> Self {
+        let loc = std::panic::Location::caller();
+        let source: &'static str =
+            Box::leak(format!("{}:{}", loc.file(), loc.line()).into_boxed_str());
+        Self::__new_instrumented(TokioRwLock::new(value), source, None)
+    }
+
     #[doc(hidden)]
     pub fn __new_instrumented(
         inner: TokioRwLock<T>,
