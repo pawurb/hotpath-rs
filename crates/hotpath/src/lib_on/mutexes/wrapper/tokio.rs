@@ -18,6 +18,7 @@ pub struct Mutex<T> {
     stats_tx: CbSender<MutexEvent>,
 }
 
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl<T> Mutex<T> {
     /// Drop-in constructor for the `hotpath::wrap` prefix migration. Captures the
     /// caller location as the registered source.

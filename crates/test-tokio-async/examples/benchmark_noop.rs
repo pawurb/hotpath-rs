@@ -1,14 +1,7 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-const WAIT_FOR: Duration = Duration::from_micros(1);
-
-// This function is used to spin-wait for a given duration.
-// It's more precise than std::thread::sleep.
 #[hotpath::measure]
-fn spin_wait() {
-    let start = Instant::now();
-    while start.elapsed() < WAIT_FOR {}
-}
+fn noop() {}
 
 #[hotpath::main]
 fn main() {
@@ -16,7 +9,15 @@ fn main() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(100_000);
+
+    let start = Instant::now();
     for _ in 0..runs {
-        spin_wait();
+        noop();
     }
+    let elapsed = start.elapsed();
+
+    println!(
+        "noop: {runs} calls in {elapsed:?} ({:.1} ns/op)",
+        elapsed.as_nanos() as f64 / runs as f64
+    );
 }

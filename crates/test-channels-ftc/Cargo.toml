@@ -14,3 +14,6 @@ async-io = "2.0"
 
 [features]
 hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-cpu = ["hotpath/hotpath-cpu"]
+hotpath-meta = ["hotpath/hotpath-meta"]

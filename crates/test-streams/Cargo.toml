@@ -16,3 +16,6 @@ serde_json = "1.0"
 
 [features]
 hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-cpu = ["hotpath/hotpath-cpu"]
+hotpath-meta = ["hotpath/hotpath-meta"]

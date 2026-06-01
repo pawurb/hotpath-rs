@@ -19,6 +19,7 @@ pub struct RwLock<T> {
     stats_tx: CbSender<RwLockEvent>,
 }
 
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl<T> RwLock<T> {
     /// Drop-in constructor for the `hotpath::wrap` prefix migration. Captures the
     /// caller location as the registered source.

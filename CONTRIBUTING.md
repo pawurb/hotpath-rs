@@ -46,32 +46,70 @@ It benchmarks two versions of the library (branch names or commit SHAs are suppo
 - `HOTPATH_TUI_AUTO_EXPAND_LOGS` - Auto-open the logs panel once initial data arrives and pin selection to the given table index. Set to an integer (e.g. `0` for the first row, `2` for the third) (default: unset). 
 - `HOTPATH_META_FOCUS` - filter which methods appear in the benchmark report by name. Plain text does substring matching; wrap in `/pattern/` for regex (e.g. `HOTPATH_META_FOCUS="/^(compute|process)/"`).
 
-### Hyperfine benchmarks
+### Overhead benchmarks
 
-Benchmark `hotpath` overhead of profiling 100k method calls with [hyperfine](https://github.com/sharkdp/hyperfine):
+Each `benchmark_*` example hammers an instrumented codepath in a tight loop. Run with `--features hotpath` to measure with instrumentation, and omit it to measure the uninstrumented baseline.
 
 #### Timing
 
-With instrumentation:
-```bash
-cargo build --example benchmark_noop --features hotpath --release && hyperfine --warmup 3 './target/release/examples/benchmark_noop'
-```
+Prints total time and per-operation overhead on exit. The call count defaults to 100,000 and is configurable via `HOTPATH_BENCHMARK_NOOP_RUNS`.
 
-Without instrumentation:
 ```bash
-cargo build --example benchmark_noop --release && hyperfine --warmup 3 './target/release/examples/benchmark_noop'
+cargo run --example benchmark_noop --features hotpath --release
 ```
 
 #### Allocations
 
-With instrumentation:
 ```bash
-cargo build --example benchmark_alloc --features='hotpath,hotpath-alloc' --release && hyperfine --warmup 3 './target/release/examples/benchmark_alloc'
+cargo run --example benchmark_alloc --features='hotpath,hotpath-alloc' --release
 ```
 
-Without instrumentation
+#### Mutexes and RwLocks
+
+Each lock backend has a dedicated crate with a `benchmark_*` example that hammers a single instrumented lock in a tight, uncontended loop, so the measured time reflects per-acquisition instrumentation overhead. RwLock examples run a write loop followed by a read loop. The iteration count defaults to 1,000,000 and is configurable via `HOTPATH_LOCK_BENCH_RUNS`.
+
+For each backend, run with `--features hotpath` to measure with instrumentation, and omit it to measure the uninstrumented baseline.
+
+##### std Mutex
+
 ```bash
-cargo build --example benchmark_alloc --release && hyperfine --warmup 3 './target/release/examples/benchmark_alloc'
+cargo run -p test-mutex-std --example benchmark_mutex_std --features hotpath --release
+```
+
+##### tokio Mutex
+
+```bash
+cargo run -p test-mutex-tokio --example benchmark_mutex_tokio --features hotpath --release
+```
+
+##### async-lock Mutex
+
+```bash
+cargo run -p test-mutex-async-lock --example benchmark_mutex_async_lock --features hotpath --release
+```
+
+##### std RwLock
+
+```bash
+cargo run -p test-rw-lock-std --example benchmark_rw_lock_std --features hotpath --release
+```
+
+##### tokio RwLock
+
+```bash
+cargo run -p test-rw-lock-tokio --example benchmark_rw_lock_tokio --features hotpath --release
+```
+
+##### parking_lot RwLock
+
+```bash
+cargo run -p test-rw-lock-parking-lot --example benchmark_rw_lock_parking_lot --features hotpath --release
+```
+
+##### async-lock RwLock
+
+```bash
+cargo run -p test-rw-lock-async-lock --example benchmark_rw_lock_async_lock --features hotpath --release
 ```
 
 ### Samply traces 
@@ -142,16 +180,25 @@ cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings
 ```bash
 cargo test --lib --features hotpath
 cargo test -p hotpath --bin hotpath --features=tui
-cargo test --features hotpath --test functions -- --nocapture --test-threads=1
-cargo test --example unit_test --features hotpath -- --nocapture --test-threads=1
-cargo run --example basic_std
+cargo run -p test-all-features --example all_noop
+cargo test --features hotpath --test guards -- --nocapture --test-threads=1
+cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
+cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
+cargo test --features hotpath --test functions_cpu -- --nocapture --test-threads=1
 cargo test --features hotpath --test streams -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_ftc -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_asc -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_std -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_tokio -- --nocapture --test-threads=1
+cargo test --features hotpath --test channels_flume -- --nocapture --test-threads=1
+cargo test --features hotpath --test rw_lock_std -- --nocapture --test-threads=1
+cargo test --features hotpath --test rw_lock_parking_lot -- --nocapture --test-threads=1
+cargo test --features hotpath --test mutex_std -- --nocapture --test-threads=1
+cargo test --features hotpath --test mutex_tokio -- --nocapture --test-threads=1
+cargo test --features hotpath --test mutex_async_lock -- --nocapture --test-threads=1
 cargo test --features hotpath --test threads -- --nocapture --test-threads=1
+cargo test --features hotpath --test tokio_runtime -- --nocapture --test-threads=1
 cargo test --features hotpath --test futures -- --nocapture --test-threads=1
 cargo test --features hotpath --test debug -- --nocapture --test-threads=1
 ```

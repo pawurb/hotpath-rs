@@ -234,6 +234,8 @@ pub mod tests {
     }
 
     // cargo run -p test-all-features --example basic_all_features --all-features
+    // hotpath-cpu is macOS/Linux only, so --all-features cannot build on Windows.
+    #[cfg(not(windows))]
     #[test]
     fn test_all_features_output() {
         let output = Command::new("cargo")
