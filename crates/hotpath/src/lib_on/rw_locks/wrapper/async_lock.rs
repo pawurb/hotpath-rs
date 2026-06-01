@@ -81,7 +81,7 @@ impl<T> RwLock<T> {
     }
 
     fn read_guard<'a>(
-        &self,
+        &'a self,
         inner: async_lock::RwLockReadGuard<'a, T>,
         wait_nanos: u64,
     ) -> RwLockReadGuard<'a, T> {
@@ -90,12 +90,12 @@ impl<T> RwLock<T> {
             start: Instant::now(),
             wait_nanos,
             id: self.id,
-            stats_tx: self.stats_tx.clone(),
+            stats_tx: &self.stats_tx,
         }
     }
 
     fn write_guard<'a>(
-        &self,
+        &'a self,
         inner: async_lock::RwLockWriteGuard<'a, T>,
         wait_nanos: u64,
     ) -> RwLockWriteGuard<'a, T> {
@@ -104,7 +104,7 @@ impl<T> RwLock<T> {
             start: Instant::now(),
             wait_nanos,
             id: self.id,
-            stats_tx: self.stats_tx.clone(),
+            stats_tx: &self.stats_tx,
         }
     }
 }
@@ -116,7 +116,7 @@ pub struct RwLockReadGuard<'a, T> {
     start: Instant,
     wait_nanos: u64,
     id: u32,
-    stats_tx: CbSender<RwLockEvent>,
+    stats_tx: &'a CbSender<RwLockEvent>,
 }
 
 impl<T> std::ops::Deref for RwLockReadGuard<'_, T> {
@@ -129,7 +129,7 @@ impl<T> std::ops::Deref for RwLockReadGuard<'_, T> {
 impl<T> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
         send_rw_lock_event(
-            &self.stats_tx,
+            self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
                 kind: RwLockKind::Read,
@@ -147,7 +147,7 @@ pub struct RwLockWriteGuard<'a, T> {
     start: Instant,
     wait_nanos: u64,
     id: u32,
-    stats_tx: CbSender<RwLockEvent>,
+    stats_tx: &'a CbSender<RwLockEvent>,
 }
 
 impl<T> std::ops::Deref for RwLockWriteGuard<'_, T> {
@@ -166,7 +166,7 @@ impl<T> std::ops::DerefMut for RwLockWriteGuard<'_, T> {
 impl<T> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         send_rw_lock_event(
-            &self.stats_tx,
+            self.stats_tx,
             RwLockEvent::Released {
                 id: self.id,
                 kind: RwLockKind::Write,

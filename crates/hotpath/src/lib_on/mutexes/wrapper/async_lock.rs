@@ -67,7 +67,7 @@ impl<T> Mutex<T> {
     }
 
     fn guard<'a>(
-        &self,
+        &'a self,
         inner: async_lock::MutexGuard<'a, T>,
         wait_nanos: u64,
     ) -> MutexGuard<'a, T> {
@@ -76,7 +76,7 @@ impl<T> Mutex<T> {
             start: Instant::now(),
             wait_nanos,
             id: self.id,
-            stats_tx: self.stats_tx.clone(),
+            stats_tx: &self.stats_tx,
         }
     }
 }
@@ -88,7 +88,7 @@ pub struct MutexGuard<'a, T> {
     start: Instant,
     wait_nanos: u64,
     id: u32,
-    stats_tx: CbSender<MutexEvent>,
+    stats_tx: &'a CbSender<MutexEvent>,
 }
 
 impl<T> std::ops::Deref for MutexGuard<'_, T> {
@@ -107,7 +107,7 @@ impl<T> std::ops::DerefMut for MutexGuard<'_, T> {
 impl<T> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
         send_mutex_event(
-            &self.stats_tx,
+            self.stats_tx,
             MutexEvent::Released {
                 id: self.id,
                 wait_nanos: self.wait_nanos,
