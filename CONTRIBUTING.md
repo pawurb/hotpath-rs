@@ -112,6 +112,48 @@ cargo run -p test-rw-lock-parking-lot --example benchmark_rw_lock_parking_lot --
 cargo run -p test-rw-lock-async-lock --example benchmark_rw_lock_async_lock --features hotpath --release
 ```
 
+#### Channels
+
+Each channel backend has a dedicated crate with a `benchmark_channel_*` example that hammers a single instrumented channel with send/recv cycles in a tight, uncontended loop, so the measured time reflects per-operation instrumentation overhead. The iteration count defaults to 1,000,000 and is configurable via `HOTPATH_CHANNEL_BENCH_RUNS`.
+
+For each backend, run with `--features hotpath` to measure with instrumentation, and omit it to measure the uninstrumented baseline.
+
+##### std channel
+
+```bash
+cargo run -p test-channels-std --example benchmark_channel_std --features hotpath --release
+```
+
+##### crossbeam channel
+
+```bash
+cargo run -p test-channels-crossbeam --example benchmark_channel_crossbeam --features hotpath --release
+```
+
+##### tokio channel
+
+```bash
+cargo run -p test-channels-tokio --example benchmark_channel_tokio --features hotpath --release
+```
+
+##### futures-channel
+
+```bash
+cargo run -p test-channels-ftc --example benchmark_channel_ftc --features hotpath --release
+```
+
+##### async-channel
+
+```bash
+cargo run -p test-channels-asc --example benchmark_channel_asc --features hotpath --release
+```
+
+##### flume channel
+
+```bash
+cargo run -p test-channels-flume --example benchmark_channel_flume --features hotpath --release
+```
+
 ### Samply traces 
 
 Analyze [Samply](https://github.com/mstange/samply) traces by running the instrumented benchmarks:
