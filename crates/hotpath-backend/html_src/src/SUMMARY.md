@@ -14,3 +14,4 @@
 - [GitHub CI integration](./github_ci.md)
 - [Configuration](./configuration.md)
 - [Sponsorship](./sponsorship.md)
+- [Terms](./terms.md)

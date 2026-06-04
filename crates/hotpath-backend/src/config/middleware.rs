@@ -200,6 +200,13 @@ const SEO_MAPPINGS: &[SeoConfig] = &[
         breadcrumb_label: "Sponsorship",
         faqs: &[],
     },
+    SeoConfig {
+        path: "/terms",
+        title: "Terms & Data Collection | hotpath-rs",
+        description: "How hotpath-rs collects and handles waitlist data: GitHub username and email address used to manage the waitlist and notify you about the launch.",
+        breadcrumb_label: "Terms",
+        faqs: &[],
+    },
 ];
 
 const STATIC_EXTENSIONS: &[&str] = &[

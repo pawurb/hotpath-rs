@@ -123,6 +123,59 @@
     height: 22px;
 }
 
+/* Waitlist CTA */
+.waitlist-card {
+    margin: 2rem 0;
+    padding: 1.5rem 1.75rem;
+    border: 1px solid rgba(111, 66, 193, 0.5);
+    border-radius: 12px;
+    background: rgba(111, 66, 193, 0.08);
+    box-shadow: 0 4px 28px rgba(111, 66, 193, 0.15);
+}
+
+.waitlist-card-title {
+    margin-top: 0;
+}
+
+.waitlist-card p {
+    margin-bottom: 0;
+}
+
+.waitlist-cta-row {
+    margin: 1.5rem 0 0 0;
+}
+
+.waitlist-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #6f42c1;
+    color: #fff !important;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 24px rgba(111, 66, 193, 0.35);
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+}
+
+.waitlist-cta:hover {
+    background: #7d4fd1;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 28px rgba(111, 66, 193, 0.5);
+}
+
+.waitlist-cta-icon {
+    flex-shrink: 0;
+}
+
+.waitlist-cta-note {
+    margin: 0.75rem 0 0 0;
+    font-size: 1.4rem;
+    opacity: 0.85;
+}
+
 /* Trusted By */
 .trusted-by {
     text-align: center;

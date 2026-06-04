@@ -83,6 +83,11 @@ const DOC_PAGES: &[SitemapConfig] = &[
         priority: "0.5",
         changefreq: "monthly",
     },
+    SitemapConfig {
+        page: "terms",
+        priority: "0.3",
+        changefreq: "yearly",
+    },
 ];
 
 const BASE_URL: &str = "https://hotpath.rs";
@@ -147,10 +152,13 @@ pub fn app() -> Router {
         );
     }
 
+    let auth_state = crate::auth::AuthState::new();
+
     router
         .route("/health", get(health_check))
         .route("/robots.txt", get(robots_txt))
         .route("/sitemap.xml", get(sitemap_xml))
+        .merge(crate::auth::auth_routes().with_state(auth_state))
         .merge(static_routes)
         .fallback_service(
             ServiceBuilder::new()

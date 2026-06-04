@@ -7,5 +7,5 @@ done
 EOF
 
 ssh "$TARGET_NODE" << 'EOF'
-screen -d -m -S hotpath bash -c 'cd /root/hotpath-backend && ./server > dbg.log 2>&1'
+screen -d -m -S hotpath bash -c 'cd /root/hotpath-backend && set -a && . ./.env && set +a && ./server > dbg.log 2>&1'
 EOF

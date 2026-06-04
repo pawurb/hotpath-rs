@@ -10,7 +10,9 @@ url = "2.5.0"
 uuid = { version = "1.11.0", features = ["v4"] }
 eyre = "0.6.12"
 serde_json = "1.0.138"
-reqwest = { version = "0.12.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12.12", default-features = false, features = ["rustls-tls", "json"] }
+oauth2 = { version = "4.4", default-features = false, features = ["reqwest", "rustls-tls"] }
+cookie = "0.17"
 tokio = { version = "1.43.0", features = ["full"] }
 serde = { version = "1.0.217", features = ["derive"] }
 tracing-subscriber = { version = "0.3.19", features = ["time", "env-filter"] }
