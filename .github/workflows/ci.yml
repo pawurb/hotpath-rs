@@ -153,6 +153,12 @@ jobs:
       - name: Run debug tests
         run: |
           cargo test --features hotpath --test debug -- --nocapture --test-threads=1
+      - name: Update dependencies
+        run: |
+          cargo update
+      - name: Build all features (updated deps)
+        run: |
+          cargo build --all-features
 
   cpu-macos:
     name: cpu tests (macOS)
@@ -204,3 +210,9 @@ jobs:
           HOTPATH_SAMPLY_WRAPPER_BIN: ${{ github.workspace }}/target/debug/hotpath-samply
         run: |
           setsid -w cargo test --features "hotpath,hotpath-cpu" --test functions_cpu -- --nocapture --test-threads=1
+      - name: Update dependencies
+        run: |
+          cargo update
+      - name: Build hotpath-samply wrapper (updated deps)
+        run: |
+          cargo build -p hotpath --bin hotpath-samply --features "hotpath,hotpath-cpu"
