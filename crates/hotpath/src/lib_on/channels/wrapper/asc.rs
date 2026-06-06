@@ -1,7 +1,7 @@
 use async_channel::{Receiver, Sender};
 
 use crate::channels::{
-    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant, RegisteredChannel, RT,
+    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant, RT,
 };
 
 /// Internal implementation for wrapping bounded async channels with optional logging.
@@ -19,8 +19,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = async_channel::bounded::<T>(1);
 
-    let RegisteredChannel { id, stats_tx } =
-        register_channel::<T>(source, label, ChannelType::Bounded(capacity));
+    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity));
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -30,13 +29,13 @@ where
                     match msg {
                         Ok(msg) => {
                             let log = log_on_send(&msg);
-                            send_channel_event(&stats_tx, ChannelEvent::MessageSent {
+                            send_channel_event( ChannelEvent::MessageSent {
                                 id,
                                 log,
                                 timestamp: Instant::now(),
                             });
                             if proxy_tx.send(msg).await.is_ok() {
-                                send_channel_event(&stats_tx, ChannelEvent::MessageReceived {
+                                send_channel_event( ChannelEvent::MessageReceived {
                                     id,
                                     timestamp: Instant::now(),
                                 });
@@ -54,7 +53,7 @@ where
                 }
             }
         }
-        send_channel_event(&stats_tx, ChannelEvent::Closed { id });
+        send_channel_event(ChannelEvent::Closed { id });
     });
 
     // User sends to inner_tx directly, receives from proxy_rx
@@ -99,8 +98,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = async_channel::unbounded::<T>();
 
-    let RegisteredChannel { id, stats_tx } =
-        register_channel::<T>(source, label, ChannelType::Unbounded);
+    let id = register_channel::<T>(source, label, ChannelType::Unbounded);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -110,13 +108,13 @@ where
                     match msg {
                         Ok(msg) => {
                             let log = log_on_send(&msg);
-                            send_channel_event(&stats_tx, ChannelEvent::MessageSent {
+                            send_channel_event( ChannelEvent::MessageSent {
                                 id,
                                 log,
                                 timestamp: Instant::now(),
                             });
                             if proxy_tx.send(msg).await.is_ok() {
-                                send_channel_event(&stats_tx, ChannelEvent::MessageReceived {
+                                send_channel_event( ChannelEvent::MessageReceived {
                                     id,
                                     timestamp: Instant::now(),
                                 });
@@ -134,7 +132,7 @@ where
                 }
             }
         }
-        send_channel_event(&stats_tx, ChannelEvent::Closed { id });
+        send_channel_event(ChannelEvent::Closed { id });
     });
 
     (inner_tx, proxy_rx)

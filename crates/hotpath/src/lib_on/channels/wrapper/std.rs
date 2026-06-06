@@ -1,8 +1,6 @@
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 
-use crate::channels::{
-    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant, RegisteredChannel,
-};
+use crate::channels::{register_channel, send_channel_event, ChannelEvent, ChannelType, Instant};
 
 /// Internal implementation for wrapping bounded std channels with optional logging.
 fn wrap_sync_channel_impl<T, F>(
@@ -19,35 +17,28 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = mpsc::sync_channel::<T>(1);
 
-    let RegisteredChannel { id, stats_tx } =
-        register_channel::<T>(source, label, ChannelType::Bounded(capacity));
+    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity));
 
     // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
         while let Ok(msg) = inner_rx.recv() {
             let log = log_on_send(&msg);
-            send_channel_event(
-                &stats_tx,
-                ChannelEvent::MessageSent {
-                    id,
-                    log,
-                    timestamp: Instant::now(),
-                },
-            );
+            send_channel_event(ChannelEvent::MessageSent {
+                id,
+                log,
+                timestamp: Instant::now(),
+            });
             if proxy_tx.send(msg).is_ok() {
-                send_channel_event(
-                    &stats_tx,
-                    ChannelEvent::MessageReceived {
-                        id,
-                        timestamp: Instant::now(),
-                    },
-                );
+                send_channel_event(ChannelEvent::MessageReceived {
+                    id,
+                    timestamp: Instant::now(),
+                });
             } else {
                 // proxy_rx dropped
                 break;
             }
         }
-        send_channel_event(&stats_tx, ChannelEvent::Closed { id });
+        send_channel_event(ChannelEvent::Closed { id });
     });
 
     (inner_tx, proxy_rx)
@@ -91,35 +82,28 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = mpsc::channel::<T>();
 
-    let RegisteredChannel { id, stats_tx } =
-        register_channel::<T>(source, label, ChannelType::Unbounded);
+    let id = register_channel::<T>(source, label, ChannelType::Unbounded);
 
     // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
         while let Ok(msg) = inner_rx.recv() {
             let log = log_on_send(&msg);
-            send_channel_event(
-                &stats_tx,
-                ChannelEvent::MessageSent {
-                    id,
-                    log,
-                    timestamp: Instant::now(),
-                },
-            );
+            send_channel_event(ChannelEvent::MessageSent {
+                id,
+                log,
+                timestamp: Instant::now(),
+            });
             if proxy_tx.send(msg).is_ok() {
-                send_channel_event(
-                    &stats_tx,
-                    ChannelEvent::MessageReceived {
-                        id,
-                        timestamp: Instant::now(),
-                    },
-                );
+                send_channel_event(ChannelEvent::MessageReceived {
+                    id,
+                    timestamp: Instant::now(),
+                });
             } else {
                 // proxy_rx dropped
                 break;
             }
         }
-        send_channel_event(&stats_tx, ChannelEvent::Closed { id });
+        send_channel_event(ChannelEvent::Closed { id });
     });
 
     (inner_tx, proxy_rx)

@@ -40,6 +40,7 @@ fn print_table(table: &Table, writer: &mut dyn Write) {
 }
 
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
+    crate::channels::flush_channel_batch();
     CHANNELS_STATE
         .get()
         .and_then(|state| {
@@ -121,6 +122,7 @@ pub(crate) fn collect_channels_json(
 }
 
 pub(crate) fn shutdown_rw_locks() -> Vec<RwLockEntry> {
+    crate::lib_on::rw_locks::flush_rw_lock_batch();
     RW_LOCKS_STATE
         .get()
         .and_then(|state| {
@@ -294,6 +296,7 @@ pub(crate) fn collect_rw_locks_json(
 }
 
 pub(crate) fn shutdown_mutexes() -> Vec<MutexEntry> {
+    crate::lib_on::mutexes::flush_mutex_batch();
     MUTEXES_STATE
         .get()
         .and_then(|state| {
@@ -425,6 +428,7 @@ pub(crate) fn collect_mutexes_json(
 }
 
 pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
+    crate::streams::flush_stream_batch();
     STREAMS_STATE
         .get()
         .and_then(|state| {
@@ -502,6 +506,7 @@ pub(crate) fn collect_streams_json(
 }
 
 pub(crate) fn shutdown_futures() -> Vec<FutureEntry> {
+    crate::lib_on::futures::flush_future_batch();
     FUTURES_STATE
         .get()
         .and_then(|state| {

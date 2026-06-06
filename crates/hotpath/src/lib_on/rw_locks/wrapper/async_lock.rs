@@ -2,12 +2,9 @@
 
 use async_lock::RwLock as AlRwLock;
 
-use crossbeam_channel::Sender as CbSender;
-
 use crate::instant::Instant;
 use crate::rw_locks::{
-    elapsed_nanos, register_rw_lock, send_rw_lock_event, InstrumentRwLock, RegisteredRwLock,
-    RwLockEvent, RwLockKind,
+    elapsed_nanos, register_rw_lock, send_rw_lock_event, InstrumentRwLock, RwLockEvent, RwLockKind,
 };
 
 /// Instrumented drop-in replacement for [`async_lock::RwLock`].
@@ -16,7 +13,6 @@ use crate::rw_locks::{
 pub struct RwLock<T> {
     inner: AlRwLock<T>,
     id: u32,
-    stats_tx: CbSender<RwLockEvent>,
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
@@ -38,12 +34,8 @@ impl<T> RwLock<T> {
         source: &'static str,
         label: Option<String>,
     ) -> Self {
-        let RegisteredRwLock { id, stats_tx } = register_rw_lock::<T>(source, label);
-        Self {
-            inner,
-            id,
-            stats_tx,
-        }
+        let id = register_rw_lock::<T>(source, label);
+        Self { inner, id }
     }
 
     pub async fn read(&self) -> RwLockReadGuard<'_, T> {
@@ -91,7 +83,6 @@ impl<T> RwLock<T> {
             start: Instant::now(),
             wait_nanos,
             id: self.id,
-            stats_tx: &self.stats_tx,
         }
     }
 
@@ -105,7 +96,6 @@ impl<T> RwLock<T> {
             start: Instant::now(),
             wait_nanos,
             id: self.id,
-            stats_tx: &self.stats_tx,
         }
     }
 }
@@ -117,7 +107,6 @@ pub struct RwLockReadGuard<'a, T> {
     start: Instant,
     wait_nanos: u64,
     id: u32,
-    stats_tx: &'a CbSender<RwLockEvent>,
 }
 
 impl<T> std::ops::Deref for RwLockReadGuard<'_, T> {
@@ -132,15 +121,14 @@ impl<T> Drop for RwLockReadGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        send_rw_lock_event(
-            self.stats_tx,
-            RwLockEvent::Released {
-                id: self.id,
-                kind: RwLockKind::Read,
-                wait_nanos: self.wait_nanos,
-                acquire_nanos: elapsed_nanos(self.start),
-            },
-        );
+        let now = Instant::now();
+        send_rw_lock_event(RwLockEvent::Released {
+            id: self.id,
+            kind: RwLockKind::Read,
+            wait_nanos: self.wait_nanos,
+            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
+            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
+        });
     }
 }
 
@@ -151,7 +139,6 @@ pub struct RwLockWriteGuard<'a, T> {
     start: Instant,
     wait_nanos: u64,
     id: u32,
-    stats_tx: &'a CbSender<RwLockEvent>,
 }
 
 impl<T> std::ops::Deref for RwLockWriteGuard<'_, T> {
@@ -172,15 +159,14 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        send_rw_lock_event(
-            self.stats_tx,
-            RwLockEvent::Released {
-                id: self.id,
-                kind: RwLockKind::Write,
-                wait_nanos: self.wait_nanos,
-                acquire_nanos: elapsed_nanos(self.start),
-            },
-        );
+        let now = Instant::now();
+        send_rw_lock_event(RwLockEvent::Released {
+            id: self.id,
+            kind: RwLockKind::Write,
+            wait_nanos: self.wait_nanos,
+            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
+            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
+        });
     }
 }
 

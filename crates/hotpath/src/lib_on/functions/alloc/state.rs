@@ -5,7 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::functions::batch::{BatchedMeasurement, MeasurementBatch};
+use crate::batch::{BatchedMeasurement, MeasurementBatch};
 use crate::instant::Instant;
 
 thread_local! {

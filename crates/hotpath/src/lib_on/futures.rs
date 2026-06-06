@@ -1,5 +1,6 @@
 //! Futures instrumentation module - tracks async Future lifecycle and poll statistics.
 
+use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
 use crate::channels::{resolve_label, LOGS_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
@@ -170,6 +171,7 @@ pub(crate) enum FutureEvent {
         poll_duration_ns: u64,
         poll_alloc_bytes: Option<u64>,
         poll_alloc_count: Option<u64>,
+        elapsed_ns: u64,
     },
     Completed {
         future_id: u32,
@@ -183,13 +185,56 @@ pub(crate) enum FutureEvent {
 }
 
 pub(crate) struct FuturesState {
-    pub(crate) event_tx: CbSender<FutureEvent>,
+    pub(crate) event_tx: CbSender<Vec<FutureEvent>>,
     pub(crate) inner: Arc<RwLock<FuturesInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
 
 pub(crate) static FUTURES_STATE: OnceLock<FuturesState> = OnceLock::new();
+
+static EVENT_REGISTRY: BatchRegistry<FutureEvent> = BatchRegistry::new();
+
+thread_local! {
+    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<FutureEvent>>> =
+        register_thread_batch(&EVENT_REGISTRY);
+}
+
+#[inline]
+pub(crate) fn send_future_event(event: FutureEvent) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
+    EVENT_BATCH.with(|b| {
+        if let Ok(mut b) = b.lock() {
+            b.add(event);
+        }
+    });
+}
+
+/// Flushes every thread's buffered future events into the worker channel.
+/// Called at shutdown before the worker is signalled to stop.
+pub(crate) fn flush_future_batch() {
+    EVENT_REGISTRY.flush_all();
+}
+
+impl BatchedMeasurement for FutureEvent {
+    fn elapsed_since_start_ns(&self) -> u64 {
+        match self {
+            FutureEvent::Polled { elapsed_ns, .. } => *elapsed_ns,
+            _ => 0,
+        }
+    }
+
+    fn fetch_sender() -> Option<CbSender<Vec<Self>>> {
+        Some(FUTURES_STATE.get()?.event_tx.clone())
+    }
+
+    fn is_flush_boundary(&self) -> bool {
+        matches!(
+            self,
+            FutureEvent::Created { .. } | FutureEvent::CallCreated { .. }
+        )
+    }
+}
 
 /// Initialize the futures event collection system (called on first instrumented future).
 #[doc(hidden)]
@@ -205,7 +250,7 @@ fn get_futures_state() -> &'static FuturesState {
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
-        let (event_tx, event_rx) = unbounded::<FutureEvent>();
+        let (event_tx, event_rx) = unbounded::<Vec<FutureEvent>>();
         #[cfg(feature = "hotpath-meta")]
         let (event_tx, event_rx) =
             hotpath_meta::channel!((event_tx, event_rx), label = "hp-ft-events", log = true);
@@ -239,8 +284,8 @@ fn get_futures_state() -> &'static FuturesState {
                     select! {
                         recv(event_rx) -> result => {
                             match result {
-                                Ok(event) => {
-                                    local_buffer.push(event);
+                                Ok(events) => {
+                                    local_buffer.extend(events);
                                     if local_buffer.len() >= WORKER_BATCH_SIZE {
                                         if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
@@ -265,7 +310,7 @@ fn get_futures_state() -> &'static FuturesState {
                             let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
                             for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
                                 match event_rx.try_recv() {
-                                    Ok(event) => drained_events.push(event),
+                                    Ok(events) => drained_events.extend(events),
                                     Err(_) => break,
                                 }
                             }
@@ -305,9 +350,10 @@ fn get_futures_state() -> &'static FuturesState {
     })
 }
 
+/// Ensures the futures worker is running so events have somewhere to flush to.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_futures_event_tx() -> &'static CbSender<FutureEvent> {
-    &get_futures_state().event_tx
+pub(crate) fn ensure_futures_state() {
+    let _ = get_futures_state();
 }
 
 /// Process a future event and update stats.
@@ -352,6 +398,7 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
             poll_duration_ns,
             poll_alloc_bytes,
             poll_alloc_count,
+            elapsed_ns: _,
         } => {
             if let Some(future_stats) = state.stats.get_mut(&future_id) {
                 future_stats.total_poll_count += 1;

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
 
+use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
 use crate::instant::Instant;
 use crate::lib_on::hotpath_guard::{
     WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
@@ -48,14 +49,8 @@ pub(crate) enum RwLockEvent {
         kind: RwLockKind,
         wait_nanos: u64,
         acquire_nanos: u64,
+        elapsed_ns: u64,
     },
-}
-
-/// Handle returned by [`register_rw_lock`] giving a wrapper its id and a sender
-/// to emit [`RwLockEvent`]s to the background worker.
-pub(crate) struct RegisteredRwLock {
-    pub(crate) id: u32,
-    pub(crate) stats_tx: CbSender<RwLockEvent>,
 }
 
 /// Statistics for a single instrumented RwLock.
@@ -148,7 +143,7 @@ pub(crate) struct RwLocksInternalState {
 }
 
 pub(crate) struct RwLocksState {
-    pub(crate) event_tx: CbSender<RwLockEvent>,
+    pub(crate) event_tx: CbSender<Vec<RwLockEvent>>,
     pub(crate) inner: Arc<StdRwLock<RwLocksInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -181,10 +176,44 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
+static EVENT_REGISTRY: BatchRegistry<RwLockEvent> = BatchRegistry::new();
+
+thread_local! {
+    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<RwLockEvent>>> =
+        register_thread_batch(&EVENT_REGISTRY);
+}
+
 #[inline]
-pub(crate) fn send_rw_lock_event(stats_tx: &CbSender<RwLockEvent>, event: RwLockEvent) {
+pub(crate) fn send_rw_lock_event(event: RwLockEvent) {
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    let _ = stats_tx.send(event);
+    EVENT_BATCH.with(|b| {
+        if let Ok(mut b) = b.lock() {
+            b.add(event);
+        }
+    });
+}
+
+/// Flushes every thread's buffered rw_lock events into the worker channel.
+/// Called at shutdown before the worker is signalled to stop.
+pub(crate) fn flush_rw_lock_batch() {
+    EVENT_REGISTRY.flush_all();
+}
+
+impl BatchedMeasurement for RwLockEvent {
+    fn elapsed_since_start_ns(&self) -> u64 {
+        match self {
+            RwLockEvent::Released { elapsed_ns, .. } => *elapsed_ns,
+            _ => 0,
+        }
+    }
+
+    fn fetch_sender() -> Option<CbSender<Vec<Self>>> {
+        Some(RW_LOCKS_STATE.get()?.event_tx.clone())
+    }
+
+    fn is_flush_boundary(&self) -> bool {
+        matches!(self, RwLockEvent::Created { .. })
+    }
 }
 
 fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
@@ -222,6 +251,7 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
             kind,
             wait_nanos,
             acquire_nanos,
+            elapsed_ns: _,
         } => {
             if let Some(entry) = state.stats.get_mut(&id) {
                 match kind {
@@ -246,25 +276,19 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
 }
 
 /// Registers a new RwLock with the profiling subsystem.
-pub(crate) fn register_rw_lock<T>(source: &'static str, label: Option<String>) -> RegisteredRwLock {
+pub(crate) fn register_rw_lock<T>(source: &'static str, label: Option<String>) -> u32 {
     let type_name = std::any::type_name::<T>();
-    let state = init_rw_locks_state();
+    init_rw_locks_state();
     let id = next_rw_lock_id();
 
-    send_rw_lock_event(
-        &state.event_tx,
-        RwLockEvent::Created {
-            id,
-            source,
-            label,
-            type_name,
-        },
-    );
-
-    RegisteredRwLock {
+    send_rw_lock_event(RwLockEvent::Created {
         id,
-        stats_tx: state.event_tx.clone(),
-    }
+        source,
+        label,
+        type_name,
+    });
+
+    id
 }
 
 /// Initialize the lock statistics collection system (called on first instrumented lock).
@@ -272,7 +296,7 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
     RW_LOCKS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<RwLockEvent>();
+        let (event_tx, event_rx) = unbounded::<Vec<RwLockEvent>>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
@@ -291,8 +315,8 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
                     select! {
                         recv(event_rx) -> result => {
                             match result {
-                                Ok(event) => {
-                                    local_buffer.push(event);
+                                Ok(events) => {
+                                    local_buffer.extend(events);
                                     if local_buffer.len() >= WORKER_BATCH_SIZE {
                                         if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
@@ -317,7 +341,7 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
                             let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
                             for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
                                 match event_rx.try_recv() {
-                                    Ok(event) => drained_events.push(event),
+                                    Ok(events) => drained_events.extend(events),
                                     Err(_) => break,
                                 }
                             }

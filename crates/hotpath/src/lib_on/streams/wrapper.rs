@@ -1,6 +1,5 @@
 use crate::output::format_debug_truncated;
-use crate::streams::{init_streams_state, next_stream_id, StreamEvent};
-use crossbeam_channel::Sender as CbSender;
+use crate::streams::{init_streams_state, next_stream_id, send_stream_event, StreamEvent};
 use futures_util::Stream;
 use pin_project_lite::pin_project;
 use std::pin::Pin;
@@ -21,7 +20,6 @@ pin_project! {
     pub struct InstrumentedStream<S> {
         #[pin]
         inner: S,
-        stats_tx: CbSender<StreamEvent>,
         id: u32,
     }
 }
@@ -32,10 +30,10 @@ impl<S> InstrumentedStream<S> {
     where
         S: Stream,
     {
-        let state = init_streams_state();
+        init_streams_state();
         let id = next_stream_id();
 
-        let _ = state.event_tx.send(StreamEvent::Created {
+        send_stream_event(StreamEvent::Created {
             id,
             source,
             display_label: label,
@@ -43,11 +41,7 @@ impl<S> InstrumentedStream<S> {
             type_size: std::mem::size_of::<S::Item>(),
         });
 
-        Self {
-            inner: stream,
-            stats_tx: state.event_tx.clone(),
-            id,
-        }
+        Self { inner: stream, id }
     }
 }
 
@@ -59,7 +53,7 @@ impl<S: Stream> Stream for InstrumentedStream<S> {
 
         match this.inner.poll_next(cx) {
             Poll::Ready(Some(item)) => {
-                let _ = this.stats_tx.send(StreamEvent::Yielded {
+                send_stream_event(StreamEvent::Yielded {
                     id: *this.id,
                     log: None,
                     timestamp: Instant::now(),
@@ -67,7 +61,7 @@ impl<S: Stream> Stream for InstrumentedStream<S> {
                 Poll::Ready(Some(item))
             }
             Poll::Ready(None) => {
-                let _ = this.stats_tx.send(StreamEvent::Completed { id: *this.id });
+                send_stream_event(StreamEvent::Completed { id: *this.id });
                 Poll::Ready(None)
             }
             Poll::Pending => Poll::Pending,
@@ -87,7 +81,6 @@ pin_project! {
     pub struct InstrumentedStreamLog<S> {
         #[pin]
         inner: S,
-        stats_tx: CbSender<StreamEvent>,
         id: u32,
     }
 }
@@ -98,10 +91,10 @@ impl<S> InstrumentedStreamLog<S> {
     where
         S: Stream,
     {
-        let state = init_streams_state();
+        init_streams_state();
         let id = next_stream_id();
 
-        let _ = state.event_tx.send(StreamEvent::Created {
+        send_stream_event(StreamEvent::Created {
             id,
             source,
             display_label: label,
@@ -109,11 +102,7 @@ impl<S> InstrumentedStreamLog<S> {
             type_size: std::mem::size_of::<S::Item>(),
         });
 
-        Self {
-            inner: stream,
-            stats_tx: state.event_tx.clone(),
-            id,
-        }
+        Self { inner: stream, id }
     }
 }
 
@@ -129,7 +118,7 @@ where
         match this.inner.poll_next(cx) {
             Poll::Ready(Some(item)) => {
                 let log_msg = format_debug_truncated(&item);
-                let _ = this.stats_tx.send(StreamEvent::Yielded {
+                send_stream_event(StreamEvent::Yielded {
                     id: *this.id,
                     log: Some(log_msg),
                     timestamp: Instant::now(),
@@ -137,7 +126,7 @@ where
                 Poll::Ready(Some(item))
             }
             Poll::Ready(None) => {
-                let _ = this.stats_tx.send(StreamEvent::Completed { id: *this.id });
+                send_stream_event(StreamEvent::Completed { id: *this.id });
                 Poll::Ready(None)
             }
             Poll::Pending => Poll::Pending,

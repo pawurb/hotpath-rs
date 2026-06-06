@@ -11,6 +11,7 @@ mod wrapper;
 
 use std::mem;
 
+use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
 use crate::json::JsonChannelEntry;
 pub(crate) use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
 use crate::lib_on::hotpath_guard::{
@@ -27,13 +28,6 @@ pub(crate) fn next_channel_id() -> u32 {
     CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Handle returned by [`register_channel`] that gives wrappers the channel's
-/// unique id and a sender to emit [`ChannelEvent`]s to the background worker.
-pub(crate) struct RegisteredChannel {
-    pub(crate) id: u32,
-    pub(crate) stats_tx: CbSender<ChannelEvent>,
-}
-
 /// Type of a channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChannelType {
@@ -44,8 +38,8 @@ pub(crate) enum ChannelType {
 
 /// Registers a new channel with the profiling subsystem.
 ///
-/// Sends a [`ChannelEvent::Created`] event to the background worker and returns
-/// a [`RegisteredChannel`] that wrappers use to report subsequent
+/// Emits a [`ChannelEvent::Created`] event to the background worker and returns
+/// the channel's unique id, which wrappers use to report subsequent
 /// send/receive/close events. `T` is the message type carried by the channel
 /// and is used to record the type name and per-message byte size.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
@@ -53,33 +47,62 @@ pub(crate) fn register_channel<T>(
     source: &'static str,
     label: Option<String>,
     channel_type: ChannelType,
-) -> RegisteredChannel {
+) -> u32 {
     let type_name = std::any::type_name::<T>();
-    let state = init_channels_state();
+    init_channels_state();
     let id = next_channel_id();
 
-    send_channel_event(
-        &state.event_tx,
-        ChannelEvent::Created {
-            id,
-            source,
-            display_label: label,
-            channel_type,
-            type_name,
-            type_size: mem::size_of::<T>(),
-        },
-    );
-
-    RegisteredChannel {
+    send_channel_event(ChannelEvent::Created {
         id,
-        stats_tx: state.event_tx.clone(),
-    }
+        source,
+        display_label: label,
+        channel_type,
+        type_name,
+        type_size: mem::size_of::<T>(),
+    });
+
+    id
+}
+
+static EVENT_REGISTRY: BatchRegistry<ChannelEvent> = BatchRegistry::new();
+
+thread_local! {
+    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<ChannelEvent>>> =
+        register_thread_batch(&EVENT_REGISTRY);
 }
 
 #[inline]
-pub(crate) fn send_channel_event(stats_tx: &CbSender<ChannelEvent>, event: ChannelEvent) {
+pub(crate) fn send_channel_event(event: ChannelEvent) {
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    let _ = stats_tx.send(event);
+    EVENT_BATCH.with(|b| {
+        if let Ok(mut b) = b.lock() {
+            b.add(event);
+        }
+    });
+}
+
+/// Flushes every thread's buffered channel events into the worker channel.
+/// Called at shutdown before the worker is signalled to stop.
+pub(crate) fn flush_channel_batch() {
+    EVENT_REGISTRY.flush_all();
+}
+
+impl BatchedMeasurement for ChannelEvent {
+    fn elapsed_since_start_ns(&self) -> u64 {
+        match self {
+            ChannelEvent::MessageSent { timestamp, .. }
+            | ChannelEvent::MessageReceived { timestamp, .. } => timestamp_nanos(*timestamp),
+            _ => 0,
+        }
+    }
+
+    fn fetch_sender() -> Option<CbSender<Vec<Self>>> {
+        Some(CHANNELS_STATE.get()?.event_tx.clone())
+    }
+
+    fn is_flush_boundary(&self) -> bool {
+        matches!(self, ChannelEvent::Created { .. })
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -206,7 +229,7 @@ pub(crate) enum ChannelEvent {
 }
 
 pub(crate) struct ChannelsState {
-    pub(crate) event_tx: CbSender<ChannelEvent>,
+    pub(crate) event_tx: CbSender<Vec<ChannelEvent>>,
     pub(crate) inner: Arc<RwLock<ChannelsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -301,7 +324,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
     CHANNELS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<ChannelEvent>();
+        let (event_tx, event_rx) = unbounded::<Vec<ChannelEvent>>();
         #[cfg(feature = "hotpath-meta")]
         let (event_tx, event_rx) =
             hotpath_meta::channel!((event_tx, event_rx), label = "hp-ch-events", log = true);
@@ -335,8 +358,8 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
                     select! {
                         recv(event_rx) -> result => {
                             match result {
-                                Ok(event) => {
-                                    local_buffer.push(event);
+                                Ok(events) => {
+                                    local_buffer.extend(events);
                                     if local_buffer.len() >= WORKER_BATCH_SIZE {
                                         if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
@@ -361,7 +384,7 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
                             let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
                             for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
                                 match event_rx.try_recv() {
-                                    Ok(event) => drained_events.push(event),
+                                    Ok(events) => drained_events.extend(events),
                                     Err(_) => break,
                                 }
                             }

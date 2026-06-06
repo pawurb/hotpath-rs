@@ -13,7 +13,6 @@ use crate::lib_on::START_TIME;
 use crate::metrics_server::RECV_TIMEOUT_MS;
 use crate::output::FunctionLogsList;
 
-pub(crate) mod batch;
 #[cfg(feature = "hotpath-cpu")]
 pub(crate) mod cpu;
 

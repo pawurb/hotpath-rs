@@ -9,6 +9,7 @@ use crate::instant::Instant;
 
 pub(crate) mod wrapper;
 
+use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
 use crate::channels::{resolve_label, LOGS_LIMIT};
 use crate::json::JsonStreamEntry;
 pub(crate) use crate::json::{ChannelState, DataFlowLogEntry, StreamLogs};
@@ -118,13 +119,53 @@ pub(crate) enum StreamEvent {
 }
 
 pub(crate) struct StreamsState {
-    pub(crate) event_tx: CbSender<StreamEvent>,
+    pub(crate) event_tx: CbSender<Vec<StreamEvent>>,
     pub(crate) inner: Arc<RwLock<StreamsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
 
 pub(crate) static STREAMS_STATE: OnceLock<StreamsState> = OnceLock::new();
+
+static EVENT_REGISTRY: BatchRegistry<StreamEvent> = BatchRegistry::new();
+
+thread_local! {
+    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<StreamEvent>>> =
+        register_thread_batch(&EVENT_REGISTRY);
+}
+
+#[inline]
+pub(crate) fn send_stream_event(event: StreamEvent) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
+    EVENT_BATCH.with(|b| {
+        if let Ok(mut b) = b.lock() {
+            b.add(event);
+        }
+    });
+}
+
+/// Flushes every thread's buffered stream events into the worker channel.
+/// Called at shutdown before the worker is signalled to stop.
+pub(crate) fn flush_stream_batch() {
+    EVENT_REGISTRY.flush_all();
+}
+
+impl BatchedMeasurement for StreamEvent {
+    fn elapsed_since_start_ns(&self) -> u64 {
+        match self {
+            StreamEvent::Yielded { timestamp, .. } => crate::channels::timestamp_nanos(*timestamp),
+            _ => 0,
+        }
+    }
+
+    fn fetch_sender() -> Option<CbSender<Vec<Self>>> {
+        Some(STREAMS_STATE.get()?.event_tx.clone())
+    }
+
+    fn is_flush_boundary(&self) -> bool {
+        matches!(self, StreamEvent::Created { .. })
+    }
+}
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
@@ -176,7 +217,7 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
     STREAMS_STATE.get_or_init(|| {
         crate::lib_on::START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<StreamEvent>();
+        let (event_tx, event_rx) = unbounded::<Vec<StreamEvent>>();
         #[cfg(feature = "hotpath-meta")]
         let (event_tx, event_rx) =
             hotpath_meta::channel!((event_tx, event_rx), label = "hp-st-events", log = true);
@@ -210,8 +251,8 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
                     select! {
                         recv(event_rx) -> result => {
                             match result {
-                                Ok(event) => {
-                                    local_buffer.push(event);
+                                Ok(events) => {
+                                    local_buffer.extend(events);
                                     if local_buffer.len() >= WORKER_BATCH_SIZE {
                                         if let Ok(mut shared) = inner_clone.write() {
                                             for e in local_buffer.drain(..) {
@@ -236,7 +277,7 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
                             let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
                             for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
                                 match event_rx.try_recv() {
-                                    Ok(event) => drained_events.push(event),
+                                    Ok(events) => drained_events.extend(events),
                                     Err(_) => break,
                                 }
                             }

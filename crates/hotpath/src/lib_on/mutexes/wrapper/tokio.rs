@@ -2,11 +2,9 @@
 
 use tokio::sync::Mutex as TokioMutex;
 
-use crossbeam_channel::Sender as CbSender;
-
 use crate::instant::Instant;
 use crate::mutexes::{
-    elapsed_nanos, register_mutex, send_mutex_event, InstrumentMutex, MutexEvent, RegisteredMutex,
+    elapsed_nanos, register_mutex, send_mutex_event, InstrumentMutex, MutexEvent,
 };
 
 /// Instrumented drop-in replacement for [`tokio::sync::Mutex`].
@@ -15,7 +13,6 @@ use crate::mutexes::{
 pub struct Mutex<T> {
     inner: TokioMutex<T>,
     id: u32,
-    stats_tx: CbSender<MutexEvent>,
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
@@ -37,12 +34,8 @@ impl<T> Mutex<T> {
         source: &'static str,
         label: Option<String>,
     ) -> Self {
-        let RegisteredMutex { id, stats_tx } = register_mutex::<T>(source, label);
-        Self {
-            inner,
-            id,
-            stats_tx,
-        }
+        let id = register_mutex::<T>(source, label);
+        Self { inner, id }
     }
 
     pub async fn lock(&self) -> MutexGuard<'_, T> {
@@ -77,7 +70,6 @@ impl<T> Mutex<T> {
             start: Instant::now(),
             wait_nanos,
             id: self.id,
-            stats_tx: &self.stats_tx,
         }
     }
 }
@@ -89,7 +81,6 @@ pub struct MutexGuard<'a, T> {
     start: Instant,
     wait_nanos: u64,
     id: u32,
-    stats_tx: &'a CbSender<MutexEvent>,
 }
 
 impl<T> std::ops::Deref for MutexGuard<'_, T> {
@@ -110,14 +101,13 @@ impl<T> Drop for MutexGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        send_mutex_event(
-            self.stats_tx,
-            MutexEvent::Released {
-                id: self.id,
-                wait_nanos: self.wait_nanos,
-                acquire_nanos: elapsed_nanos(self.start),
-            },
-        );
+        let now = Instant::now();
+        send_mutex_event(MutexEvent::Released {
+            id: self.id,
+            wait_nanos: self.wait_nanos,
+            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
+            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
+        });
     }
 }
 
