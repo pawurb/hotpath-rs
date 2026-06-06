@@ -11,7 +11,7 @@
         const card = document.querySelector(".waitlist-card");
         if (card) {
             card.innerHTML =
-                '<h2 class="waitlist-card-title">🎉 You\'re on the waitlist!</h2>' +
+                '<h2 class="waitlist-card-title">🎉 You\'re in!</h2>' +
                 '<p>We\'ll email you when Hotpath Team is ready for early access.</p>';
         }
         return;
