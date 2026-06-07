@@ -19,6 +19,7 @@ members = [
     "crates/test-mutex-tokio",
     "crates/test-mutex-async-lock",
     "crates/test-streams",
+    "crates/test-sqlx",
     "crates/test-channels-tokio",
     "crates/test-futures",
     "crates/test-debug",

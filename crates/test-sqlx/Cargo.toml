@@ -1,0 +1,14 @@
+[package]
+name = "test-sqlx"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for sqlx SQL query instrumentation."
+
+[dependencies]
+hotpath = { workspace = true, features = ["sqlx"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["sqlite", "runtime-tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[features]
+hotpath = ["hotpath/hotpath"]

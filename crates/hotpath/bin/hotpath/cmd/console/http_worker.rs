@@ -7,8 +7,8 @@ use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
     JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
     JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
-    JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonRwLocksList, JsonStreamLogsList,
-    JsonStreamsList, JsonThreadsList,
+    JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonRwLocksList, JsonSqlList,
+    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
@@ -30,6 +30,7 @@ enum RequestKey {
     Futures,
     RwLocks,
     Mutexes,
+    Sql,
     Threads,
     Debug,
     TokioRuntime,
@@ -56,6 +57,7 @@ impl DataRequest {
             DataRequest::RefreshFutures => RequestKey::Futures,
             DataRequest::RefreshRwLocks => RequestKey::RwLocks,
             DataRequest::RefreshMutexes => RequestKey::Mutexes,
+            DataRequest::RefreshSql => RequestKey::Sql,
             DataRequest::RefreshThreads => RequestKey::Threads,
             DataRequest::RefreshDebug => RequestKey::Debug,
             DataRequest::RefreshTokioRuntime => RequestKey::TokioRuntime,
@@ -247,6 +249,7 @@ impl RouteExt for Route {
             Route::Futures => parse_json::<JsonFuturesList>(bytes).map(DataResponse::Futures),
             Route::RwLocks => parse_json::<JsonRwLocksList>(bytes).map(DataResponse::RwLocks),
             Route::Mutexes => parse_json::<JsonMutexesList>(bytes).map(DataResponse::Mutexes),
+            Route::Sql => parse_json::<JsonSqlList>(bytes).map(DataResponse::Sql),
             Route::Threads => parse_json::<JsonThreadsList>(bytes).map(DataResponse::Threads),
             Route::FunctionTimingLogs { function_id } => {
                 parse_json::<JsonFunctionTimingLogsList>(bytes).map(|logs| {

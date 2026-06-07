@@ -61,6 +61,11 @@ flume = ["dep:flume", "dep:tokio", "tokio/rt-multi-thread"]
 threads = []
 dev = ["dep:time"]
 hotpath-cpu = ["hotpath-macros/hotpath-cpu", "dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
+# `sqlx-sqlite/offline` is forced on so sqlx's `Executor::describe` is always a
+# required trait method (it is `#[cfg(feature = "offline")]`-gated). This keeps
+# the wrapper's trait impl consistent whether or not a downstream crate enables
+# sqlx's `macros`/offline mode. It only pulls `serde` (already a dep).
+sqlx = ["dep:sqlx", "dep:sqlx-sqlite", "sqlx-sqlite/offline"]
 hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
 
 [dependencies]
@@ -99,6 +104,8 @@ hotpath-meta = { workspace = true, optional = true }
 object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }
 rustc-demangle = { version = "0.1", optional = true }
 flate2 = { version = "1", optional = true }
+sqlx = { version = "0.9.0", default-features = false, features = ["sqlite", "runtime-tokio"], optional = true }
+sqlx-sqlite = { version = "0.9.0", default-features = false, optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

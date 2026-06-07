@@ -10,6 +10,7 @@ pub enum Section {
     Futures,
     RwLocks,
     Mutexes,
+    Sql,
     Threads,
     Debug,
 }
@@ -25,6 +26,7 @@ impl Section {
             Section::Futures,
             Section::RwLocks,
             Section::Mutexes,
+            Section::Sql,
             Section::Threads,
             Section::Debug,
         ]
@@ -40,6 +42,7 @@ impl Section {
             Section::Futures => "futures",
             Section::RwLocks => "rw_locks",
             Section::Mutexes => "mutexes",
+            Section::Sql => "sql",
             Section::Threads => "threads",
             Section::Debug => "debug",
         }
@@ -55,6 +58,7 @@ impl Section {
             "futures" => Some(Section::Futures),
             "rw_locks" => Some(Section::RwLocks),
             "mutexes" => Some(Section::Mutexes),
+            "sql" => Some(Section::Sql),
             "threads" => Some(Section::Threads),
             "debug" => Some(Section::Debug),
             _ => None,

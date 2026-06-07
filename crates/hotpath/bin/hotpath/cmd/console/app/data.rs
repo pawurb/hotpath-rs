@@ -7,7 +7,8 @@ use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
     JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList,
     JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
-    JsonMutexesList, JsonRwLocksList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonMutexesList, JsonRwLocksList, JsonSqlList, JsonStreamLogsList, JsonStreamsList,
+    JsonThreadsList,
 };
 use std::time::Instant;
 
@@ -312,6 +313,19 @@ impl App {
         }
     }
 
+    pub(crate) fn update_sql(&mut self, sql: JsonSqlList) {
+        self.sql = sql;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        let len = self.sql.data.len();
+        if let Some(selected) = self.sql_table_state.selected() {
+            if selected >= len && len > 0 {
+                self.sql_table_state.select(Some(len - 1));
+            }
+        }
+    }
+
     pub(crate) fn request_data_flow_logs(&self) {
         if self.paused {
             return;
@@ -335,6 +349,7 @@ impl App {
                 .map(|e| DataRequest::FetchFutureLogs(e.id)),
             DataFlowSubTab::RwLocks => None,
             DataFlowSubTab::Mutexes => None,
+            DataFlowSubTab::Sql => None,
         };
 
         if let Some(req) = request {
@@ -502,6 +517,7 @@ impl App {
                     DataFlowSubTab::Futures => DataRequest::RefreshFutures,
                     DataFlowSubTab::RwLocks => DataRequest::RefreshRwLocks,
                     DataFlowSubTab::Mutexes => DataRequest::RefreshMutexes,
+                    DataFlowSubTab::Sql => DataRequest::RefreshSql,
                 }
             }
             SelectedTab::Threads => {
@@ -604,6 +620,11 @@ impl App {
                 trace!("Received mutexes: {} entries", data.data.len());
                 self.loading_data_flow = false;
                 self.update_mutexes(data);
+            }
+            DataResponse::Sql(data) => {
+                trace!("Received sql: {} entries", data.data.len());
+                self.loading_data_flow = false;
+                self.update_sql(data);
             }
             DataResponse::ChannelLogs { id, logs } => {
                 trace!(

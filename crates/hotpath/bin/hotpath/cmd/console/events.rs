@@ -6,7 +6,7 @@ use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
     JsonFunctionTimingLogsList, JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList,
     JsonFuturesList, JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonRwLocksList,
-    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonSqlList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
@@ -20,6 +20,7 @@ pub(crate) enum DataRequest {
     RefreshFutures,
     RefreshRwLocks,
     RefreshMutexes,
+    RefreshSql,
     RefreshThreads,
     RefreshDebug,
     RefreshTokioRuntime,
@@ -46,6 +47,7 @@ impl DataRequest {
             DataRequest::RefreshFutures => Route::Futures,
             DataRequest::RefreshRwLocks => Route::RwLocks,
             DataRequest::RefreshMutexes => Route::Mutexes,
+            DataRequest::RefreshSql => Route::Sql,
             DataRequest::RefreshThreads => Route::Threads,
             DataRequest::RefreshDebug => Route::Debug,
             DataRequest::RefreshTokioRuntime => Route::TokioRuntime,
@@ -91,6 +93,7 @@ pub(crate) enum DataResponse {
     Futures(JsonFuturesList),
     RwLocks(JsonRwLocksList),
     Mutexes(JsonMutexesList),
+    Sql(JsonSqlList),
     ChannelLogs {
         id: u32,
         logs: JsonChannelLogsList,

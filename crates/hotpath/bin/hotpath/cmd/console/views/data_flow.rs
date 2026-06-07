@@ -5,7 +5,8 @@ use crate::cmd::console::app::DataFlowFocus;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::truncate_left;
 use hotpath::json::{
-    JsonChannelEntry, JsonFutureEntry, JsonMutexEntry, JsonRwLockEntry, JsonStreamEntry,
+    JsonChannelEntry, JsonFutureEntry, JsonMutexEntry, JsonRwLockEntry, JsonSqlEntry,
+    JsonStreamEntry,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -509,6 +510,86 @@ pub(crate) fn render_mutexes_panel(
         .header(header)
         .block(list_block(
             " Mutexes - wait & acquire time ",
+            false,
+            DataFlowFocus::List,
+            position,
+            total,
+        ))
+        .column_spacing(1)
+        .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
+        .highlight_symbol(">> ")
+        .highlight_spacing(HighlightSpacing::Always);
+
+    frame.render_stateful_widget(table, area, table_state);
+}
+
+#[hotpath::measure]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_sql_panel(
+    entries: &[JsonSqlEntry],
+    percentiles: &[f64],
+    area: Rect,
+    frame: &mut Frame,
+    table_state: &mut TableState,
+    position: usize,
+    total: usize,
+) {
+    let available_width = area.width.saturating_sub(10);
+    let query_width = ((available_width as f32 * 0.40) as usize).max(20);
+
+    let percentile_keys: Vec<String> = percentiles
+        .iter()
+        .map(|p| hotpath::format_percentile_key(*p))
+        .collect();
+
+    let mut header_cells = vec![
+        Cell::from("Query"),
+        Cell::from("Calls"),
+        Cell::from("Errors"),
+        Cell::from("Avg"),
+    ];
+    for p in percentiles {
+        header_cells.push(Cell::from(hotpath::format_percentile_header(*p)));
+    }
+    header_cells.push(Cell::from("Total"));
+    let header = Row::new(header_cells)
+        .style(common_styles::HEADER_STYLE_CYAN)
+        .height(1);
+
+    let rows: Vec<Row> = entries
+        .iter()
+        .map(|entry| {
+            let mut cells = vec![
+                Cell::from(truncate_left(&entry.query, query_width)),
+                Cell::from(entry.count.to_string()),
+                Cell::from(entry.error_count.to_string()),
+                Cell::from(entry.avg.clone()),
+            ];
+            for key in &percentile_keys {
+                cells.push(Cell::from(
+                    entry.percentiles.get(key).cloned().unwrap_or_default(),
+                ));
+            }
+            cells.push(Cell::from(entry.total.clone()));
+            Row::new(cells)
+        })
+        .collect();
+
+    let mut widths = vec![
+        Constraint::Percentage(40),
+        Constraint::Length(8),
+        Constraint::Length(8),
+        Constraint::Length(10),
+    ];
+    for _ in percentiles {
+        widths.push(Constraint::Length(10));
+    }
+    widths.push(Constraint::Length(10));
+
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(list_block(
+            " SQL - query execution time ",
             false,
             DataFlowFocus::List,
             position,

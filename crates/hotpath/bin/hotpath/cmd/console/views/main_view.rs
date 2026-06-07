@@ -242,6 +242,8 @@ fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, sub_tab: DataFlowSubT
         label(DataFlowSubTab::RwLocks),
         Span::raw("|"),
         label(DataFlowSubTab::Mutexes),
+        Span::raw("|"),
+        label(DataFlowSubTab::Sql),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }
@@ -304,6 +306,12 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 Line::from(""),
                 Line::from("Use the mutex! macro to instrument Mutexes").centered(),
             ],
+            DataFlowSubTab::Sql => vec![
+                Line::from(""),
+                Line::from("No SQL queries found").yellow().centered(),
+                Line::from(""),
+                Line::from("Use the sql! macro to instrument a sqlx pool").centered(),
+            ],
         };
 
         let block = Block::bordered().border_set(border::THICK);
@@ -363,6 +371,7 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
             .unwrap_or_else(|| "Unknown".to_string()),
         DataFlowSubTab::RwLocks => String::new(),
         DataFlowSubTab::Mutexes => String::new(),
+        DataFlowSubTab::Sql => String::new(),
     };
 
     match app.data_flow_sub_tab {
@@ -411,6 +420,15 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
             table_area,
             frame,
             &mut app.mutexes_table_state,
+            position,
+            total,
+        ),
+        DataFlowSubTab::Sql => data_flow::render_sql_panel(
+            &app.sql.data,
+            &app.sql.percentiles,
+            table_area,
+            frame,
+            &mut app.sql_table_state,
             position,
             total,
         ),

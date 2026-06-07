@@ -5,7 +5,7 @@ use hotpath::json::{
     JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
     JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonMutexesList, JsonRuntimeSnapshot,
-    JsonRwLocksList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonRwLocksList, JsonSqlList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -94,6 +94,7 @@ pub(crate) enum DataFlowSubTab {
     Futures,
     RwLocks,
     Mutexes,
+    Sql,
 }
 
 impl DataFlowSubTab {
@@ -104,6 +105,7 @@ impl DataFlowSubTab {
             DataFlowSubTab::Futures => "Futures",
             DataFlowSubTab::RwLocks => "RwLocks",
             DataFlowSubTab::Mutexes => "Mutexes",
+            DataFlowSubTab::Sql => "SQL",
         }
     }
 
@@ -113,13 +115,17 @@ impl DataFlowSubTab {
             DataFlowSubTab::Streams => DataFlowSubTab::Futures,
             DataFlowSubTab::Futures => DataFlowSubTab::RwLocks,
             DataFlowSubTab::RwLocks => DataFlowSubTab::Mutexes,
-            DataFlowSubTab::Mutexes => DataFlowSubTab::Channels,
+            DataFlowSubTab::Mutexes => DataFlowSubTab::Sql,
+            DataFlowSubTab::Sql => DataFlowSubTab::Channels,
         }
     }
 
-    /// RwLocks and Mutexes have no per-event logs, so the logs/inspect panes don't apply.
+    /// RwLocks, Mutexes and SQL have no per-event logs, so the logs/inspect panes don't apply.
     pub(crate) fn has_logs(&self) -> bool {
-        !matches!(self, DataFlowSubTab::RwLocks | DataFlowSubTab::Mutexes)
+        !matches!(
+            self,
+            DataFlowSubTab::RwLocks | DataFlowSubTab::Mutexes | DataFlowSubTab::Sql
+        )
     }
 }
 
@@ -226,11 +232,13 @@ pub(crate) struct App {
     pub(crate) futures: JsonFuturesList,
     pub(crate) rw_locks: JsonRwLocksList,
     pub(crate) mutexes: JsonMutexesList,
+    pub(crate) sql: JsonSqlList,
     pub(crate) channels_table_state: TableState,
     pub(crate) streams_table_state: TableState,
     pub(crate) futures_table_state: TableState,
     pub(crate) rw_locks_table_state: TableState,
     pub(crate) mutexes_table_state: TableState,
+    pub(crate) sql_table_state: TableState,
     pub(crate) data_flow_focus: DataFlowFocus,
     pub(crate) show_data_flow_logs: bool,
     pub(crate) data_flow_logs: Option<DataFlowLogs>,
@@ -362,11 +370,17 @@ impl App {
                 percentiles: vec![],
                 data: vec![],
             },
+            sql: JsonSqlList {
+                current_elapsed_ns: 0,
+                percentiles: vec![],
+                data: vec![],
+            },
             channels_table_state: TableState::default().with_selected(0),
             streams_table_state: TableState::default().with_selected(0),
             futures_table_state: TableState::default().with_selected(0),
             rw_locks_table_state: TableState::default().with_selected(0),
             mutexes_table_state: TableState::default().with_selected(0),
+            sql_table_state: TableState::default().with_selected(0),
             data_flow_focus: DataFlowFocus::List,
             show_data_flow_logs: false,
             data_flow_logs: None,
@@ -432,6 +446,7 @@ impl App {
                 DataFlowSubTab::Futures => &mut self.futures_table_state,
                 DataFlowSubTab::RwLocks => &mut self.rw_locks_table_state,
                 DataFlowSubTab::Mutexes => &mut self.mutexes_table_state,
+                DataFlowSubTab::Sql => &mut self.sql_table_state,
             },
             SelectedTab::Threads => &mut self.threads_table_state,
             SelectedTab::Debug => &mut self.debug_table_state,
@@ -446,6 +461,7 @@ impl App {
             DataFlowSubTab::Futures => self.futures.data.len(),
             DataFlowSubTab::RwLocks => self.rw_locks.data.len(),
             DataFlowSubTab::Mutexes => self.mutexes.data.len(),
+            DataFlowSubTab::Sql => self.sql.data.len(),
         }
     }
 
@@ -456,6 +472,7 @@ impl App {
             DataFlowSubTab::Futures => &self.futures_table_state,
             DataFlowSubTab::RwLocks => &self.rw_locks_table_state,
             DataFlowSubTab::Mutexes => &self.mutexes_table_state,
+            DataFlowSubTab::Sql => &self.sql_table_state,
         }
     }
 
@@ -466,6 +483,7 @@ impl App {
             DataFlowSubTab::Futures => &mut self.futures_table_state,
             DataFlowSubTab::RwLocks => &mut self.rw_locks_table_state,
             DataFlowSubTab::Mutexes => &mut self.mutexes_table_state,
+            DataFlowSubTab::Sql => &mut self.sql_table_state,
         }
     }
 
