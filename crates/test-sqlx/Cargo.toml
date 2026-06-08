@@ -9,6 +9,7 @@ description = "Tests for sqlx SQL query instrumentation."
 hotpath = { workspace = true, features = ["sqlx"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["sqlite", "runtime-tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing-subscriber = { version = "0.3", features = ["registry"] }
 
 [features]
 hotpath = ["hotpath/hotpath"]

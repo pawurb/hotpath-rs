@@ -358,9 +358,13 @@ macro_rules! mutex {
     };
 }
 
-#[macro_export]
-macro_rules! sql {
-    ($expr:expr) => {
-        $expr
-    };
+/// No-op SQL profiling layer used when the `hotpath` feature is disabled. Lets
+/// call sites keep `.with(hotpath::sql_tracing_layer())` in their subscriber
+/// setup unconditionally - it observes nothing and forwards nothing.
+#[cfg(feature = "sqlx")]
+pub fn sql_tracing_layer<S>() -> impl tracing_subscriber::Layer<S>
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    tracing_subscriber::layer::Identity::new()
 }

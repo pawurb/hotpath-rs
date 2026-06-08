@@ -3,17 +3,17 @@ pub(crate) mod logs;
 
 use crate::cmd::console::app::DataFlowFocus;
 use crate::cmd::console::views::common_styles;
-use crate::cmd::console::widgets::formatters::truncate_left;
+use crate::cmd::console::widgets::formatters::{truncate_left, truncate_right};
 use hotpath::json::{
     JsonChannelEntry, JsonFutureEntry, JsonMutexEntry, JsonRwLockEntry, JsonSqlEntry,
     JsonStreamEntry,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     symbols::border,
-    text::Span,
-    widgets::{Block, Cell, HighlightSpacing, Row, Table, TableState},
+    text::{Line, Span},
+    widgets::{Block, Cell, HighlightSpacing, Paragraph, Row, Table, TableState, Wrap},
     Frame,
 };
 
@@ -523,6 +523,64 @@ pub(crate) fn render_mutexes_panel(
     frame.render_stateful_widget(table, area, table_state);
 }
 
+/// Read-only side panel showing the full (untruncated) query text and stats for
+/// the selected SQL row. Opened with `o`; SQL has no per-event logs.
+#[hotpath::measure]
+pub(crate) fn render_sql_details_panel(
+    entry: Option<&JsonSqlEntry>,
+    percentiles: &[f64],
+    area: Rect,
+    frame: &mut Frame,
+) {
+    let block = Block::bordered()
+        .border_set(border::THICK)
+        .title(Span::styled(
+            " SQL query details ",
+            common_styles::TITLE_STYLE_YELLOW,
+        ));
+
+    let Some(entry) = entry else {
+        frame.render_widget(Paragraph::new("(no query selected)").block(block), area);
+        return;
+    };
+
+    let label = |text: &str| Span::styled(text.to_string(), Style::default().fg(Color::Cyan));
+    let heading = |text: &str| {
+        Line::from(Span::styled(
+            text.to_string(),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ))
+    };
+
+    let mut lines = vec![
+        heading("Metrics"),
+        Line::from(vec![label("Calls  "), Span::raw(entry.count.to_string())]),
+        Line::from(vec![label("Avg    "), Span::raw(entry.avg.clone())]),
+    ];
+    for &p in percentiles {
+        let key = hotpath::format_percentile_key(p);
+        let value = entry.percentiles.get(&key).cloned().unwrap_or_default();
+        lines.push(Line::from(vec![
+            label(&format!("{:<7}", hotpath::format_percentile_header(p))),
+            Span::raw(value),
+        ]));
+    }
+    lines.push(Line::from(vec![
+        label("Total  "),
+        Span::raw(entry.total.clone()),
+    ]));
+    lines.push(Line::from(""));
+    lines.push(heading("Query"));
+    lines.push(Line::from(entry.query.clone()));
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, area);
+}
+
 #[hotpath::measure]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_sql_panel(
@@ -542,12 +600,7 @@ pub(crate) fn render_sql_panel(
         .map(|p| hotpath::format_percentile_key(*p))
         .collect();
 
-    let mut header_cells = vec![
-        Cell::from("Query"),
-        Cell::from("Calls"),
-        Cell::from("Errors"),
-        Cell::from("Avg"),
-    ];
+    let mut header_cells = vec![Cell::from("Query"), Cell::from("Calls"), Cell::from("Avg")];
     for p in percentiles {
         header_cells.push(Cell::from(hotpath::format_percentile_header(*p)));
     }
@@ -560,9 +613,8 @@ pub(crate) fn render_sql_panel(
         .iter()
         .map(|entry| {
             let mut cells = vec![
-                Cell::from(truncate_left(&entry.query, query_width)),
+                Cell::from(truncate_right(&entry.query, query_width)),
                 Cell::from(entry.count.to_string()),
-                Cell::from(entry.error_count.to_string()),
                 Cell::from(entry.avg.clone()),
             ];
             for key in &percentile_keys {
@@ -577,7 +629,6 @@ pub(crate) fn render_sql_panel(
 
     let mut widths = vec![
         Constraint::Percentage(40),
-        Constraint::Length(8),
         Constraint::Length(8),
         Constraint::Length(10),
     ];

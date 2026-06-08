@@ -12,20 +12,23 @@
 use hotpath::{HotpathGuardBuilder, Section};
 use sqlx::sqlite::SqlitePoolOptions;
 use std::time::Duration;
+use tracing_subscriber::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::registry()
+        .with(hotpath::sql_tracing_layer())
+        .init();
+
     let _guard = HotpathGuardBuilder::new("main")
         .percentiles(&[50.0, 95.0, 99.0])
         .sections(vec![Section::Sql])
         .build();
 
-    let pool = hotpath::sql!(
-        SqlitePoolOptions::new()
-            .max_connections(4)
-            .connect("sqlite::memory:")
-            .await?
-    );
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await?;
 
     sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
         .execute(&pool)

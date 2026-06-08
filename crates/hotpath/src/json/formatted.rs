@@ -373,7 +373,6 @@ pub struct JsonSqlEntry {
     pub id: u32,
     pub query: String,
     pub count: u64,
-    pub error_count: u64,
     pub avg: String,
     pub total: String,
     pub percentiles: HashMap<String, String>,

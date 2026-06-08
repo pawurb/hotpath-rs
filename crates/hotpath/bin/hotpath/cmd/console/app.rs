@@ -127,6 +127,12 @@ impl DataFlowSubTab {
             DataFlowSubTab::RwLocks | DataFlowSubTab::Mutexes | DataFlowSubTab::Sql
         )
     }
+
+    /// SQL shows a read-only details side panel (full query text + stats) in
+    /// place of logs, since the table truncates long queries.
+    pub(crate) fn has_details(&self) -> bool {
+        matches!(self, DataFlowSubTab::Sql)
+    }
 }
 
 /// Represents which UI component has focus in the Functions tab

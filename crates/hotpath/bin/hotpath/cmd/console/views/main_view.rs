@@ -93,6 +93,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         frame,
         main_chunks[4],
         app.selected_tab,
+        app.data_flow_sub_tab,
         app.data_flow_focus,
         app.functions_focus,
         app.debug_focus,
@@ -310,7 +311,8 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 Line::from(""),
                 Line::from("No SQL queries found").yellow().centered(),
                 Line::from(""),
-                Line::from("Use the sql! macro to instrument a sqlx pool").centered(),
+                Line::from("Add hotpath::sql_tracing_layer() to your tracing subscriber")
+                    .centered(),
             ],
         };
 
@@ -435,7 +437,13 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
     };
 
     if let Some(logs_area) = logs_area {
-        if let Some(ref logs) = app.data_flow_logs {
+        if app.data_flow_sub_tab == DataFlowSubTab::Sql {
+            let selected = app
+                .sql_table_state
+                .selected()
+                .and_then(|i| app.sql.data.get(i));
+            data_flow::render_sql_details_panel(selected, &app.sql.percentiles, logs_area, frame);
+        } else if let Some(ref logs) = app.data_flow_logs {
             let has_missing_log = match logs {
                 DataFlowLogs::Channel(l) => l.sent_logs.iter().any(|e| e.message.is_none()),
                 DataFlowLogs::Stream(l) => l.logs.iter().any(|e| e.message.is_none()),

@@ -333,7 +333,8 @@ impl App {
     }
 
     pub(crate) fn toggle_data_flow_logs(&mut self) {
-        if !self.data_flow_sub_tab.has_logs() {
+        let sub_tab = self.data_flow_sub_tab;
+        if !sub_tab.has_logs() && !sub_tab.has_details() {
             return;
         }
         let count = self.data_flow_entries_len();
@@ -348,7 +349,9 @@ impl App {
                 self.hide_data_flow_logs();
             } else {
                 self.show_data_flow_logs = true;
-                if self.paused {
+                // SQL's details panel reads from the selected entry, so there is
+                // nothing to fetch.
+                if sub_tab.has_details() || self.paused {
                     self.data_flow_logs = None;
                 } else {
                     self.request_data_flow_logs();

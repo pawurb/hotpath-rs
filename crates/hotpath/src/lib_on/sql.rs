@@ -5,9 +5,10 @@
 //! same statement merge into a single bucket (see [`normalize`]). Normalization
 //! runs on the background worker thread to keep the hot path light.
 //!
-//! The write path (worker, events, normalization) is driven only by the sqlx
-//! wrapper, so it is dead when the `sqlx` feature is off; the read path stays
-//! compiled so the report/metrics wiring is feature-uniform.
+//! The write path (worker, events, normalization) is driven only by the
+//! `sqlx` tracing layer (see [`tracing_layer`]), so it is dead when the `sqlx`
+//! feature is off; the read path stays compiled so the report/metrics wiring is
+//! feature-uniform.
 #![cfg_attr(not(feature = "sqlx"), allow(dead_code))]
 
 use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
@@ -26,10 +27,10 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 
 pub(crate) mod normalize;
 #[cfg(feature = "sqlx")]
-pub(crate) mod wrapper;
+pub(crate) mod tracing_layer;
 
 #[cfg(feature = "sqlx")]
-pub use wrapper::{InstrumentSqlx, InstrumentedSqlitePool};
+pub use tracing_layer::sql_tracing_layer;
 
 static SQL_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -45,7 +46,6 @@ pub(crate) enum SqlEvent {
     Executed {
         sql: Arc<str>,
         duration_nanos: u64,
-        is_error: bool,
         elapsed_ns: u64,
     },
 }
@@ -56,7 +56,6 @@ pub(crate) struct SqlEntry {
     pub(crate) id: u32,
     pub(crate) query: String,
     pub(crate) count: u64,
-    pub(crate) error_count: u64,
     pub(crate) total_nanos: u64,
     hist: Option<Histogram<u64>>,
 }
@@ -71,7 +70,6 @@ impl SqlEntry {
             id,
             query,
             count: 0,
-            error_count: 0,
             total_nanos: 0,
             hist: Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
                 .ok(),
@@ -174,7 +172,6 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
     let SqlEvent::Executed {
         sql,
         duration_nanos,
-        is_error,
         elapsed_ns: _,
     } = event;
 
@@ -184,9 +181,6 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
         .entry(key.clone())
         .or_insert_with(|| SqlEntry::new(next_sql_id(), key));
     entry.count += 1;
-    if is_error {
-        entry.error_count += 1;
-    }
     entry.total_nanos += duration_nanos;
     entry.record(duration_nanos);
 }
@@ -289,30 +283,4 @@ pub(crate) fn compare_sql_entries(a: &SqlEntry, b: &SqlEntry) -> std::cmp::Order
         .cmp(&a.total_nanos)
         .then_with(|| b.count.cmp(&a.count))
         .then_with(|| a.id.cmp(&b.id))
-}
-
-/// Instrument a sqlx `SqlitePool` so every query run through it is timed and
-/// aggregated by normalized statement text.
-///
-/// Returns an [`InstrumentedSqlitePool`](crate::sql::InstrumentedSqlitePool)
-/// that you pass to sqlx query methods by reference, exactly like a real pool.
-///
-/// Requires the `sql` feature.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// # async fn run(pool: sqlx::SqlitePool) -> Result<(), sqlx::Error> {
-/// let pool = hotpath::sql!(pool);
-/// sqlx::query("SELECT * FROM users WHERE id = ?")
-///     .bind(1)
-///     .fetch_all(&pool)
-///     .await?;
-/// # Ok(()) }
-/// ```
-#[macro_export]
-macro_rules! sql {
-    ($expr:expr) => {
-        $crate::InstrumentSqlx::instrument($expr)
-    };
 }

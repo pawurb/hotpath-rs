@@ -44,7 +44,7 @@ pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use mutexes::InstrumentMutex;
 pub use rw_locks::InstrumentRwLock;
 #[cfg(feature = "sqlx")]
-pub use sql::{InstrumentSqlx, InstrumentedSqlitePool};
+pub use sql::sql_tracing_layer;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 pub mod hotpath_guard;

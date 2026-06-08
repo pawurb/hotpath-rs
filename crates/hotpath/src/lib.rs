@@ -140,19 +140,6 @@ pub mod wrap {
             };
         }
     }
-
-    /// Instrumented sqlx pool types. `hotpath::wrap::pool::SqlitePool` is a
-    /// drop-in for [`sqlx::SqlitePool`] — with profiling on it resolves to the
-    /// instrumented wrapper produced by the [`sql!`](crate::sql) macro, and with
-    /// profiling off it is the plain `sqlx::SqlitePool`, so call sites only need
-    /// the `hotpath::wrap::` prefix on the type.
-    #[cfg(feature = "sqlx")]
-    pub mod pool {
-        #[cfg(feature = "hotpath")]
-        pub use crate::lib_on::sql::InstrumentedSqlitePool as SqlitePool;
-        #[cfg(not(feature = "hotpath"))]
-        pub use sqlx::SqlitePool;
-    }
 }
 
 mod shared;

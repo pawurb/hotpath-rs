@@ -1,4 +1,6 @@
-use crate::cmd::console::app::{DataFlowFocus, DebugFocus, FunctionsFocus, SelectedTab};
+use crate::cmd::console::app::{
+    DataFlowFocus, DataFlowSubTab, DebugFocus, FunctionsFocus, SelectedTab,
+};
 use ratatui::{
     layout::{Alignment, Rect},
     style::Stylize,
@@ -11,6 +13,8 @@ use ratatui::{
 const NAV_KEYS_FULL: &str = " <←↑↓→/hjkl> <gg,G> ";
 const TOGGLE_LOGS_LABEL: &str = " | Toggle Logs ";
 const TOGGLE_LOGS_KEY: &str = "<o> ";
+const OPEN_DETAILS_LABEL: &str = " | Open Details ";
+const OPEN_DETAILS_KEY: &str = "<o> ";
 const PAUSE_LABEL: &str = " | Pause ";
 const PAUSE_KEY: &str = "<p> ";
 const QUIT_LABEL: &str = " | Quit ";
@@ -30,6 +34,7 @@ pub(crate) fn render_help_bar(
     frame: &mut Frame,
     area: Rect,
     selected_tab: SelectedTab,
+    data_flow_sub_tab: DataFlowSubTab,
     data_flow_focus: DataFlowFocus,
     functions_focus: FunctionsFocus,
     debug_focus: DebugFocus,
@@ -45,17 +50,29 @@ pub(crate) fn render_help_bar(
             ])
         } else if selected_tab == SelectedTab::DataFlow {
             match data_flow_focus {
-                DataFlowFocus::List => Line::from(vec![
-                    NAV_KEYS_FULL.blue().bold(),
-                    SUBTAB_LABEL_DATA_FLOW.into(),
-                    SUBTAB_KEY_DATA_FLOW.blue().bold(),
-                    TOGGLE_LOGS_LABEL.into(),
-                    TOGGLE_LOGS_KEY.blue().bold(),
-                    PAUSE_LABEL.into(),
-                    PAUSE_KEY.blue().bold(),
-                    QUIT_LABEL.into(),
-                    QUIT_KEY.blue().bold(),
-                ]),
+                DataFlowFocus::List => {
+                    let mut spans = vec![
+                        NAV_KEYS_FULL.blue().bold(),
+                        SUBTAB_LABEL_DATA_FLOW.into(),
+                        SUBTAB_KEY_DATA_FLOW.blue().bold(),
+                    ];
+                    // SQL opens a query-details panel; channels/streams/futures
+                    // toggle logs; RwLocks/Mutexes have no side panel.
+                    if data_flow_sub_tab.has_details() {
+                        spans.push(OPEN_DETAILS_LABEL.into());
+                        spans.push(OPEN_DETAILS_KEY.blue().bold());
+                    } else if data_flow_sub_tab.has_logs() {
+                        spans.push(TOGGLE_LOGS_LABEL.into());
+                        spans.push(TOGGLE_LOGS_KEY.blue().bold());
+                    }
+                    spans.extend([
+                        PAUSE_LABEL.into(),
+                        PAUSE_KEY.blue().bold(),
+                        QUIT_LABEL.into(),
+                        QUIT_KEY.blue().bold(),
+                    ]);
+                    Line::from(spans)
+                }
                 DataFlowFocus::Logs => Line::from(vec![
                     NAV_KEYS_FULL.blue().bold(),
                     SUBTAB_LABEL_DATA_FLOW.into(),

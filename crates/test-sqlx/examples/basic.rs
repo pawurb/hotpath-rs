@@ -1,5 +1,7 @@
-//! Demonstrates `hotpath::sql!` wrapping a sqlx SQLite pool so every query is
-//! timed and aggregated by *normalized* statement text.
+//! Demonstrates `hotpath::sql_tracing_layer()` capturing every sqlx query via a
+//! `tracing` layer - no pool wrapping, no application type changes. Queries are
+//! timed (using sqlx's own measured `elapsed`) and aggregated by *normalized*
+//! statement text.
 //!
 //! Run with:
 //!   cargo run -p test-sqlx --example basic --features hotpath
@@ -11,21 +13,26 @@
 
 use hotpath::{HotpathGuardBuilder, Section};
 use sqlx::sqlite::SqlitePoolOptions;
+use tracing_subscriber::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // One line: hook hotpath into the tracing pipeline. From here every sqlx
+    // query (including transaction-internal ones) is captured.
+    tracing_subscriber::registry()
+        .with(hotpath::sql_tracing_layer())
+        .init();
+
     let _guard = HotpathGuardBuilder::new("main")
         .percentiles(&[50.0, 95.0, 99.0])
         .sections(vec![Section::Sql])
         .build();
 
-    let raw_pool = SqlitePoolOptions::new()
+    // The pool stays a plain `sqlx::SqlitePool` - no wrapper, no type ripple.
+    let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await?;
-
-    // Wrap the pool: every query through `&pool` from here on is measured.
-    let pool = hotpath::sql!(raw_pool);
 
     sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
         .execute(&pool)
@@ -70,5 +77,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
     }
 
+    // Transaction-internal queries are captured too (the old wrapper missed these).
+    let mut tx = pool.begin().await?;
+    sqlx::query("INSERT INTO users (name, age) VALUES (?, ?)")
+        .bind("in_tx")
+        .bind(99)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    println!("sqlx tracing-layer example completed!");
     Ok(())
 }

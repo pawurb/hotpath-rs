@@ -1545,12 +1545,12 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "sqlx",
- "sqlx-sqlite",
  "time",
  "tiny_http",
  "tokio",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
  "ureq",
 ]
 
@@ -4146,6 +4146,7 @@ dependencies = [
  "hotpath",
  "sqlx",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]

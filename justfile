@@ -42,6 +42,7 @@ test_all:
     cargo test --features hotpath --test threads -- --nocapture --test-threads=1
     cargo test --features hotpath --test tokio_runtime -- --nocapture --test-threads=1
     cargo test --features hotpath --test futures -- --nocapture --test-threads=1
+    cargo test --features hotpath --test sql -- --nocapture --test-threads=1
     cargo test --features hotpath --test debug -- --nocapture --test-threads=1
 
 # Start the dev server

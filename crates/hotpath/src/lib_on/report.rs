@@ -487,7 +487,6 @@ pub(crate) fn report_sql_table(
     let mut header = vec![
         styled_header("Query"),
         styled_header("Calls"),
-        styled_header("Errors"),
         styled_header("Avg"),
     ];
     for &p in percentiles {
@@ -502,7 +501,6 @@ pub(crate) fn report_sql_table(
         let mut row = vec![
             Cell::new(&truncate_query(&entry.query)),
             Cell::new(&entry.count.to_string()),
-            Cell::new(&entry.error_count.to_string()),
             Cell::new(&format_duration(entry.avg_nanos())),
         ];
         for &p in percentiles {
@@ -529,7 +527,6 @@ fn sql_to_json(entry: &SqlEntry, percentiles: &[f64]) -> JsonSqlEntry {
         id: entry.id,
         query: entry.query.clone(),
         count: entry.count,
-        error_count: entry.error_count,
         avg: format_duration(entry.avg_nanos()),
         total: format_duration(entry.total_nanos),
         percentiles: percentile_map,
