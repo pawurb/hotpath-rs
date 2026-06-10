@@ -62,6 +62,14 @@ cargo run --example benchmark_noop --features hotpath --release
 cargo run --example benchmark_alloc --features='hotpath,hotpath-alloc' --release
 ```
 
+#### Instant
+
+`hotpath` measures time with a custom `Instant` (`mach_absolute_time` on macOS, `quanta` on Linux) instead of `std::time::Instant`. This benchmark compares the `now()` call overhead of both clocks:
+
+```bash
+cargo run -p test-tokio-async --example benchmark_instant --features hotpath --release
+```
+
 #### Mutexes and RwLocks
 
 RwLock examples run a write loop followed by a read loop.
