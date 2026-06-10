@@ -176,7 +176,7 @@
     top: 1.25rem;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 1000;
+    z-index: 1200; /* above .hp-topnav (1100) */
     max-width: min(90vw, 32rem);
     padding: 0.75rem 1.25rem;
     border-radius: 10px;

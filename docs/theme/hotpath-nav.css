@@ -1,0 +1,137 @@
+/* hotpath.rs top nav — shared by the docs and blog books via this theme/ dir.
+   Terminal-prompt styling that ignores the mdbook theme toggle. The bar is not
+   sticky: header.hbs moves it to <body> and keeps --hp-nav-offset in sync as
+   it scrolls away. */
+
+/* Top Nav */
+:root {
+    --hp-nav-h: 48px;
+    --hp-nav-bg: #0d0d0d;
+    --hp-nav-border: rgba(255, 255, 255, 0.1);
+    --hp-ember: #ffb454;
+    --hp-prompt-green: #98c379;
+    --hp-nav-fg: #e6e1d6;
+    --hp-nav-fg-dim: rgba(230, 225, 214, 0.65);
+    --hp-nav-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.hp-topnav {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--hp-nav-h);
+    z-index: 1100;               /* above the fixed sidebar + sticky menu-bar */
+    background: var(--hp-nav-bg);
+    border-bottom: 1px solid var(--hp-nav-border);
+    box-sizing: border-box;
+    font-family: var(--hp-nav-mono);
+}
+
+.hp-topnav-inner {
+    display: flex;
+    align-items: center;
+    gap: 1.6rem;
+    height: 100%;
+    padding: 0 16px;
+}
+
+.hp-brand {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5em;
+    flex: 0 0 auto;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+}
+
+.hp-brand:hover {
+    text-decoration: none;
+}
+
+.hp-brand-prompt {
+    color: var(--hp-prompt-green);
+    user-select: none;
+}
+
+.hp-brand-cmd {
+    color: var(--hp-ember);
+}
+
+.hp-brand:hover .hp-brand-cmd {
+    text-shadow: 0 0 12px rgba(255, 180, 84, 0.45);
+}
+
+.hp-navlink {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
+    flex: 0 0 auto;
+    color: var(--hp-nav-fg-dim);
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.hp-navlink:hover {
+    color: var(--hp-nav-fg);
+    text-decoration: none;
+}
+
+/* Heat strip: flamegraph-gradient underline marks the active route */
+.hp-navlink::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, #ff8a3d, #ffb454);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.hp-navlink.active {
+    color: var(--hp-ember);
+}
+
+.hp-navlink.active::after {
+    opacity: 1;
+    box-shadow: 0 2px 10px rgba(255, 180, 84, 0.35);
+}
+
+.hp-brand:focus-visible,
+.hp-navlink:focus-visible {
+    outline: 2px solid var(--hp-ember);
+    outline-offset: -2px;
+}
+
+/* Push mdbook's fixed sidebar and sticky menu-bar below the visible part
+   of the nav (--hp-nav-offset, set by header.hbs on scroll) */
+.sidebar {
+    top: var(--hp-nav-offset, var(--hp-nav-h)) !important;
+}
+
+/* Always pinned — no hide-on-scroll-down / reveal-on-scroll-up dance
+   (book.js toggles .sticky and inline `top`; these win over both).
+   The second selector mirrors chrome.css's most specific rule so this
+   loads-later declaration beats its `top: 0 !important`. */
+#mdbook-menu-bar,
+html.sidebar-visible #mdbook-menu-bar {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: var(--hp-nav-offset, var(--hp-nav-h)) !important;
+}
+
+#mdbook-body-container {
+    padding-top: var(--hp-nav-h);
+}
+
+/* Keep in-page anchor jumps clear of the sticky menu-bar */
+html {
+    scroll-padding-top: calc(var(--menu-bar-height, 50px) + 8px);
+}

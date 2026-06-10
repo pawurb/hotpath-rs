@@ -1,0 +1,38 @@
+<!-- hotpath.rs top nav — shared by the docs and blog books (this theme/ dir is
+     symlinked into hotpath-backend/blog_src). Styled in theme/hotpath-nav.css. -->
+<nav class="hp-topnav" aria-label="hotpath.rs">
+    <div class="hp-topnav-inner">
+        <a class="hp-brand" href="/" title="hotpath.rs home">
+            <span class="hp-brand-prompt" aria-hidden="true">~$</span><span class="hp-brand-cmd">hotpath-rs</span>
+        </a>
+        <a class="hp-navlink" data-route="docs" href="/">docs</a>
+        <a class="hp-navlink" data-route="blog" href="/blog/">blog</a>
+    </div>
+</nav>
+<script>
+    (function () {
+        var path = location.pathname;
+        var route = (path === '/blog' || path.indexOf('/blog/') === 0) ? 'blog' : 'docs';
+        var link = document.querySelector('.hp-navlink[data-route="' + route + '"]');
+        if (link) {
+            link.classList.add('active');
+            link.setAttribute('aria-current', 'page');
+        }
+
+        // The bar is not sticky: anchor it to the document top (the partial
+        // renders inside .page, whose ancestors may be positioned) and shrink
+        // --hp-nav-offset as it scrolls away so the fixed sidebar and sticky
+        // menu-bar slide up to fill its place.
+        var nav = document.querySelector('.hp-topnav');
+        if (!nav) return;
+        document.body.insertBefore(nav, document.body.firstChild);
+        var root = document.documentElement;
+        function syncNavOffset() {
+            var visible = Math.max(0, nav.offsetHeight - window.scrollY);
+            root.style.setProperty('--hp-nav-offset', visible + 'px');
+        }
+        window.addEventListener('scroll', syncNavOffset, { passive: true });
+        window.addEventListener('resize', syncNavOffset, { passive: true });
+        syncNavOffset();
+    })();
+</script>
