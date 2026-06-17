@@ -880,7 +880,12 @@ pub fn measure_all_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
             }
             TokenStream::from(quote!(#impl_block))
         }
-        _ => panic!("measure_all can only be applied to modules or impl blocks"),
+        other => syn::Error::new_spanned(
+            other,
+            "measure_all can only be applied to modules or impl blocks",
+        )
+        .to_compile_error()
+        .into(),
     }
 }
 
