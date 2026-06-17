@@ -107,8 +107,7 @@ impl FunctionStats {
         self.count += 1;
         self.record_time(duration_ns);
 
-        if self.recent_logs.len() == self.recent_logs.capacity() && self.recent_logs.capacity() > 0
-        {
+        if self.recent_logs.len() >= *crate::channels::LOGS_LIMIT {
             self.recent_logs.pop_front();
         }
         self.recent_logs

@@ -609,7 +609,7 @@ pub(crate) fn start_mcp_server_once() {
                         .nest_service("/mcp", service)
                         .layer(axum::middleware::from_fn(auth_middleware));
 
-                    let addr = format!("localhost:{}", port);
+                    let addr = format!("127.0.0.1:{}", port);
                     let listener = match tokio::net::TcpListener::bind(&addr).await {
                         Ok(l) => l,
                         Err(e) => {

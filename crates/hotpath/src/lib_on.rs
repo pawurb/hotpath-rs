@@ -121,7 +121,7 @@ impl Drop for SuspendAllocTracking {
 #[macro_export]
 macro_rules! measure_block {
     ($label:expr, $expr:expr) => {{
-        let _guard = hotpath::functions::build_measurement_guard_sync($label, false);
+        let _guard = $crate::functions::build_measurement_guard_sync($label, false);
 
         $expr
     }};
@@ -238,10 +238,10 @@ macro_rules! gauge {
 #[macro_export]
 macro_rules! tokio_runtime {
     () => {
-        hotpath::tokio_runtime::init_runtime_monitoring(&tokio::runtime::Handle::current());
+        $crate::tokio_runtime::init_runtime_monitoring(&tokio::runtime::Handle::current());
     };
     ($handle:expr) => {
-        hotpath::tokio_runtime::init_runtime_monitoring($handle);
+        $crate::tokio_runtime::init_runtime_monitoring($handle);
     };
 }
 
