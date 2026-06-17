@@ -153,6 +153,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut futures_limit: Option<usize> = None;
     let mut threads_limit: Option<usize> = None;
     let mut rw_locks_limit: Option<usize> = None;
+    let mut mutexes_limit: Option<usize> = None;
     let mut output_path: Option<String> = None;
     let mut report_sections: Option<String> = None;
     let mut allocator: Option<Path> = None;
@@ -255,6 +256,13 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return Ok(());
             }
 
+            if meta.path.is_ident("mutexes_limit") {
+                meta.input.parse::<syn::Token![=]>()?;
+                let li: LitInt = meta.input.parse()?;
+                mutexes_limit = Some(li.base10_parse()?);
+                return Ok(());
+            }
+
             if meta.path.is_ident("output_path") {
                 meta.input.parse::<syn::Token![=]>()?;
                 let lit: LitStr = meta.input.parse()?;
@@ -276,7 +284,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
 
             Err(meta.error(
-                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, functions_limit=N, channels_limit=N, streams_limit=N, futures_limit=N, threads_limit=N, rw_locks_limit=N, output_path=\"..\", report=\"..\", allocator=TypePath",
+                "Unknown parameter. Supported: percentiles=[..], format=\"..\", limit=N, functions_limit=N, channels_limit=N, streams_limit=N, futures_limit=N, threads_limit=N, rw_locks_limit=N, mutexes_limit=N, output_path=\"..\", report=\"..\", allocator=TypePath",
             ))
         });
 
@@ -359,6 +367,10 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         Some(l) => quote! { .rw_locks_limit(#l) },
         None => quote! {},
     };
+    let mutexes_limit_call = match mutexes_limit {
+        Some(l) => quote! { .mutexes_limit(#l) },
+        None => quote! {},
+    };
     let builder_chain = quote! {
         hotpath::HotpathGuardBuilder::new(caller_name)
             .percentiles(#percentiles_array)
@@ -369,6 +381,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             #futures_limit_call
             #threads_limit_call
             #rw_locks_limit_call
+            #mutexes_limit_call
             .format(#format_token)
             #output_path_call
             #sections_call

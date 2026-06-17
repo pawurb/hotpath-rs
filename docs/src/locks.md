@@ -106,6 +106,7 @@ let _guard = hotpath::HotpathGuardBuilder::new("main")
 
 The number of locks shown per section is unlimited by default (`0`). Cap it with:
 
+- Macro: `#[hotpath::main(rw_locks_limit = n, mutexes_limit = n)]`
 - Builder: `.rw_locks_limit(n)` / `.mutexes_limit(n)`
 - Env vars: `HOTPATH_RW_LOCKS_LIMIT` / `HOTPATH_MUTEXES_LIMIT`
 
