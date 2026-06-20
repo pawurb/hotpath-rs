@@ -12,7 +12,7 @@ fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    // wrap = true returns hotpath::wrap::crossbeam::{Sender, Receiver}.
+    // wrap = true returns hotpath::wrap::crossbeam_channel::{Sender, Receiver}.
     let (tx, rx) = hotpath::channel!(
         crossbeam_channel::bounded::<i32>(100),
         wrap = true,

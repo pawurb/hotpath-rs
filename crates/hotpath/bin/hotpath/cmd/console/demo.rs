@@ -7,6 +7,33 @@ pub fn init() {
     spawn_tokio_demo();
     spawn_rw_locks();
     spawn_mutexes();
+    spawn_channels();
+}
+
+fn spawn_channels() {
+    // Wrap channel: tracks exact send->receive latency. The producer outpaces a
+    // slower consumer, so the bounded channel stays full and each message's
+    // processing-time (queue residence + backpressure) fills the histogram.
+    let (tx, rx) = hotpath::channel!(
+        crossbeam_channel::bounded::<u64>(8),
+        wrap = true,
+        label = "demo-jobs"
+    );
+
+    thread::spawn(move || {
+        let mut i = 0u64;
+        while tx.send(i).is_ok() {
+            i += 1;
+            thread::sleep(Duration::from_millis(20));
+        }
+    });
+
+    thread::spawn(move || {
+        while let Ok(job) = rx.recv() {
+            std::hint::black_box(job);
+            thread::sleep(Duration::from_millis(60));
+        }
+    });
 }
 
 fn spawn_mutexes() {

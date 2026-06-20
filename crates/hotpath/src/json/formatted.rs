@@ -294,6 +294,8 @@ fn format_alloc_log_entry(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelsList {
     pub current_elapsed_ns: u64,
+    #[serde(default)]
+    pub percentiles: Vec<f64>,
     pub data: Vec<JsonChannelEntry>,
 }
 
@@ -315,6 +317,10 @@ pub struct JsonChannelEntry {
     pub queue_size: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_queue_size: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proc_avg: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub proc_percentiles: HashMap<String, String>,
     pub iter: u32,
 }
 
@@ -420,15 +426,14 @@ fn format_sent_log_entry(
     current_elapsed_ns: u64,
     received_logs: &[DataFlowLogEntry],
 ) -> JsonChannelSentLog {
-    // Pair by message identity when present (wrap mode); fall back to positional
-    // `index` for paths without an id (proxy mode), where order already lines up.
-    let delay = received_logs
-        .iter()
-        .find(|recv| match (recv.msg_id, entry.msg_id) {
-            (Some(a), Some(b)) => a == b,
-            _ => recv.index == entry.index,
-        })
-        .map(|recv| format_delay(recv.timestamp.saturating_sub(entry.timestamp)));
+    // Pair by message identity (wrap mode only). Proxy channels have no `msg_id` and
+    // their forwarder-stamped timestamps aren't true latency, so they get no delay.
+    let delay = entry.msg_id.and_then(|sent_id| {
+        received_logs
+            .iter()
+            .find(|recv| recv.msg_id == Some(sent_id))
+            .map(|recv| format_delay(recv.timestamp.saturating_sub(entry.timestamp)))
+    });
 
     JsonChannelSentLog {
         index: entry.index,
@@ -910,9 +915,11 @@ mod parse_tests {
         assert_eq!(by_index[&2], Some("3 ns".to_string()));
     }
 
-    /// Without `msg_id`, pairing falls back to positional `index`.
+    /// Proxy channels (no `msg_id`) carry no log delay: their events are stamped
+    /// inside the forwarder thread, so the interval would be a misleading
+    /// forwarder-hop time rather than true send->receive latency.
     #[test]
-    fn delay_falls_back_to_index_without_msg_id() {
+    fn delay_is_none_for_proxy_channels_without_msg_id() {
         let logs = ChannelLogs {
             id: 1,
             sent_logs: vec![DataFlowLogEntry::new(1, 10, None, None, None)],
@@ -920,6 +927,6 @@ mod parse_tests {
         };
 
         let out = JsonChannelLogsList::from_logs(&logs, 1_000);
-        assert_eq!(out.sent_logs[0].delay, Some("15 ns".to_string()));
+        assert_eq!(out.sent_logs[0].delay, None);
     }
 }

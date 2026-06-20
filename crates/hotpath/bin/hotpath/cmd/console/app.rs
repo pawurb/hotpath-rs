@@ -1,12 +1,12 @@
 //! TUI application state and main run loop
 
-use crossbeam_channel::{Receiver, Sender};
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
     JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonMutexesList, JsonRuntimeSnapshot,
     JsonRwLocksList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
+use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
 
@@ -265,11 +265,13 @@ impl App {
     pub(crate) fn new(metrics_host: &str, metrics_port: u16, refresh_interval_ms: u64) -> Self {
         let (request_tx, request_rx) = hotpath::channel!(
             crossbeam_channel::unbounded::<DataRequest>(),
+            wrap = true,
             label = "tui_requests",
             log = true
         );
         let (event_tx, event_rx) = hotpath::channel!(
             crossbeam_channel::unbounded::<AppEvent>(),
+            wrap = true,
             label = "tui_events",
             log = true
         );
@@ -342,6 +344,7 @@ impl App {
             loading_debug: false,
             channels: JsonChannelsList {
                 current_elapsed_ns: 0,
+                percentiles: vec![],
                 data: vec![],
             },
             streams: JsonStreamsList {
@@ -488,27 +491,25 @@ impl App {
         &mut self,
         terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
     ) -> std::io::Result<()> {
-        use crossbeam_channel::select;
+        use crossbeam_channel::RecvTimeoutError;
 
         self.request_refresh_for_current_tab();
 
         while !self.exit {
             terminal.draw(|frame| super::views::render_ui(frame, self))?;
 
-            select! {
-                recv(self.event_rx) -> event => {
-                    if let Ok(event) = event {
-                        match event {
-                            AppEvent::Key(key_code) => self.handle_key_event(key_code),
-                            AppEvent::Data(response) => self.handle_data_response(*response),
-                        }
-                    }
-                }
-                default(self.refresh_interval) => {
+            // `recv_timeout` on the wrap receiver routes through the instrumented
+            // endpoint (so latency is tracked) while preserving the old `select!`
+            // semantics: an event is handled, a timeout refreshes the current tab.
+            match self.event_rx.recv_timeout(self.refresh_interval) {
+                Ok(AppEvent::Key(key_code)) => self.handle_key_event(key_code),
+                Ok(AppEvent::Data(response)) => self.handle_data_response(*response),
+                Err(RecvTimeoutError::Timeout) => {
                     if !self.paused {
                         self.request_refresh_for_current_tab();
                     }
                 }
+                Err(RecvTimeoutError::Disconnected) => {}
             }
         }
 

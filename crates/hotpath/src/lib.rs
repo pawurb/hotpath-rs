@@ -141,10 +141,15 @@ pub mod wrap {
     }
 
     /// Instrumented crossbeam channel endpoints for `channel!(..., wrap = true)`.
+    /// With `hotpath` enabled these are the instrumented wrappers; otherwise
+    /// `channel!` is a no-op and the endpoints are the raw crossbeam types, so the
+    /// alias resolves the same way regardless of feature configuration.
     #[cfg(feature = "crossbeam")]
-    pub mod crossbeam {
+    pub mod crossbeam_channel {
         #[cfg(feature = "hotpath")]
         pub use crate::lib_on::channels::wrapper::crossbeam_wrap::{Receiver, Sender};
+        #[cfg(not(feature = "hotpath"))]
+        pub use crossbeam_channel::{Receiver, Sender};
     }
 }
 

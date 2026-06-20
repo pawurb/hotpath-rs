@@ -3,6 +3,7 @@
 use crossbeam_channel::{
     bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
 };
+use hdrhistogram::Histogram;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -164,6 +165,11 @@ pub(crate) struct ChannelEntry {
     /// Derived from `sent_count - received_count` (converged value order-independent).
     pub(crate) queue_size: Option<usize>,
     pub(crate) max_queue_size: Option<usize>,
+    /// Avg denominator is `received_count` (one delay recorded per receive).
+    pub(crate) proc_total_nanos: u64,
+    /// `Some` only for `wrap` channels; `None` for proxy channels, which cannot
+    /// measure latency accurately.
+    proc_hist: Option<Histogram<u64>>,
     pub(crate) iter: u32,
 }
 
@@ -187,26 +193,39 @@ pub(crate) struct ChannelsInternalState {
     pub(crate) logs: HashMap<u32, ChannelEntryLogs>,
 }
 
-impl From<&ChannelEntry> for JsonChannelEntry {
-    fn from(stats: &ChannelEntry) -> Self {
-        let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
+pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> JsonChannelEntry {
+    let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
-        JsonChannelEntry {
-            id: stats.id,
-            source: stats.source.to_string(),
-            label,
-            has_custom_label: stats.label.is_some(),
-            channel_type: stats.channel_type.to_string(),
-            state: stats.state.as_str().to_string(),
-            sent_count: stats.sent_count,
-            received_count: stats.received_count,
-            type_name: stats.type_name.to_string(),
-            type_size: stats.type_size,
-            wrap: stats.wrap,
-            queue_size: stats.queue_size,
-            max_queue_size: stats.max_queue_size,
-            iter: stats.iter,
+    let mut proc_percentiles = HashMap::new();
+    let proc_avg = if stats.has_proc_hist() {
+        for &p in percentiles {
+            proc_percentiles.insert(
+                crate::output::format_percentile_key(p),
+                crate::output::format_duration(stats.proc_percentile_nanos(p)),
+            );
         }
+        Some(crate::output::format_duration(stats.proc_avg_nanos()))
+    } else {
+        None
+    };
+
+    JsonChannelEntry {
+        id: stats.id,
+        source: stats.source.to_string(),
+        label,
+        has_custom_label: stats.label.is_some(),
+        channel_type: stats.channel_type.to_string(),
+        state: stats.state.as_str().to_string(),
+        sent_count: stats.sent_count,
+        received_count: stats.received_count,
+        type_name: stats.type_name.to_string(),
+        type_size: stats.type_size,
+        wrap: stats.wrap,
+        queue_size: stats.queue_size,
+        max_queue_size: stats.max_queue_size,
+        proc_avg,
+        proc_percentiles,
+        iter: stats.iter,
     }
 }
 
@@ -236,7 +255,44 @@ impl ChannelEntry {
             wrap,
             queue_size: None,
             max_queue_size: None,
+            proc_total_nanos: 0,
+            proc_hist: wrap.then(Self::new_histogram),
             iter,
+        }
+    }
+
+    const LOW_NS: u64 = 1;
+    const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
+    const SIGFIGS: u8 = 3;
+
+    fn new_histogram() -> Histogram<u64> {
+        Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
+            .expect("hdrhistogram init")
+    }
+
+    #[inline]
+    fn record_proc(&mut self, nanos: u64) {
+        if let Some(ref mut hist) = self.proc_hist {
+            self.proc_total_nanos += nanos;
+            hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
+                .unwrap();
+        }
+    }
+
+    pub(crate) fn has_proc_hist(&self) -> bool {
+        self.proc_hist.is_some()
+    }
+
+    pub(crate) fn proc_avg_nanos(&self) -> u64 {
+        self.proc_total_nanos
+            .checked_div(self.received_count)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn proc_percentile_nanos(&self, p: f64) -> u64 {
+        match &self.proc_hist {
+            Some(hist) if self.received_count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
+            _ => 0,
         }
     }
 
@@ -295,6 +351,7 @@ pub(crate) enum ChannelEvent {
         msg_id: u64,
         timestamp: Instant,
         queue_len: usize,
+        delay_nanos: u64,
     },
     Closed {
         id: u32,
@@ -424,11 +481,13 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             msg_id,
             timestamp,
             queue_len,
+            delay_nanos,
         } => {
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.received_count += 1;
                 channel_stats.update_state();
                 channel_stats.record_queue(queue_len);
+                channel_stats.record_proc(delay_nanos);
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
                 let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
@@ -902,13 +961,15 @@ pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
     let data = get_sorted_channel_entries()
         .iter()
-        .map(JsonChannelEntry::from)
+        .map(|entry| channel_to_json(entry, &percentiles))
         .collect();
 
     crate::json::JsonChannelsList {
         current_elapsed_ns: crate::lib_on::current_elapsed_ns(),
+        percentiles,
         data,
     }
 }
@@ -969,6 +1030,7 @@ mod tests {
                 msg_id: 1,
                 timestamp: ts,
                 queue_len: 0,
+                delay_nanos: 0,
             },
         );
         process_channel_event(

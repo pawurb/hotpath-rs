@@ -368,6 +368,7 @@ fn render_data_flow_view(frame: &mut Frame, app: &mut App, area: Rect) {
     match app.data_flow_sub_tab {
         DataFlowSubTab::Channels => data_flow::render_channels_panel(
             &app.channels.data,
+            &app.channels.percentiles,
             table_area,
             frame,
             &mut app.channels_table_state,

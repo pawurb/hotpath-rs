@@ -107,6 +107,24 @@ Tokio, crossbeam, and async-channel channels don't require this parameter becaus
 
 Please note that enabling monitoring can subtly affect channel behavior in some cases. For example, using `try_send` may behave slightly differently since the proxy adds 1 slot of extra capacity. Also some wrappers currently do not propagate info about receiver getting dropped.
 
+### Send-receive latency (`wrap = true`)
+
+For crossbeam channels you can opt into **endpoint wrapping** with `wrap = true`. Instead of inserting a forwarder-proxy, this wraps the `Sender`/`Receiver` directly and stamps each message with its send time, so the report gains an exact **send-receive latency** histogram (`proc_avg` plus the configured percentiles), alongside an exact live queue depth:
+
+```rust
+let (tx, rx) = hotpath::channel!(
+    crossbeam_channel::unbounded::<i32>(),
+    wrap = true,
+    label = "jobs"
+);
+```
+
+The recorded latency is the full interval from `send()` to `recv()`, including backpressure wait on bounded channels. Because the timestamps are taken inside your own `send`/`recv` calls rather than in a forwarder thread, the value is exact - and wrap mode is also lighter than the proxy, since it adds no extra thread or hop.
+
+Latency is reported **only for wrap channels**. A proxy channel stamps its events inside the forwarder thread, in the middle of the pipeline, so it cannot observe the producer-side or consumer-side wait accurately; its latency fields are omitted (shown as `-`) rather than reported as a misleading zero. Prefer `wrap = true` when you care about channel latency.
+
+> Wrap mode requires the channel expression to be constructed inline (e.g. `channel!(crossbeam_channel::unbounded::<T>(), wrap = true)`) and is currently available for crossbeam channels.
+
 I'm actively improving the library, so any feedback, issues, bug reports are appreciated.
 
 ## Streams

@@ -1,7 +1,7 @@
 //! Dedicated thread for reading keyboard events
 
-use crossbeam_channel::Sender;
 use crossterm::event::{self, Event, KeyEventKind};
+use hotpath::wrap::crossbeam_channel::Sender;
 
 use super::events::AppEvent;
 

@@ -1,6 +1,5 @@
 //! Data worker thread with Tokio runtime for async HTTP fetching
 
-use crossbeam_channel::{Receiver, Sender};
 use hotpath::dev_logging::{error, info, trace, warn};
 use hotpath::json::Route;
 use hotpath::json::{
@@ -10,6 +9,7 @@ use hotpath::json::{
     JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonRwLocksList, JsonStreamLogsList,
     JsonStreamsList, JsonThreadsList,
 };
+use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use std::{collections::HashMap, sync::Arc, time::Duration};

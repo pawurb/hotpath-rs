@@ -82,6 +82,7 @@ fn list_block(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_channels_panel(
     entries: &[JsonChannelEntry],
+    percentiles: &[f64],
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -91,17 +92,33 @@ pub(crate) fn render_channels_panel(
     total: usize,
 ) {
     let available_width = area.width.saturating_sub(10);
-    let label_width = ((available_width as f32 * 0.45) as usize).max(20);
+    let label_width = ((available_width as f32 * 0.30) as usize).max(20);
 
-    let header = Row::new(vec![
-        Cell::from("Type"),
-        Cell::from("Label"),
-        Cell::from("State"),
-        Cell::from("Sent/Recv"),
-        Cell::from("Queue/Max"),
-    ])
-    .style(common_styles::HEADER_STYLE_CYAN)
-    .height(1);
+    let header_cells = vec![
+        "Type".to_string(),
+        "Label".to_string(),
+        "State".to_string(),
+        "Sent/Recv".to_string(),
+        "Queue/Max".to_string(),
+        "Proc avg".to_string(),
+    ]
+    .into_iter()
+    .chain(
+        percentiles
+            .iter()
+            .map(|p| hotpath::format_percentile_header(*p)),
+    )
+    .map(Cell::from)
+    .collect::<Vec<_>>();
+
+    let header = Row::new(header_cells)
+        .style(common_styles::HEADER_STYLE_CYAN)
+        .height(1);
+
+    let percentile_keys: Vec<String> = percentiles
+        .iter()
+        .map(|p| hotpath::format_percentile_key(*p))
+        .collect();
 
     let rows: Vec<Row> = entries
         .iter()
@@ -112,23 +129,38 @@ pub(crate) fn render_channels_panel(
                 (Some(queue), Some(max)) => format!("{queue}/{max}"),
                 _ => "-".to_string(),
             };
-            Row::new(vec![
+            // Latency is only measured for wrap channels; proxy channels show `-`.
+            let mut cells = vec![
                 Cell::from(type_text).style(Style::default().fg(Color::Cyan)),
                 Cell::from(truncate_left(&entry.label, label_width)),
                 Cell::from(entry.state.clone()).style(state_style(&entry.state)),
                 Cell::from(format!("{}/{}", entry.sent_count, entry.received_count)),
                 Cell::from(queue_text),
-            ])
+                Cell::from(entry.proc_avg.clone().unwrap_or_else(|| "-".to_string())),
+            ];
+            for key in &percentile_keys {
+                let value = entry
+                    .proc_percentiles
+                    .get(key)
+                    .cloned()
+                    .unwrap_or_else(|| "-".to_string());
+                cells.push(Cell::from(value));
+            }
+            Row::new(cells)
         })
         .collect();
 
-    let widths = [
+    let widths = vec![
         Constraint::Length(12),
-        Constraint::Percentage(55),
+        Constraint::Percentage(30),
         Constraint::Length(10),
         Constraint::Length(14),
         Constraint::Length(12),
-    ];
+        Constraint::Length(12),
+    ]
+    .into_iter()
+    .chain((0..percentile_keys.len()).map(|_| Constraint::Length(12)))
+    .collect::<Vec<_>>();
 
     let table = Table::new(rows, widths)
         .header(header)

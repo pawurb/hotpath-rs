@@ -22,7 +22,7 @@
 //! not be cloned/retained before wrapping (such a clone would be orphaned).
 //!
 //! Returned types are [`Sender`]/[`Receiver`], re-exported as
-//! `hotpath::wrap::crossbeam::{Sender, Receiver}`.
+//! `hotpath::wrap::crossbeam_channel::{Sender, Receiver}`.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -166,32 +166,36 @@ impl<T> Receiver<T> {
         &self.inner
     }
 
-    fn on_received(&self, msg_id: u64) {
+    fn on_received(&self, msg_id: u64, now: Instant, delay_nanos: u64) {
         send_channel_event(ChannelEvent::WrapMessageReceived {
             id: self.id,
             msg_id,
-            timestamp: Instant::now(),
+            timestamp: now,
             queue_len: self.inner.len(),
+            delay_nanos,
         });
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
-        // `send_ts` rides in the envelope; Phase 2 computes the delay here
-        // (`now() - send_ts`) and records it straight into the histogram.
-        let (msg_id, _send_ts, msg) = self.inner.recv()?;
-        self.on_received(msg_id);
+        // `send_ts` rides in the envelope; the delay (`now - send_ts`) is the exact
+        // send->receive latency, recorded straight into the processing-time histogram.
+        let (msg_id, send_ts, msg) = self.inner.recv()?;
+        let now = Instant::now();
+        self.on_received(msg_id, now, delay_nanos(send_ts, now));
         Ok(msg)
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let (msg_id, _send_ts, msg) = self.inner.try_recv()?;
-        self.on_received(msg_id);
+        let (msg_id, send_ts, msg) = self.inner.try_recv()?;
+        let now = Instant::now();
+        self.on_received(msg_id, now, delay_nanos(send_ts, now));
         Ok(msg)
     }
 
     pub fn recv_timeout(&self, timeout: std::time::Duration) -> Result<T, RecvTimeoutError> {
-        let (msg_id, _send_ts, msg) = self.inner.recv_timeout(timeout)?;
-        self.on_received(msg_id);
+        let (msg_id, send_ts, msg) = self.inner.recv_timeout(timeout)?;
+        let now = Instant::now();
+        self.on_received(msg_id, now, delay_nanos(send_ts, now));
         Ok(msg)
     }
 
@@ -289,6 +293,12 @@ impl<'a, T> IntoIterator for &'a Receiver<T> {
     fn into_iter(self) -> Iter<'a, T> {
         self.iter()
     }
+}
+
+/// `send_ts` is stamped before the (possibly blocking) `send`, so it is always `<= now`.
+#[inline]
+fn delay_nanos(send_ts: Instant, now: Instant) -> u64 {
+    now.duration_since(send_ts).as_nanos() as u64
 }
 
 fn channel_type<T>(tx: &InnerSender<T>) -> ChannelType {

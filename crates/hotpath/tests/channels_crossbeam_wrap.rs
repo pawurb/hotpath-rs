@@ -156,4 +156,80 @@ pub mod tests {
             "expected closed state after all receivers dropped while senders alive"
         );
     }
+
+    // cargo run -p test-channels-crossbeam --example wrap_latency_crossbeam --features hotpath
+    #[cfg(feature = "hotpath")]
+    #[test]
+    fn test_wrap_processing_histogram() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-channels-crossbeam",
+                "--example",
+                "wrap_latency_crossbeam",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Command failed with status: {}",
+            output.status
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let channels = parse_channels(&stdout);
+
+        // The configured percentiles are echoed at the top of the channels report.
+        assert_eq!(channels.percentiles, vec![50.0, 95.0]);
+
+        // Wrap channels carry an exact send->receive latency histogram in the JSON report.
+        let wrap = channels
+            .data
+            .iter()
+            .find(|c| c.label == "wrap-latency")
+            .expect("wrap-latency channel not found");
+
+        assert!(wrap.wrap, "channel should be endpoint-wrapped");
+        let proc_avg = wrap
+            .proc_avg
+            .as_deref()
+            .expect("wrap channel should report proc_avg in JSON");
+        assert!(!proc_avg.is_empty(), "proc_avg should not be empty");
+        assert_ne!(
+            proc_avg, "0ns",
+            "expected non-zero send->receive latency (~20ms held in channel)"
+        );
+        assert!(
+            wrap.proc_percentiles.contains_key("p50"),
+            "expected p50 latency percentile in JSON, got {:?}",
+            wrap.proc_percentiles
+        );
+        assert!(
+            wrap.proc_percentiles.contains_key("p95"),
+            "expected p95 latency percentile in JSON, got {:?}",
+            wrap.proc_percentiles
+        );
+
+        // Proxy (non-wrap) channels cannot measure latency accurately, so the
+        // histogram fields are omitted rather than reported as zero.
+        let proxy = channels
+            .data
+            .iter()
+            .find(|c| c.label == "proxy-latency")
+            .expect("proxy-latency channel not found");
+
+        assert!(!proxy.wrap, "channel should be a proxy channel");
+        assert!(
+            proxy.proc_avg.is_none(),
+            "proxy channel must not report proc_avg"
+        );
+        assert!(
+            proxy.proc_percentiles.is_empty(),
+            "proxy channel must not report latency percentiles"
+        );
+    }
 }
