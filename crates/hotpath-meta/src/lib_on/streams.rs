@@ -149,6 +149,8 @@ pub(crate) fn flush_stream_batch() {
 }
 
 impl BatchedMeasurement for StreamEvent {
+    type Tx = CbSender<Vec<Self>>;
+
     fn elapsed_since_start_ns(&self) -> u64 {
         match self {
             StreamEvent::Yielded { timestamp, .. } => crate::channels::timestamp_nanos(*timestamp),
@@ -156,8 +158,12 @@ impl BatchedMeasurement for StreamEvent {
         }
     }
 
-    fn fetch_sender() -> Option<CbSender<Vec<Self>>> {
+    fn fetch_sender() -> Option<Self::Tx> {
         Some(STREAMS_STATE.get()?.event_tx.clone())
+    }
+
+    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
+        let _ = tx.send(batch);
     }
 
     fn is_flush_boundary(&self) -> bool {

@@ -1,6 +1,6 @@
 use crate::instant::Instant;
 use arc_swap::ArcSwapOption;
-use crossbeam_channel::{bounded, select, unbounded};
+use crossbeam_channel::{bounded, unbounded};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
@@ -39,7 +39,7 @@ use crate::output_on::{
     display_functions_table_to, display_no_measurements_message_to, write_report_header,
 };
 
-use crate::functions::{FunctionsQuery, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
+use crate::functions::{FunctionsQuery, WorkerMsg, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
 use crate::lib_on::report;
 use crate::shared::Section;
 
@@ -51,12 +51,12 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
         use crate::functions::alloc::{
             report::{build_functions_list_alloc, build_functions_list_timing},
-            state::{FunctionStats, FunctionsState, Measurement, process_measurement, flush_batch},
+            state::{FunctionStats, FunctionsState, process_measurement, flush_batch},
         };
     } else {
         use crate::functions::timing::{
             report::build_functions_list,
-            state::{FunctionStats, FunctionsState, Measurement, process_measurement, flush_batch},
+            state::{FunctionStats, FunctionsState, process_measurement, flush_batch},
         };
     }
 }
@@ -350,16 +350,9 @@ impl HotpathGuard {
             panic!("More than one _hotpath guard cannot be alive at the same time.");
         }
 
-        let (tx, rx) = unbounded::<Vec<Measurement>>();
+        let (tx, rx) = unbounded::<WorkerMsg>();
         #[cfg(feature = "hotpath-meta")]
-        let (tx, rx) = hotpath_meta::channel!((tx, rx), label = "hp-fn-measurements", log = true);
-        let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
-        #[cfg(feature = "hotpath-meta")]
-        let (shutdown_tx, shutdown_rx) = hotpath_meta::channel!(
-            (shutdown_tx, shutdown_rx),
-            label = "hp-fn-shutdown",
-            log = true
-        );
+        let (tx, rx) = hotpath_meta::channel!((tx, rx), wrap = true, label = "hp-fn");
         let (completion_tx, completion_rx) = bounded::<HashMap<u32, FunctionStats>>(1);
         #[cfg(feature = "hotpath-meta")]
         let (completion_tx, completion_rx) = hotpath_meta::channel!(
@@ -367,16 +360,11 @@ impl HotpathGuard {
             label = "hp-fn-completion",
             log = true
         );
-        let (query_tx, query_rx) = unbounded::<FunctionsQuery>();
-        #[cfg(feature = "hotpath-meta")]
-        let (query_tx, query_rx) =
-            hotpath_meta::channel!((query_tx, query_rx), label = "hp-fn-queries", log = true);
-        let _ = FUNCTIONS_QUERY_TX.set(query_tx);
+        let _ = FUNCTIONS_QUERY_TX.set(tx.clone());
         let start_time = Instant::now();
 
         let state_arc = Arc::new(RwLock::new(FunctionsState {
             sender: Some(tx),
-            shutdown_tx: Some(shutdown_tx),
             completion_rx: Some(Mutex::new(completion_rx)),
             start_time,
             caller_name,
@@ -401,22 +389,14 @@ impl HotpathGuard {
                 }
 
                 loop {
-                    select! {
-                        recv(shutdown_rx) -> _ => {
-                            for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                                match rx.try_recv() {
-                                    Ok(batch) => {
-                                        for measurement in batch {
-                                            process_measurement(&mut local_stats, &mut name_to_id, measurement);
-                                        }
-                                    }
-                                    Err(_) => break,
-                                }
+                    match rx.recv() {
+                        Ok(WorkerMsg::Measurements(batch)) => {
+                            for measurement in batch {
+                                process_measurement(&mut local_stats, &mut name_to_id, measurement);
                             }
-                            break;
                         }
-                        recv(query_rx) -> result => {
-                            if let Ok(query_request) = result {
+                        Ok(WorkerMsg::Query(query_request)) => {
+                            {
                                 let config = FunctionStatsConfig {
                                     total_elapsed: worker_start_time.elapsed(),
                                     percentiles: worker_percentiles.clone(),
@@ -531,16 +511,21 @@ impl HotpathGuard {
                                 }
                             }
                         }
-                        recv(rx) -> result => {
-                            match result {
-                                Ok(batch) => {
-                                    for measurement in batch {
-                                        process_measurement(&mut local_stats, &mut name_to_id, measurement);
+                        Ok(WorkerMsg::Shutdown) => {
+                            for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
+                                match rx.try_recv() {
+                                    Ok(WorkerMsg::Measurements(batch)) => {
+                                        for measurement in batch {
+                                            process_measurement(&mut local_stats, &mut name_to_id, measurement);
+                                        }
                                     }
+                                    Ok(_) => {}
+                                    Err(_) => break,
                                 }
-                                Err(_) => break,
                             }
+                            break;
                         }
+                        Err(_) => break,
                     }
                 }
 
@@ -721,21 +706,22 @@ impl Drop for HotpathGuard {
             .map(|s| s.percentiles.clone())
             .unwrap_or_default();
 
-        let (shutdown_tx, completion_rx, end_time) = {
+        let (worker_tx, completion_rx, end_time) = {
             let Ok(mut state_guard) = state.write() else {
                 return;
             };
 
-            state_guard.sender = None;
+            // Take (not clear) the sender: stops new producers and lets us deliver
+            // Shutdown on the same FIFO channel, after the flushed measurements.
+            let worker_tx = state_guard.sender.take();
             let end_time = Instant::now();
 
-            let shutdown_tx = state_guard.shutdown_tx.take();
             let completion_rx = state_guard.completion_rx.take();
-            (shutdown_tx, completion_rx, end_time)
+            (worker_tx, completion_rx, end_time)
         };
 
-        if let Some(tx) = shutdown_tx {
-            let _ = tx.send(());
+        if let Some(tx) = worker_tx {
+            let _ = tx.send(WorkerMsg::Shutdown);
         }
 
         let functions_stats =

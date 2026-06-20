@@ -1,4 +1,4 @@
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Receiver;
 use hdrhistogram::Histogram;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -30,14 +30,20 @@ pub(crate) struct Measurement {
 }
 
 impl BatchedMeasurement for Measurement {
+    type Tx = crate::lib_on::functions::WorkerTx;
+
     fn elapsed_since_start_ns(&self) -> u64 {
         self.elapsed_since_start_ns
     }
 
-    fn fetch_sender() -> Option<Sender<Vec<Self>>> {
+    fn fetch_sender() -> Option<Self::Tx> {
         let state = crate::lib_on::functions::FUNCTIONS_STATE.get()?;
         let state_guard = state.read().ok()?;
         state_guard.sender.clone()
+    }
+
+    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
+        let _ = tx.send(crate::lib_on::functions::WorkerMsg::Measurements(batch));
     }
 }
 
@@ -129,8 +135,7 @@ impl FunctionStats {
 }
 
 pub(crate) struct FunctionsState {
-    pub sender: Option<Sender<Vec<Measurement>>>,
-    pub shutdown_tx: Option<Sender<()>>,
+    pub sender: Option<crate::lib_on::functions::WorkerTx>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<u32, FunctionStats>>>>,
 
     pub start_time: Instant,

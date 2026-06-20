@@ -1,4 +1,3 @@
-use crossbeam_channel::Sender;
 use std::sync::{Arc, Mutex, Weak};
 
 pub(crate) const BATCH_SIZE: usize = 64;
@@ -6,8 +5,15 @@ pub(crate) const FLUSH_INTERVAL_MS: u64 = 50;
 pub(crate) const FLUSH_INTERVAL_NS: u64 = FLUSH_INTERVAL_MS * 1_000_000;
 
 pub(crate) trait BatchedMeasurement: Sized + Send {
+    /// Sender the batch flushes into: a plain `crossbeam_channel::Sender`, or a
+    /// `wrap = true` sender under `hotpath-meta`.
+    type Tx: Clone + Send + 'static;
+
     fn elapsed_since_start_ns(&self) -> u64;
-    fn fetch_sender() -> Option<Sender<Vec<Self>>>;
+    fn fetch_sender() -> Option<Self::Tx>;
+
+    /// Wraps a flushed batch into the worker's message type and sends it.
+    fn send_batch(tx: &Self::Tx, batch: Vec<Self>);
 
     /// Lifecycle events that must reach the worker before the data events they
     /// gate (e.g. `Created`) force an immediate flush so per-thread batching
@@ -20,7 +26,7 @@ pub(crate) trait BatchedMeasurement: Sized + Send {
 pub(crate) struct MeasurementBatch<M: BatchedMeasurement> {
     measurements: Vec<M>,
     last_flush_elapsed_ns: u64,
-    sender: Option<Sender<Vec<M>>>,
+    sender: Option<M::Tx>,
 }
 
 impl<M: BatchedMeasurement> MeasurementBatch<M> {
@@ -65,7 +71,7 @@ impl<M: BatchedMeasurement> MeasurementBatch<M> {
             self.last_flush_elapsed_ns = last.elapsed_since_start_ns();
         }
         let batch = std::mem::replace(&mut self.measurements, Vec::with_capacity(BATCH_SIZE));
-        let _ = sender.send(batch);
+        M::send_batch(sender, batch);
     }
 }
 

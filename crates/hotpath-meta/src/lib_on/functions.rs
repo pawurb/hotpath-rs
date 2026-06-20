@@ -19,13 +19,13 @@ pub(crate) mod cpu;
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc-meta")] {
         pub(crate) mod alloc;
-        use alloc::state::FunctionsState;
+        use alloc::state::{FunctionsState, Measurement};
         pub(crate) use alloc::guard::AsyncAllocBridge;
         pub use alloc::guard::{MeasurementGuardAsync, MeasurementGuardSync};
         pub(crate) use alloc::guard::{MeasurementGuardAsyncWithLog, MeasurementGuardSyncWithLog};
     } else {
         pub(crate) mod timing;
-        use timing::state::FunctionsState;
+        use timing::state::{FunctionsState, Measurement};
         #[derive(Default)]
         pub(crate) struct AsyncAllocBridge;
         impl AsyncAllocBridge {
@@ -296,7 +296,7 @@ where
 
 pub(crate) static FUNCTIONS_STATE: OnceLock<Arc<RwLock<FunctionsState>>> = OnceLock::new();
 
-pub(crate) static FUNCTIONS_QUERY_TX: OnceLock<Sender<FunctionsQuery>> = OnceLock::new();
+pub(crate) static FUNCTIONS_QUERY_TX: OnceLock<WorkerTx> = OnceLock::new();
 
 static CPU_LABEL_ALIASES: OnceLock<RwLock<HashMap<&'static str, &'static str>>> = OnceLock::new();
 
@@ -338,6 +338,24 @@ pub(crate) enum FunctionsQuery {
     },
 }
 
+/// Everything the functions worker consumes, carried on a single channel so the
+/// channel can be instrumented with `channel!(..., wrap = true)` under
+/// `hotpath-meta` (crossbeam `select!` is incompatible with wrapper endpoints).
+///
+/// `Query`/`Shutdown` queue FIFO behind pending `Measurements`. The worker drains a
+/// 64-measurement batch in a few µs, so while it keeps up (the normal case) a query
+/// waits well under a millisecond, and a transient backlog clears in a few ms. The
+/// wait only grows unbounded once the worker is saturated - when the unbounded
+/// measurement queue is already the larger problem.
+#[derive(Debug)]
+pub(crate) enum WorkerMsg {
+    Measurements(Vec<Measurement>),
+    Query(FunctionsQuery),
+    Shutdown,
+}
+
+pub(crate) type WorkerTx = crossbeam_channel::Sender<WorkerMsg>;
+
 fn get_current_elapsed_ns() -> u64 {
     START_TIME
         .get()
@@ -351,7 +369,9 @@ where
 {
     let query_tx = FUNCTIONS_QUERY_TX.get()?;
     let (response_tx, response_rx) = bounded::<T>(1);
-    query_tx.send(make_query(response_tx)).ok()?;
+    query_tx
+        .send(WorkerMsg::Query(make_query(response_tx)))
+        .ok()?;
     response_rx
         .recv_timeout(Duration::from_millis(RECV_TIMEOUT_MS))
         .ok()
