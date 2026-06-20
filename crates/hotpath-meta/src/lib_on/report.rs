@@ -3,15 +3,17 @@ use std::io::Write;
 
 use prettytable::{color, Attr, Cell, Row, Table};
 
-use crate::channels::{compare_channel_entries, resolve_label, ChannelEntry, CHANNELS_STATE};
+use crate::channels::{
+    channel_to_json, compare_channel_entries, resolve_label, ChannelEntry, CHANNELS_STATE,
+};
 use crate::debug::{
     get_sorted_debug_dbg_entries, get_sorted_debug_gauge_entries, get_sorted_debug_val_entries,
 };
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
 use crate::json::JsonDebugEntry;
 use crate::json::{
-    JsonChannelEntry, JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonMutexEntry,
-    JsonMutexesList, JsonRwLockEntry, JsonRwLocksList, JsonStreamEntry, JsonStreamsList,
+    JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonMutexEntry, JsonMutexesList,
+    JsonRwLockEntry, JsonRwLocksList, JsonStreamEntry, JsonStreamsList,
 };
 use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
@@ -122,13 +124,72 @@ pub(crate) fn report_channels_table(
     let _ = writeln!(writer);
 }
 
+pub(crate) fn report_channel_latency_table(
+    channels: &[ChannelEntry],
+    percentiles: &[f64],
+    writer: &mut dyn Write,
+) {
+    let rows: Vec<&ChannelEntry> = channels
+        .iter()
+        .filter(|c| c.has_proc_hist() && c.received_count > 0)
+        .collect();
+    if rows.is_empty() {
+        return;
+    }
+
+    write_section_header(
+        writer,
+        "channels latency",
+        "Channel send->receive latency statistics (wrap channels only).",
+    );
+    let _ = writeln!(writer);
+
+    let mut header = vec![
+        styled_header("Channel"),
+        styled_header("Msgs"),
+        styled_header("Proc avg"),
+    ];
+    for &p in percentiles {
+        header.push(styled_header(&format!(
+            "Proc {}",
+            format_percentile_header(p)
+        )));
+    }
+
+    let mut table = Table::new();
+    table.add_row(Row::new(header));
+
+    for channel in rows {
+        let label = resolve_label(channel.source, channel.label.as_deref(), Some(channel.iter));
+        let mut row = vec![
+            Cell::new(&label),
+            Cell::new(&channel.received_count.to_string()),
+            Cell::new(&format_duration(channel.proc_avg_nanos())),
+        ];
+        for &p in percentiles {
+            row.push(Cell::new(&format_duration(
+                channel.proc_percentile_nanos(p),
+            )));
+        }
+        table.add_row(Row::new(row));
+    }
+
+    print_table(&table, writer);
+    let _ = writeln!(writer);
+}
+
 pub(crate) fn collect_channels_json(
     channels: &[ChannelEntry],
     elapsed: std::time::Duration,
+    percentiles: &[f64],
 ) -> JsonChannelsList {
     JsonChannelsList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
-        data: channels.iter().map(JsonChannelEntry::from).collect(),
+        percentiles: percentiles.to_vec(),
+        data: channels
+            .iter()
+            .map(|entry| channel_to_json(entry, percentiles))
+            .collect(),
     }
 }
 

@@ -294,6 +294,8 @@ fn format_alloc_log_entry(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelsList {
     pub current_elapsed_ns: u64,
+    #[serde(default)]
+    pub percentiles: Vec<f64>,
     pub data: Vec<JsonChannelEntry>,
 }
 
@@ -315,6 +317,10 @@ pub struct JsonChannelEntry {
     pub queue_size: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_queue_size: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proc_avg: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub proc_percentiles: HashMap<String, String>,
     pub iter: u32,
 }
 
@@ -420,10 +426,14 @@ fn format_sent_log_entry(
     current_elapsed_ns: u64,
     received_logs: &[DataFlowLogEntry],
 ) -> JsonChannelSentLog {
-    let delay = received_logs
-        .iter()
-        .find(|recv| recv.index == entry.index)
-        .map(|recv| format_delay(recv.timestamp.saturating_sub(entry.timestamp)));
+    // Pair by message identity (wrap mode only). Proxy channels have no `msg_id` and
+    // their forwarder-stamped timestamps aren't true latency, so they get no delay.
+    let delay = entry.msg_id.and_then(|sent_id| {
+        received_logs
+            .iter()
+            .find(|recv| recv.msg_id == Some(sent_id))
+            .map(|recv| format_delay(recv.timestamp.saturating_sub(entry.timestamp)))
+    });
 
     JsonChannelSentLog {
         index: entry.index,
@@ -847,5 +857,51 @@ mod parse_tests {
                 "round-trip failed for {val}: formatted as '{formatted}'"
             );
         }
+    }
+
+    /// A send must pair with its exact receive by `msg_id`, not by arrival
+    /// position. Receives here are in reverse msg-id order, so index pairing
+    /// would mismatch both.
+    #[test]
+    fn delay_pairs_by_msg_id_not_arrival_index() {
+        let logs = ChannelLogs {
+            id: 1,
+            // (index, timestamp, message, tid, msg_id)
+            sent_logs: vec![
+                DataFlowLogEntry::new(1, 10, None, None, Some(100)),
+                DataFlowLogEntry::new(2, 15, None, None, Some(200)),
+            ],
+            received_logs: vec![
+                DataFlowLogEntry::new(1, 18, None, None, Some(200)),
+                DataFlowLogEntry::new(2, 30, None, None, Some(100)),
+            ],
+        };
+
+        let out = JsonChannelLogsList::from_logs(&logs, 1_000);
+
+        let by_index: HashMap<u64, Option<String>> = out
+            .sent_logs
+            .iter()
+            .map(|s| (s.index, s.delay.clone()))
+            .collect();
+
+        // msg 100: recv@30 - send@10 = 20ns; msg 200: recv@18 - send@15 = 3ns.
+        assert_eq!(by_index[&1], Some("20 ns".to_string()));
+        assert_eq!(by_index[&2], Some("3 ns".to_string()));
+    }
+
+    /// Proxy channels (no `msg_id`) carry no log delay: their events are stamped
+    /// inside the forwarder thread, so the interval would be a misleading
+    /// forwarder-hop time rather than true send->receive latency.
+    #[test]
+    fn delay_is_none_for_proxy_channels_without_msg_id() {
+        let logs = ChannelLogs {
+            id: 1,
+            sent_logs: vec![DataFlowLogEntry::new(1, 10, None, None, None)],
+            received_logs: vec![DataFlowLogEntry::new(1, 25, None, None, None)],
+        };
+
+        let out = JsonChannelLogsList::from_logs(&logs, 1_000);
+        assert_eq!(out.sent_logs[0].delay, None);
     }
 }

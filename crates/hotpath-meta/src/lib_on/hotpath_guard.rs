@@ -784,6 +784,7 @@ impl Drop for HotpathGuard {
                             report.channels = Some(report::collect_channels_json(
                                 &channels_data[..limit],
                                 elapsed,
+                                &percentiles,
                             ));
                         }
                     }
@@ -983,6 +984,11 @@ impl Drop for HotpathGuard {
                             report::report_channels_table(
                                 &channels_data[..limit],
                                 total,
+                                &mut writer,
+                            );
+                            report::report_channel_latency_table(
+                                &channels_data[..limit],
+                                &percentiles,
                                 &mut writer,
                             );
                         }

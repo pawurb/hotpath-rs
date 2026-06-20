@@ -87,15 +87,26 @@ pub(crate) struct DataFlowLogEntry {
     pub timestamp: u64,
     pub message: Option<String>,
     pub tid: Option<u64>,
+    /// Message identity used to pair a send with its matching receive; `None`
+    /// outside wrap mode (proxy mode, streams).
+    #[serde(default)]
+    pub msg_id: Option<u64>,
 }
 
 impl DataFlowLogEntry {
-    pub fn new(index: u64, timestamp: u64, message: Option<String>, tid: Option<u64>) -> Self {
+    pub fn new(
+        index: u64,
+        timestamp: u64,
+        message: Option<String>,
+        tid: Option<u64>,
+        msg_id: Option<u64>,
+    ) -> Self {
         Self {
             index,
             timestamp,
             message,
             tid,
+            msg_id,
         }
     }
 }
