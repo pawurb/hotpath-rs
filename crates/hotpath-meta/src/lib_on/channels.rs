@@ -1,6 +1,8 @@
 //! Channel instrumentation module - tracks message flow and channel state.
 
-use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
+use crossbeam_channel::{
+    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
+};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -94,7 +96,11 @@ thread_local! {
 #[inline]
 pub(crate) fn send_channel_event(event: ChannelEvent) {
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
+    // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
+    // recv, or `Closed` on drop) from a producer thread that is tearing down, when
+    // this thread-local may already be destroyed. Dropping the event is fine;
+    // panicking in a `Drop` would abort the process.
+    let _ = EVENT_BATCH.try_with(|b| {
         if let Ok(mut b) = b.lock() {
             b.add(event);
         }
@@ -435,6 +441,20 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
     }
 }
 
+fn flush_channel_buffer(
+    buffer: &mut Vec<ChannelEvent>,
+    inner: &Arc<RwLock<ChannelsInternalState>>,
+) {
+    if buffer.is_empty() {
+        return;
+    }
+    if let Ok(mut shared) = inner.write() {
+        for e in buffer.drain(..) {
+            process_channel_event(&mut shared, e);
+        }
+    }
+}
+
 /// Initialize the channel statistics collection system (called on first instrumented channel).
 pub(crate) fn init_channels_state() -> &'static ChannelsState {
     CHANNELS_STATE.get_or_init(|| {
@@ -455,60 +475,41 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
                 let mut local_buffer: Vec<ChannelEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
                 let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
 
+                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
+                let mut select = Select::new();
+                let _shutdown_idx = select.recv(&shutdown_rx);
+                let _event_idx = select.recv(&event_rx);
+
                 loop {
-                    select! {
-                        recv(event_rx) -> result => {
-                            match result {
-                                Ok(events) => {
-                                    local_buffer.extend(events);
-                                    if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_channel_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(_) => {
-                                    if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_channel_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
+                    if select.ready_timeout(flush_interval).is_err() {
+                        flush_channel_buffer(&mut local_buffer, &inner_clone);
+                        continue;
+                    }
+
+                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
+                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
+                            match event_rx.try_recv() {
+                                Ok(events) => local_buffer.extend(events),
+                                Err(_) => break,
                             }
                         }
-                        recv(shutdown_rx) -> _ => {
-                            let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
-                            for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                                match event_rx.try_recv() {
-                                    Ok(events) => drained_events.extend(events),
-                                    Err(_) => break,
-                                }
-                            }
+                        flush_channel_buffer(&mut local_buffer, &inner_clone);
+                        break;
+                    }
 
-                            if let Ok(mut shared) = inner_clone.write() {
-                                for e in local_buffer.drain(..) {
-                                    process_channel_event(&mut shared, e);
-                                }
-                                for event in drained_events {
-                                    process_channel_event(&mut shared, event);
-                                }
+                    match event_rx.try_recv() {
+                        Ok(events) => {
+                            local_buffer.extend(events);
+                            if local_buffer.len() >= WORKER_BATCH_SIZE {
+                                flush_channel_buffer(&mut local_buffer, &inner_clone);
                             }
+                        }
+                        // A disconnected receiver stays ready; flush and stop, do not spin.
+                        Err(TryRecvError::Disconnected) => {
+                            flush_channel_buffer(&mut local_buffer, &inner_clone);
                             break;
                         }
-                        default(flush_interval) => {
-                            if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = inner_clone.write() {
-                                    for e in local_buffer.drain(..) {
-                                        process_channel_event(&mut shared, e);
-                                    }
-                                }
-                            }
-                        }
+                        Err(TryRecvError::Empty) => {}
                     }
                 }
 

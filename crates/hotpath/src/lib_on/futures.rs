@@ -3,7 +3,9 @@
 use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
 use crate::channels::{resolve_label, LOGS_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
+use crossbeam_channel::{
+    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
+};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -184,8 +186,14 @@ pub(crate) enum FutureEvent {
     },
 }
 
+// `wrap = true` endpoint wrapper under `hotpath-meta` (instrumented), plain sender otherwise.
+#[cfg(feature = "hotpath-meta")]
+pub(crate) type FutureEventTx = hotpath_meta::wrap::crossbeam::Sender<Vec<FutureEvent>>;
+#[cfg(not(feature = "hotpath-meta"))]
+pub(crate) type FutureEventTx = CbSender<Vec<FutureEvent>>;
+
 pub(crate) struct FuturesState {
-    pub(crate) event_tx: CbSender<Vec<FutureEvent>>,
+    pub(crate) event_tx: FutureEventTx,
     pub(crate) inner: Arc<RwLock<FuturesInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -217,7 +225,7 @@ pub(crate) fn flush_future_batch() {
 }
 
 impl BatchedMeasurement for FutureEvent {
-    type Tx = CbSender<Vec<Self>>;
+    type Tx = FutureEventTx;
 
     fn elapsed_since_start_ns(&self) -> u64 {
         match self {
@@ -249,6 +257,17 @@ pub fn init_futures_state() {
     let _ = get_futures_state();
 }
 
+fn flush_future_buffer(buffer: &mut Vec<FutureEvent>, inner: &Arc<RwLock<FuturesInternalState>>) {
+    if buffer.is_empty() {
+        return;
+    }
+    if let Ok(mut shared) = inner.write() {
+        for e in buffer.drain(..) {
+            process_future_event(&mut shared, e);
+        }
+    }
+}
+
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 fn get_futures_state() -> &'static FuturesState {
     FUTURES_STATE.get_or_init(|| {
@@ -258,22 +277,14 @@ fn get_futures_state() -> &'static FuturesState {
 
         let (event_tx, event_rx) = unbounded::<Vec<FutureEvent>>();
         #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) =
-            hotpath_meta::channel!((event_tx, event_rx), label = "hp-ft-events", log = true);
+        let (event_tx, event_rx) = hotpath_meta::channel!(
+            (event_tx, event_rx),
+            wrap = true,
+            log = true,
+            label = "hp-ft-events"
+        );
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
-        #[cfg(feature = "hotpath-meta")]
-        let (shutdown_tx, shutdown_rx) = hotpath_meta::channel!(
-            (shutdown_tx, shutdown_rx),
-            label = "hp-ft-shutdown",
-            log = true
-        );
         let (completion_tx, completion_rx) = bounded::<()>(1);
-        #[cfg(feature = "hotpath-meta")]
-        let (completion_tx, completion_rx) = hotpath_meta::channel!(
-            (completion_tx, completion_rx),
-            label = "hp-ft-completion",
-            log = true
-        );
         let inner = Arc::new(RwLock::new(FuturesInternalState {
             stats: HashMap::new(),
             logs: HashMap::new(),
@@ -286,60 +297,44 @@ fn get_futures_state() -> &'static FuturesState {
                 let mut local_buffer: Vec<FutureEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
                 let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
 
+                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
+                let mut select = Select::new();
+                let _shutdown_idx = select.recv(&shutdown_rx);
+                #[cfg(feature = "hotpath-meta")]
+                let _event_idx = select.recv(event_rx.select_handle());
+                #[cfg(not(feature = "hotpath-meta"))]
+                let _event_idx = select.recv(&event_rx);
+
                 loop {
-                    select! {
-                        recv(event_rx) -> result => {
-                            match result {
-                                Ok(events) => {
-                                    local_buffer.extend(events);
-                                    if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_future_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(_) => {
-                                    if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_future_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
+                    if select.ready_timeout(flush_interval).is_err() {
+                        flush_future_buffer(&mut local_buffer, &inner_clone);
+                        continue;
+                    }
+
+                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
+                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
+                            match event_rx.try_recv() {
+                                Ok(events) => local_buffer.extend(events),
+                                Err(_) => break,
                             }
                         }
-                        recv(shutdown_rx) -> _ => {
-                            let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
-                            for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                                match event_rx.try_recv() {
-                                    Ok(events) => drained_events.extend(events),
-                                    Err(_) => break,
-                                }
-                            }
+                        flush_future_buffer(&mut local_buffer, &inner_clone);
+                        break;
+                    }
 
-                            if let Ok(mut shared) = inner_clone.write() {
-                                for e in local_buffer.drain(..) {
-                                    process_future_event(&mut shared, e);
-                                }
-                                for event in drained_events {
-                                    process_future_event(&mut shared, event);
-                                }
+                    match event_rx.try_recv() {
+                        Ok(events) => {
+                            local_buffer.extend(events);
+                            if local_buffer.len() >= WORKER_BATCH_SIZE {
+                                flush_future_buffer(&mut local_buffer, &inner_clone);
                             }
+                        }
+                        // A disconnected receiver stays ready; flush and stop, do not spin.
+                        Err(TryRecvError::Disconnected) => {
+                            flush_future_buffer(&mut local_buffer, &inner_clone);
                             break;
                         }
-                        default(flush_interval) => {
-                            if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = inner_clone.write() {
-                                    for e in local_buffer.drain(..) {
-                                        process_future_event(&mut shared, e);
-                                    }
-                                }
-                            }
-                        }
+                        Err(TryRecvError::Empty) => {}
                     }
                 }
 

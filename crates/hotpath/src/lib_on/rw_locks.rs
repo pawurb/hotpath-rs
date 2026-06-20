@@ -1,6 +1,8 @@
 //! RwLock instrumentation module - tracks read/write lock acquisitions and hold durations.
 
-use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
+use crossbeam_channel::{
+    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
+};
 use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -142,8 +144,14 @@ pub(crate) struct RwLocksInternalState {
     pub(crate) stats: HashMap<u32, RwLockEntry>,
 }
 
+// `wrap = true` endpoint wrapper under `hotpath-meta` (instrumented), plain sender otherwise.
+#[cfg(feature = "hotpath-meta")]
+pub(crate) type RwLockEventTx = hotpath_meta::wrap::crossbeam::Sender<Vec<RwLockEvent>>;
+#[cfg(not(feature = "hotpath-meta"))]
+pub(crate) type RwLockEventTx = CbSender<Vec<RwLockEvent>>;
+
 pub(crate) struct RwLocksState {
-    pub(crate) event_tx: CbSender<Vec<RwLockEvent>>,
+    pub(crate) event_tx: RwLockEventTx,
     pub(crate) inner: Arc<StdRwLock<RwLocksInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -200,7 +208,7 @@ pub(crate) fn flush_rw_lock_batch() {
 }
 
 impl BatchedMeasurement for RwLockEvent {
-    type Tx = CbSender<Vec<Self>>;
+    type Tx = RwLockEventTx;
 
     fn elapsed_since_start_ns(&self) -> u64 {
         match self {
@@ -297,12 +305,33 @@ pub(crate) fn register_rw_lock<T>(source: &'static str, label: Option<String>) -
     id
 }
 
+fn flush_rw_lock_buffer(
+    buffer: &mut Vec<RwLockEvent>,
+    inner: &Arc<StdRwLock<RwLocksInternalState>>,
+) {
+    if buffer.is_empty() {
+        return;
+    }
+    if let Ok(mut shared) = inner.write() {
+        for e in buffer.drain(..) {
+            process_rw_lock_event(&mut shared, e);
+        }
+    }
+}
+
 /// Initialize the lock statistics collection system (called on first instrumented lock).
 pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
     RW_LOCKS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
         let (event_tx, event_rx) = unbounded::<Vec<RwLockEvent>>();
+        #[cfg(feature = "hotpath-meta")]
+        let (event_tx, event_rx) = hotpath_meta::channel!(
+            (event_tx, event_rx),
+            wrap = true,
+            log = true,
+            label = "hp-rw-events"
+        );
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
@@ -317,60 +346,44 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
                 let mut local_buffer: Vec<RwLockEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
                 let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
 
+                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
+                let mut select = Select::new();
+                let _shutdown_idx = select.recv(&shutdown_rx);
+                #[cfg(feature = "hotpath-meta")]
+                let _event_idx = select.recv(event_rx.select_handle());
+                #[cfg(not(feature = "hotpath-meta"))]
+                let _event_idx = select.recv(&event_rx);
+
                 loop {
-                    select! {
-                        recv(event_rx) -> result => {
-                            match result {
-                                Ok(events) => {
-                                    local_buffer.extend(events);
-                                    if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_rw_lock_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(_) => {
-                                    if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_rw_lock_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
+                    if select.ready_timeout(flush_interval).is_err() {
+                        flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
+                        continue;
+                    }
+
+                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
+                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
+                            match event_rx.try_recv() {
+                                Ok(events) => local_buffer.extend(events),
+                                Err(_) => break,
                             }
                         }
-                        recv(shutdown_rx) -> _ => {
-                            let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
-                            for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                                match event_rx.try_recv() {
-                                    Ok(events) => drained_events.extend(events),
-                                    Err(_) => break,
-                                }
-                            }
+                        flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
+                        break;
+                    }
 
-                            if let Ok(mut shared) = inner_clone.write() {
-                                for e in local_buffer.drain(..) {
-                                    process_rw_lock_event(&mut shared, e);
-                                }
-                                for event in drained_events {
-                                    process_rw_lock_event(&mut shared, event);
-                                }
+                    match event_rx.try_recv() {
+                        Ok(events) => {
+                            local_buffer.extend(events);
+                            if local_buffer.len() >= WORKER_BATCH_SIZE {
+                                flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
                             }
+                        }
+                        // A disconnected receiver stays ready; flush and stop, do not spin.
+                        Err(TryRecvError::Disconnected) => {
+                            flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
                             break;
                         }
-                        default(flush_interval) => {
-                            if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = inner_clone.write() {
-                                    for e in local_buffer.drain(..) {
-                                        process_rw_lock_event(&mut shared, e);
-                                    }
-                                }
-                            }
-                        }
+                        Err(TryRecvError::Empty) => {}
                     }
                 }
 

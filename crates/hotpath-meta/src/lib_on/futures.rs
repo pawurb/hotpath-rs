@@ -6,7 +6,9 @@ use crate::lib_on::hotpath_guard::{
     WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
 };
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
+use crossbeam_channel::{
+    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
+};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -244,6 +246,17 @@ pub fn init_futures_state() {
     let _ = get_futures_state();
 }
 
+fn flush_future_buffer(buffer: &mut Vec<FutureEvent>, inner: &Arc<RwLock<FuturesInternalState>>) {
+    if buffer.is_empty() {
+        return;
+    }
+    if let Ok(mut shared) = inner.write() {
+        for e in buffer.drain(..) {
+            process_future_event(&mut shared, e);
+        }
+    }
+}
+
 fn get_futures_state() -> &'static FuturesState {
     FUTURES_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
@@ -265,60 +278,41 @@ fn get_futures_state() -> &'static FuturesState {
                 let mut local_buffer: Vec<FutureEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
                 let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
 
+                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
+                let mut select = Select::new();
+                let _shutdown_idx = select.recv(&shutdown_rx);
+                let _event_idx = select.recv(&event_rx);
+
                 loop {
-                    select! {
-                        recv(event_rx) -> result => {
-                            match result {
-                                Ok(events) => {
-                                    local_buffer.extend(events);
-                                    if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_future_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(_) => {
-                                    if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_future_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
+                    if select.ready_timeout(flush_interval).is_err() {
+                        flush_future_buffer(&mut local_buffer, &inner_clone);
+                        continue;
+                    }
+
+                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
+                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
+                            match event_rx.try_recv() {
+                                Ok(events) => local_buffer.extend(events),
+                                Err(_) => break,
                             }
                         }
-                        recv(shutdown_rx) -> _ => {
-                            let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
-                            for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                                match event_rx.try_recv() {
-                                    Ok(events) => drained_events.extend(events),
-                                    Err(_) => break,
-                                }
-                            }
+                        flush_future_buffer(&mut local_buffer, &inner_clone);
+                        break;
+                    }
 
-                            if let Ok(mut shared) = inner_clone.write() {
-                                for e in local_buffer.drain(..) {
-                                    process_future_event(&mut shared, e);
-                                }
-                                for event in drained_events {
-                                    process_future_event(&mut shared, event);
-                                }
+                    match event_rx.try_recv() {
+                        Ok(events) => {
+                            local_buffer.extend(events);
+                            if local_buffer.len() >= WORKER_BATCH_SIZE {
+                                flush_future_buffer(&mut local_buffer, &inner_clone);
                             }
+                        }
+                        // A disconnected receiver stays ready; flush and stop, do not spin.
+                        Err(TryRecvError::Disconnected) => {
+                            flush_future_buffer(&mut local_buffer, &inner_clone);
                             break;
                         }
-                        default(flush_interval) => {
-                            if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = inner_clone.write() {
-                                    for e in local_buffer.drain(..) {
-                                        process_future_event(&mut shared, e);
-                                    }
-                                }
-                            }
-                        }
+                        Err(TryRecvError::Empty) => {}
                     }
                 }
 

@@ -159,11 +159,9 @@ pub struct Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    /// Exposes the inner real receiver for registration with
-    /// `crossbeam_channel::Select::ready[_timeout]()`. The envelope type leaks,
-    /// but the handle is only ever used as a readiness-registration token - the
-    /// actual receive must go through `self.recv()`/`self.try_recv()` so the
-    /// wrapper's instrumentation fires.
+    /// Inner receiver for use with `crossbeam_channel::Select`. Register it, wait
+    /// with `Select::ready`/`ready_timeout`, then receive via this wrapper's
+    /// `try_recv`/`recv` so instrumentation still fires.
     pub fn select_handle(&self) -> &InnerReceiver<(u64, Instant, T)> {
         &self.inner
     }

@@ -363,12 +363,6 @@ impl HotpathGuard {
         let (query_tx, query_rx) = unbounded::<FunctionsQuery>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<HashMap<u32, FunctionStats>>(1);
-        #[cfg(feature = "hotpath-meta")]
-        let (completion_tx, completion_rx) = hotpath_meta::channel!(
-            (completion_tx, completion_rx),
-            label = "hp-fn-completion",
-            log = true
-        );
         let _ = FUNCTIONS_QUERY_TX.set(query_tx);
         let start_time = Instant::now();
 

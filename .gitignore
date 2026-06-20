@@ -1,4 +1,5 @@
 /target
+crates/hotpath/target
 /target-linux
 rust-project.json
 hotpath_report.csv

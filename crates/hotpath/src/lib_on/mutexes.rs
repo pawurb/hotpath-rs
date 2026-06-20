@@ -3,7 +3,9 @@
 //! Unlike [`crate::rw_locks`], a mutex has a single lock kind (no read/write
 //! distinction), so each entry tracks one set of wait & acquire statistics.
 
-use crossbeam_channel::{bounded, select, unbounded, Receiver as CbReceiver, Sender as CbSender};
+use crossbeam_channel::{
+    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
+};
 use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -111,8 +113,14 @@ pub(crate) struct MutexesInternalState {
     pub(crate) stats: HashMap<u32, MutexEntry>,
 }
 
+// `wrap = true` endpoint wrapper under `hotpath-meta` (instrumented), plain sender otherwise.
+#[cfg(feature = "hotpath-meta")]
+pub(crate) type MutexEventTx = hotpath_meta::wrap::crossbeam::Sender<Vec<MutexEvent>>;
+#[cfg(not(feature = "hotpath-meta"))]
+pub(crate) type MutexEventTx = CbSender<Vec<MutexEvent>>;
+
 pub(crate) struct MutexesState {
-    pub(crate) event_tx: CbSender<Vec<MutexEvent>>,
+    pub(crate) event_tx: MutexEventTx,
     pub(crate) inner: Arc<StdRwLock<MutexesInternalState>>,
     pub(crate) shutdown_tx: StdMutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: StdMutex<Option<CbReceiver<()>>>,
@@ -169,7 +177,7 @@ pub(crate) fn flush_mutex_batch() {
 }
 
 impl BatchedMeasurement for MutexEvent {
-    type Tx = CbSender<Vec<Self>>;
+    type Tx = MutexEventTx;
 
     fn elapsed_since_start_ns(&self) -> u64 {
         match self {
@@ -249,12 +257,30 @@ pub(crate) fn register_mutex<T>(source: &'static str, label: Option<String>) -> 
     id
 }
 
+fn flush_mutex_buffer(buffer: &mut Vec<MutexEvent>, inner: &Arc<StdRwLock<MutexesInternalState>>) {
+    if buffer.is_empty() {
+        return;
+    }
+    if let Ok(mut shared) = inner.write() {
+        for e in buffer.drain(..) {
+            process_mutex_event(&mut shared, e);
+        }
+    }
+}
+
 /// Initialize the lock statistics collection system (called on first instrumented lock).
 pub(crate) fn init_mutexes_state() -> &'static MutexesState {
     MUTEXES_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
         let (event_tx, event_rx) = unbounded::<Vec<MutexEvent>>();
+        #[cfg(feature = "hotpath-meta")]
+        let (event_tx, event_rx) = hotpath_meta::channel!(
+            (event_tx, event_rx),
+            wrap = true,
+            log = true,
+            label = "hp-mx-events"
+        );
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
@@ -269,60 +295,44 @@ pub(crate) fn init_mutexes_state() -> &'static MutexesState {
                 let mut local_buffer: Vec<MutexEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
                 let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
 
+                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
+                let mut select = Select::new();
+                let _shutdown_idx = select.recv(&shutdown_rx);
+                #[cfg(feature = "hotpath-meta")]
+                let _event_idx = select.recv(event_rx.select_handle());
+                #[cfg(not(feature = "hotpath-meta"))]
+                let _event_idx = select.recv(&event_rx);
+
                 loop {
-                    select! {
-                        recv(event_rx) -> result => {
-                            match result {
-                                Ok(events) => {
-                                    local_buffer.extend(events);
-                                    if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_mutex_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(_) => {
-                                    if !local_buffer.is_empty() {
-                                        if let Ok(mut shared) = inner_clone.write() {
-                                            for e in local_buffer.drain(..) {
-                                                process_mutex_event(&mut shared, e);
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
+                    if select.ready_timeout(flush_interval).is_err() {
+                        flush_mutex_buffer(&mut local_buffer, &inner_clone);
+                        continue;
+                    }
+
+                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
+                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
+                            match event_rx.try_recv() {
+                                Ok(events) => local_buffer.extend(events),
+                                Err(_) => break,
                             }
                         }
-                        recv(shutdown_rx) -> _ => {
-                            let mut drained_events = Vec::with_capacity(WORKER_BATCH_SIZE);
-                            for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                                match event_rx.try_recv() {
-                                    Ok(events) => drained_events.extend(events),
-                                    Err(_) => break,
-                                }
-                            }
+                        flush_mutex_buffer(&mut local_buffer, &inner_clone);
+                        break;
+                    }
 
-                            if let Ok(mut shared) = inner_clone.write() {
-                                for e in local_buffer.drain(..) {
-                                    process_mutex_event(&mut shared, e);
-                                }
-                                for event in drained_events {
-                                    process_mutex_event(&mut shared, event);
-                                }
+                    match event_rx.try_recv() {
+                        Ok(events) => {
+                            local_buffer.extend(events);
+                            if local_buffer.len() >= WORKER_BATCH_SIZE {
+                                flush_mutex_buffer(&mut local_buffer, &inner_clone);
                             }
+                        }
+                        // A disconnected receiver stays ready; flush and stop, do not spin.
+                        Err(TryRecvError::Disconnected) => {
+                            flush_mutex_buffer(&mut local_buffer, &inner_clone);
                             break;
                         }
-                        default(flush_interval) => {
-                            if !local_buffer.is_empty() {
-                                if let Ok(mut shared) = inner_clone.write() {
-                                    for e in local_buffer.drain(..) {
-                                        process_mutex_event(&mut shared, e);
-                                    }
-                                }
-                            }
-                        }
+                        Err(TryRecvError::Empty) => {}
                     }
                 }
 
