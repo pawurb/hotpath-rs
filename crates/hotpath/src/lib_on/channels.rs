@@ -54,6 +54,7 @@ pub(crate) fn register_channel<T>(
 /// Like [`register_channel`] but marks the channel as endpoint-wrapped
 /// (`wrap = true`). Used by the instrumented endpoint wrappers in
 /// `wrapper/*_wrap.rs`.
+#[cfg_attr(not(feature = "crossbeam"), allow(dead_code))]
 pub(crate) fn register_channel_wrap<T>(
     source: &'static str,
     label: Option<String>,
@@ -150,6 +151,9 @@ pub(crate) struct ChannelEntry {
     /// Exact channel depth, only tracked for `wrap` channels. `None` for proxy channels.
     pub(crate) queue_size: Option<usize>,
     pub(crate) max_queue_size: Option<usize>,
+    /// Timestamp of the newest queue snapshot applied to `queue_size`. Used to
+    /// ignore older snapshots that arrive out of order from per-thread batches.
+    pub(crate) last_queue_ts: Option<Instant>,
     pub(crate) iter: u32,
 }
 
@@ -222,14 +226,18 @@ impl ChannelEntry {
             wrap,
             queue_size: None,
             max_queue_size: None,
+            last_queue_ts: None,
             iter,
         }
     }
 
-    fn record_queue(&mut self, queue_size: usize) {
-        self.queue_size = Some(queue_size);
+    fn record_queue(&mut self, queue_size: usize, timestamp: Instant) {
         if queue_size > self.max_queue_size.unwrap_or(0) {
             self.max_queue_size = Some(queue_size);
+        }
+        if self.last_queue_ts.is_none_or(|last| timestamp >= last) {
+            self.queue_size = Some(queue_size);
+            self.last_queue_ts = Some(timestamp);
         }
     }
 
@@ -262,16 +270,14 @@ pub(crate) enum ChannelEvent {
         id: u32,
         timestamp: Instant,
     },
-    /// Real send on a `wrap` wrapper, carrying a snapshot of the channel length taken
-    /// right after the send (exact single-threaded; may skew under concurrent ops).
+    #[cfg_attr(not(feature = "crossbeam"), allow(dead_code))]
     WrapMessageSent {
         id: u32,
         log: Option<String>,
         timestamp: Instant,
         queue_len: usize,
     },
-    /// Real receive on a `wrap` wrapper, carrying a snapshot of the channel length taken
-    /// right after the receive (exact single-threaded; may skew under concurrent ops).
+    #[cfg_attr(not(feature = "crossbeam"), allow(dead_code))]
     WrapMessageReceived {
         id: u32,
         timestamp: Instant,
@@ -374,7 +380,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.sent_count += 1;
                 channel_stats.update_state();
-                channel_stats.record_queue(queue_len);
+                channel_stats.record_queue(queue_len, timestamp);
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
                 let sent_count = state.stats.get(&id).map_or(0, |s| s.sent_count);
@@ -398,7 +404,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.received_count += 1;
                 channel_stats.update_state();
-                channel_stats.record_queue(queue_len);
+                channel_stats.record_queue(queue_len, timestamp);
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
                 let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
@@ -897,6 +903,80 @@ pub(crate) fn get_channel_logs(id: u32) -> Option<ChannelLogs> {
 
 #[cfg(test)]
 mod tests {
+    use crate::channels::{
+        process_channel_event, ChannelEvent, ChannelType, ChannelsInternalState,
+    };
+    use crate::instant::Instant;
+    use std::collections::HashMap;
+
+    /// Reproduces the out-of-order queue-depth bug: when a sender and receiver run
+    /// on different threads, their per-thread event batches can reach the worker out
+    /// of timestamp order. Because `record_queue` unconditionally overwrites
+    /// `queue_size`, an older snapshot applied after a newer one leaves the reported
+    /// current depth stale.
+    #[test]
+    fn out_of_order_queue_snapshot_leaves_stale_depth() {
+        let mut state = ChannelsInternalState {
+            stats: HashMap::new(),
+            logs: HashMap::new(),
+        };
+
+        let id = 1;
+        process_channel_event(
+            &mut state,
+            ChannelEvent::Created {
+                id,
+                source: "test",
+                display_label: None,
+                channel_type: ChannelType::Unbounded,
+                type_name: "u8",
+                type_size: 1,
+                wrap: true,
+            },
+        );
+
+        // Two snapshots: the earlier op saw depth 1, the later op saw the channel
+        // drained to 0. Timestamps reflect real op order (early < late).
+        let t_early = Instant::now();
+        let mut t_late = Instant::now();
+        while t_late <= t_early {
+            t_late = Instant::now();
+        }
+
+        // Batches arrive reordered: the newer (drained, depth 0) snapshot is applied
+        // first, then the older (depth 1) snapshot overwrites it.
+        process_channel_event(
+            &mut state,
+            ChannelEvent::WrapMessageReceived {
+                id,
+                timestamp: t_late,
+                queue_len: 0,
+            },
+        );
+        process_channel_event(
+            &mut state,
+            ChannelEvent::WrapMessageSent {
+                id,
+                log: None,
+                timestamp: t_early,
+                queue_len: 1,
+            },
+        );
+
+        let entry = state.stats.get(&id).expect("channel registered");
+
+        // The channel is actually drained (latest snapshot by timestamp was 0), so the
+        // reported current depth should be 0. The stale older snapshot must not win.
+        assert_eq!(
+            entry.queue_size,
+            Some(0),
+            "stale older queue snapshot overwrote the newer drained depth"
+        );
+
+        // max_queue_size is order-independent and must still reflect the peak of 1.
+        assert_eq!(entry.max_queue_size, Some(1));
+    }
+
     #[test]
     fn closed_channel_state_is_terminal() {
         let mut entry = crate::channels::ChannelEntry::new(

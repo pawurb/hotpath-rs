@@ -28,6 +28,8 @@ jobs:
           key: ${{ matrix.rust }}
       - uses: taiki-e/install-action@cargo-audit
         if: matrix.rust == 'stable'
+      - uses: taiki-e/install-action@cargo-hack
+        if: matrix.rust == 'stable'
       - name: Check no features
         run: |
           cargo check
@@ -68,6 +70,13 @@ jobs:
         if: matrix.rust == 'stable'
         run: |
           cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings
+      - name: Lint feature matrix (cargo-hack each-feature)
+        if: matrix.rust == 'stable'
+        run: |
+          cargo hack clippy -p hotpath --features hotpath,threads \
+            --each-feature \
+            --exclude-features default,hotpath-meta,hotpath-alloc-meta,hotpath-mcp-meta,dev,tui,utils \
+            -- -D warnings
       - name: Audit
         if: matrix.rust == 'stable'
         run: |

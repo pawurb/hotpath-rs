@@ -41,11 +41,13 @@ static THREAD_ALLOC_STATS: [ThreadAllocStats; MAX_THREADS] = {
 static THREAD_TRACKING_ENABLED: AtomicU64 = AtomicU64::new(0);
 
 /// Initialize the thread allocation tracking system
+#[cfg_attr(not(feature = "threads"), allow(dead_code))]
 pub(crate) fn init_thread_alloc_tracking() {
     THREAD_TRACKING_ENABLED.store(1, Ordering::Release);
 }
 
 /// Get allocation stats for a thread
+#[cfg_attr(not(feature = "threads"), allow(dead_code))]
 pub(crate) fn get_thread_alloc_stats(os_tid: u64) -> Option<(u64, u64)> {
     if THREAD_TRACKING_ENABLED.load(Ordering::Acquire) == 0 {
         return None;
