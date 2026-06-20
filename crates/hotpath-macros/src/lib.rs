@@ -125,8 +125,8 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// # Measurements
 ///
-/// * **Time profiling** (default) — execution duration via high-precision timers
-/// * **Allocation profiling** (`hotpath-alloc` feature) — bytes allocated and allocation count
+/// * **Time profiling** (default) - execution duration via high-precision timers
+/// * **Allocation profiling** (`hotpath-alloc` feature) - bytes allocated and allocation count
 ///
 /// # Parameters
 ///

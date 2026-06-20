@@ -3,7 +3,7 @@
 //! Spawns N CPU-bound worker threads while `main` mostly sleeps. Useful to
 //! validate caller_name attribution: under the current implementation,
 //! caller_name (`main`) is reported as 100% of total_samples, but worker
-//! threads contribute samples too — so the wrapper percentage is misleading
+//! threads contribute samples too - so the wrapper percentage is misleading
 //! when work happens off the main thread.
 //!
 //! Profile with hotpath:

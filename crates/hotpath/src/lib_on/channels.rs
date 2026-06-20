@@ -149,11 +149,9 @@ pub(crate) struct ChannelEntry {
     pub(crate) type_size: usize,
     pub(crate) wrap: bool,
     /// Exact channel depth, only tracked for `wrap` channels. `None` for proxy channels.
+    /// Derived from `sent_count - received_count` (converged value order-independent).
     pub(crate) queue_size: Option<usize>,
     pub(crate) max_queue_size: Option<usize>,
-    /// Timestamp of the newest queue snapshot applied to `queue_size`. Used to
-    /// ignore older snapshots that arrive out of order from per-thread batches.
-    pub(crate) last_queue_ts: Option<Instant>,
     pub(crate) iter: u32,
 }
 
@@ -226,19 +224,20 @@ impl ChannelEntry {
             wrap,
             queue_size: None,
             max_queue_size: None,
-            last_queue_ts: None,
             iter,
         }
     }
 
-    fn record_queue(&mut self, queue_size: usize, timestamp: Instant) {
-        if queue_size > self.max_queue_size.unwrap_or(0) {
-            self.max_queue_size = Some(queue_size);
+    /// `max` tracks the peak `len()` snapshot (order-independent). Current depth is
+    /// derived from the counts: the converged value is order-independent (the sum
+    /// commutes), so a reordered batch can't leave the final report stale. A live read
+    /// can still lag - a recv may be folded in before its matching send - so
+    /// `saturating_sub` clamps the transient underflow until the send catches up.
+    fn record_queue(&mut self, queue_len: usize) {
+        if queue_len > self.max_queue_size.unwrap_or(0) {
+            self.max_queue_size = Some(queue_len);
         }
-        if self.last_queue_ts.is_none_or(|last| timestamp >= last) {
-            self.queue_size = Some(queue_size);
-            self.last_queue_ts = Some(timestamp);
-        }
+        self.queue_size = Some(self.sent_count.saturating_sub(self.received_count) as usize);
     }
 
     fn update_state(&mut self) {
@@ -380,7 +379,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.sent_count += 1;
                 channel_stats.update_state();
-                channel_stats.record_queue(queue_len, timestamp);
+                channel_stats.record_queue(queue_len);
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
                 let sent_count = state.stats.get(&id).map_or(0, |s| s.sent_count);
@@ -404,7 +403,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.received_count += 1;
                 channel_stats.update_state();
-                channel_stats.record_queue(queue_len, timestamp);
+                channel_stats.record_queue(queue_len);
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
                 let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
@@ -909,11 +908,11 @@ mod tests {
     use crate::instant::Instant;
     use std::collections::HashMap;
 
-    /// Reproduces the out-of-order queue-depth bug: when a sender and receiver run
-    /// on different threads, their per-thread event batches can reach the worker out
-    /// of timestamp order. Because `record_queue` unconditionally overwrites
-    /// `queue_size`, an older snapshot applied after a newer one leaves the reported
-    /// current depth stale.
+    /// When a sender and receiver run on different threads, their per-thread event
+    /// batches can reach the worker out of order - including with equal `Instant`
+    /// timestamps when both ops fall in the same clock tick. Current depth is derived
+    /// from `sent_count - received_count`, which commutes, so reordered (or same-tick)
+    /// arrival must not leave the reported depth stale.
     #[test]
     fn out_of_order_queue_snapshot_leaves_stale_depth() {
         let mut state = ChannelsInternalState {
@@ -935,21 +934,14 @@ mod tests {
             },
         );
 
-        // Two snapshots: the earlier op saw depth 1, the later op saw the channel
-        // drained to 0. Timestamps reflect real op order (early < late).
-        let t_early = Instant::now();
-        let mut t_late = Instant::now();
-        while t_late <= t_early {
-            t_late = Instant::now();
-        }
-
-        // Batches arrive reordered: the newer (drained, depth 0) snapshot is applied
-        // first, then the older (depth 1) snapshot overwrites it.
+        // Same tick for both ops: the equal-timestamp case the old `>=` tiebreak could
+        // not resolve. The receive batch arrives first, then the send batch.
+        let ts = Instant::now();
         process_channel_event(
             &mut state,
             ChannelEvent::WrapMessageReceived {
                 id,
-                timestamp: t_late,
+                timestamp: ts,
                 queue_len: 0,
             },
         );
@@ -958,22 +950,22 @@ mod tests {
             ChannelEvent::WrapMessageSent {
                 id,
                 log: None,
-                timestamp: t_early,
+                timestamp: ts,
                 queue_len: 1,
             },
         );
 
         let entry = state.stats.get(&id).expect("channel registered");
 
-        // The channel is actually drained (latest snapshot by timestamp was 0), so the
-        // reported current depth should be 0. The stale older snapshot must not win.
+        // One sent, one received → drained. Depth is counts-derived, so arrival order
+        // (and the equal timestamps) cannot make a stale snapshot win.
         assert_eq!(
             entry.queue_size,
             Some(0),
-            "stale older queue snapshot overwrote the newer drained depth"
+            "current depth must equal sent_count - received_count regardless of order"
         );
 
-        // max_queue_size is order-independent and must still reflect the peak of 1.
+        // max_queue_size tracks the peak snapshot (1), also order-independent.
         assert_eq!(entry.max_queue_size, Some(1));
     }
 

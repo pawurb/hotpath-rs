@@ -64,7 +64,7 @@ cfg_if::cfg_if! {
 use crate::functions::MeasurementGuardSync;
 use crate::Format;
 
-/// Builder for [`HotpathGuard`] — a programmatic alternative to the
+/// Builder for [`HotpathGuard`] - a programmatic alternative to the
 /// `#[hotpath::main]` macro for configuring and initializing the profiler.
 ///
 /// Dropping the resulting [`HotpathGuard`] generates the profiling report, so

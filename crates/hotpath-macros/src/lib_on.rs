@@ -464,7 +464,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///   sampling attribution under `hotpath-cpu`.
 ///
 ///   Trait impl methods (`impl Trait for Type`) still won't attribute correctly under
-///   `hotpath-cpu` even with `impl_type` — their demangled symbols use the
+///   `hotpath-cpu` even with `impl_type` - their demangled symbols use the
 ///   `<Type as Trait>::method` form.
 ///
 /// # Examples
@@ -846,7 +846,7 @@ pub fn skip_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 ///
 /// On inherent impl blocks the type segment is auto-injected, so methods are registered
-/// as `module_path::<Type>::<method>` — matching the demangled symbol used by
+/// as `module_path::<Type>::<method>` - matching the demangled symbol used by
 /// `hotpath-cpu` sampling attribution.
 ///
 /// Trait impls (`impl Trait for Type`) are also instrumented but their demangled symbols

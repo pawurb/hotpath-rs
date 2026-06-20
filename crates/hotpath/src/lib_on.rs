@@ -235,8 +235,8 @@ macro_rules! gauge {
 ///
 /// # Variants
 ///
-/// - `tokio_runtime!()` — uses `tokio::runtime::Handle::current()`
-/// - `tokio_runtime!($handle)` — uses the provided `&Handle`
+/// - `tokio_runtime!()` - uses `tokio::runtime::Handle::current()`
+/// - `tokio_runtime!($handle)` - uses the provided `&Handle`
 #[macro_export]
 macro_rules! tokio_runtime {
     () => {
