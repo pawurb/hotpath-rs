@@ -49,6 +49,9 @@ jobs:
       - name: Run channels crossbeam tests
         run: |
           cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
+      - name: Run channels crossbeam wrap tests
+        run: |
+          cargo test --features hotpath --test channels_crossbeam_wrap -- --nocapture --test-threads=1
       - name: Run channels futures tests
         run: |
           cargo test --features hotpath --test channels_ftc -- --nocapture --test-threads=1

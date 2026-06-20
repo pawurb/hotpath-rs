@@ -906,6 +906,7 @@ mod tests {
             crate::channels::ChannelType::Bounded(1),
             "u8",
             1,
+            false,
             0,
         );
         entry.state = crate::channels::ChannelState::Closed;
