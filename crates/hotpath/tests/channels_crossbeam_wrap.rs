@@ -2,12 +2,26 @@
 pub mod tests {
     use std::process::Command;
 
+    #[cfg(feature = "hotpath")]
+    use hotpath::json::{JsonChannelsList, JsonReport};
+
+    // The report is followed by trailing log lines, so we locate the report's
+    // opening brace and read just the first JSON value from that point.
+    #[cfg(feature = "hotpath")]
+    fn parse_channels(stdout: &str) -> JsonChannelsList {
+        let json_start = stdout.find('{').expect("No JSON report in output");
+        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
+            .into_iter::<JsonReport>()
+            .next()
+            .expect("No JSON value in output")
+            .expect("Failed to parse JSON report");
+        report.channels.expect("No channels section in report")
+    }
+
     // cargo run -p test-channels-crossbeam --example wrap_crossbeam --features hotpath
     #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_exact_queue_depth() {
-        use hotpath::json::JsonChannelsList;
-
         let output = Command::new("cargo")
             .args([
                 "run",
@@ -29,19 +43,10 @@ pub mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        // The example emits a JSON report; extract it and assert the endpoint wrapper
-        // reported the exact queue depth (50 messages parked, none received). A proxy
-        // wrapper drains immediately and would report ~0 here.
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let json_text = &stdout[json_start..];
-        // The report is followed by trailing log lines, so read just the first value.
-        let report: serde_json::Value = serde_json::Deserializer::from_str(json_text)
-            .into_iter::<serde_json::Value>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
-        let channels: JsonChannelsList =
-            serde_json::from_value(report["channels"].clone()).expect("Failed to parse channels");
+        // The example emits a JSON report; assert the endpoint wrapper reported the
+        // exact queue depth (50 messages parked, none received). A proxy wrapper
+        // drains immediately and would report ~0 here.
+        let channels = parse_channels(&stdout);
 
         let entry = channels
             .data
@@ -71,8 +76,6 @@ pub mod tests {
     #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_receiver_dropped_closes() {
-        use hotpath::json::JsonChannelsList;
-
         let output = Command::new("cargo")
             .args([
                 "run",
@@ -95,15 +98,7 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         // Dropping the receiver while the sender is alive must mark the channel closed.
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let json_text = &stdout[json_start..];
-        let report: serde_json::Value = serde_json::Deserializer::from_str(json_text)
-            .into_iter::<serde_json::Value>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
-        let channels: JsonChannelsList =
-            serde_json::from_value(report["channels"].clone()).expect("Failed to parse channels");
+        let channels = parse_channels(&stdout);
 
         let entry = channels
             .data
