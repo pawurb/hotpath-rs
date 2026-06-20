@@ -112,4 +112,48 @@ pub mod tests {
             "expected closed state after receiver drop"
         );
     }
+
+    // The last Receiver clone is dropped while Sender clones are still alive, and the
+    // report is taken before any Sender is dropped. The endpoint wrapper must
+    // still mark the channel closed.
+    //
+    // cargo run -p test-channels-crossbeam --example wrap_recv_clone_closed_crossbeam --features hotpath
+    #[cfg(feature = "hotpath")]
+    #[test]
+    fn test_wrap_receiver_clone_dropped_closes_with_sender_alive() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-channels-crossbeam",
+                "--example",
+                "wrap_recv_clone_closed_crossbeam",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Command failed with status: {}",
+            output.status
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let channels = parse_channels(&stdout);
+
+        let entry = channels
+            .data
+            .iter()
+            .find(|c| c.label == "recv-clone-dropped")
+            .expect("recv-clone-dropped channel not found");
+
+        assert!(entry.wrap, "channel should be endpoint-wrapped");
+        assert_eq!(
+            entry.state, "closed",
+            "expected closed state after all receivers dropped while senders alive"
+        );
+    }
 }
