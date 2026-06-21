@@ -101,6 +101,17 @@ let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(10), capacity = 10);
 
 Tokio, crossbeam, and async-channel channels don't require this parameter because their capacity is accessible from the channel handles.
 
+Bounded `std::sync::mpsc` channels wrapped with `wrap = true` also require `capacity`, and **the value must match the `sync_channel(N)` argument**:
+
+```rust
+use std::sync::mpsc;
+
+// std bounded wrap - capacity MUST equal the sync_channel argument
+let (tx, rx) = hotpath::channel!(mpsc::sync_channel::<String>(100), wrap = true, capacity = 100);
+```
+
+Wrap mode rebuilds the inner channel from `capacity` (std exposes no way to read it back from the endpoints) and discards the channel you constructed. If the two disagree - e.g. `sync_channel(100)` with `capacity = 1` - the profiled build gets a different bound than the unprofiled one (where `channel!` returns your original channel untouched), which can change backpressure or even deadlock only when profiling is enabled. Keep the numbers equal.
+
 ### A note on accuracy
 
 `hotpath` instruments channels by using a proxy on the receive side with the capacity of 1. Messages flow directly into your original channel, then through a proxy before reaching the consumer. Sent/received counts are observed at the proxy boundary (between the original channel and the proxy), not at the final consumer. In practice, the observable results closely reflect the real ones - counts will match exactly once messages pass through the proxy. 

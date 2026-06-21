@@ -22,6 +22,12 @@
 //! The wrapper rebuilds the inner channel, so the `channel!` expression must be
 //! constructed inline; endpoints cloned before wrapping are orphaned.
 //!
+//! For bounded channels (`SyncSender`) the rebuilt channel uses the `capacity = N` macro
+//! argument, not the discarded `sync_channel(M)` you passed (std exposes no capacity
+//! accessor to read `M`). The two must be equal: a mismatch changes the channel's
+//! backpressure only in profiled builds (the `hotpath`-off `channel!` keeps your original
+//! `M`), which can manifest as a deadlock that disappears when profiling is disabled.
+//!
 //! `std::sync::mpsc::Receiver` is single-consumer (not `Clone`), so there is exactly one
 //! receiver and it emits `Closed` unconditionally on drop.
 //!
@@ -383,7 +389,7 @@ fn build_bounded<T>(
 
 fn require_capacity(capacity: Option<usize>) -> usize {
     capacity.unwrap_or_else(|| {
-        panic!("Capacity is required for bounded std channels, because they don't expose their capacity in a public API")
+        panic!("bounded std::sync::mpsc wrap requires `capacity = N` (std exposes no capacity accessor); it must match the sync_channel(N) argument, e.g. channel!(mpsc::sync_channel::<T>(100), wrap = true, capacity = 100)")
     })
 }
 

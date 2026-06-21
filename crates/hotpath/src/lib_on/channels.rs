@@ -772,6 +772,14 @@ cfg_if::cfg_if! {
 /// `channel!(std::sync::mpsc::sync_channel::<T>(100), wrap = true, capacity = 100)`.
 /// Unbounded std and crossbeam wrappers need no `capacity`.
 ///
+/// **The `capacity` you pass must match the `sync_channel(N)` argument.** Wrap mode
+/// rebuilds the inner channel from `capacity` and discards the one you constructed, so a
+/// mismatch (e.g. `sync_channel(100)` with `capacity = 1`) silently builds a different
+/// bounded channel - and only in profiled builds: with `hotpath` off, `channel!` returns
+/// your original `sync_channel(100)` untouched. The result is different backpressure (and
+/// potentially a deadlock) that appears only when profiling. There is no way to verify
+/// this for you, because std exposes no capacity accessor - keep the two numbers equal.
+///
 /// # Examples
 ///
 /// ```rust,no_run

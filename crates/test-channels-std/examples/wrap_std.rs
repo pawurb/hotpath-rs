@@ -4,7 +4,8 @@
 // through a forwarder thread.
 //
 // Bounded std channels (`sync_channel`) cannot recover their capacity from the
-// endpoint, so `capacity = N` must be passed to the macro.
+// endpoint, so `capacity = N` must be passed to the macro - and it must match the
+// `sync_channel(N)` argument, since wrap mode rebuilds the channel from `capacity`.
 //
 // cargo run -p test-channels-std --example wrap_std --features hotpath
 use std::sync::mpsc;
