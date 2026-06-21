@@ -100,7 +100,7 @@ pub(crate) fn render_channels_panel(
         "State".to_string(),
         "Sent/Recv".to_string(),
         "Queue/Max".to_string(),
-        "Proc avg".to_string(),
+        "Avg".to_string(),
     ]
     .into_iter()
     .chain(

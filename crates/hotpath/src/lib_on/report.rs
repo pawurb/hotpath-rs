@@ -147,13 +147,10 @@ pub(crate) fn report_channel_latency_table(
     let mut header = vec![
         styled_header("Channel"),
         styled_header("Msgs"),
-        styled_header("Proc avg"),
+        styled_header("Avg"),
     ];
     for &p in percentiles {
-        header.push(styled_header(&format!(
-            "Proc {}",
-            format_percentile_header(p)
-        )));
+        header.push(styled_header(&format_percentile_header(p)));
     }
 
     let mut table = Table::new();
