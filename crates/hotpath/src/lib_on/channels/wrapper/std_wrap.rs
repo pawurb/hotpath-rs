@@ -5,10 +5,12 @@
 //! channel, so send/recv hit the real channel.
 //!
 //! `std::sync::mpsc` exposes no public `len()`, so `queue_len` is read from a
-//! self-maintained `AtomicUsize` (incremented after each successful send, decremented
-//! after each successful receive) rather than the library. The snapshot is taken right
-//! after each op and stays exact even under concurrent producers - more accurate than a
-//! library-provided racy length snapshot.
+//! self-maintained `AtomicUsize`: incremented before each publish (rolled back if the
+//! send fails) and decremented after each receive. Counting before the publish is what
+//! keeps the counter non-negative - the channel's send->recv edge orders a producer's
+//! `+1` ahead of the consumer's matching `-1`, so a fast consumer can never decrement a
+//! slot that has not yet been counted. The snapshot stays exact even under concurrent
+//! producers - more accurate than a library-provided racy length snapshot.
 //!
 //! The inner channel carries `(msg_id, send_ts, T)`. Monotonic `msg_id` pairs a send
 //! with its matching receive under multiple producers. `send_ts` is stamped before
@@ -92,12 +94,19 @@ impl<T> Sender<T> {
         // the instant `inner.send` enqueues it, so stamping after would race the
         // receive and read recv < send. Here send_ts <= recv_ts by construction.
         let sent_at = Instant::now();
-        self.inner
-            .send((msg_id, sent_at, msg))
-            .map_err(|SendError((_, _, msg))| SendError(msg))?;
+        // Count before publishing so the receiver never decrements a slot that has not
+        // yet been counted; roll back if the publish fails.
         let queue_len = self.depth.fetch_add(1, Ordering::Relaxed) + 1;
-        emit_sent(self.id, msg_id, sent_at, log, queue_len);
-        Ok(())
+        match self.inner.send((msg_id, sent_at, msg)) {
+            Ok(()) => {
+                emit_sent(self.id, msg_id, sent_at, log, queue_len);
+                Ok(())
+            }
+            Err(SendError((_, _, msg))) => {
+                self.depth.fetch_sub(1, Ordering::Relaxed);
+                Err(SendError(msg))
+            }
+        }
     }
 }
 
@@ -144,27 +153,39 @@ impl<T> SyncSender<T> {
         // Stamped before the blocking send, so the recorded delay includes backpressure
         // wait while the bounded channel is full.
         let sent_at = Instant::now();
-        self.inner
-            .send((msg_id, sent_at, msg))
-            .map_err(|SendError((_, _, msg))| SendError(msg))?;
+        // Count before publishing so the receiver never decrements a slot that has not
+        // yet been counted; roll back if the publish fails.
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
-        emit_sent(self.id, msg_id, sent_at, log, queue_len);
-        Ok(())
+        match self.inner.send((msg_id, sent_at, msg)) {
+            Ok(()) => {
+                emit_sent(self.id, msg_id, sent_at, log, queue_len);
+                Ok(())
+            }
+            Err(SendError((_, _, msg))) => {
+                self.depth.fetch_sub(1, Ordering::Relaxed);
+                Err(SendError(msg))
+            }
+        }
     }
 
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let sent_at = Instant::now();
-        self.inner
-            .try_send((msg_id, sent_at, msg))
-            .map_err(|e| match e {
-                TrySendError::Full((_, _, msg)) => TrySendError::Full(msg),
-                TrySendError::Disconnected((_, _, msg)) => TrySendError::Disconnected(msg),
-            })?;
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
-        emit_sent(self.id, msg_id, sent_at, log, queue_len);
-        Ok(())
+        match self.inner.try_send((msg_id, sent_at, msg)) {
+            Ok(()) => {
+                emit_sent(self.id, msg_id, sent_at, log, queue_len);
+                Ok(())
+            }
+            Err(e) => {
+                self.depth.fetch_sub(1, Ordering::Relaxed);
+                Err(match e {
+                    TrySendError::Full((_, _, msg)) => TrySendError::Full(msg),
+                    TrySendError::Disconnected((_, _, msg)) => TrySendError::Disconnected(msg),
+                })
+            }
+        }
     }
 }
 

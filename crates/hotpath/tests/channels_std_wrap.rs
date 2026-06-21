@@ -103,6 +103,40 @@ pub mod tests {
         );
     }
 
+    // A producer racing a consumer on an unbounded wrap channel must never underflow
+    // the depth counter (counting happens before each publish). `run_example` already
+    // asserts the process exited successfully - in debug builds an underflow would
+    // panic the consumer thread and fail that check. Here we additionally assert the
+    // counter never wrapped: a release-build underflow would surface as an absurd
+    // queue length, so `received <= sent` and a bounded `max_queue_size` confirm sanity.
+    //
+    // cargo run -p test-channels-std --example wrap_concurrent_std --features hotpath
+    #[cfg(feature = "hotpath")]
+    #[test]
+    fn test_wrap_concurrent_no_underflow() {
+        let stdout = run_example("wrap_concurrent_std");
+        let channels = parse_channels(&stdout);
+
+        let entry = channels
+            .data
+            .iter()
+            .find(|c| c.label == "wrap-concurrent")
+            .expect("wrap-concurrent channel not found");
+
+        assert!(entry.wrap, "channel should be endpoint-wrapped");
+        assert!(
+            entry.received_count <= entry.sent_count,
+            "received ({}) must not exceed sent ({})",
+            entry.received_count,
+            entry.sent_count
+        );
+        assert!(
+            entry.max_queue_size.unwrap_or(0) <= entry.sent_count as usize,
+            "max queue ({:?}) is absurd - the depth counter underflowed and wrapped",
+            entry.max_queue_size
+        );
+    }
+
     // Dropping the single receiver while the sender is alive must mark the channel
     // closed. std receivers are not Clone, so there is no clone-count path.
     //
