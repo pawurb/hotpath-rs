@@ -158,6 +158,10 @@ pub(crate) struct ChannelEntry {
     pub(crate) state: ChannelState,
     pub(crate) sent_count: u64,
     pub(crate) received_count: u64,
+    /// Earliest and latest message timestamps (ns since start), shared across both
+    /// directions. Define the active window used to derive throughput rates.
+    first_msg_ns: Option<u64>,
+    last_msg_ns: Option<u64>,
     pub(crate) type_name: &'static str,
     pub(crate) type_size: usize,
     pub(crate) wrap: bool,
@@ -218,6 +222,8 @@ pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> Json
         state: stats.state.as_str().to_string(),
         sent_count: stats.sent_count,
         received_count: stats.received_count,
+        sent_per_sec: stats.sent_per_sec(),
+        received_per_sec: stats.received_per_sec(),
         type_name: stats.type_name.to_string(),
         type_size: stats.type_size,
         wrap: stats.wrap,
@@ -250,6 +256,8 @@ impl ChannelEntry {
             state: ChannelState::default(),
             sent_count: 0,
             received_count: 0,
+            first_msg_ns: None,
+            last_msg_ns: None,
             type_name,
             type_size,
             wrap,
@@ -281,6 +289,36 @@ impl ChannelEntry {
 
     pub(crate) fn has_proc_hist(&self) -> bool {
         self.proc_hist.is_some()
+    }
+
+    #[inline]
+    fn record_activity(&mut self, ts_ns: u64) {
+        // Per-thread batch flushing can deliver events out of timestamp order, so
+        // track the min/max extrema rather than first/last processed.
+        self.first_msg_ns = Some(self.first_msg_ns.map_or(ts_ns, |first| first.min(ts_ns)));
+        self.last_msg_ns = Some(self.last_msg_ns.map_or(ts_ns, |last| last.max(ts_ns)));
+    }
+
+    fn rate_per_sec(&self, count: u64) -> Option<f64> {
+        // A oneshot carries a single message, so its active window is just the
+        // send-to-receive gap; dividing by that microsecond-scale span yields a
+        // meaningless rate.
+        if self.channel_type == ChannelType::Oneshot {
+            return None;
+        }
+        let (first, last) = (self.first_msg_ns?, self.last_msg_ns?);
+        if last <= first {
+            return None;
+        }
+        Some(count as f64 / ((last - first) as f64 / 1e9))
+    }
+
+    pub(crate) fn sent_per_sec(&self) -> Option<f64> {
+        self.rate_per_sec(self.sent_count)
+    }
+
+    pub(crate) fn received_per_sec(&self) -> Option<f64> {
+        self.rate_per_sec(self.received_count)
     }
 
     pub(crate) fn proc_avg_nanos(&self) -> u64 {
@@ -412,6 +450,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
         ChannelEvent::MessageSent { id, log, timestamp } => {
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.sent_count += 1;
+                channel_stats.record_activity(timestamp_nanos(timestamp));
                 channel_stats.update_state();
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
@@ -432,6 +471,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
         ChannelEvent::MessageReceived { id, timestamp } => {
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.received_count += 1;
+                channel_stats.record_activity(timestamp_nanos(timestamp));
                 channel_stats.update_state();
             }
             if let Some(entry_logs) = state.logs.get_mut(&id) {
@@ -458,6 +498,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
         } => {
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.sent_count += 1;
+                channel_stats.record_activity(timestamp_nanos(timestamp));
                 channel_stats.update_state();
                 channel_stats.record_queue(queue_len);
             }
@@ -485,6 +526,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
         } => {
             if let Some(channel_stats) = state.stats.get_mut(&id) {
                 channel_stats.received_count += 1;
+                channel_stats.record_activity(timestamp_nanos(timestamp));
                 channel_stats.update_state();
                 channel_stats.record_queue(queue_len);
                 channel_stats.record_proc(delay_nanos);

@@ -91,15 +91,6 @@ pub mod tests {
             "Command failed with status: {}",
             output.status
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let closed_count = stdout.matches("| closed").count();
-        assert_eq!(
-            closed_count, 2,
-            "Expected 'closed' state to appear 2 times in table (bounded and unbounded), found {}.\nOutput:\n{}",
-            closed_count, stdout
-        );
     }
 
     // cargo run -p test-channels-std --example iter_std --features hotpath

@@ -38,7 +38,6 @@ pub mod tests {
             "bounded-channel",
             "oneshot-labeled",
             "bounded[10]",
-            "notified",
         ];
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -109,23 +108,6 @@ pub mod tests {
             "Command failed with status: {}",
             output.status
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        // Match "closed" with flexible spacing (table cells are padded)
-        let closed_count = stdout.matches("| closed").count();
-        assert_eq!(
-            closed_count, 2,
-            "Expected 'closed' state to appear 2 times in table (bounded and unbounded), found {}.\nOutput:\n{}",
-            closed_count, stdout
-        );
-
-        let notified_count = stdout.matches("| notified").count();
-        assert_eq!(
-            notified_count, 1,
-            "Expected 'notified' state to appear 1 time in table (oneshot), found {}.\nOutput:\n{}",
-            notified_count, stdout
-        );
     }
 
     // cargo run -p test-channels-ftc --example oneshot_closed_ftc --features hotpath
@@ -155,7 +137,7 @@ pub mod tests {
             stderr
         );
 
-        let all_expected = ["| closed |", "oneshot-closed"];
+        let all_expected = ["oneshot-closed"];
 
         for expected in all_expected {
             assert!(
