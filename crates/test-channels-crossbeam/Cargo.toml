@@ -19,3 +19,9 @@ hotpath-alloc-meta = ["hotpath/hotpath-alloc-meta"]
 [dev-dependencies]
 ureq = { version = "3", features = ["json"] }
 serde_json = "1.0"
+
+# Reads the metrics endpoint and uses hotpath::json / format helpers, all gated
+# behind the `hotpath` feature.
+[[example]]
+name = "crossbeam_wrap_little"
+required-features = ["hotpath"]
