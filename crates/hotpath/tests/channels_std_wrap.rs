@@ -42,6 +42,27 @@ pub mod tests {
         String::from_utf8_lossy(&output.stdout).into_owned()
     }
 
+    // Bounded-std wrap requires `capacity`, which the macro accepts in any argument
+    // position. Every order (including label/log before or after `wrap = true`) must
+    // compile and register a wrapped channel.
+    //
+    // cargo run -p test-channels-std --example wrap_arg_orders_std --features hotpath
+    #[cfg(feature = "hotpath")]
+    #[test]
+    fn test_wrap_capacity_arg_orders() {
+        let stdout = run_example("wrap_arg_orders_std");
+        let channels = parse_channels(&stdout);
+
+        for label in ["a", "b", "c", "d", "e", "f", "g", "h"] {
+            let entry = channels
+                .data
+                .iter()
+                .find(|c| c.label == label)
+                .unwrap_or_else(|| panic!("channel {label:?} not found"));
+            assert!(entry.wrap, "channel {label:?} should be endpoint-wrapped");
+        }
+    }
+
     // The self-tracked queue counter reports the exact depth (50 messages parked,
     // none received), where a forwarder proxy would drain immediately and report ~0.
     //

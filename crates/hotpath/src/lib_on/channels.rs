@@ -1105,6 +1105,61 @@ macro_rules! channel {
             Some($capacity),
         )
     }};
+
+    // Order-independent muncher for wrap-mode arguments. Accumulates `label`, `capacity`
+    // and `log` in any order (the explicit arms above cover the common no-capacity
+    // orders; this handles the rest, notably bounded-std `capacity` permutations).
+    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ;) => {
+        $crate::channel!(@wrap_dispatch $id, $e ; $lbl $cap $log $wrap)
+    };
+    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; wrap = true $(, $($r:tt)*)?) => {
+        $crate::channel!(@wrap_munch $id, $e ; $lbl $cap $log [wrap] ; $($($r)*)?)
+    };
+    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; label = $l:expr $(, $($r:tt)*)?) => {
+        $crate::channel!(@wrap_munch $id, $e ; [$l] $cap $log $wrap ; $($($r)*)?)
+    };
+    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; capacity = $c:expr $(, $($r:tt)*)?) => {
+        $crate::channel!(@wrap_munch $id, $e ; $lbl [$c] $log $wrap ; $($($r)*)?)
+    };
+    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; log = true $(, $($r:tt)*)?) => {
+        $crate::channel!(@wrap_munch $id, $e ; $lbl $cap [log] $wrap ; $($($r)*)?)
+    };
+
+    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [$c:expr] [log] [wrap]) => {
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, Some($l.to_string()), Some($c))
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [$c:expr] [nolog] [wrap]) => {
+        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, Some($l.to_string()), Some($c))
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; [] [$c:expr] [log] [wrap]) => {
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, None, Some($c))
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; [] [$c:expr] [nolog] [wrap]) => {
+        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, None, Some($c))
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [] [log] [wrap]) => {
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, Some($l.to_string()), None)
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [] [nolog] [wrap]) => {
+        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, Some($l.to_string()), None)
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; [] [] [log] [wrap]) => {
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, None, None)
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; [] [] [nolog] [wrap]) => {
+        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, None, None)
+    };
+    (@wrap_dispatch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt [nowrap]) => {
+        compile_error!("channel!: unsupported argument combination")
+    };
+
+    // Fallback entry for `wrap = true` calls whose argument order is not covered by an
+    // explicit arm above. `CHANNEL_ID` is captured once here at the call site and
+    // threaded through the muncher so `file!()`/`line!()` resolve to the user's location.
+    ($expr:expr, $($rest:tt)*) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        $crate::channel!(@wrap_munch CHANNEL_ID, $expr ; [] [] [nolog] [nowrap] ; $($rest)*)
+    }};
 }
 
 /// Compare two channel stats for sorting.
