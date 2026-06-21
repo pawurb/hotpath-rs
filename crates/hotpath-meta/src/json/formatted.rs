@@ -309,6 +309,10 @@ pub struct JsonChannelEntry {
     pub state: String,
     pub sent_count: u64,
     pub received_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent_per_sec: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub received_per_sec: Option<f64>,
     pub type_name: String,
     pub type_size: usize,
     #[serde(default)]

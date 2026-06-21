@@ -63,85 +63,9 @@ impl GaugeHandle {
 
 #[macro_export]
 macro_rules! channel {
-    ($expr:expr, wrap = true) => {
-        $expr
-    };
-    ($expr:expr, wrap = true, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, wrap = true, log = true) => {
-        $expr
-    };
-    ($expr:expr, wrap = true, label = $label:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, wrap = true, log = true, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, wrap = true) => {
-        $expr
-    };
-    ($expr:expr, log = true, wrap = true) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, wrap = true, log = true) => {
-        $expr
-    };
-    ($expr:expr, log = true, wrap = true, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, log = true, wrap = true) => {
-        $expr
-    };
-    ($expr:expr, log = true, label = $label:expr, wrap = true) => {
-        $expr
-    };
-    ($expr:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, capacity = $capacity:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, capacity = $capacity:expr) => {
-        $expr
-    };
-    ($expr:expr, capacity = $capacity:expr, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, log = true, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, capacity = $capacity:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, log = true, capacity = $capacity:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, capacity = $capacity:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, log = true, capacity = $capacity:expr) => {
-        $expr
-    };
-    ($expr:expr, capacity = $capacity:expr, label = $label:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, capacity = $capacity:expr, log = true, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, log = true, label = $label:expr, capacity = $capacity:expr) => {
-        $expr
-    };
-    ($expr:expr, log = true, capacity = $capacity:expr, label = $label:expr) => {
+    // Profiling disabled: every form (`wrap`, `label`, `log`, `capacity`, any order)
+    // returns the original channel unchanged.
+    ($expr:expr $(, $($rest:tt)*)?) => {
         $expr
     };
 }
@@ -167,8 +91,7 @@ macro_rules! stream {
 
 #[macro_export]
 macro_rules! tokio_runtime {
-    () => {};
-    ($handle:expr) => {};
+    ($($handle:expr)?) => {};
 }
 
 #[macro_export]

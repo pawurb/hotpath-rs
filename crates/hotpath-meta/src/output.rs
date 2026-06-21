@@ -107,6 +107,11 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Formats an optional per-second rate to one decimal place, or `-` when absent.
+pub fn format_rate(rate: Option<f64>) -> String {
+    rate.map_or_else(|| "-".to_string(), |v| format!("{v:.1}"))
+}
+
 /// Parses a human-readable byte string back to a byte count.
 /// Inverse of [`format_bytes`].
 pub fn parse_bytes(s: &str) -> Option<u64> {

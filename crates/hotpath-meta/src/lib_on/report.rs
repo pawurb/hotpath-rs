@@ -17,7 +17,7 @@ use crate::json::{
 };
 use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
-    format_bytes, format_duration, format_percentile_header, format_percentile_key,
+    format_bytes, format_duration, format_percentile_header, format_percentile_key, format_rate,
 };
 use crate::output_on::write_section_header;
 use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS_STATE};
@@ -85,10 +85,10 @@ pub(crate) fn report_channels_table(
     table.add_row(Row::new(vec![
         styled_header("Channel"),
         styled_header("Type"),
-        styled_header("State"),
         styled_header("Sent"),
         styled_header("Received"),
-        styled_header("Queue"),
+        styled_header("Sent/s"),
+        styled_header("Recv/s"),
         styled_header("Max queue"),
     ]));
 
@@ -98,20 +98,16 @@ pub(crate) fn report_channels_table(
             channel_stats.label.as_deref(),
             Some(channel_stats.iter),
         );
-        // Queue depth is only tracked for `wrap = true` channels; proxy channels show `-`.
-        let queue = channel_stats
-            .queue_size
-            .map_or_else(|| "-".to_string(), |q| q.to_string());
         let max_queue = channel_stats
             .max_queue_size
             .map_or_else(|| "-".to_string(), |q| q.to_string());
         table.add_row(Row::new(vec![
             Cell::new(&label),
             Cell::new(&channel_stats.channel_type.to_string()),
-            Cell::new(channel_stats.state.as_str()),
             Cell::new(&channel_stats.sent_count.to_string()),
             Cell::new(&channel_stats.received_count.to_string()),
-            Cell::new(&queue),
+            Cell::new(&format_rate(channel_stats.sent_per_sec())),
+            Cell::new(&format_rate(channel_stats.received_per_sec())),
             Cell::new(&max_queue),
         ]));
     }
@@ -147,13 +143,10 @@ pub(crate) fn report_channel_latency_table(
     let mut header = vec![
         styled_header("Channel"),
         styled_header("Msgs"),
-        styled_header("Proc avg"),
+        styled_header("Avg"),
     ];
     for &p in percentiles {
-        header.push(styled_header(&format!(
-            "Proc {}",
-            format_percentile_header(p)
-        )));
+        header.push(styled_header(&format_percentile_header(p)));
     }
 
     let mut table = Table::new();

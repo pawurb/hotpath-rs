@@ -138,6 +138,7 @@ Returns JSON array with:
 - label: optional custom label
 - channel_type: "bounded", "unbounded", or "oneshot"
 - sent/received: message counts
+- sent_per_sec/received_per_sec: throughput over the channel's active window (omitted when not derivable)
 - state: "active", "closed"
 
 Use to track channel throughput and identify stalled or closed channels."#

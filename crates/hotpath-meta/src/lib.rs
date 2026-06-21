@@ -40,8 +40,8 @@ pub use output::format_debug_truncated;
 #[cfg(any(feature = "hotpath-meta", feature = "tui"))]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_count, format_duration,
-    format_percentile_header, format_percentile_key, parse_bytes, parse_count, parse_duration,
-    shorten_function_name, OutputDestination, ProfilingMode, MAX_LOG_LEN,
+    format_percentile_header, format_percentile_key, format_rate, parse_bytes, parse_count,
+    parse_duration, shorten_function_name, OutputDestination, ProfilingMode, MAX_LOG_LEN,
 };
 
 #[cfg(feature = "hotpath-meta")]
@@ -96,6 +96,20 @@ pub mod wrap {
             pub use crate::lib_on::rw_locks::wrapper::std::{
                 RwLock, RwLockReadGuard, RwLockWriteGuard,
             };
+
+            /// Instrumented `std::sync::mpsc` channel endpoints for
+            /// `channel!(..., wrap = true)`. With `hotpath-meta` enabled these are the
+            /// instrumented wrappers; otherwise `channel!` is a no-op and the endpoints
+            /// are the raw std types, so the alias resolves the same way regardless of
+            /// feature configuration.
+            pub mod mpsc {
+                #[cfg(feature = "hotpath-meta")]
+                pub use crate::lib_on::channels::wrapper::std_wrap::{
+                    Receiver, Sender, SyncSender,
+                };
+                #[cfg(not(feature = "hotpath-meta"))]
+                pub use std::sync::mpsc::{Receiver, Sender, SyncSender};
+            }
         }
     }
 
