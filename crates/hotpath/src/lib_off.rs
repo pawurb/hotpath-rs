@@ -96,6 +96,30 @@ macro_rules! channel {
     ($expr:expr, log = true, label = $label:expr, wrap = true) => {
         $expr
     };
+    ($expr:expr, wrap = true, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, capacity = $capacity:expr, wrap = true) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, capacity = $capacity:expr, label = $label:expr) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, label = $label:expr, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, capacity = $capacity:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, log = true, capacity = $capacity:expr) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, capacity = $capacity:expr, label = $label:expr, log = true) => {
+        $expr
+    };
+    ($expr:expr, wrap = true, label = $label:expr, capacity = $capacity:expr, log = true) => {
+        $expr
+    };
     ($expr:expr) => {
         $expr
     };

@@ -375,7 +375,6 @@ pub(crate) enum ChannelEvent {
         id: u32,
         timestamp: Instant,
     },
-    #[cfg_attr(not(feature = "crossbeam"), allow(dead_code))]
     WrapMessageSent {
         id: u32,
         msg_id: u64,
@@ -383,7 +382,6 @@ pub(crate) enum ChannelEvent {
         timestamp: Instant,
         queue_len: usize,
     },
-    #[cfg_attr(not(feature = "crossbeam"), allow(dead_code))]
     WrapMessageReceived {
         id: u32,
         msg_id: u64,
@@ -769,6 +767,11 @@ cfg_if::cfg_if! {
 /// any endpoint cloned before wrapping is orphaned and its messages are silently
 /// dropped. Clone the returned wrapper endpoints instead.
 ///
+/// Bounded `std::sync::mpsc` wrappers (`sync_channel`) cannot recover their capacity
+/// from the endpoint, so `capacity = N` is required, e.g.
+/// `channel!(std::sync::mpsc::sync_channel::<T>(100), wrap = true, capacity = 100)`.
+/// Unbounded std and crossbeam wrappers need no `capacity`.
+///
 /// # Examples
 ///
 /// ```rust,no_run
@@ -823,6 +826,86 @@ macro_rules! channel {
             CHANNEL_ID,
             Some($label.to_string()),
             None,
+        )
+    }};
+
+    // Wrap mode with explicit `capacity` (required for bounded `std::sync::mpsc`
+    // wrappers, which cannot recover their capacity from the endpoint).
+    ($expr:expr, wrap = true, capacity = $capacity:expr) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, Some($capacity))
+    }};
+
+    ($expr:expr, capacity = $capacity:expr, wrap = true) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, Some($capacity))
+    }};
+
+    ($expr:expr, wrap = true, capacity = $capacity:expr, label = $label:expr) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrap::instrument_wrap(
+            $expr,
+            CHANNEL_ID,
+            Some($label.to_string()),
+            Some($capacity),
+        )
+    }};
+
+    ($expr:expr, wrap = true, label = $label:expr, capacity = $capacity:expr) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrap::instrument_wrap(
+            $expr,
+            CHANNEL_ID,
+            Some($label.to_string()),
+            Some($capacity),
+        )
+    }};
+
+    ($expr:expr, wrap = true, capacity = $capacity:expr, log = true) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
+            $expr,
+            CHANNEL_ID,
+            None,
+            Some($capacity),
+        )
+    }};
+
+    ($expr:expr, wrap = true, log = true, capacity = $capacity:expr) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
+            $expr,
+            CHANNEL_ID,
+            None,
+            Some($capacity),
+        )
+    }};
+
+    ($expr:expr, wrap = true, capacity = $capacity:expr, label = $label:expr, log = true) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
+            $expr,
+            CHANNEL_ID,
+            Some($label.to_string()),
+            Some($capacity),
+        )
+    }};
+
+    ($expr:expr, wrap = true, label = $label:expr, capacity = $capacity:expr, log = true) => {{
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const _: usize = $capacity;
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
+            $expr,
+            CHANNEL_ID,
+            Some($label.to_string()),
+            Some($capacity),
         )
     }};
 

@@ -97,6 +97,20 @@ pub mod wrap {
             pub use crate::lib_on::rw_locks::wrapper::std::{
                 RwLock, RwLockReadGuard, RwLockWriteGuard,
             };
+
+            /// Instrumented `std::sync::mpsc` channel endpoints for
+            /// `channel!(..., wrap = true)`. With `hotpath` enabled these are the
+            /// instrumented wrappers; otherwise `channel!` is a no-op and the endpoints
+            /// are the raw std types, so the alias resolves the same way regardless of
+            /// feature configuration.
+            pub mod mpsc {
+                #[cfg(feature = "hotpath")]
+                pub use crate::lib_on::channels::wrapper::std_wrap::{
+                    Receiver, Sender, SyncSender,
+                };
+                #[cfg(not(feature = "hotpath"))]
+                pub use std::sync::mpsc::{Receiver, Sender, SyncSender};
+            }
         }
     }
 

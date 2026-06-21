@@ -9,5 +9,6 @@ pub(crate) mod flume;
 #[cfg(feature = "futures")]
 pub(crate) mod ftc;
 pub(crate) mod std;
+pub(crate) mod std_wrap;
 #[cfg(feature = "tokio")]
 pub(crate) mod tokio;

@@ -8,12 +8,13 @@ pub fn init() {
     spawn_rw_locks();
     spawn_mutexes();
     spawn_channels();
+    spawn_std_channel();
 }
 
 fn spawn_channels() {
-    // Wrap channel: tracks exact send->receive latency. The producer outpaces a
-    // slower consumer, so the bounded channel stays full and each message's
-    // processing-time (queue residence + backpressure) fills the histogram.
+    // Wrap channel: tracks exact send->receive latency. The consumer outpaces the
+    // producer, so the bounded channel stays near empty and each message is processed
+    // as soon as it arrives - a healthy channel that keeps up with its load.
     let (tx, rx) = hotpath::channel!(
         crossbeam_channel::bounded::<u64>(8),
         wrap = true,
@@ -24,14 +25,41 @@ fn spawn_channels() {
         let mut i = 0u64;
         while tx.send(i).is_ok() {
             i += 1;
-            thread::sleep(Duration::from_millis(20));
+            thread::sleep(Duration::from_millis(40));
         }
     });
 
     thread::spawn(move || {
         while let Ok(job) = rx.recv() {
             std::hint::black_box(job);
-            thread::sleep(Duration::from_millis(60));
+            thread::sleep(Duration::from_millis(15));
+        }
+    });
+}
+
+fn spawn_std_channel() {
+    // Endpoint-wrapped std::sync::mpsc channel. Bounded wrappers need an explicit
+    // `capacity` (std doesn't expose it). The producer outpaces the consumer so the
+    // self-tracked queue depth climbs to the bound.
+    let (tx, rx) = hotpath::channel!(
+        std::sync::mpsc::sync_channel::<u64>(8),
+        wrap = true,
+        capacity = 8,
+        label = "demo-std-jobs"
+    );
+
+    thread::spawn(move || {
+        let mut i = 0u64;
+        while tx.send(i).is_ok() {
+            i += 1;
+            thread::sleep(Duration::from_millis(10));
+        }
+    });
+
+    thread::spawn(move || {
+        while let Ok(job) = rx.recv() {
+            std::hint::black_box(job);
+            thread::sleep(Duration::from_millis(30));
         }
     });
 }

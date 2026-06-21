@@ -100,7 +100,7 @@ pub(crate) fn render_channels_panel(
         "State".to_string(),
         "Sent/Recv".to_string(),
         "Rate s/r".to_string(),
-        "Queue/Max".to_string(),
+        "Queue/Max/Cap".to_string(),
         "Avg".to_string(),
     ]
     .into_iter()
@@ -124,10 +124,11 @@ pub(crate) fn render_channels_panel(
     let rows: Vec<Row> = entries
         .iter()
         .map(|entry| {
-            let type_text = format!("Channel[{}]", channel_capacity(&entry.channel_type));
+            let capacity = channel_capacity(&entry.channel_type);
+            let type_text = format!("Channel[{capacity}]");
             // Queue depth is only tracked for wrap channels; proxy channels show `-`.
             let queue_text = match (entry.queue_size, entry.max_queue_size) {
-                (Some(queue), Some(max)) => format!("{queue}/{max}"),
+                (Some(queue), Some(max)) => format!("{queue}/{max}/{capacity}"),
                 _ => "-".to_string(),
             };
             let rate_text = format!(
@@ -162,8 +163,8 @@ pub(crate) fn render_channels_panel(
         Constraint::Percentage(30),
         Constraint::Length(10),
         Constraint::Length(14),
-        Constraint::Length(12),
-        Constraint::Length(12),
+        Constraint::Length(15),
+        Constraint::Length(15),
         Constraint::Length(12),
     ]
     .into_iter()
