@@ -72,44 +72,19 @@ macro_rules! channel {
 
 #[macro_export]
 macro_rules! stream {
-    ($expr:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, log = true, label = $label:expr) => {
+    ($expr:expr $(, $($rest:tt)*)?) => {
         $expr
     };
 }
 
 #[macro_export]
 macro_rules! tokio_runtime {
-    () => {};
-    ($handle:expr) => {};
+    ($($handle:expr)?) => {};
 }
 
 #[macro_export]
 macro_rules! future {
-    ($fut:expr) => {
-        $fut
-    };
-    ($fut:expr, label = $label:expr) => {
-        $fut
-    };
-    ($fut:expr, log = true) => {
-        $fut
-    };
-    ($fut:expr, label = $label:expr, log = true) => {
-        $fut
-    };
-    ($fut:expr, log = true, label = $label:expr) => {
+    ($fut:expr $(, $($rest:tt)*)?) => {
         $fut
     };
 }
@@ -293,20 +268,14 @@ pub mod tokio {
 
 #[macro_export]
 macro_rules! rw_lock {
-    ($expr:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr) => {
+    ($expr:expr $(, $($rest:tt)*)?) => {
         $expr
     };
 }
 
 #[macro_export]
 macro_rules! mutex {
-    ($expr:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr) => {
+    ($expr:expr $(, $($rest:tt)*)?) => {
         $expr
     };
 }
