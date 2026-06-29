@@ -65,6 +65,7 @@ drop = (
     "crates/test-debug",
     "crates/test-sqlx-08",
     "crates/test-sqlx-09",
+    "crates/test-diesel",
 )
 p = pathlib.Path("Cargo.toml")
 src = p.read_text()
@@ -81,7 +82,7 @@ src = re.sub(r'"hotpath-meta\??/[^"]+",?\s*', '', src)
 src = re.sub(r'"dep:hotpath-meta",?\s*', '', src)
 extras = ("schemars", "rmcp", "axum", "tokio-util", "ureq", "reqwest",
           "clap", "crossterm", "ratatui", "eyre", "tracing",
-          "tracing-subscriber", "time", "sqlx")
+          "tracing-subscriber", "time", "sqlx", "diesel", "libsqlite3-sys")
 for dep in extras:
     src = re.sub(rf'^{re.escape(dep)}\s*=.*\n', '', src, flags=re.MULTILINE)
     src = re.sub(rf'"dep:{re.escape(dep)}",?\s*', '', src)

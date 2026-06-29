@@ -51,6 +51,14 @@
     "hash": "90b6b5e8",
     "hashed_path": "images/samply-report.90b6b5e8.png"
   },
+  "images/sql-query-execution-time.png": {
+    "hash": "b8a618c6",
+    "hashed_path": "images/sql-query-execution-time.b8a618c6.png"
+  },
+  "images/sql-report.png": {
+    "hash": "db329ad1",
+    "hashed_path": "images/sql-report.db329ad1.png"
+  },
   "images/stars-apache-opendal.svg": {
     "hash": "4954748b",
     "hashed_path": "images/stars-apache-opendal.4954748b.svg"

@@ -10,7 +10,9 @@ pub fn init() {
     spawn_channels();
     spawn_std_channel();
     #[cfg(feature = "demo-sql")]
-    spawn_sql();
+    spawn_sqlx_sql();
+    #[cfg(feature = "demo-sql")]
+    spawn_diesel_sql();
 }
 
 fn spawn_channels() {
@@ -144,7 +146,7 @@ fn spawn_rw_locks() {
 }
 
 #[cfg(feature = "demo-sql")]
-fn spawn_sql() {
+fn spawn_sqlx_sql() {
     use sqlx::sqlite::SqlitePoolOptions;
     use tracing_subscriber::prelude::*;
 
@@ -197,6 +199,48 @@ fn spawn_sql() {
                 sleep_ms(120).await;
             }
         });
+    });
+}
+
+#[cfg(feature = "demo-sql")]
+fn spawn_diesel_sql() {
+    use diesel::prelude::*;
+    use diesel::sql_types::{Integer, Text};
+
+    // Capture Diesel queries via connection::Instrumentation into the same SQL
+    // subsystem the sqlx layer feeds - both ORMs share one report.
+    hotpath::instrument_diesel_sql();
+
+    thread::spawn(|| {
+        // Established after instrument_diesel_sql() so it picks up the instrumentation.
+        let mut conn = SqliteConnection::establish(":memory:")
+            .expect("Failed to open in-memory sqlite connection");
+
+        diesel::sql_query("CREATE TABLE orders (id INTEGER PRIMARY KEY, sku TEXT, qty INTEGER)")
+            .execute(&mut conn)
+            .expect("Failed to create demo table");
+
+        let mut i: i64 = 0;
+        loop {
+            i += 1;
+
+            let _ = diesel::sql_query("INSERT INTO orders (sku, qty) VALUES (?, ?)")
+                .bind::<Text, _>(format!("sku{i}"))
+                .bind::<Integer, _>((i % 20) as i32)
+                .execute(&mut conn);
+
+            let _ = diesel::sql_query("SELECT id, sku, qty FROM orders WHERE id = ?")
+                .bind::<Integer, _>((i % 100 + 1) as i32)
+                .execute(&mut conn);
+
+            // Varying inline literals collapse into one normalized bucket.
+            let q = format!("SELECT sku FROM orders WHERE qty = {}", i % 20);
+            let _ = diesel::sql_query(q).execute(&mut conn);
+
+            let _ = diesel::sql_query("SELECT COUNT(*) FROM orders").execute(&mut conn);
+
+            thread::sleep(Duration::from_millis(150));
+        }
     });
 }
 

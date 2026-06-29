@@ -45,6 +45,8 @@ pub use channels::{
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use mutexes::InstrumentMutex;
 pub use rw_locks::InstrumentRwLock;
+#[cfg(feature = "diesel")]
+pub use sql::instrument_diesel_sql;
 #[cfg(feature = "sqlx")]
 pub use sql::sqlx_tracing_layer;
 pub use streams::{InstrumentStream, InstrumentStreamLog};

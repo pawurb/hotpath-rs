@@ -5,11 +5,11 @@
 //! same statement merge into a single bucket (see [`normalize`]). Normalization
 //! runs on the background worker thread to keep the hot path light.
 //!
-//! The write path (worker, events, normalization) is driven only by the
-//! `sqlx` tracing layer (see [`tracing_layer`]), so it is dead when the `sqlx`
-//! feature is off; the read path stays compiled so the report/metrics wiring is
-//! feature-uniform.
-#![cfg_attr(not(feature = "sqlx"), allow(dead_code))]
+//! The write path (worker, events, normalization) is driven by front-ends -
+//! the `sqlx` tracing layer (see [`tracing_layer`]) and the Diesel
+//! instrumentation (see [`diesel`]) - so it is dead when neither feature is on;
+//! the read path stays compiled so the report/metrics wiring is feature-uniform.
+#![cfg_attr(not(any(feature = "sqlx", feature = "diesel")), allow(dead_code))]
 
 use crossbeam_channel::{
     bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
@@ -27,10 +27,14 @@ use crate::lib_on::hotpath_guard::{
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
+#[cfg(feature = "diesel")]
+pub(crate) mod diesel;
 pub(crate) mod normalize;
 #[cfg(feature = "sqlx")]
 pub(crate) mod tracing_layer;
 
+#[cfg(feature = "diesel")]
+pub use diesel::instrument_diesel_sql;
 #[cfg(feature = "sqlx")]
 pub use tracing_layer::sqlx_tracing_layer;
 

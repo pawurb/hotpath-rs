@@ -10,6 +10,7 @@
 - [Threads](./threads.md)
 - [Async Data Flow](./data_flow.md)
 - [Locks](./locks.md)
+- [SQL queries](./sql_tracing.md)
 - [Tokio Runtime](./tokio_runtime.md)
 - [Debug & Metrics](./debug.md)
 

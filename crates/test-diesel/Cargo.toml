@@ -1,0 +1,14 @@
+[package]
+name = "test-diesel"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for Diesel SQL query instrumentation via connection::Instrumentation."
+
+[dependencies]
+hotpath = { workspace = true, features = ["diesel"] }
+diesel = { version = "2.3", default-features = false, features = ["sqlite"] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+
+[features]
+hotpath = ["hotpath/hotpath"]

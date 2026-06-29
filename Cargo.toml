@@ -20,6 +20,7 @@ members = [
     "crates/test-streams",
     "crates/test-sqlx-08",
     "crates/test-sqlx-09",
+    "crates/test-diesel",
     "crates/test-channels-tokio",
     "crates/test-futures",
     "crates/test-debug",

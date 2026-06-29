@@ -18,7 +18,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let _guard = HotpathGuardBuilder::new("main")
-        .percentiles(&[50.0, 95.0, 99.0])
         .sections(vec![Section::Sql])
         .build();
 

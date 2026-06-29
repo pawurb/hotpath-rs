@@ -324,3 +324,9 @@ where
 {
     tracing_subscriber::layer::Identity::new()
 }
+
+/// No-op Diesel SQL instrumentation install used when the `hotpath` feature is
+/// disabled. Lets call sites keep `hotpath::instrument_diesel_sql()`
+/// unconditionally - it registers nothing and forwards nothing.
+#[cfg(feature = "diesel")]
+pub fn instrument_diesel_sql() {}
