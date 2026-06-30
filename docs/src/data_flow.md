@@ -122,7 +122,7 @@ I'm actively improving the library, so any feedback, issues, bug reports are app
 
 ### Send-receive latency and queue depth (`wrap = true`)
 
-For `crossbeam`, `std`, and `tokio` (`mpsc`) channels you can opt into **endpoint wrapping** with `wrap = true`. Instead of inserting a forwarder-proxy, this wraps the `Sender`/`Receiver` directly and stamps each message with its send time, so the report gains an exact **send-receive latency** histogram (`proc_avg` plus the configured percentiles), alongside an exact live queue depth:
+For `crossbeam`, `std`, `tokio` (`mpsc`), and `flume` channels you can opt into **endpoint wrapping** with `wrap = true`. Instead of inserting a forwarder-proxy, this wraps the `Sender`/`Receiver` directly and stamps each message with its send time, so the report gains an exact **send-receive latency** histogram (`proc_avg` plus the configured percentiles), alongside an exact live queue depth:
 
 ```rust
 let (tx, rx) = hotpath::channel!(
@@ -139,9 +139,9 @@ let (tx, rx) = hotpath::channel!(
 );
 ```
 
-The recorded latency is the full interval from `send()` to `recv()`, including backpressure wait on bounded channels. Because the timestamps are taken inside your own `send`/`recv` calls rather than in a forwarder task or thread, the value is exact - and wrap mode is also lighter than the proxy, since it adds no extra task/thread or hop. Tokio in particular benefits the most: the proxy relays every message through a background task and a second channel, costing a scheduler round-trip per message, whereas wrap mode hits the real channel directly.
+The recorded latency is the full interval from `send()` to `recv()`, including backpressure wait on bounded channels. Because the timestamps are taken inside your own `send`/`recv` calls rather than in a forwarder task or thread, the value is exact - and wrap mode is also lighter than the proxy, since it adds no extra task/thread or hop. Tokio and flume benefit the most: their proxies relay every message through a background task and a second channel, costing a scheduler round-trip per message, whereas wrap mode hits the real channel directly.
 
-Tokio bounded wrap channels do not need a `capacity` argument - the bound is recovered from `Sender::max_capacity()`.
+Tokio bounded wrap channels do not need a `capacity` argument - the bound is recovered from `Sender::max_capacity()`. flume wrap channels (bounded or unbounded) likewise need no `capacity` argument - the bound is recovered from the endpoint.
 
 Latency is reported **only for wrap channels**. A proxy channel stamps its events inside the forwarder thread, in the middle of the pipeline, so it cannot observe the producer-side or consumer-side wait accurately. Prefer `wrap = true` when you care about channel latency.
 

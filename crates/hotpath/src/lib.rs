@@ -181,6 +181,18 @@ pub mod wrap {
         #[cfg(not(feature = "hotpath"))]
         pub use crossbeam_channel::{Receiver, Sender};
     }
+
+    /// Instrumented flume channel endpoints for `channel!(..., wrap = true)`.
+    /// With `hotpath` enabled these are the instrumented wrappers; otherwise
+    /// `channel!` is a no-op and the endpoints are the raw flume types, so the
+    /// alias resolves the same way regardless of feature configuration.
+    #[cfg(feature = "flume")]
+    pub mod flume {
+        #[cfg(feature = "hotpath")]
+        pub use crate::lib_on::channels::wrapper::flume_wrap::{Receiver, Sender};
+        #[cfg(not(feature = "hotpath"))]
+        pub use flume::{Receiver, Sender};
+    }
 }
 
 mod shared;

@@ -101,6 +101,7 @@ Wrap-mode variants instrument the channel endpoints directly instead of relaying
 cargo run -p test-channels-std --example benchmark_channel_wrap_std --features hotpath --release
 cargo run -p test-channels-crossbeam --example benchmark_channel_wrap_crossbeam --features hotpath --release
 cargo run -p test-channels-tokio --example benchmark_channel_wrap_tokio --features hotpath --release
+cargo run -p test-channels-flume --example benchmark_channel_wrap_flume --features hotpath --release
 ```
 
 #### Futures and Streams
@@ -194,6 +195,7 @@ cargo test --features hotpath --test channels_asc -- --nocapture --test-threads=
 cargo test --features hotpath --test channels_std -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_tokio -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_flume -- --nocapture --test-threads=1
+cargo test --features hotpath --test channels_flume_wrap -- --nocapture --test-threads=1
 cargo test --features hotpath --test rw_lock_std -- --nocapture --test-threads=1
 cargo test --features hotpath --test rw_lock_parking_lot -- --nocapture --test-threads=1
 cargo test --features hotpath --test mutex_std -- --nocapture --test-threads=1
