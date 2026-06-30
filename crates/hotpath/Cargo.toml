@@ -99,7 +99,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["r
 sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio"], optional = true }
 diesel = { version = "2.3", default-features = false, optional = true }
 libsqlite3-sys = { version = "0.30", features = ["bundled"], optional = true }
-rmcp = { version = "0.13", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
+rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }

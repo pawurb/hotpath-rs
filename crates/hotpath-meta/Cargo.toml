@@ -72,7 +72,7 @@ pin-project-lite = { version = "0.2.12", optional = true }
 regex = { version = "1", optional = true }
 libc = { version = "0.2.150", optional = true }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"], optional = true }
-rmcp = { version = "0.13", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
+rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }

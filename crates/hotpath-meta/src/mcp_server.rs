@@ -498,24 +498,21 @@ fn get_current_elapsed_ns() -> u64 {
     crate::lib_on::current_elapsed_ns()
 }
 
-#[tool_handler]
+#[tool_handler(router = self.tool_router)]
 impl ServerHandler for HotPathMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "hotpath-meta".into(),
-                version: env!("CARGO_PKG_VERSION").into(),
-                title: None,
-                website_url: None,
-                icons: None,
-            },
-            instructions: Some(
-                "hothath profiler metrics MCP server. Provides tools to query profiling data."
-                    .into(),
-            ),
-        }
+        let mut server_info = Implementation::default();
+        server_info.name = "hotpath-meta".into();
+        server_info.version = env!("CARGO_PKG_VERSION").into();
+
+        let mut info = ServerInfo::default();
+        info.protocol_version = ProtocolVersion::V_2024_11_05;
+        info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        info.server_info = server_info;
+        info.instructions = Some(
+            "hothath profiler metrics MCP server. Provides tools to query profiling data.".into(),
+        );
+        info
     }
 }
 
@@ -589,12 +586,10 @@ pub(crate) fn start_mcp_server_once() {
                 rt.block_on(async move {
                     let cancellation_token = CancellationToken::new();
 
-                    let config = StreamableHttpServerConfig {
-                        sse_keep_alive: Some(Duration::from_secs(15)),
-                        sse_retry: None,
-                        stateful_mode: true,
-                        cancellation_token: cancellation_token.clone(),
-                    };
+                    let mut config = StreamableHttpServerConfig::default();
+                    config.sse_keep_alive = Some(Duration::from_secs(15));
+                    config.stateful_mode = true;
+                    config.cancellation_token = cancellation_token.clone();
 
                     let service = StreamableHttpService::new(
                         || Ok(HotPathMcpServer::new()),
