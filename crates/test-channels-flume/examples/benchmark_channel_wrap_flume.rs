@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-// Same single-threaded stress test as `benchmark_channel_flume`, but with `wrap = true`.
+// Same single-threaded stress test as `benchmark_channel_flume`.
 // Wrap mode instruments the channel endpoints directly instead of relaying every message
 // through a forwarder task and a second channel, so this measures the per-send/recv
 // overhead of the wrapped endpoints. Compare against `benchmark_channel_flume` to see
@@ -11,7 +11,7 @@ fn main() {
         .build();
 
     let runs = bench_runs();
-    let (tx, rx) = hotpath::channel!(flume::unbounded::<u64>(), wrap = true, label = "counter");
+    let (tx, rx) = hotpath::channel!(flume::unbounded::<u64>(), label = "counter");
 
     let start = Instant::now();
     for i in 0..runs {

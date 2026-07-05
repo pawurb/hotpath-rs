@@ -158,9 +158,9 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     })
 }
 
-use crate::channels::InstrumentChannel;
+use crate::channels::InstrumentChannelProxy;
 
-impl<T: Send + 'static> InstrumentChannel for (Sender<T>, Receiver<T>) {
+impl<T: Send + 'static> InstrumentChannelProxy for (Sender<T>, Receiver<T>) {
     type Output = (Sender<T>, Receiver<T>);
     fn instrument(
         self,
@@ -177,9 +177,9 @@ impl<T: Send + 'static> InstrumentChannel for (Sender<T>, Receiver<T>) {
     }
 }
 
-use crate::channels::InstrumentChannelLog;
+use crate::channels::InstrumentChannelProxyLog;
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog for (Sender<T>, Receiver<T>) {
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog for (Sender<T>, Receiver<T>) {
     type Output = (Sender<T>, Receiver<T>);
     fn instrument_log(
         self,

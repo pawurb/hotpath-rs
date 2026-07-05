@@ -11,8 +11,11 @@ fn main() {
             .build();
 
         let runs = bench_runs();
-        let (tx, mut rx) =
-            hotpath::channel!(futures_channel::mpsc::unbounded::<u64>(), label = "counter");
+        let (tx, mut rx) = hotpath::channel!(
+            futures_channel::mpsc::unbounded::<u64>(),
+            proxy = true,
+            label = "counter"
+        );
 
         let start = Instant::now();
         for i in 0..runs {

@@ -175,16 +175,23 @@ async fn main() {
         hotpath::channel!(tokio::sync::mpsc::unbounded_channel::<&str>(), log = true);
 
     // Channel 8: Oneshot early - fires at 5 seconds
-    let (tx_oneshot_early, rx_oneshot_early) =
-        hotpath::channel!(tokio::sync::oneshot::channel::<String>(), log = true);
+    let (tx_oneshot_early, rx_oneshot_early) = hotpath::channel!(
+        tokio::sync::oneshot::channel::<String>(),
+        proxy = true,
+        log = true
+    );
 
     // Channel 9: Oneshot mid - fires at 15 seconds
-    let (tx_oneshot_mid, rx_oneshot_mid) =
-        hotpath::channel!(tokio::sync::oneshot::channel::<u32>(), log = true);
+    let (tx_oneshot_mid, rx_oneshot_mid) = hotpath::channel!(
+        tokio::sync::oneshot::channel::<u32>(),
+        proxy = true,
+        log = true
+    );
 
     // Channel 10: Oneshot late - fires at 25 seconds
     let (tx_oneshot_late, rx_oneshot_late) = hotpath::channel!(
         tokio::sync::oneshot::channel::<i64>(),
+        proxy = true,
         label = "oneshot-late",
         log = true
     );

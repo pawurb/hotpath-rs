@@ -1,6 +1,6 @@
-// Exercises bounded-std wrap channels with `capacity` in every argument position,
-// including the orders that previously failed to compile (label/log/capacity before or
-// after `wrap = true`). Each channel gets a distinct label so the report lists them all.
+// Exercises bounded-std channels with `capacity` in every argument
+// position, combined with `label` and `log` in every order. Each channel gets a distinct
+// label so the report lists them all.
 //
 // cargo run -p test-channels-std --example wrap_arg_orders_std --features hotpath
 use std::sync::mpsc;
@@ -12,49 +12,18 @@ fn main() {
         .build();
 
     let chans = [
-        hotpath::channel!(
-            mpsc::sync_channel::<i32>(4),
-            wrap = true,
-            capacity = 4,
-            label = "a"
-        ),
-        hotpath::channel!(
-            mpsc::sync_channel::<i32>(4),
-            capacity = 4,
-            wrap = true,
-            label = "b"
-        ),
-        hotpath::channel!(
-            mpsc::sync_channel::<i32>(4),
-            label = "c",
-            wrap = true,
-            capacity = 4
-        ),
-        hotpath::channel!(
-            mpsc::sync_channel::<i32>(4),
-            label = "d",
-            capacity = 4,
-            wrap = true
-        ),
-        hotpath::channel!(
-            mpsc::sync_channel::<i32>(4),
-            capacity = 4,
-            label = "e",
-            wrap = true
-        ),
-        hotpath::channel!(
-            mpsc::sync_channel::<i32>(4),
-            wrap = true,
-            label = "f",
-            capacity = 4
-        ),
+        hotpath::channel!(mpsc::sync_channel::<i32>(4), capacity = 4, label = "a"),
+        hotpath::channel!(mpsc::sync_channel::<i32>(4), label = "b", capacity = 4),
+        hotpath::channel!(mpsc::sync_channel::<i32>(4), capacity = 4, label = "c"),
+        hotpath::channel!(mpsc::sync_channel::<i32>(4), label = "d", capacity = 4),
+        hotpath::channel!(mpsc::sync_channel::<i32>(4), capacity = 4, label = "e"),
+        hotpath::channel!(mpsc::sync_channel::<i32>(4), label = "f", capacity = 4),
     ];
 
-    // log = true combined with capacity, both orders.
+    // log = true combined with capacity and label, both orders.
     let (gtx, grx) = hotpath::channel!(
         mpsc::sync_channel::<i32>(4),
         label = "g",
-        wrap = true,
         capacity = 4,
         log = true
     );
@@ -62,7 +31,6 @@ fn main() {
         mpsc::sync_channel::<i32>(4),
         log = true,
         capacity = 4,
-        wrap = true,
         label = "h"
     );
 

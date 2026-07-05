@@ -1,4 +1,4 @@
-//! Endpoint-wrapping `std::sync::mpsc` channel instrumentation (`channel!(..., wrap = true)`).
+//! Endpoint-wrapping `std::sync::mpsc` channel instrumentation for the `channel!` macro.
 //!
 //! Wraps the `Sender`/`SyncSender`/`Receiver` endpoints directly (unlike the
 //! forwarder-proxy in [`crate::channels::wrapper::std`]): no extra thread or proxy
@@ -389,7 +389,7 @@ fn build_bounded<T>(
 
 fn require_capacity(capacity: Option<usize>) -> usize {
     capacity.unwrap_or_else(|| {
-        panic!("bounded std::sync::mpsc wrap requires `capacity = N` (std exposes no capacity accessor); it must match the sync_channel(N) argument, e.g. channel!(mpsc::sync_channel::<T>(100), wrap = true, capacity = 100)")
+        panic!("bounded std::sync::mpsc wrap requires `capacity = N` (std exposes no capacity accessor); it must match the sync_channel(N) argument, e.g. channel!(mpsc::sync_channel::<T>(100), capacity = 100)")
     })
 }
 

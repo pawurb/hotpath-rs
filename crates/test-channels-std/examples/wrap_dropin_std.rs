@@ -9,7 +9,7 @@ use std::sync::mpsc;
 
 fn main() {
     let (tx, rx): (SyncSender<i32>, Receiver<i32>) =
-        hotpath::channel!(mpsc::sync_channel::<i32>(8), wrap = true, capacity = 8);
+        hotpath::channel!(mpsc::sync_channel::<i32>(8), capacity = 8);
 
     tx.send(1).expect("send");
     let got = rx.recv().expect("recv");

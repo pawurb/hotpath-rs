@@ -1,4 +1,4 @@
-// Demonstrates `wrap = true` crossbeam instrumentation: the report shows the
+// Demonstrates crossbeam channel instrumentation: the report shows the
 // exact queue depth (50 messages parked in the channel) because the instrumented
 // endpoints sample the real channel length instead of routing through a forwarder.
 //
@@ -12,12 +12,8 @@ fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    // wrap = true returns hotpath::wrap::crossbeam_channel::{Sender, Receiver}.
-    let (tx, rx) = hotpath::channel!(
-        crossbeam_channel::bounded::<i32>(100),
-        wrap = true,
-        label = "wrap-queue"
-    );
+    // Returns hotpath::wrap::crossbeam_channel::{Sender, Receiver}.
+    let (tx, rx) = hotpath::channel!(crossbeam_channel::bounded::<i32>(100), label = "wrap-queue");
 
     // Park 50 messages in the channel without receiving any.
     for i in 0..50 {

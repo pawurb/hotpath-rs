@@ -294,13 +294,11 @@ impl App {
     pub(crate) fn new(metrics_host: &str, metrics_port: u16, refresh_interval_ms: u64) -> Self {
         let (request_tx, request_rx) = hotpath::channel!(
             crossbeam_channel::unbounded::<DataRequest>(),
-            wrap = true,
             label = "tui_requests",
             log = true
         );
         let (event_tx, event_rx) = hotpath::channel!(
             crossbeam_channel::unbounded::<AppEvent>(),
-            wrap = true,
             label = "tui_events",
             log = true
         );

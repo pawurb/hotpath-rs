@@ -40,7 +40,8 @@ pub mod tokio_runtime;
 pub mod functions;
 
 pub use channels::{
-    InstrumentChannel, InstrumentChannelLog, InstrumentChannelWrap, InstrumentChannelWrapLog,
+    InstrumentChannelProxy, InstrumentChannelProxyLog, InstrumentChannelWrap,
+    InstrumentChannelWrapLog,
 };
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use mutexes::InstrumentMutex;

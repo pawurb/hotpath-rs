@@ -1,4 +1,4 @@
-//! Endpoint-wrapping async-channel instrumentation (`channel!(..., wrap = true)`).
+//! Endpoint-wrapping async-channel instrumentation for the `channel!` macro.
 //!
 //! Wraps the `Sender`/`Receiver` endpoints directly (unlike the forwarder-proxy in
 //! [`crate::channels::wrapper::asc`]): no extra task or proxy channel, so send/recv hit

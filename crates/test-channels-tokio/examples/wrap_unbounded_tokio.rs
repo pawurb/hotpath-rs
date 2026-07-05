@@ -1,4 +1,4 @@
-// Demonstrates `wrap = true` tokio::sync::mpsc instrumentation on an unbounded channel.
+// Demonstrates tokio::sync::mpsc channel instrumentation on an unbounded channel.
 // Sends N messages, drains them all, and the report reflects exact sent/received counts
 // with the self-tracked queue draining back to zero.
 //
@@ -10,10 +10,9 @@ async fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    // wrap = true returns hotpath::wrap::tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver}.
+    // Returns hotpath::wrap::tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver}.
     let (tx, mut rx) = hotpath::channel!(
         tokio::sync::mpsc::unbounded_channel::<i32>(),
-        wrap = true,
         label = "wrap-unbounded"
     );
 

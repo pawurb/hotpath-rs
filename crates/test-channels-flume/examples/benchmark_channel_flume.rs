@@ -2,7 +2,8 @@ use std::time::Instant;
 
 // Simple single-threaded stress test: hammers a single instrumented channel in
 // a tight loop with no contention, so the measured time reflects per-send/recv
-// instrumentation overhead. Compare `--features hotpath` against a plain run.
+// instrumentation overhead of the forwarder (`proxy = true`) path. Compare
+// `--features hotpath` against a plain run.
 fn main() {
     smol::block_on(async {
         let _guard = hotpath::HotpathGuardBuilder::new("main")
@@ -10,7 +11,8 @@ fn main() {
             .build();
 
         let runs = bench_runs();
-        let (tx, rx) = hotpath::channel!(flume::unbounded::<u64>(), label = "counter");
+        let (tx, rx) =
+            hotpath::channel!(flume::unbounded::<u64>(), proxy = true, label = "counter");
 
         let start = Instant::now();
         for i in 0..runs {

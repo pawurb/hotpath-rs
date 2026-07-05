@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-// Same single-threaded stress test as `benchmark_channel_crossbeam`, but with `wrap = true`.
+// Same single-threaded stress test as `benchmark_channel_crossbeam`.
 // Wrap mode instruments the channel endpoints directly instead of relaying every message
 // through a forwarder thread and a second channel, so this measures the per-send/recv
 // overhead of the wrapped endpoints. Compare against `benchmark_channel_crossbeam` to see
@@ -11,11 +11,7 @@ fn main() {
         .build();
 
     let runs = bench_runs();
-    let (tx, rx) = hotpath::channel!(
-        crossbeam_channel::unbounded::<u64>(),
-        wrap = true,
-        label = "counter"
-    );
+    let (tx, rx) = hotpath::channel!(crossbeam_channel::unbounded::<u64>(), label = "counter");
 
     let start = Instant::now();
     for i in 0..runs {

@@ -14,16 +14,16 @@ fn main() {
         .percentiles(&[50.0, 95.0])
         .build();
 
-    // wrap = true: exact send->receive latency histogram.
+    // Exact send->receive latency histogram.
     let (wtx, wrx) = hotpath::channel!(
         crossbeam_channel::unbounded::<i32>(),
-        wrap = true,
         label = "wrap-latency"
     );
 
-    // proxy (no wrap): no latency histogram is recorded.
+    // proxy (forwarder): no latency histogram is recorded.
     let (ptx, prx) = hotpath::channel!(
         crossbeam_channel::unbounded::<i32>(),
+        proxy = true,
         label = "proxy-latency"
     );
 

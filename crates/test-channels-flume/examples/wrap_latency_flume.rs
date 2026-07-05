@@ -14,15 +14,15 @@ fn main() {
         .percentiles(&[50.0, 95.0])
         .build();
 
-    // wrap = true: exact send->receive latency histogram.
-    let (wtx, wrx) = hotpath::channel!(
-        flume::unbounded::<i32>(),
-        wrap = true,
-        label = "wrap-latency"
-    );
+    // Exact send->receive latency histogram.
+    let (wtx, wrx) = hotpath::channel!(flume::unbounded::<i32>(), label = "wrap-latency");
 
-    // proxy (no wrap): no latency histogram is recorded.
-    let (ptx, prx) = hotpath::channel!(flume::unbounded::<i32>(), label = "proxy-latency");
+    // proxy (forwarder): no latency histogram is recorded.
+    let (ptx, prx) = hotpath::channel!(
+        flume::unbounded::<i32>(),
+        proxy = true,
+        label = "proxy-latency"
+    );
 
     for i in 0..10 {
         wtx.send(i).expect("Failed to send");

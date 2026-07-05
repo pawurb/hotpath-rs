@@ -148,14 +148,9 @@ fn main() {
 
     // Distinct `channel!` call sites so each keeps its own label (a shared source
     // line would get a `-N` disambiguation suffix).
-    let (a_tx, a_rx) = hotpath::channel!(
-        crossbeam_channel::unbounded::<u64>(),
-        wrap = true,
-        label = "keeps-up"
-    );
+    let (a_tx, a_rx) = hotpath::channel!(crossbeam_channel::unbounded::<u64>(), label = "keeps-up");
     let (b_tx, b_rx) = hotpath::channel!(
         crossbeam_channel::unbounded::<u64>(),
-        wrap = true,
         label = "falls-behind"
     );
 

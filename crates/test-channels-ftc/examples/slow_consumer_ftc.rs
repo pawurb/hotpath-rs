@@ -17,6 +17,7 @@ fn main() {
 
         let (mut tx, mut rx) = hotpath::channel!(
             futures_channel::mpsc::channel::<i32>(10),
+            proxy = true,
             capacity = 10,
             label = "slow-consumer",
             log = true

@@ -1,4 +1,4 @@
-// Demonstrates `wrap = true` tokio::sync::mpsc instrumentation: the report shows the
+// Demonstrates tokio::sync::mpsc channel instrumentation: the report shows the
 // exact queue depth (50 messages parked in the channel) because the instrumented
 // endpoints track queue length with a self-maintained counter instead of routing
 // through a forwarder task and a second channel.
@@ -14,12 +14,9 @@ async fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    // wrap = true returns hotpath::wrap::tokio::sync::mpsc::{Sender, Receiver}.
-    let (tx, mut rx) = hotpath::channel!(
-        tokio::sync::mpsc::channel::<i32>(100),
-        wrap = true,
-        label = "wrap-queue"
-    );
+    // Returns hotpath::wrap::tokio::sync::mpsc::{Sender, Receiver}.
+    let (tx, mut rx) =
+        hotpath::channel!(tokio::sync::mpsc::channel::<i32>(100), label = "wrap-queue");
 
     // Park 50 messages in the channel without receiving any.
     for i in 0..50 {
