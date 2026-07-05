@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.20.0] - 2026-07-05
+
+### 🚀 Features
+
+- Add async_channel wrap version
+
+- [**breaking**] Channel macro default wrap mode
+
+Change the default channel instrumentation mode to wrap = true.
+The previous default mode is now available via proxy = true config.
+
+
+- Improve SQL TUI view
+
+- Add time sampling config
+
+
+### 🐛 Bug Fixes
+
+- Use mutex drain functions by default and add hotpath-lockless
+
+- Placeholders to fix lifecycle ordering issue
+
+
+### ⚡ Performance
+
+- Use wrap channels for meta instrumentation
+
+- Add hotpath-lockless to all resource types
+
+- Use SPSC for all resource metrics
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Unify channel benchmarks
+
+- Unify locks benchmarks
+
+- Unify timing and alloc benchmarks
+
+- Release 0.20.0
+
+
 ## [0.19.1] - 2026-06-30
 
 ### 🚀 Features
