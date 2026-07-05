@@ -104,21 +104,9 @@ cargo run -p test-futures --example benchmark_future --features hotpath --releas
 cargo run -p test-streams --example benchmark_stream --features hotpath --release
 ```
 
-#### Lockless batching (`hotpath-lockless`)
+#### Event transport
 
-By default every subsystem (functions, channels, streams, futures, rw_locks, mutexes, sql) batches measurements per-thread behind an `Arc<Mutex>` and drains all threads at shutdown, so anything recorded on any thread - even one still parked at exit - is guaranteed to appear in the report. The `hotpath-lockless` feature swaps this for a lockless `RefCell` batch: lower per-event overhead, but any batch still buffered on a thread alive at shutdown is dropped.
-
-Append `hotpath/hotpath-lockless` to any overhead benchmark above to measure the lockless variant, then compare against the default (mutex) run to quantify the delta:
-
-```bash
-# functions: default (mutex) vs lockless (refcell)
-cargo run --example benchmark_noop --features hotpath --release
-cargo run --example benchmark_noop --features 'hotpath,hotpath/hotpath-lockless' --release
-
-# channels: default (mutex) vs lockless (refcell)
-cargo run -p test-channels-crossbeam --example benchmark_channel_crossbeam --features hotpath --release
-cargo run -p test-channels-crossbeam --example benchmark_channel_crossbeam --features 'hotpath,hotpath/hotpath-lockless' --release
-```
+Every subsystem (functions, channels, streams, futures, rw_locks, mutexes, sql) records events into per-thread lock-free chunked SPSC queues (`crates/hotpath/src/lib_on/batch.rs`): the hot path is a plain slot store plus one `Release` publish, with no mutex or RMW atomic. Each subsystem's background worker is the single consumer and sweeps all queues every 50ms and once more at shutdown, so anything recorded on any thread - even one still parked at exit - appears in the report.
 
 ### Samply traces 
 

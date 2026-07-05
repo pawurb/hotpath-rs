@@ -142,7 +142,6 @@ impl<F: Future> Future for InstrumentedFuture<F> {
             measure_poll_alloc(|| this.inner.poll(cx));
         let end = Instant::now();
         let poll_duration_ns = end.duration_since(start).as_nanos() as u64;
-        let elapsed_ns = crate::lib_on::elapsed_since_start_ns(end);
         if let (Some(bytes), Some(count), Some(bridge)) = (
             poll_alloc_bytes,
             poll_alloc_count,
@@ -168,7 +167,6 @@ impl<F: Future> Future for InstrumentedFuture<F> {
                 poll_duration_ns,
                 poll_alloc_bytes,
                 poll_alloc_count,
-                elapsed_ns,
             });
 
             if *this.completed {
@@ -294,7 +292,6 @@ where
             measure_poll_alloc(|| this.inner.poll(cx));
         let end = Instant::now();
         let poll_duration_ns = end.duration_since(start).as_nanos() as u64;
-        let elapsed_ns = crate::lib_on::elapsed_since_start_ns(end);
         if let (Some(bytes), Some(count), Some(bridge)) = (
             poll_alloc_bytes,
             poll_alloc_count,
@@ -320,7 +317,6 @@ where
                 poll_duration_ns,
                 poll_alloc_bytes,
                 poll_alloc_count,
-                elapsed_ns,
             });
 
             if *this.completed {

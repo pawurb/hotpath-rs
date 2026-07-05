@@ -1,135 +1,238 @@
-#[cfg(not(feature = "hotpath-lockless"))]
-use std::sync::{Arc, Mutex, Weak};
+//! Lock-free event transport between instrumented threads and background workers.
+//!
+//! Each producing thread owns a chunked SPSC queue: it appends events into
+//! fixed-size chunks with plain stores and publishes them with a single
+//! `Release` store of the chunk's `len` - no mutex, no RMW atomic on the hot
+//! path. Chunks form a linked list, so the queue is unbounded.
+//!
+//! A single consumer per registry (the subsystem's background worker) sweeps
+//! all registered queues periodically: it `Acquire`-loads each chunk's `len`,
+//! reads the published prefix, and frees fully consumed chunks. Producer and
+//! consumer touch disjoint slot ranges by construction, so a queue is safe to
+//! drain at any moment - including queues of threads parked at shutdown,
+//! which is what guarantees a complete final report.
+//!
+//! Safety invariants:
+//! - Only the owning thread writes slots and the `len`/`next` of its tail chunk.
+//! - The consumer only reads slots below the published `len` and only frees a
+//!   chunk after fully consuming it and observing its `next` pointer.
+//! - Single consumer per registry, enforced by the registry's internal mutex
+//!   (locked only at thread registration and during sweeps - never on the
+//!   event hot path).
 
-pub(crate) const BATCH_SIZE: usize = 64;
-pub(crate) const FLUSH_INTERVAL_MS: u64 = 50;
-pub(crate) const FLUSH_INTERVAL_NS: u64 = FLUSH_INTERVAL_MS * 1_000_000;
+use std::cell::{Cell, UnsafeCell};
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
-pub(crate) trait BatchedMeasurement: Sized + Send {
-    /// Sender the batch flushes into: a plain `crossbeam_channel::Sender`, or a
-    /// `wrap = true` sender under `hotpath-meta`.
-    type Tx: Clone + Send + 'static;
+pub(crate) const CHUNK_SIZE: usize = 64;
 
-    fn elapsed_since_start_ns(&self) -> u64;
-    fn fetch_sender() -> Option<Self::Tx>;
+/// Caps how many chunks one sweep drains from a single queue, so a producer
+/// outpacing the consumer cannot pin the sweep in an endless tail chase.
+/// Leftovers are picked up on the next tick.
+const MAX_CHUNKS_PER_SWEEP: usize = 1024;
 
-    /// Wraps a flushed batch into the worker's message type and sends it.
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>);
+struct Chunk<M> {
+    slots: [UnsafeCell<MaybeUninit<M>>; CHUNK_SIZE],
+    /// Number of initialized slots; the producer publishes with `Release`.
+    len: AtomicUsize,
+    /// Set once by the producer when the chunk is full; never unset.
+    next: AtomicPtr<Chunk<M>>,
+}
 
-    /// Lifecycle events that must reach the worker before the data events they
-    /// gate (e.g. `Created`) force an immediate flush so per-thread batching
-    /// can't deliver a data event ahead of the entry that establishes its slot.
-    fn is_flush_boundary(&self) -> bool {
-        false
+impl<M> Chunk<M> {
+    fn new_raw() -> *mut Chunk<M> {
+        Box::into_raw(Box::new(Chunk {
+            slots: [const { UnsafeCell::new(MaybeUninit::uninit()) }; CHUNK_SIZE],
+            len: AtomicUsize::new(0),
+            next: AtomicPtr::new(ptr::null_mut()),
+        }))
     }
 }
 
-pub(crate) struct MeasurementBatch<M: BatchedMeasurement> {
-    measurements: Vec<M>,
-    last_flush_elapsed_ns: u64,
-    sender: Option<M::Tx>,
+/// One thread's event queue: a linked list of chunks. The owning thread
+/// appends via its [`EventProducer`]; the registry's consumer drains.
+pub(crate) struct EventQueue<M> {
+    /// Oldest chunk with unconsumed events. Consumer-owned after creation.
+    head: AtomicPtr<Chunk<M>>,
+    /// Consumed slot count within `head`. Consumer-only.
+    consumed: AtomicUsize,
+    /// Set by the producer's TLS drop so the consumer can drain the remainder
+    /// and release the queue.
+    closed: AtomicBool,
 }
 
-impl<M: BatchedMeasurement> MeasurementBatch<M> {
-    pub(crate) fn new() -> Self {
-        Self {
-            measurements: Vec::with_capacity(BATCH_SIZE),
-            last_flush_elapsed_ns: 0,
-            sender: None,
+unsafe impl<M: Send> Send for EventQueue<M> {}
+unsafe impl<M: Send> Sync for EventQueue<M> {}
+
+impl<M> EventQueue<M> {
+    /// Drains published events into `out`, walking at most `max_chunks` full
+    /// chunks. Returns `true` when the drain reached the queue's tail, `false`
+    /// when it stopped at the cap with chunks still pending. Must only be
+    /// called by the single consumer (see registry).
+    fn drain_into(&self, out: &mut Vec<M>, max_chunks: usize) -> bool {
+        let mut chunk_ptr = self.head.load(Ordering::Relaxed);
+        let mut consumed = self.consumed.load(Ordering::Relaxed);
+        let mut chunks_walked = 0;
+        let mut reached_tail = true;
+        loop {
+            let chunk = unsafe { &*chunk_ptr };
+            let len = chunk.len.load(Ordering::Acquire);
+            for i in consumed..len {
+                out.push(unsafe { (*chunk.slots[i].get()).assume_init_read() });
+            }
+            consumed = len;
+            if len == CHUNK_SIZE {
+                let next = chunk.next.load(Ordering::Acquire);
+                if !next.is_null() {
+                    if chunks_walked >= max_chunks {
+                        reached_tail = false;
+                        break;
+                    }
+                    unsafe { drop(Box::from_raw(chunk_ptr)) };
+                    chunk_ptr = next;
+                    consumed = 0;
+                    chunks_walked += 1;
+                    continue;
+                }
+            }
+            break;
         }
-    }
-
-    pub(crate) fn add(&mut self, measurement: M) {
-        if self.sender.is_none() {
-            self.sender = M::fetch_sender();
-        }
-
-        if self.sender.is_none() {
-            return;
-        }
-
-        let elapsed_since_start_ns = measurement.elapsed_since_start_ns();
-        let is_boundary = measurement.is_flush_boundary();
-        self.measurements.push(measurement);
-
-        let should_flush = is_boundary
-            || self.measurements.len() >= BATCH_SIZE
-            || elapsed_since_start_ns.saturating_sub(self.last_flush_elapsed_ns)
-                >= FLUSH_INTERVAL_NS;
-
-        if should_flush {
-            self.flush();
-        }
-    }
-
-    pub(crate) fn flush(&mut self) {
-        if self.measurements.is_empty() {
-            return;
-        }
-
-        let sender = self.sender.as_ref().expect("Sender must exist");
-        if let Some(last) = self.measurements.last() {
-            self.last_flush_elapsed_ns = last.elapsed_since_start_ns();
-        }
-        let batch = std::mem::replace(&mut self.measurements, Vec::with_capacity(BATCH_SIZE));
-        M::send_batch(sender, batch);
+        self.head.store(chunk_ptr, Ordering::Relaxed);
+        self.consumed.store(consumed, Ordering::Relaxed);
+        reached_tail
     }
 }
 
-impl<M: BatchedMeasurement> Drop for MeasurementBatch<M> {
+impl<M> Drop for EventQueue<M> {
     fn drop(&mut self) {
-        self.flush();
+        // Reached only after the producer is gone (closed) and the registry
+        // released its Arc, so exclusive access is guaranteed.
+        let mut chunk_ptr = *self.head.get_mut();
+        let mut consumed = *self.consumed.get_mut();
+        while !chunk_ptr.is_null() {
+            let chunk = unsafe { &mut *chunk_ptr };
+            let len = *chunk.len.get_mut();
+            for i in consumed..len {
+                unsafe { (*chunk.slots[i].get()).assume_init_drop() };
+            }
+            consumed = 0;
+            let next = *chunk.next.get_mut();
+            unsafe { drop(Box::from_raw(chunk_ptr)) };
+            chunk_ptr = next;
+        }
     }
 }
 
-/// Registry of every live per-thread [`MeasurementBatch`] for a given event type.
-///
-/// Producing threads keep their batch in thread-local storage for a lock-light
-/// hot path, but those batches are unreachable from other threads. On shutdown
-/// the producing threads may still be alive (e.g. parked async runtime workers)
-/// with buffered events that have not reached the worker. The registry holds a
-/// `Weak` to each batch so [`BatchRegistry::flush_all`] can drain them all from
-/// the shutting-down thread before the worker stops.
-#[cfg(not(feature = "hotpath-lockless"))]
-pub(crate) struct BatchRegistry<M: BatchedMeasurement> {
-    batches: Mutex<Vec<Weak<Mutex<MeasurementBatch<M>>>>>,
+/// The owning thread's write handle, stored in a `thread_local`.
+pub(crate) struct EventProducer<M> {
+    queue: Arc<EventQueue<M>>,
+    tail: Cell<*mut Chunk<M>>,
+    len: Cell<usize>,
 }
 
-#[cfg(not(feature = "hotpath-lockless"))]
-impl<M: BatchedMeasurement> BatchRegistry<M> {
+impl<M> EventProducer<M> {
+    /// Appends one event: a plain slot store plus a `Release` publish of the
+    /// new length. Allocates a fresh chunk every `CHUNK_SIZE` events.
+    #[inline]
+    pub(crate) fn push(&self, m: M) {
+        let tail = self.tail.get();
+        let i = self.len.get();
+        unsafe {
+            (*tail).slots[i].get().write(MaybeUninit::new(m));
+            (*tail).len.store(i + 1, Ordering::Release);
+        }
+        if i + 1 == CHUNK_SIZE {
+            let new = Chunk::new_raw();
+            unsafe { (*tail).next.store(new, Ordering::Release) };
+            self.tail.set(new);
+            self.len.set(0);
+        } else {
+            self.len.set(i + 1);
+        }
+    }
+}
+
+impl<M> Drop for EventProducer<M> {
+    fn drop(&mut self) {
+        self.queue.closed.store(true, Ordering::Release);
+    }
+}
+
+/// All live per-thread queues for one event type, plus the gate that tells
+/// producers whether a worker is consuming.
+pub(crate) struct EventQueueRegistry<M> {
+    active: AtomicBool,
+    queues: Mutex<Vec<Arc<EventQueue<M>>>>,
+}
+
+impl<M: Send> EventQueueRegistry<M> {
     pub(crate) const fn new() -> Self {
         Self {
-            batches: Mutex::new(Vec::new()),
+            active: AtomicBool::new(false),
+            queues: Mutex::new(Vec::new()),
         }
     }
 
-    fn register(&self, batch: &Arc<Mutex<MeasurementBatch<M>>>) {
-        if let Ok(mut batches) = self.batches.lock() {
-            batches.push(Arc::downgrade(batch));
+    /// Whether a worker is consuming. Producers check this before pushing so
+    /// events cannot pile up unbounded when no one will ever drain them.
+    #[inline]
+    pub(crate) fn is_active(&self) -> bool {
+        self.active.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_active(&self, active: bool) {
+        self.active.store(active, Ordering::Release);
+    }
+
+    /// Creates and registers a queue for the calling thread.
+    pub(crate) fn register(&self) -> EventProducer<M> {
+        let first = Chunk::new_raw();
+        let queue = Arc::new(EventQueue {
+            head: AtomicPtr::new(first),
+            consumed: AtomicUsize::new(0),
+            closed: AtomicBool::new(false),
+        });
+        if let Ok(mut queues) = self.queues.lock() {
+            queues.push(Arc::clone(&queue));
+        }
+        EventProducer {
+            queue,
+            tail: Cell::new(first),
+            len: Cell::new(0),
         }
     }
 
-    pub(crate) fn flush_all(&self) {
-        if let Ok(mut batches) = self.batches.lock() {
-            batches.retain(|weak| match weak.upgrade() {
-                Some(batch) => {
-                    if let Ok(mut batch) = batch.lock() {
-                        batch.flush();
-                    }
-                    true
-                }
-                None => false,
+    /// Drains every registered queue into `out` and releases queues whose
+    /// producer thread has exited. Holding the registry lock for the whole
+    /// sweep is what makes this the single consumer. Each queue is capped at
+    /// `MAX_CHUNKS_PER_SWEEP`; leftovers are picked up on the next tick.
+    pub(crate) fn sweep(&self, out: &mut Vec<M>) {
+        self.sweep_inner(out, MAX_CHUNKS_PER_SWEEP);
+    }
+
+    /// Uncapped variant for the worker's final sweep at shutdown: there is no
+    /// next tick to pick up leftovers, so every queue is drained to its tail.
+    /// Terminates because producers are deactivated (`set_active(false)`)
+    /// before shutdown is signalled, so queues can no longer grow.
+    pub(crate) fn drain_all(&self, out: &mut Vec<M>) {
+        self.sweep_inner(out, usize::MAX);
+    }
+
+    fn sweep_inner(&self, out: &mut Vec<M>, max_chunks: usize) {
+        if let Ok(mut queues) = self.queues.lock() {
+            queues.retain(|queue| {
+                // Read `closed` before draining: the flag is set after the
+                // producer's last push, so observing it guarantees the drain
+                // below sees every event.
+                let closed = queue.closed.load(Ordering::Acquire);
+                let reached_tail = queue.drain_into(out, max_chunks);
+                // A closed queue is released only once fully drained; a
+                // cap-truncated drain keeps it for the next sweep so its tail
+                // events are not freed unprocessed by `EventQueue::drop`.
+                !(closed && reached_tail)
             });
         }
     }
-}
-
-/// Creates a fresh per-thread batch and registers it for shutdown draining.
-#[cfg(not(feature = "hotpath-lockless"))]
-pub(crate) fn register_thread_batch<M: BatchedMeasurement>(
-    registry: &'static BatchRegistry<M>,
-) -> Arc<Mutex<MeasurementBatch<M>>> {
-    let batch = Arc::new(Mutex::new(MeasurementBatch::new()));
-    registry.register(&batch);
-    batch
 }

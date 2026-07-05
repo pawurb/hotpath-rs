@@ -4,45 +4,32 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::Duration;
 
-#[cfg(not(feature = "hotpath-lockless"))]
-use crate::batch::{register_thread_batch, BatchRegistry};
-use crate::batch::{BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "hotpath-lockless")] {
-        thread_local! {
-            static MEASUREMENT_BATCH: std::cell::RefCell<MeasurementBatch<Measurement>> =
-                std::cell::RefCell::new(MeasurementBatch::new());
-        }
+static MEASUREMENT_QUEUES: EventQueueRegistry<Measurement> = EventQueueRegistry::new();
 
-        fn add_measurement(m: Measurement) {
-            MEASUREMENT_BATCH.with(|batch| batch.borrow_mut().add(m));
-        }
+thread_local! {
+    static MEASUREMENT_PRODUCER: EventProducer<Measurement> = MEASUREMENT_QUEUES.register();
+}
 
-        pub(crate) fn flush_batch() {
-            MEASUREMENT_BATCH.with(|batch| batch.borrow_mut().flush());
-        }
-    } else {
-        static MEASUREMENT_REGISTRY: BatchRegistry<Measurement> = BatchRegistry::new();
-
-        thread_local! {
-            static MEASUREMENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<Measurement>>> =
-                register_thread_batch(&MEASUREMENT_REGISTRY);
-        }
-
-        fn add_measurement(m: Measurement) {
-            MEASUREMENT_BATCH.with(|batch| {
-                if let Ok(mut batch) = batch.lock() {
-                    batch.add(m);
-                }
-            });
-        }
-
-        pub(crate) fn flush_batch() {
-            MEASUREMENT_REGISTRY.flush_all();
-        }
+fn add_measurement(m: Measurement) {
+    if !MEASUREMENT_QUEUES.is_active() {
+        return;
     }
+    let _ = MEASUREMENT_PRODUCER.try_with(|producer| producer.push(m));
+}
+
+pub(crate) fn set_measurements_active(active: bool) {
+    MEASUREMENT_QUEUES.set_active(active);
+}
+
+pub(crate) fn sweep_measurements(out: &mut Vec<Measurement>) {
+    MEASUREMENT_QUEUES.sweep(out);
+}
+
+pub(crate) fn drain_all_measurements(out: &mut Vec<Measurement>) {
+    MEASUREMENT_QUEUES.drain_all(out);
 }
 
 #[derive(Debug)]
@@ -55,25 +42,6 @@ pub(crate) struct Measurement {
     pub(crate) wrapper: bool,
     pub(crate) tid: Option<u64>,
     pub(crate) result_log: Option<String>,
-}
-
-impl BatchedMeasurement for Measurement {
-    type Tx = crate::lib_on::functions::MeasurementsTx;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        self.elapsed_since_start_ns
-    }
-
-    fn fetch_sender() -> Option<Self::Tx> {
-        let arc_swap = crate::lib_on::functions::FUNCTIONS_STATE.get()?;
-        let state = arc_swap.load_full()?;
-        let state_guard = state.read().ok()?;
-        state_guard.measurements_tx.clone()
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
 }
 
 type LogEntry = (
@@ -299,7 +267,6 @@ impl FunctionStats {
 }
 
 pub(crate) struct FunctionsState {
-    pub measurements_tx: Option<crate::lib_on::functions::MeasurementsTx>,
     pub shutdown_tx: Option<crossbeam_channel::Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<u32, FunctionStats>>>>,
 

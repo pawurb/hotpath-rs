@@ -106,7 +106,6 @@ impl<T> Drop for MutexGuard<'_, T> {
             id: self.id,
             wait_nanos: self.wait_nanos,
             acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
-            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
         });
     }
 }

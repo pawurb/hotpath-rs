@@ -11,21 +11,15 @@
 //! the read path stays compiled so the report/metrics wiring is feature-uniform.
 #![cfg_attr(not(any(feature = "sqlx", feature = "diesel")), allow(dead_code))]
 
-use crossbeam_channel::{
-    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
-};
+use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 
-#[cfg(not(feature = "hotpath-lockless"))]
-use crate::batch::{register_thread_batch, BatchRegistry};
-use crate::batch::{BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
-use crate::lib_on::hotpath_guard::{
-    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
+use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
@@ -51,11 +45,7 @@ fn next_sql_id() -> u32 {
 pub(crate) enum SqlEvent {
     /// Emitted when an executed query (or query stream) completes. `sql` is the
     /// raw statement text; the worker normalizes it to derive the bucket key.
-    Executed {
-        sql: Arc<str>,
-        duration_nanos: u64,
-        elapsed_ns: u64,
-    },
+    Executed { sql: Arc<str>, duration_nanos: u64 },
 }
 
 /// Aggregated statistics for a single normalized query.
@@ -108,14 +98,7 @@ pub(crate) struct SqlInternalState {
     pub(crate) stats: HashMap<String, SqlEntry>,
 }
 
-// `wrap = true` endpoint wrapper under `hotpath-meta` (instrumented), plain sender otherwise.
-#[cfg(feature = "hotpath-meta")]
-pub(crate) type SqlEventTx = hotpath_meta::wrap::crossbeam::Sender<Vec<SqlEvent>>;
-#[cfg(not(feature = "hotpath-meta"))]
-pub(crate) type SqlEventTx = CbSender<Vec<SqlEvent>>;
-
 pub(crate) struct SqlState {
-    pub(crate) event_tx: SqlEventTx,
     pub(crate) inner: Arc<StdRwLock<SqlInternalState>>,
     pub(crate) shutdown_tx: StdMutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: StdMutex<Option<CbReceiver<()>>>,
@@ -145,75 +128,30 @@ pub(crate) fn get_sql_json() -> crate::json::JsonSqlList {
     )
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "hotpath-lockless")] {
-        thread_local! {
-            static EVENT_BATCH: std::cell::RefCell<MeasurementBatch<SqlEvent>> =
-                std::cell::RefCell::new(MeasurementBatch::new());
-        }
+static EVENT_QUEUES: EventQueueRegistry<SqlEvent> = EventQueueRegistry::new();
 
-        #[inline]
-        pub(crate) fn send_sql_event(event: SqlEvent) {
-            let _suspend = crate::lib_on::SuspendAllocTracking::new();
-            EVENT_BATCH.with(|b| b.borrow_mut().add(event));
-        }
-
-        pub(crate) fn flush_sql_batch() {
-            EVENT_BATCH.with(|b| b.borrow_mut().flush());
-        }
-    } else {
-        static EVENT_REGISTRY: BatchRegistry<SqlEvent> = BatchRegistry::new();
-
-        thread_local! {
-            static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<SqlEvent>>> =
-                register_thread_batch(&EVENT_REGISTRY);
-        }
-
-        #[inline]
-        pub(crate) fn send_sql_event(event: SqlEvent) {
-            let _suspend = crate::lib_on::SuspendAllocTracking::new();
-            EVENT_BATCH.with(|b| {
-                if let Ok(mut b) = b.lock() {
-                    b.add(event);
-                }
-            });
-        }
-
-        /// Flushes every thread's buffered SQL events into the worker channel.
-        /// Called at shutdown before the worker is signalled to stop.
-        pub(crate) fn flush_sql_batch() {
-            EVENT_REGISTRY.flush_all();
-        }
-    }
+thread_local! {
+    static EVENT_PRODUCER: EventProducer<SqlEvent> = EVENT_QUEUES.register();
 }
 
-impl BatchedMeasurement for SqlEvent {
-    type Tx = SqlEventTx;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        match self {
-            SqlEvent::Executed { elapsed_ns, .. } => *elapsed_ns,
-        }
+#[inline]
+pub(crate) fn send_sql_event(event: SqlEvent) {
+    if !EVENT_QUEUES.is_active() {
+        return;
     }
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
+    let _ = EVENT_PRODUCER.try_with(|producer| producer.push(event));
+}
 
-    fn fetch_sender() -> Option<Self::Tx> {
-        Some(SQL_STATE.get()?.event_tx.clone())
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-
-    fn is_flush_boundary(&self) -> bool {
-        false
-    }
+/// Stops producers ahead of the worker's final sweep at shutdown.
+pub(crate) fn stop_sql_events() {
+    EVENT_QUEUES.set_active(false);
 }
 
 fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
     let SqlEvent::Executed {
         sql,
         duration_nanos,
-        elapsed_ns: _,
     } = event;
 
     let key = normalize::normalize(&sql);
@@ -242,10 +180,6 @@ pub(crate) fn init_sql_state() -> &'static SqlState {
     SQL_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<Vec<SqlEvent>>();
-        #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) =
-            hotpath_meta::channel!((event_tx, event_rx), label = "hp-sql-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
@@ -254,51 +188,31 @@ pub(crate) fn init_sql_state() -> &'static SqlState {
         }));
         let inner_clone = Arc::clone(&inner);
 
+        EVENT_QUEUES.set_active(true);
+
         std::thread::Builder::new()
             .name("hp-sql".into())
             .spawn(move || {
-                let mut local_buffer: Vec<SqlEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<SqlEvent> = Vec::new();
 
-                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
-                let mut select = Select::new();
-                let _shutdown_idx = select.recv(&shutdown_rx);
-                #[cfg(feature = "hotpath-meta")]
-                let _event_idx = select.recv(event_rx.select_handle());
-                #[cfg(not(feature = "hotpath-meta"))]
-                let _event_idx = select.recv(&event_rx);
-
+                // Single consumer of the per-thread event queues: capped sweep on
+                // every tick, then one uncapped drain when shutdown is signalled
+                // (producers are already stopped by then, so nothing is left behind).
                 loop {
-                    if select.ready_timeout(flush_interval).is_err() {
-                        flush_sql_buffer(&mut local_buffer, &inner_clone);
-                        continue;
-                    }
+                    let shutdown = !matches!(
+                        shutdown_rx.recv_timeout(flush_interval),
+                        Err(RecvTimeoutError::Timeout)
+                    );
 
-                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match event_rx.try_recv() {
-                                Ok(events) => local_buffer.extend(events),
-                                Err(_) => break,
-                            }
-                        }
-                        flush_sql_buffer(&mut local_buffer, &inner_clone);
+                    if shutdown {
+                        EVENT_QUEUES.drain_all(&mut swept);
+                        flush_sql_buffer(&mut swept, &inner_clone);
                         break;
                     }
 
-                    match event_rx.try_recv() {
-                        Ok(events) => {
-                            local_buffer.extend(events);
-                            if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                flush_sql_buffer(&mut local_buffer, &inner_clone);
-                            }
-                        }
-                        // A disconnected receiver stays ready; flush and stop, do not spin.
-                        Err(TryRecvError::Disconnected) => {
-                            flush_sql_buffer(&mut local_buffer, &inner_clone);
-                            break;
-                        }
-                        Err(TryRecvError::Empty) => {}
-                    }
+                    EVENT_QUEUES.sweep(&mut swept);
+                    flush_sql_buffer(&mut swept, &inner_clone);
                 }
 
                 let _ = completion_tx.send(());
@@ -308,7 +222,6 @@ pub(crate) fn init_sql_state() -> &'static SqlState {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         SqlState {
-            event_tx,
             inner,
             shutdown_tx: StdMutex::new(Some(shutdown_tx)),
             completion_rx: StdMutex::new(Some(completion_rx)),

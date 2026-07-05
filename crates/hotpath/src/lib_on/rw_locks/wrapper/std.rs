@@ -147,7 +147,6 @@ impl<T> Drop for RwLockReadGuard<'_, T> {
             kind: RwLockKind::Read,
             wait_nanos: self.wait_nanos,
             acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
-            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
         });
     }
 }
@@ -185,7 +184,6 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
             kind: RwLockKind::Write,
             wait_nanos: self.wait_nanos,
             acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
-            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
         });
     }
 }

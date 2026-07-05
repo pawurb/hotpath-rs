@@ -1,8 +1,6 @@
 //! Channel instrumentation module - tracks message flow and channel state.
 
-use crossbeam_channel::{
-    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
-};
+use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -14,14 +12,10 @@ pub(crate) mod wrapper;
 
 use std::mem;
 
-#[cfg(not(feature = "hotpath-lockless"))]
-use crate::batch::{register_thread_batch, BatchRegistry};
-use crate::batch::{BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::json::JsonChannelEntry;
 pub(crate) use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
-use crate::lib_on::hotpath_guard::{
-    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
+use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
 pub use crate::Format;
@@ -91,88 +85,28 @@ fn register_channel_inner<T>(
     id
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "hotpath-lockless")] {
-        thread_local! {
-            static EVENT_BATCH: std::cell::RefCell<MeasurementBatch<ChannelEvent>> =
-                std::cell::RefCell::new(MeasurementBatch::new());
-        }
+static EVENT_QUEUES: EventQueueRegistry<ChannelEvent> = EventQueueRegistry::new();
 
-        #[inline]
-        pub(crate) fn send_channel_event(event: ChannelEvent) {
-            let _suspend = crate::lib_on::SuspendAllocTracking::new();
-            // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
-            // recv, or `Closed` on drop) from a producer thread that is tearing down, when
-            // this thread-local may already be destroyed. Dropping the event is fine;
-            // panicking in a `Drop` would abort the process.
-            let _ = EVENT_BATCH.try_with(|b| {
-                if let Ok(mut b) = b.try_borrow_mut() {
-                    b.add(event);
-                }
-            });
-        }
-
-        pub(crate) fn flush_channel_batch() {
-            let _ = EVENT_BATCH.try_with(|b| {
-                if let Ok(mut b) = b.try_borrow_mut() {
-                    b.flush();
-                }
-            });
-        }
-    } else {
-        static EVENT_REGISTRY: BatchRegistry<ChannelEvent> = BatchRegistry::new();
-
-        thread_local! {
-            static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<ChannelEvent>>> =
-                register_thread_batch(&EVENT_REGISTRY);
-        }
-
-        #[inline]
-        pub(crate) fn send_channel_event(event: ChannelEvent) {
-            let _suspend = crate::lib_on::SuspendAllocTracking::new();
-            // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
-            // recv, or `Closed` on drop) from a producer thread that is tearing down, when
-            // this thread-local may already be destroyed. Dropping the event is fine;
-            // panicking in a `Drop` would abort the process.
-            let _ = EVENT_BATCH.try_with(|b| {
-                if let Ok(mut b) = b.lock() {
-                    b.add(event);
-                }
-            });
-        }
-
-        /// Flushes every thread's buffered channel events into the worker channel.
-        /// Called at shutdown before the worker is signalled to stop.
-        pub(crate) fn flush_channel_batch() {
-            EVENT_REGISTRY.flush_all();
-        }
-    }
+thread_local! {
+    static EVENT_PRODUCER: EventProducer<ChannelEvent> = EVENT_QUEUES.register();
 }
 
-impl BatchedMeasurement for ChannelEvent {
-    type Tx = ChannelEventTx;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        match self {
-            ChannelEvent::MessageSent { timestamp, .. }
-            | ChannelEvent::MessageReceived { timestamp, .. }
-            | ChannelEvent::WrapMessageSent { timestamp, .. }
-            | ChannelEvent::WrapMessageReceived { timestamp, .. } => timestamp_nanos(*timestamp),
-            _ => 0,
-        }
+#[inline]
+pub(crate) fn send_channel_event(event: ChannelEvent) {
+    if !EVENT_QUEUES.is_active() {
+        return;
     }
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
+    // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
+    // recv, or `Closed` on drop) from a producer thread that is tearing down, when
+    // this thread-local may already be destroyed. Dropping the event is fine;
+    // panicking in a `Drop` would abort the process.
+    let _ = EVENT_PRODUCER.try_with(|producer| producer.push(event));
+}
 
-    fn fetch_sender() -> Option<Self::Tx> {
-        Some(CHANNELS_STATE.get()?.event_tx.clone())
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-
-    fn is_flush_boundary(&self) -> bool {
-        matches!(self, ChannelEvent::Created { .. })
-    }
+/// Stops producers ahead of the worker's final sweep at shutdown.
+pub(crate) fn stop_channel_events() {
+    EVENT_QUEUES.set_active(false);
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -435,14 +369,7 @@ pub(crate) enum ChannelEvent {
     },
 }
 
-// `wrap = true` endpoint wrapper under `hotpath-meta` (instrumented), plain sender otherwise.
-#[cfg(feature = "hotpath-meta")]
-pub(crate) type ChannelEventTx = hotpath_meta::wrap::crossbeam::Sender<Vec<ChannelEvent>>;
-#[cfg(not(feature = "hotpath-meta"))]
-pub(crate) type ChannelEventTx = CbSender<Vec<ChannelEvent>>;
-
 pub(crate) struct ChannelsState {
-    pub(crate) event_tx: ChannelEventTx,
     pub(crate) inner: Arc<RwLock<ChannelsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -616,10 +543,6 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
     CHANNELS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<Vec<ChannelEvent>>();
-        #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) =
-            hotpath_meta::channel!((event_tx, event_rx), log = true, label = "hp-ch-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
         let inner = Arc::new(RwLock::new(ChannelsInternalState {
@@ -628,51 +551,31 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
         }));
         let inner_clone = Arc::clone(&inner);
 
+        EVENT_QUEUES.set_active(true);
+
         std::thread::Builder::new()
             .name("hp-channels".into())
             .spawn(move || {
-                let mut local_buffer: Vec<ChannelEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<ChannelEvent> = Vec::new();
 
-                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
-                let mut select = Select::new();
-                let _shutdown_idx = select.recv(&shutdown_rx);
-                #[cfg(feature = "hotpath-meta")]
-                let _event_idx = select.recv(event_rx.select_handle());
-                #[cfg(not(feature = "hotpath-meta"))]
-                let _event_idx = select.recv(&event_rx);
-
+                // Single consumer of the per-thread event queues: capped sweep on
+                // every tick, then one uncapped drain when shutdown is signalled
+                // (producers are already stopped by then, so nothing is left behind).
                 loop {
-                    if select.ready_timeout(flush_interval).is_err() {
-                        flush_channel_buffer(&mut local_buffer, &inner_clone);
-                        continue;
-                    }
+                    let shutdown = !matches!(
+                        shutdown_rx.recv_timeout(flush_interval),
+                        Err(RecvTimeoutError::Timeout)
+                    );
 
-                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match event_rx.try_recv() {
-                                Ok(events) => local_buffer.extend(events),
-                                Err(_) => break,
-                            }
-                        }
-                        flush_channel_buffer(&mut local_buffer, &inner_clone);
+                    if shutdown {
+                        EVENT_QUEUES.drain_all(&mut swept);
+                        flush_channel_buffer(&mut swept, &inner_clone);
                         break;
                     }
 
-                    match event_rx.try_recv() {
-                        Ok(events) => {
-                            local_buffer.extend(events);
-                            if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                flush_channel_buffer(&mut local_buffer, &inner_clone);
-                            }
-                        }
-                        // A disconnected receiver stays ready; flush and stop, do not spin.
-                        Err(TryRecvError::Disconnected) => {
-                            flush_channel_buffer(&mut local_buffer, &inner_clone);
-                            break;
-                        }
-                        Err(TryRecvError::Empty) => {}
-                    }
+                    EVENT_QUEUES.sweep(&mut swept);
+                    flush_channel_buffer(&mut swept, &inner_clone);
                 }
 
                 let _ = completion_tx.send(());
@@ -682,7 +585,6 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         ChannelsState {
-            event_tx,
             inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),

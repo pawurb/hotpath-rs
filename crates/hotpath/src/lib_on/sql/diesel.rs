@@ -38,7 +38,6 @@ impl Instrumentation for HotpathDieselInstrumentation {
                     send_sql_event(SqlEvent::Executed {
                         sql: sql.into(),
                         duration_nanos: now.duration_since(start).as_nanos() as u64,
-                        elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
                     });
                 }
             }

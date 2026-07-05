@@ -29,7 +29,6 @@ use tracing_subscriber::layer::{Context, Filter};
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
-use crate::instant::Instant;
 use crate::lib_on::sql::{init_sql_state, send_sql_event, SqlEvent};
 
 /// Target sqlx emits its per-query completion event on.
@@ -54,11 +53,9 @@ where
             return;
         };
 
-        let now = Instant::now();
         send_sql_event(SqlEvent::Executed {
             sql: sql.into(),
             duration_nanos: visitor.elapsed_ns.unwrap_or(0),
-            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
         });
     }
 }

@@ -43,7 +43,7 @@ fn print_table(table: &Table, writer: &mut dyn Write) {
 }
 
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
-    crate::channels::flush_channel_batch();
+    crate::channels::stop_channel_events();
     CHANNELS_STATE
         .get()
         .and_then(|state| {
@@ -189,7 +189,7 @@ pub(crate) fn collect_channels_json(
 }
 
 pub(crate) fn shutdown_rw_locks() -> Vec<RwLockEntry> {
-    crate::lib_on::rw_locks::flush_rw_lock_batch();
+    crate::lib_on::rw_locks::stop_rw_lock_events();
     RW_LOCKS_STATE
         .get()
         .and_then(|state| {
@@ -363,7 +363,7 @@ pub(crate) fn collect_rw_locks_json(
 }
 
 pub(crate) fn shutdown_mutexes() -> Vec<MutexEntry> {
-    crate::lib_on::mutexes::flush_mutex_batch();
+    crate::lib_on::mutexes::stop_mutex_events();
     MUTEXES_STATE
         .get()
         .and_then(|state| {
@@ -495,7 +495,7 @@ pub(crate) fn collect_mutexes_json(
 }
 
 pub(crate) fn shutdown_sql() -> Vec<SqlEntry> {
-    crate::lib_on::sql::flush_sql_batch();
+    crate::lib_on::sql::stop_sql_events();
     SQL_STATE
         .get()
         .and_then(|state| {
@@ -632,7 +632,7 @@ pub(crate) fn collect_sql_json(
 }
 
 pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
-    crate::streams::flush_stream_batch();
+    crate::streams::stop_stream_events();
     STREAMS_STATE
         .get()
         .and_then(|state| {
@@ -710,7 +710,7 @@ pub(crate) fn collect_streams_json(
 }
 
 pub(crate) fn shutdown_futures() -> Vec<FutureEntry> {
-    crate::lib_on::futures::flush_future_batch();
+    crate::lib_on::futures::stop_future_events();
     FUTURES_STATE
         .get()
         .and_then(|state| {
