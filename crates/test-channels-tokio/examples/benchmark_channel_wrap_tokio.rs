@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-// Same single-threaded stress test as `benchmark_channel_tokio`, but with `wrap = true`.
+// Same single-threaded stress test as `benchmark_channel_tokio`.
 // Wrap mode instruments the channel endpoints directly instead of relaying every message
 // through a forwarder task and a second channel, so this measures the per-send/recv
 // overhead of the wrapped endpoints. Compare against `benchmark_channel_tokio` to see the
@@ -14,7 +14,6 @@ async fn main() {
     let runs = bench_runs();
     let (tx, mut rx) = hotpath::channel!(
         tokio::sync::mpsc::unbounded_channel::<u64>(),
-        wrap = true,
         label = "counter"
     );
 

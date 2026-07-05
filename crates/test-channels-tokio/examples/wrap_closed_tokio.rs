@@ -12,7 +12,6 @@ async fn main() {
 
     let (tx, rx) = hotpath::channel!(
         tokio::sync::mpsc::unbounded_channel::<i32>(),
-        wrap = true,
         label = "recv-dropped"
     );
 

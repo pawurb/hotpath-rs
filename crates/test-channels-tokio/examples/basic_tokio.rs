@@ -27,6 +27,7 @@ async fn main() {
 
     let (txc, rxc) = hotpath::channel!(
         tokio::sync::oneshot::channel::<String>(),
+        proxy = true,
         label = "hello-there"
     );
 

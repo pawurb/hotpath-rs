@@ -15,11 +15,7 @@ fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    let (tx, rx) = hotpath::channel!(
-        mpsc::channel::<u64>(),
-        wrap = true,
-        label = "wrap-concurrent"
-    );
+    let (tx, rx) = hotpath::channel!(mpsc::channel::<u64>(), label = "wrap-concurrent");
 
     let producer = thread::spawn(move || {
         for i in 0..N {

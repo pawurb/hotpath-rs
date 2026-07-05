@@ -1,4 +1,4 @@
-// Demonstrates `wrap = true` std::sync::mpsc instrumentation: the report shows the
+// Demonstrates std::sync::mpsc channel instrumentation: the report shows the
 // exact queue depth (50 messages parked in the channel) because the instrumented
 // endpoints track queue length with a self-maintained counter instead of routing
 // through a forwarder thread.
@@ -18,10 +18,9 @@ fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    // wrap = true returns hotpath::wrap::std::sync::mpsc::{SyncSender, Receiver}.
+    // Returns hotpath::wrap::std::sync::mpsc::{SyncSender, Receiver}.
     let (tx, rx) = hotpath::channel!(
         mpsc::sync_channel::<i32>(100),
-        wrap = true,
         capacity = 100,
         label = "wrap-queue"
     );

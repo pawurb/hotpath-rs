@@ -11,7 +11,7 @@ fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    let (tx, rx) = hotpath::channel!(mpsc::channel::<i32>(), wrap = true, label = "recv-dropped");
+    let (tx, rx) = hotpath::channel!(mpsc::channel::<i32>(), label = "recv-dropped");
 
     tx.send(1).expect("Failed to send");
 

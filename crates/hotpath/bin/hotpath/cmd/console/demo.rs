@@ -19,11 +19,7 @@ fn spawn_channels() {
     // Wrap channel: tracks exact send->receive latency. The consumer outpaces the
     // producer, so the bounded channel stays near empty and each message is processed
     // as soon as it arrives - a healthy channel that keeps up with its load.
-    let (tx, rx) = hotpath::channel!(
-        crossbeam_channel::bounded::<u64>(8),
-        wrap = true,
-        label = "demo-jobs"
-    );
+    let (tx, rx) = hotpath::channel!(crossbeam_channel::bounded::<u64>(8), label = "demo-jobs");
 
     thread::spawn(move || {
         let mut i = 0u64;
@@ -47,7 +43,6 @@ fn spawn_std_channel() {
     // self-tracked queue depth climbs to the bound.
     let (tx, rx) = hotpath::channel!(
         std::sync::mpsc::sync_channel::<u64>(8),
-        wrap = true,
         capacity = 8,
         label = "demo-std-jobs"
     );

@@ -11,11 +11,7 @@ fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    let (tx, rx) = hotpath::channel!(
-        flume::bounded::<i32>(10),
-        wrap = true,
-        label = "recv-clone-dropped"
-    );
+    let (tx, rx) = hotpath::channel!(flume::bounded::<i32>(10), label = "recv-clone-dropped");
 
     let tx2 = tx.clone();
     let rx2 = rx.clone();

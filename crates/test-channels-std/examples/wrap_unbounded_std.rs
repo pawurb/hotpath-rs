@@ -1,4 +1,4 @@
-// Demonstrates `wrap = true` std::sync::mpsc instrumentation on an unbounded channel.
+// Demonstrates std::sync::mpsc channel instrumentation on an unbounded channel.
 // Sends N messages, drains them all, and the report reflects exact sent/received
 // counts with the self-tracked queue draining back to zero.
 //
@@ -15,12 +15,8 @@ fn main() {
         .sections(vec![hotpath::Section::Channels])
         .build();
 
-    // wrap = true returns hotpath::wrap::std::sync::mpsc::{Sender, Receiver}.
-    let (tx, rx) = hotpath::channel!(
-        mpsc::channel::<i32>(),
-        wrap = true,
-        label = "wrap-unbounded"
-    );
+    // Returns hotpath::wrap::std::sync::mpsc::{Sender, Receiver}.
+    let (tx, rx) = hotpath::channel!(mpsc::channel::<i32>(), label = "wrap-unbounded");
 
     for i in 0..200 {
         tx.send(i).expect("Failed to send");

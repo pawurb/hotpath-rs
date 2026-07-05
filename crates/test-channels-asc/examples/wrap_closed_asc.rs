@@ -9,11 +9,7 @@ fn main() {
             .sections(vec![hotpath::Section::Channels])
             .build();
 
-        let (tx, rx) = hotpath::channel!(
-            async_channel::bounded::<i32>(10),
-            wrap = true,
-            label = "recv-dropped"
-        );
+        let (tx, rx) = hotpath::channel!(async_channel::bounded::<i32>(10), label = "recv-dropped");
 
         tx.send(1).await.expect("Failed to send");
 

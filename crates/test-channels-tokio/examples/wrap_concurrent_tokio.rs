@@ -15,7 +15,6 @@ async fn main() {
 
     let (tx, mut rx) = hotpath::channel!(
         tokio::sync::mpsc::unbounded_channel::<u64>(),
-        wrap = true,
         label = "wrap-concurrent"
     );
 

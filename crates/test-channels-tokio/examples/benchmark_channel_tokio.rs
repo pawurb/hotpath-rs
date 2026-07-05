@@ -2,7 +2,8 @@ use std::time::Instant;
 
 // Simple single-threaded stress test: hammers a single instrumented channel in
 // a tight loop with no contention, so the measured time reflects per-send/recv
-// instrumentation overhead. Compare `--features hotpath` against a plain run.
+// instrumentation overhead of the forwarder (`proxy = true`) path. Compare
+// `--features hotpath` against a plain run.
 #[tokio::main]
 async fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
@@ -12,6 +13,7 @@ async fn main() {
     let runs = bench_runs();
     let (tx, mut rx) = hotpath::channel!(
         tokio::sync::mpsc::unbounded_channel::<u64>(),
+        proxy = true,
         label = "counter"
     );
 

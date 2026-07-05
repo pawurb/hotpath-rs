@@ -13,7 +13,6 @@ fn main() {
 
     let (tx, rx) = hotpath::channel!(
         crossbeam_channel::bounded::<i32>(10),
-        wrap = true,
         label = "recv-clone-dropped"
     );
 

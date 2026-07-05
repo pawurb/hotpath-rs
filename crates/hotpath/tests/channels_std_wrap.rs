@@ -43,8 +43,7 @@ pub mod tests {
     }
 
     // Bounded-std wrap requires `capacity`, which the macro accepts in any argument
-    // position. Every order (including label/log before or after `wrap = true`) must
-    // compile and register a wrapped channel.
+    // position. Every order of `capacity`/`label`/`log` must compile and register a wrapped channel.
     //
     // cargo run -p test-channels-std --example wrap_arg_orders_std --features hotpath
     #[cfg(feature = "hotpath")]

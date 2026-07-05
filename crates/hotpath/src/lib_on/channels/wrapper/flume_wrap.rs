@@ -1,4 +1,4 @@
-//! Endpoint-wrapping flume channel instrumentation (`channel!(..., wrap = true)`).
+//! Endpoint-wrapping flume channel instrumentation for the `channel!` macro.
 //!
 //! Wraps the `Sender`/`Receiver` endpoints directly (unlike the forwarder-proxy in
 //! [`crate::channels::wrapper::flume`]): no extra task or proxy channel, so send/recv

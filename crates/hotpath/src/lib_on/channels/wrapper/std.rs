@@ -129,9 +129,9 @@ pub(crate) fn wrap_channel_log<T: Send + std::fmt::Debug + 'static>(
     })
 }
 
-use crate::channels::InstrumentChannel;
+use crate::channels::InstrumentChannelProxy;
 
-impl<T: Send + 'static> InstrumentChannel
+impl<T: Send + 'static> InstrumentChannelProxy
     for (std::sync::mpsc::Sender<T>, std::sync::mpsc::Receiver<T>)
 {
     type Output = (std::sync::mpsc::Sender<T>, std::sync::mpsc::Receiver<T>);
@@ -145,7 +145,7 @@ impl<T: Send + 'static> InstrumentChannel
     }
 }
 
-impl<T: Send + 'static> InstrumentChannel
+impl<T: Send + 'static> InstrumentChannelProxy
     for (std::sync::mpsc::SyncSender<T>, std::sync::mpsc::Receiver<T>)
 {
     type Output = (std::sync::mpsc::SyncSender<T>, std::sync::mpsc::Receiver<T>);
@@ -162,9 +162,9 @@ impl<T: Send + 'static> InstrumentChannel
     }
 }
 
-use crate::channels::InstrumentChannelLog;
+use crate::channels::InstrumentChannelProxyLog;
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
     for (std::sync::mpsc::Sender<T>, std::sync::mpsc::Receiver<T>)
 {
     type Output = (std::sync::mpsc::Sender<T>, std::sync::mpsc::Receiver<T>);
@@ -178,7 +178,7 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
     }
 }
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
     for (std::sync::mpsc::SyncSender<T>, std::sync::mpsc::Receiver<T>)
 {
     type Output = (std::sync::mpsc::SyncSender<T>, std::sync::mpsc::Receiver<T>);
