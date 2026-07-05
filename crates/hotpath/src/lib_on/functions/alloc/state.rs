@@ -1,22 +1,48 @@
 use crossbeam_channel::Receiver;
 use hdrhistogram::Histogram;
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::Duration;
 
+#[cfg(not(feature = "hotpath-lockless"))]
+use crate::batch::{register_thread_batch, BatchRegistry};
 use crate::batch::{BatchedMeasurement, MeasurementBatch};
 use crate::instant::Instant;
 
-thread_local! {
-    static MEASUREMENT_BATCH: RefCell<MeasurementBatch<Measurement>> =
-        RefCell::new(MeasurementBatch::new());
-}
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-lockless")] {
+        thread_local! {
+            static MEASUREMENT_BATCH: std::cell::RefCell<MeasurementBatch<Measurement>> =
+                std::cell::RefCell::new(MeasurementBatch::new());
+        }
 
-pub(crate) fn flush_batch() {
-    MEASUREMENT_BATCH.with(|batch| {
-        batch.borrow_mut().flush();
-    });
+        fn add_measurement(m: Measurement) {
+            MEASUREMENT_BATCH.with(|batch| batch.borrow_mut().add(m));
+        }
+
+        pub(crate) fn flush_batch() {
+            MEASUREMENT_BATCH.with(|batch| batch.borrow_mut().flush());
+        }
+    } else {
+        static MEASUREMENT_REGISTRY: BatchRegistry<Measurement> = BatchRegistry::new();
+
+        thread_local! {
+            static MEASUREMENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<Measurement>>> =
+                register_thread_batch(&MEASUREMENT_REGISTRY);
+        }
+
+        fn add_measurement(m: Measurement) {
+            MEASUREMENT_BATCH.with(|batch| {
+                if let Ok(mut batch) = batch.lock() {
+                    batch.add(m);
+                }
+            });
+        }
+
+        pub(crate) fn flush_batch() {
+            MEASUREMENT_REGISTRY.flush_all();
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -359,16 +385,14 @@ pub(crate) fn send_alloc_measurement_with_log(
         return;
     }
 
-    MEASUREMENT_BATCH.with(|batch| {
-        batch.borrow_mut().add(Measurement {
-            name,
-            bytes_total,
-            count_total,
-            duration_ns,
-            elapsed_since_start_ns,
-            wrapper,
-            tid,
-            result_log,
-        });
+    add_measurement(Measurement {
+        name,
+        bytes_total,
+        count_total,
+        duration_ns,
+        elapsed_since_start_ns,
+        wrapper,
+        tid,
+        result_log,
     });
 }
