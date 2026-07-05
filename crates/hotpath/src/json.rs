@@ -43,6 +43,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Bounded(size) => write!(f, "bounded[{}]", size),
             ChannelType::Unbounded => write!(f, "unbounded"),
             ChannelType::Oneshot => write!(f, "oneshot"),
+            ChannelType::Pending => write!(f, "pending"),
         }
     }
 }
@@ -66,6 +67,7 @@ impl<'de> Deserialize<'de> for ChannelType {
         match s.as_str() {
             "unbounded" => Ok(ChannelType::Unbounded),
             "oneshot" => Ok(ChannelType::Oneshot),
+            "pending" => Ok(ChannelType::Pending),
             _ => {
                 if let Some(inner) = s.strip_prefix("bounded[").and_then(|x| x.strip_suffix(']')) {
                     let size = inner

@@ -340,6 +340,8 @@ fn build<T>(
         ChannelType::Bounded(cap) => flume::bounded::<Payload<T>>(cap),
         ChannelType::Unbounded => flume::unbounded::<Payload<T>>(),
         ChannelType::Oneshot => flume::bounded::<Payload<T>>(1),
+        // `channel_type` above only returns Bounded or Unbounded.
+        ChannelType::Pending => unreachable!(),
     };
 
     let sender = Sender {

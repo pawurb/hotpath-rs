@@ -254,6 +254,8 @@ fn build<T>(
         ChannelType::Bounded(cap) => async_channel::bounded::<Payload<T>>(cap),
         ChannelType::Unbounded => async_channel::unbounded::<Payload<T>>(),
         ChannelType::Oneshot => async_channel::bounded::<Payload<T>>(1),
+        // `channel_type` above only returns Bounded or Unbounded.
+        ChannelType::Pending => unreachable!(),
     };
 
     let sender = Sender {

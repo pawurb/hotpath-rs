@@ -161,6 +161,24 @@ pub(crate) fn stop_mutex_events() {
     EVENT_QUEUES.set_active(false);
 }
 
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata.
+fn placeholder_mutex_entry(id: u32) -> MutexEntry {
+    MutexEntry {
+        id,
+        source: "",
+        label: None,
+        type_name: "",
+        count: 0,
+        wait_total_nanos: 0,
+        acquire_total_nanos: 0,
+        wait_hist: Some(MutexEntry::new_histogram()),
+        acquire_hist: Some(MutexEntry::new_histogram()),
+        iter: 0,
+    }
+}
+
 fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
     match event {
         MutexEvent::Created {
@@ -170,34 +188,29 @@ fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
             type_name,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                MutexEntry {
-                    id,
-                    source,
-                    label,
-                    type_name,
-                    count: 0,
-                    wait_total_nanos: 0,
-                    acquire_total_nanos: 0,
-                    wait_hist: Some(MutexEntry::new_histogram()),
-                    acquire_hist: Some(MutexEntry::new_histogram()),
-                    iter,
-                },
-            );
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_mutex_entry(id));
+            entry.source = source;
+            entry.label = label;
+            entry.type_name = type_name;
+            entry.iter = iter;
         }
         MutexEvent::Released {
             id,
             wait_nanos,
             acquire_nanos,
         } => {
-            if let Some(entry) = state.stats.get_mut(&id) {
-                entry.count += 1;
-                entry.wait_total_nanos += wait_nanos;
-                entry.acquire_total_nanos += acquire_nanos;
-                MutexEntry::record(&mut entry.wait_hist, wait_nanos);
-                MutexEntry::record(&mut entry.acquire_hist, acquire_nanos);
-            }
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_mutex_entry(id));
+            entry.count += 1;
+            entry.wait_total_nanos += wait_nanos;
+            entry.acquire_total_nanos += acquire_nanos;
+            MutexEntry::record(&mut entry.wait_hist, wait_nanos);
+            MutexEntry::record(&mut entry.acquire_hist, acquire_nanos);
         }
     }
 }

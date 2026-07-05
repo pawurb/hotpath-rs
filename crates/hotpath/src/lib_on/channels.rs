@@ -33,6 +33,9 @@ pub(crate) enum ChannelType {
     Bounded(usize),
     Unbounded,
     Oneshot,
+    /// Placeholder for a channel whose `Created` event has not been processed
+    /// yet; backfilled with the real type when it arrives.
+    Pending,
 }
 
 /// Registers a new channel with the profiling subsystem.
@@ -382,6 +385,14 @@ pub(crate) use crate::lib_on::START_TIME;
 pub(crate) use crate::lib_on::hotpath_guard::LOGS_LIMIT;
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata; `wrap` is inferred from the event variant
+/// so wrap-only stats (queue depth, processing histogram) record immediately.
+fn placeholder_channel_entry(id: u32, wrap: bool) -> ChannelEntry {
+    ChannelEntry::new(id, "", None, ChannelType::Pending, "", 0, wrap, 0)
+}
+
 fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent) {
     match event {
         ChannelEvent::Created {
@@ -394,60 +405,65 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             wrap,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                ChannelEntry::new(
-                    id,
-                    source,
-                    display_label,
-                    channel_type,
-                    type_name,
-                    type_size,
-                    wrap,
-                    iter,
-                ),
-            );
-            state.logs.insert(id, ChannelEntryLogs::new());
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, wrap));
+            entry.source = source;
+            entry.label = display_label;
+            entry.channel_type = channel_type;
+            entry.type_name = type_name;
+            entry.type_size = type_size;
+            entry.wrap = wrap;
+            entry.iter = iter;
+            if wrap && entry.proc_hist.is_none() {
+                entry.proc_hist = Some(ChannelEntry::new_histogram());
+            }
+            state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
         }
         ChannelEvent::MessageSent { id, log, timestamp } => {
             let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.sent_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false));
+            channel_stats.sent_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            let sent_count = channel_stats.sent_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.sent_logs.len() >= limit {
+                entry_logs.sent_logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let sent_count = state.stats.get(&id).map_or(0, |s| s.sent_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.sent_logs.len() >= limit {
-                    entry_logs.sent_logs.pop_front();
-                }
-                entry_logs
-                    .sent_logs
-                    .push_back(DataFlowLogEntry::new(sent_count, ts_ns, log, None, None));
-            }
+            entry_logs
+                .sent_logs
+                .push_back(DataFlowLogEntry::new(sent_count, ts_ns, log, None, None));
         }
         ChannelEvent::MessageReceived { id, timestamp } => {
             let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.received_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false));
+            channel_stats.received_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            let received_count = channel_stats.received_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.received_logs.len() >= limit {
+                entry_logs.received_logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.received_logs.len() >= limit {
-                    entry_logs.received_logs.pop_front();
-                }
-                entry_logs.received_logs.push_back(DataFlowLogEntry::new(
-                    received_count,
-                    ts_ns,
-                    None,
-                    None,
-                    None,
-                ));
-            }
+            entry_logs.received_logs.push_back(DataFlowLogEntry::new(
+                received_count,
+                ts_ns,
+                None,
+                None,
+                None,
+            ));
         }
         ChannelEvent::WrapMessageSent {
             id,
@@ -457,26 +473,28 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             queue_len,
         } => {
             let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.sent_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
-                channel_stats.record_queue(queue_len);
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, true));
+            channel_stats.sent_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            channel_stats.record_queue(queue_len);
+            let sent_count = channel_stats.sent_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.sent_logs.len() >= limit {
+                entry_logs.sent_logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let sent_count = state.stats.get(&id).map_or(0, |s| s.sent_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.sent_logs.len() >= limit {
-                    entry_logs.sent_logs.pop_front();
-                }
-                entry_logs.sent_logs.push_back(DataFlowLogEntry::new(
-                    sent_count,
-                    ts_ns,
-                    log,
-                    None,
-                    Some(msg_id),
-                ));
-            }
+            entry_logs.sent_logs.push_back(DataFlowLogEntry::new(
+                sent_count,
+                ts_ns,
+                log,
+                None,
+                Some(msg_id),
+            ));
         }
         ChannelEvent::WrapMessageReceived {
             id,
@@ -486,38 +504,44 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             delay_nanos,
         } => {
             let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.received_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
-                channel_stats.record_queue(queue_len);
-                channel_stats.record_proc(delay_nanos);
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, true));
+            channel_stats.received_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            channel_stats.record_queue(queue_len);
+            channel_stats.record_proc(delay_nanos);
+            let received_count = channel_stats.received_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.received_logs.len() >= limit {
+                entry_logs.received_logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.received_logs.len() >= limit {
-                    entry_logs.received_logs.pop_front();
-                }
-                entry_logs.received_logs.push_back(DataFlowLogEntry::new(
-                    received_count,
-                    ts_ns,
-                    None,
-                    None,
-                    Some(msg_id),
-                ));
-            }
+            entry_logs.received_logs.push_back(DataFlowLogEntry::new(
+                received_count,
+                ts_ns,
+                None,
+                None,
+                Some(msg_id),
+            ));
         }
         ChannelEvent::Closed { id } => {
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.state = ChannelState::Closed;
-            }
+            state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false))
+                .state = ChannelState::Closed;
         }
         ChannelEvent::Notified { id } => {
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                if channel_stats.state != ChannelState::Closed {
-                    channel_stats.state = ChannelState::Notified;
-                }
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false));
+            if channel_stats.state != ChannelState::Closed {
+                channel_stats.state = ChannelState::Notified;
             }
         }
     }
