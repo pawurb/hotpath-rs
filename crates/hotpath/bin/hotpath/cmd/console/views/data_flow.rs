@@ -52,13 +52,13 @@ fn state_style(state: &str) -> Style {
 fn list_block(
     title: impl Into<std::borrow::Cow<'static, str>>,
     show_logs: bool,
-    focus: DataFlowFocus,
+    list_focused: bool,
     position: usize,
     total: usize,
 ) -> Block<'static> {
     let title: std::borrow::Cow<'static, str> = title.into();
     if show_logs {
-        let border_set = if focus == DataFlowFocus::List {
+        let border_set = if list_focused {
             border::THICK
         } else {
             border::PLAIN
@@ -67,7 +67,7 @@ fn list_block(
             .title(format!(" [{}/{}] ", position, total))
             .title(Span::styled(title, common_styles::TITLE_STYLE_YELLOW))
             .border_set(border_set)
-            .border_style(if focus == DataFlowFocus::List {
+            .border_style(if list_focused {
                 Style::default()
             } else {
                 common_styles::UNFOCUSED_BORDER_STYLE
@@ -178,7 +178,7 @@ pub(crate) fn render_channels_panel(
         .block(list_block(
             " Channels - message flow ",
             show_logs,
-            focus,
+            focus == DataFlowFocus::List,
             position,
             total,
         ))
@@ -235,7 +235,7 @@ pub(crate) fn render_streams_panel(
         .block(list_block(
             " Streams - items yielded ",
             show_logs,
-            focus,
+            focus == DataFlowFocus::List,
             position,
             total,
         ))
@@ -300,7 +300,7 @@ pub(crate) fn render_futures_panel(
         .block(list_block(
             " Futures - poll lifecycle ",
             show_logs,
-            focus,
+            focus == DataFlowFocus::List,
             position,
             total,
         ))
@@ -460,13 +460,7 @@ fn render_rw_locks_subtable(
 
     let table = Table::new(rows, widths)
         .header(header)
-        .block(list_block(
-            title,
-            false,
-            DataFlowFocus::List,
-            position,
-            total,
-        ))
+        .block(list_block(title, false, true, position, total))
         .column_spacing(1)
         .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
         .highlight_symbol(">> ")
@@ -561,7 +555,7 @@ pub(crate) fn render_mutexes_panel(
         .block(list_block(
             " Mutexes - wait & acquire time ",
             false,
-            DataFlowFocus::List,
+            true,
             position,
             total,
         ))
@@ -582,6 +576,8 @@ pub(crate) fn render_sql_panel(
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
+    show_logs: bool,
+    list_focused: bool,
     position: usize,
     total: usize,
 ) {
@@ -640,8 +636,8 @@ pub(crate) fn render_sql_panel(
                 " SQL - query execution time (total: {}) ",
                 hotpath::format_duration(total_ns)
             ),
-            false,
-            DataFlowFocus::List,
+            show_logs,
+            list_focused,
             position,
             total,
         ))

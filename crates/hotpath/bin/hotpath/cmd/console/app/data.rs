@@ -36,6 +36,10 @@ impl App {
                 self.auto_expand_logs = false;
                 self.toggle_data_flow_logs();
             }
+            SelectedTab::Io if self.io_entries_len() > 0 => {
+                self.auto_expand_logs = false;
+                self.toggle_sql_logs();
+            }
             SelectedTab::Debug if !self.debug_stats.is_empty() => {
                 self.auto_expand_logs = false;
                 self.toggle_debug_logs();
@@ -316,14 +320,49 @@ impl App {
     }
 
     pub(crate) fn update_sql(&mut self, sql: JsonSqlList) {
+        let selected_id = self.selected_sql_id();
         self.sql = sql;
         self.last_successful_fetch = Some(Instant::now());
         self.error_message = None;
 
         let len = self.sql.data.len();
-        if let Some(selected) = self.sql_table_state.selected() {
+        // Entries re-sort by total time on every refresh; follow the selected
+        // query by id so the cursor (and its open logs) don't jump rows.
+        if let Some(id) = selected_id {
+            if let Some(new_idx) = self.sql.data.iter().position(|e| e.id == id) {
+                self.sql_table_state.select(Some(new_idx));
+            } else if len > 0 {
+                self.sql_table_state.select(Some(len - 1));
+            }
+        } else if let Some(selected) = self.sql_table_state.selected() {
             if selected >= len && len > 0 {
                 self.sql_table_state.select(Some(len - 1));
+            }
+        }
+
+        if self.show_sql_logs {
+            self.request_sql_logs();
+        }
+        self.try_auto_expand_logs();
+    }
+
+    pub(crate) fn request_sql_logs(&self) {
+        if self.paused {
+            return;
+        }
+
+        if let Some(id) = self.selected_sql_id() {
+            let _ = self.request_tx.send(DataRequest::FetchSqlLogs(id));
+        }
+    }
+
+    pub(crate) fn handle_sql_logs(&mut self, _id: u32, logs: hotpath::json::JsonSqlLogsList) {
+        self.sql_logs = Some(logs);
+
+        let log_count = self.sql_logs.as_ref().map(|l| l.logs.len()).unwrap_or(0);
+        if let Some(selected) = self.sql_logs_table_state.selected() {
+            if selected >= log_count && log_count > 0 {
+                self.sql_logs_table_state.select(Some(log_count - 1));
             }
         }
     }
@@ -658,6 +697,13 @@ impl App {
             | DataResponse::FutureLogsNotFound { .. } => {
                 self.data_flow_logs = None;
             }
+            DataResponse::SqlLogs { id, logs } => {
+                trace!("Received sql {} logs: {} entries", id, logs.logs.len());
+                self.handle_sql_logs(id, logs);
+            }
+            DataResponse::SqlLogsNotFound { .. } => {
+                self.sql_logs = None;
+            }
             DataResponse::Threads(data) => {
                 trace!("Received threads data: {} threads", data.data.len());
                 self.loading_threads = false;
@@ -704,6 +750,7 @@ impl App {
                 warn!("Data fetch error: {}", e);
                 self.loading_functions = false;
                 self.loading_data_flow = false;
+                self.loading_io = false;
                 self.loading_threads = false;
                 self.loading_debug = false;
                 self.loading_runtime = false;

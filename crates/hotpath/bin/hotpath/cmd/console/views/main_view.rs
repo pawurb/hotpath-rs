@@ -1,6 +1,6 @@
 use crate::cmd::console::app::{
     App, DataFlowFocus, DataFlowLogs, DataFlowSubTab, DebugFocus, FunctionsFocus, FunctionsSubTab,
-    IoSubTab, SelectedTab,
+    IoFocus, IoSubTab, SelectedTab,
 };
 use crate::cmd::console::views::data_flow::{inspect as data_flow_inspect, logs as data_flow_logs};
 use crate::cmd::console::views::debug::{inspect as debug_inspect, logs as debug_logs};
@@ -10,10 +10,12 @@ use crate::cmd::console::views::functions_memory::{
 use crate::cmd::console::views::functions_timing::{
     inspect as timing_inspect, logs as timing_logs,
 };
+use crate::cmd::console::views::io::{inspect as io_inspect, logs as io_logs};
 use crate::cmd::console::views::{
     bottom_bar, data_flow, debug, functions_cpu, functions_memory, functions_timing, runtime,
     threads, top_bar,
 };
+use crate::cmd::console::widgets::formatters::truncate_message;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -102,6 +104,7 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         app.data_flow_focus,
         app.functions_focus,
         app.debug_focus,
+        app.io_focus,
     );
 }
 
@@ -325,6 +328,16 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
+    let (table_area, logs_area) = if app.show_sql_logs {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+        (chunks[0], Some(chunks[1]))
+    } else {
+        (area, None)
+    };
+
     let selected_index = app.sql_table_state.selected().unwrap_or(0);
     let position = selected_index + 1;
 
@@ -333,13 +346,50 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
             &app.sql.data,
             &app.sql.percentiles,
             app.sql.total_ns,
-            area,
+            table_area,
             frame,
             &mut app.sql_table_state,
+            app.show_sql_logs,
+            app.io_focus == IoFocus::List,
             position,
             total,
         ),
     };
+
+    if let Some(logs_area) = logs_area {
+        let label = app
+            .sql_table_state
+            .selected()
+            .and_then(|i| app.sql.data.get(i))
+            .map(|e| truncate_message(&e.query, 48))
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        if let Some(ref logs) = app.sql_logs {
+            io_logs::render_sql_logs_panel(
+                logs,
+                &label,
+                logs_area,
+                frame,
+                &mut app.sql_logs_table_state,
+                app.io_focus == IoFocus::Logs,
+            );
+        } else {
+            let message = if app.paused {
+                "(refresh paused)"
+            } else if app.error_message.is_some() {
+                "(cannot fetch new data)"
+            } else {
+                "(no data)"
+            };
+            data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
+        }
+    }
+
+    if app.io_focus == IoFocus::Inspect {
+        if let Some(ref inspected) = app.inspected_sql_log {
+            io_inspect::render_sql_inspect_popup(inspected, area, frame);
+        }
+    }
 }
 
 #[hotpath::measure]

@@ -126,6 +126,24 @@ pub(crate) struct StreamLogs {
     pub logs: Vec<DataFlowLogEntry>,
 }
 
+/// A single logged execution of a SQL query bucket. `query` holds the
+/// *normalized* statement text - bound params and inline literals are never
+/// captured.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct SqlLogEntry {
+    pub index: u64,
+    pub timestamp: u64,
+    pub duration_nanos: u64,
+    pub query: String,
+}
+
+/// Serializable log response containing recent executions for a SQL query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct SqlLogs {
+    pub id: u32,
+    pub logs: Vec<SqlLogEntry>,
+}
+
 /// State of an instrumented future.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -309,6 +327,8 @@ pub enum Route {
     Mutexes,
     /// GET /sql - Returns SQL query statistics
     Sql,
+    /// GET /sql/{id}/logs - Returns recent executions for a SQL query
+    SqlLogs { sql_id: u32 },
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
     /// GET /profiler_status - Returns profiler uptime
@@ -343,6 +363,7 @@ impl Route {
             Route::RwLocks => "/rw_locks".to_string(),
             Route::Mutexes => "/mutexes".to_string(),
             Route::Sql => "/sql".to_string(),
+            Route::SqlLogs { sql_id } => format!("/sql/{}/logs", sql_id),
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
         }
@@ -414,6 +435,10 @@ impl FromStr for Route {
 
         if let Some(future_id) = parse_id_from_path(path, "/futures/") {
             return Ok(Route::FutureLogs { future_id });
+        }
+
+        if let Some(sql_id) = parse_id_from_path(path, "/sql/") {
+            return Ok(Route::SqlLogs { sql_id });
         }
 
         Err(())

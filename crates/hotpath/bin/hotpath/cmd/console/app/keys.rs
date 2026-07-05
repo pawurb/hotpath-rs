@@ -1,7 +1,7 @@
 //! Keyboard event handling for the TUI
 
 use crate::cmd::console::app::{
-    App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, SelectedTab,
+    App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, IoFocus, SelectedTab,
 };
 use crate::cmd::console::constants::SAMPLY_LOAD_DISABLED;
 use crate::cmd::console::events::DataRequest;
@@ -245,17 +245,59 @@ impl App {
     }
 
     fn handle_io_key(&mut self, key_code: KeyCode) {
-        match key_code {
-            KeyCode::Down | KeyCode::Char('j') => self.select_next_io(),
-            KeyCode::Up | KeyCode::Char('k') => self.select_previous_io(),
-            KeyCode::Char('G') => {
-                self.pending_g = None;
-                self.last_io();
-            }
-            KeyCode::Char('g') if self.handle_g_key() => {
-                self.first_io();
-            }
-            _ => {}
+        match self.io_focus {
+            IoFocus::List => match key_code {
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_io(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_io(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_io();
+                }
+                KeyCode::Char('g') if self.handle_g_key() => {
+                    self.first_io();
+                }
+                KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_sql_logs(),
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => self.focus_sql_logs(),
+                _ => {}
+            },
+            IoFocus::Logs => match key_code {
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_sql_log(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_sql_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_sql_log();
+                }
+                KeyCode::Char('g') if self.handle_g_key() => {
+                    self.first_sql_log();
+                }
+                KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
+                    self.toggle_sql_inspect()
+                }
+                KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => self.focus_io_list(),
+                KeyCode::Esc | KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_sql_logs(),
+                _ => {}
+            },
+            IoFocus::Inspect => match key_code {
+                KeyCode::Esc | KeyCode::Char('o') | KeyCode::Char('O') => {
+                    self.close_sql_inspect_and_refocus()
+                }
+                KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => {
+                    self.close_sql_inspect_only()
+                }
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_sql_log(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_sql_log(),
+                KeyCode::Char('G') => {
+                    self.pending_g = None;
+                    self.last_sql_log();
+                }
+                KeyCode::Char('g') if self.handle_g_key() => {
+                    self.first_sql_log();
+                }
+                KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
+                    self.toggle_sql_inspect()
+                }
+                _ => {}
+            },
         }
     }
 

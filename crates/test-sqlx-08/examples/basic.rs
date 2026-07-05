@@ -79,5 +79,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tx.commit().await?;
 
     println!("sqlx 0.8 tracing-layer example completed!");
+
+    // Keeps the process (and metrics server) alive so integration tests can
+    // poll the HTTP endpoints mid-run.
+    if let Ok(secs) = std::env::var("TEST_SLEEP_SECONDS") {
+        let secs: u64 = secs.parse().unwrap_or(0);
+        tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
+    }
+
     Ok(())
 }
