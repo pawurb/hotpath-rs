@@ -1,6 +1,8 @@
 //! Futures instrumentation module - tracks async Future lifecycle and poll statistics.
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+#[cfg(not(feature = "hotpath-lockless"))]
+use crate::batch::{register_thread_batch, BatchRegistry};
+use crate::batch::{BatchedMeasurement, MeasurementBatch};
 use crate::channels::{resolve_label, LOGS_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{
@@ -201,27 +203,46 @@ pub(crate) struct FuturesState {
 
 pub(crate) static FUTURES_STATE: OnceLock<FuturesState> = OnceLock::new();
 
-static EVENT_REGISTRY: BatchRegistry<FutureEvent> = BatchRegistry::new();
-
-thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<FutureEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
-}
-
-#[inline]
-pub(crate) fn send_future_event(event: FutureEvent) {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-lockless")] {
+        thread_local! {
+            static EVENT_BATCH: std::cell::RefCell<MeasurementBatch<FutureEvent>> =
+                std::cell::RefCell::new(MeasurementBatch::new());
         }
-    });
-}
 
-/// Flushes every thread's buffered future events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_future_batch() {
-    EVENT_REGISTRY.flush_all();
+        #[inline]
+        pub(crate) fn send_future_event(event: FutureEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| b.borrow_mut().add(event));
+        }
+
+        pub(crate) fn flush_future_batch() {
+            EVENT_BATCH.with(|b| b.borrow_mut().flush());
+        }
+    } else {
+        static EVENT_REGISTRY: BatchRegistry<FutureEvent> = BatchRegistry::new();
+
+        thread_local! {
+            static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<FutureEvent>>> =
+                register_thread_batch(&EVENT_REGISTRY);
+        }
+
+        #[inline]
+        pub(crate) fn send_future_event(event: FutureEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| {
+                if let Ok(mut b) = b.lock() {
+                    b.add(event);
+                }
+            });
+        }
+
+        /// Flushes every thread's buffered future events into the worker channel.
+        /// Called at shutdown before the worker is signalled to stop.
+        pub(crate) fn flush_future_batch() {
+            EVENT_REGISTRY.flush_all();
+        }
+    }
 }
 
 impl BatchedMeasurement for FutureEvent {

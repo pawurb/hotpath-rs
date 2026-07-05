@@ -1,3 +1,4 @@
+#[cfg(not(feature = "hotpath-lockless"))]
 use std::sync::{Arc, Mutex, Weak};
 
 pub(crate) const BATCH_SIZE: usize = 64;
@@ -89,10 +90,12 @@ impl<M: BatchedMeasurement> Drop for MeasurementBatch<M> {
 /// with buffered events that have not reached the worker. The registry holds a
 /// `Weak` to each batch so [`BatchRegistry::flush_all`] can drain them all from
 /// the shutting-down thread before the worker stops.
+#[cfg(not(feature = "hotpath-lockless"))]
 pub(crate) struct BatchRegistry<M: BatchedMeasurement> {
     batches: Mutex<Vec<Weak<Mutex<MeasurementBatch<M>>>>>,
 }
 
+#[cfg(not(feature = "hotpath-lockless"))]
 impl<M: BatchedMeasurement> BatchRegistry<M> {
     pub(crate) const fn new() -> Self {
         Self {
@@ -122,6 +125,7 @@ impl<M: BatchedMeasurement> BatchRegistry<M> {
 }
 
 /// Creates a fresh per-thread batch and registers it for shutdown draining.
+#[cfg(not(feature = "hotpath-lockless"))]
 pub(crate) fn register_thread_batch<M: BatchedMeasurement>(
     registry: &'static BatchRegistry<M>,
 ) -> Arc<Mutex<MeasurementBatch<M>>> {

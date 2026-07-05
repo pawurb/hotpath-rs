@@ -19,7 +19,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+#[cfg(not(feature = "hotpath-lockless"))]
+use crate::batch::{register_thread_batch, BatchRegistry};
+use crate::batch::{BatchedMeasurement, MeasurementBatch};
 use crate::instant::Instant;
 use crate::lib_on::hotpath_guard::{
     WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
@@ -143,27 +145,46 @@ pub(crate) fn get_sql_json() -> crate::json::JsonSqlList {
     )
 }
 
-static EVENT_REGISTRY: BatchRegistry<SqlEvent> = BatchRegistry::new();
-
-thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<SqlEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
-}
-
-#[inline]
-pub(crate) fn send_sql_event(event: SqlEvent) {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-lockless")] {
+        thread_local! {
+            static EVENT_BATCH: std::cell::RefCell<MeasurementBatch<SqlEvent>> =
+                std::cell::RefCell::new(MeasurementBatch::new());
         }
-    });
-}
 
-/// Flushes every thread's buffered SQL events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_sql_batch() {
-    EVENT_REGISTRY.flush_all();
+        #[inline]
+        pub(crate) fn send_sql_event(event: SqlEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| b.borrow_mut().add(event));
+        }
+
+        pub(crate) fn flush_sql_batch() {
+            EVENT_BATCH.with(|b| b.borrow_mut().flush());
+        }
+    } else {
+        static EVENT_REGISTRY: BatchRegistry<SqlEvent> = BatchRegistry::new();
+
+        thread_local! {
+            static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<SqlEvent>>> =
+                register_thread_batch(&EVENT_REGISTRY);
+        }
+
+        #[inline]
+        pub(crate) fn send_sql_event(event: SqlEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| {
+                if let Ok(mut b) = b.lock() {
+                    b.add(event);
+                }
+            });
+        }
+
+        /// Flushes every thread's buffered SQL events into the worker channel.
+        /// Called at shutdown before the worker is signalled to stop.
+        pub(crate) fn flush_sql_batch() {
+            EVENT_REGISTRY.flush_all();
+        }
+    }
 }
 
 impl BatchedMeasurement for SqlEvent {

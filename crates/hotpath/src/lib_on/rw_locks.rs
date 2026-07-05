@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+#[cfg(not(feature = "hotpath-lockless"))]
+use crate::batch::{register_thread_batch, BatchRegistry};
+use crate::batch::{BatchedMeasurement, MeasurementBatch};
 use crate::instant::Instant;
 use crate::lib_on::hotpath_guard::{
     WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
@@ -184,27 +186,46 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
-static EVENT_REGISTRY: BatchRegistry<RwLockEvent> = BatchRegistry::new();
-
-thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<RwLockEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
-}
-
-#[inline]
-pub(crate) fn send_rw_lock_event(event: RwLockEvent) {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-lockless")] {
+        thread_local! {
+            static EVENT_BATCH: std::cell::RefCell<MeasurementBatch<RwLockEvent>> =
+                std::cell::RefCell::new(MeasurementBatch::new());
         }
-    });
-}
 
-/// Flushes every thread's buffered rw_lock events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_rw_lock_batch() {
-    EVENT_REGISTRY.flush_all();
+        #[inline]
+        pub(crate) fn send_rw_lock_event(event: RwLockEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| b.borrow_mut().add(event));
+        }
+
+        pub(crate) fn flush_rw_lock_batch() {
+            EVENT_BATCH.with(|b| b.borrow_mut().flush());
+        }
+    } else {
+        static EVENT_REGISTRY: BatchRegistry<RwLockEvent> = BatchRegistry::new();
+
+        thread_local! {
+            static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<RwLockEvent>>> =
+                register_thread_batch(&EVENT_REGISTRY);
+        }
+
+        #[inline]
+        pub(crate) fn send_rw_lock_event(event: RwLockEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| {
+                if let Ok(mut b) = b.lock() {
+                    b.add(event);
+                }
+            });
+        }
+
+        /// Flushes every thread's buffered rw_lock events into the worker channel.
+        /// Called at shutdown before the worker is signalled to stop.
+        pub(crate) fn flush_rw_lock_batch() {
+            EVENT_REGISTRY.flush_all();
+        }
+    }
 }
 
 impl BatchedMeasurement for RwLockEvent {

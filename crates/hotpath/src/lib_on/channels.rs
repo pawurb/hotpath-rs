@@ -14,7 +14,9 @@ pub(crate) mod wrapper;
 
 use std::mem;
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+#[cfg(not(feature = "hotpath-lockless"))]
+use crate::batch::{register_thread_batch, BatchRegistry};
+use crate::batch::{BatchedMeasurement, MeasurementBatch};
 use crate::json::JsonChannelEntry;
 pub(crate) use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
 use crate::lib_on::hotpath_guard::{
@@ -89,31 +91,62 @@ fn register_channel_inner<T>(
     id
 }
 
-static EVENT_REGISTRY: BatchRegistry<ChannelEvent> = BatchRegistry::new();
-
-thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<ChannelEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
-}
-
-#[inline]
-pub(crate) fn send_channel_event(event: ChannelEvent) {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
-    // recv, or `Closed` on drop) from a producer thread that is tearing down, when
-    // this thread-local may already be destroyed. Dropping the event is fine;
-    // panicking in a `Drop` would abort the process.
-    let _ = EVENT_BATCH.try_with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-lockless")] {
+        thread_local! {
+            static EVENT_BATCH: std::cell::RefCell<MeasurementBatch<ChannelEvent>> =
+                std::cell::RefCell::new(MeasurementBatch::new());
         }
-    });
-}
 
-/// Flushes every thread's buffered channel events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_channel_batch() {
-    EVENT_REGISTRY.flush_all();
+        #[inline]
+        pub(crate) fn send_channel_event(event: ChannelEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
+            // recv, or `Closed` on drop) from a producer thread that is tearing down, when
+            // this thread-local may already be destroyed. Dropping the event is fine;
+            // panicking in a `Drop` would abort the process.
+            let _ = EVENT_BATCH.try_with(|b| {
+                if let Ok(mut b) = b.try_borrow_mut() {
+                    b.add(event);
+                }
+            });
+        }
+
+        pub(crate) fn flush_channel_batch() {
+            let _ = EVENT_BATCH.try_with(|b| {
+                if let Ok(mut b) = b.try_borrow_mut() {
+                    b.flush();
+                }
+            });
+        }
+    } else {
+        static EVENT_REGISTRY: BatchRegistry<ChannelEvent> = BatchRegistry::new();
+
+        thread_local! {
+            static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<ChannelEvent>>> =
+                register_thread_batch(&EVENT_REGISTRY);
+        }
+
+        #[inline]
+        pub(crate) fn send_channel_event(event: ChannelEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
+            // recv, or `Closed` on drop) from a producer thread that is tearing down, when
+            // this thread-local may already be destroyed. Dropping the event is fine;
+            // panicking in a `Drop` would abort the process.
+            let _ = EVENT_BATCH.try_with(|b| {
+                if let Ok(mut b) = b.lock() {
+                    b.add(event);
+                }
+            });
+        }
+
+        /// Flushes every thread's buffered channel events into the worker channel.
+        /// Called at shutdown before the worker is signalled to stop.
+        pub(crate) fn flush_channel_batch() {
+            EVENT_REGISTRY.flush_all();
+        }
+    }
 }
 
 impl BatchedMeasurement for ChannelEvent {

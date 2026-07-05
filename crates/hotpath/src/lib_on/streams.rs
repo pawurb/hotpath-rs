@@ -11,7 +11,9 @@ use crate::instant::Instant;
 
 pub(crate) mod wrapper;
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+#[cfg(not(feature = "hotpath-lockless"))]
+use crate::batch::{register_thread_batch, BatchRegistry};
+use crate::batch::{BatchedMeasurement, MeasurementBatch};
 use crate::channels::{resolve_label, LOGS_LIMIT};
 use crate::json::JsonStreamEntry;
 pub(crate) use crate::json::{ChannelState, DataFlowLogEntry, StreamLogs};
@@ -135,27 +137,46 @@ pub(crate) struct StreamsState {
 
 pub(crate) static STREAMS_STATE: OnceLock<StreamsState> = OnceLock::new();
 
-static EVENT_REGISTRY: BatchRegistry<StreamEvent> = BatchRegistry::new();
-
-thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<StreamEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
-}
-
-#[inline]
-pub(crate) fn send_stream_event(event: StreamEvent) {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-lockless")] {
+        thread_local! {
+            static EVENT_BATCH: std::cell::RefCell<MeasurementBatch<StreamEvent>> =
+                std::cell::RefCell::new(MeasurementBatch::new());
         }
-    });
-}
 
-/// Flushes every thread's buffered stream events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_stream_batch() {
-    EVENT_REGISTRY.flush_all();
+        #[inline]
+        pub(crate) fn send_stream_event(event: StreamEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| b.borrow_mut().add(event));
+        }
+
+        pub(crate) fn flush_stream_batch() {
+            EVENT_BATCH.with(|b| b.borrow_mut().flush());
+        }
+    } else {
+        static EVENT_REGISTRY: BatchRegistry<StreamEvent> = BatchRegistry::new();
+
+        thread_local! {
+            static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<StreamEvent>>> =
+                register_thread_batch(&EVENT_REGISTRY);
+        }
+
+        #[inline]
+        pub(crate) fn send_stream_event(event: StreamEvent) {
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            EVENT_BATCH.with(|b| {
+                if let Ok(mut b) = b.lock() {
+                    b.add(event);
+                }
+            });
+        }
+
+        /// Flushes every thread's buffered stream events into the worker channel.
+        /// Called at shutdown before the worker is signalled to stop.
+        pub(crate) fn flush_stream_batch() {
+            EVENT_REGISTRY.flush_all();
+        }
+    }
 }
 
 impl BatchedMeasurement for StreamEvent {
