@@ -42,12 +42,31 @@ use crate::channels::{
     InstrumentChannelWrap, InstrumentChannelWrapLog,
 };
 
-type Payload<T> = (u64, Instant, T);
+type Payload<T> = (u64, Option<Instant>, T);
 
 /// `send_ts` is stamped before the (possibly awaited) send, so it is always `<= now`.
 #[inline]
 fn delay_nanos(send_ts: Instant, now: Instant) -> u64 {
     now.duration_since(send_ts).as_nanos() as u64
+}
+
+/// Send-side sampling decision keyed on `msg_id % k`; `None` skips the clock
+/// read and travels in the payload so the receiver skips its read too.
+#[inline]
+fn sample_stamp(msg_id: u64) -> Option<Instant> {
+    crate::lib_on::sampling::channels_should_time(msg_id).then(Instant::now)
+}
+
+/// A `Some` payload stamp means the message is sampled: stamp `now`, compute the delay.
+#[inline]
+fn recv_stamp(send_ts: Option<Instant>) -> (Option<Instant>, Option<u64>) {
+    match send_ts {
+        Some(ts) => {
+            let now = Instant::now();
+            (Some(now), Some(delay_nanos(ts, now)))
+        }
+        None => (None, None),
+    }
 }
 
 #[inline]
@@ -58,17 +77,29 @@ fn clamp_to_capacity(queue_len: usize, capacity: Option<usize>) -> usize {
     }
 }
 
-fn emit_sent(id: u32, msg_id: u64, sent_at: Instant, log: Option<String>, queue_len: usize) {
+fn emit_sent(
+    id: u32,
+    msg_id: u64,
+    sent_at: Option<Instant>,
+    log: Option<String>,
+    queue_len: usize,
+) {
     send_channel_event(ChannelEvent::WrapMessageSent {
         id,
         msg_id,
         log,
-        timestamp: sent_at,
+        timestamp: crate::channels::anchor_first_msg(msg_id, sent_at),
         queue_len,
     });
 }
 
-fn emit_received(id: u32, msg_id: u64, now: Instant, queue_len: usize, delay_nanos: u64) {
+fn emit_received(
+    id: u32,
+    msg_id: u64,
+    now: Option<Instant>,
+    queue_len: usize,
+    delay_nanos: Option<u64>,
+) {
     send_channel_event(ChannelEvent::WrapMessageReceived {
         id,
         msg_id,
@@ -93,7 +124,7 @@ impl<T> Sender<T> {
     pub async fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = Instant::now();
+        let sent_at = sample_stamp(msg_id);
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
         match self.inner.send((msg_id, sent_at, msg)).await {
             Ok(()) => {
@@ -110,7 +141,7 @@ impl<T> Sender<T> {
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = Instant::now();
+        let sent_at = sample_stamp(msg_id);
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
         match self.inner.try_send((msg_id, sent_at, msg)) {
             Ok(()) => {
@@ -168,7 +199,7 @@ pub struct Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    fn on_received(&self, msg_id: u64, now: Instant, delay_nanos: u64) {
+    fn on_received(&self, msg_id: u64, now: Option<Instant>, delay_nanos: Option<u64>) {
         let queue_len = clamp_to_capacity(
             self.depth.fetch_sub(1, Ordering::Relaxed) - 1,
             self.capacity,
@@ -178,15 +209,15 @@ impl<T> Receiver<T> {
 
     pub async fn recv(&mut self) -> Option<T> {
         let (msg_id, send_ts, msg) = self.inner.recv().await?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
+        let (now, delay) = recv_stamp(send_ts);
+        self.on_received(msg_id, now, delay);
         Some(msg)
     }
 
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         let (msg_id, send_ts, msg) = self.inner.try_recv()?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
+        let (now, delay) = recv_stamp(send_ts);
+        self.on_received(msg_id, now, delay);
         Ok(msg)
     }
 }
@@ -211,7 +242,7 @@ impl<T> UnboundedSender<T> {
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = Instant::now();
+        let sent_at = sample_stamp(msg_id);
         let queue_len = self.depth.fetch_add(1, Ordering::Relaxed) + 1;
         match self.inner.send((msg_id, sent_at, msg)) {
             Ok(()) => {
@@ -256,22 +287,22 @@ pub struct UnboundedReceiver<T> {
 }
 
 impl<T> UnboundedReceiver<T> {
-    fn on_received(&self, msg_id: u64, now: Instant, delay_nanos: u64) {
+    fn on_received(&self, msg_id: u64, now: Option<Instant>, delay_nanos: Option<u64>) {
         let queue_len = self.depth.fetch_sub(1, Ordering::Relaxed) - 1;
         emit_received(self.id, msg_id, now, queue_len, delay_nanos);
     }
 
     pub async fn recv(&mut self) -> Option<T> {
         let (msg_id, send_ts, msg) = self.inner.recv().await?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
+        let (now, delay) = recv_stamp(send_ts);
+        self.on_received(msg_id, now, delay);
         Some(msg)
     }
 
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         let (msg_id, send_ts, msg) = self.inner.try_recv()?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
+        let (now, delay) = recv_stamp(send_ts);
+        self.on_received(msg_id, now, delay);
         Ok(msg)
     }
 }

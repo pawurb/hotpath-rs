@@ -4,7 +4,8 @@ use tokio::sync::Mutex as TokioMutex;
 
 use crate::instant::Instant;
 use crate::mutexes::{
-    elapsed_nanos, register_mutex, send_mutex_event, InstrumentMutex, MutexEvent,
+    cancel_wait_stamp, elapsed_nanos, register_mutex, send_mutex_event, wait_stamp,
+    InstrumentMutex, MutexEvent,
 };
 
 /// Instrumented drop-in replacement for [`tokio::sync::Mutex`].
@@ -40,16 +41,18 @@ impl<T> Mutex<T> {
 
     pub async fn lock(&self) -> MutexGuard<'_, T> {
         // Stamp before acquisition to measure wait time; the guard then measures acquire time.
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         let inner = self.inner.lock().await;
-        self.guard(inner, elapsed_nanos(wait_start))
+        self.guard(inner, wait_start.map(elapsed_nanos))
     }
 
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, tokio::sync::TryLockError> {
-        let wait_start = Instant::now();
-        self.inner
-            .try_lock()
-            .map(|inner| self.guard(inner, elapsed_nanos(wait_start)))
+        let wait_start = wait_stamp();
+        let inner = self.inner.try_lock();
+        if inner.is_err() {
+            cancel_wait_stamp();
+        }
+        inner.map(|inner| self.guard(inner, wait_start.map(elapsed_nanos)))
     }
 
     pub fn into_inner(self) -> T {
@@ -63,11 +66,11 @@ impl<T> Mutex<T> {
     fn guard<'a>(
         &'a self,
         inner: tokio::sync::MutexGuard<'a, T>,
-        wait_nanos: u64,
+        wait_nanos: Option<u64>,
     ) -> MutexGuard<'a, T> {
         MutexGuard {
             inner: Some(inner),
-            start: Instant::now(),
+            start: wait_nanos.map(|_| Instant::now()),
             wait_nanos,
             id: self.id,
         }
@@ -78,8 +81,8 @@ impl<T> Mutex<T> {
 #[must_use = "if unused the Mutex will immediately unlock"]
 pub struct MutexGuard<'a, T> {
     inner: Option<tokio::sync::MutexGuard<'a, T>>,
-    start: Instant,
-    wait_nanos: u64,
+    start: Option<Instant>,
+    wait_nanos: Option<u64>,
     id: u32,
 }
 
@@ -101,11 +104,13 @@ impl<T> Drop for MutexGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        let now = Instant::now();
+        let acquire_nanos = self
+            .start
+            .map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         send_mutex_event(MutexEvent::Released {
             id: self.id,
             wait_nanos: self.wait_nanos,
-            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
+            acquire_nanos,
         });
     }
 }

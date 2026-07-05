@@ -71,19 +71,20 @@ pub(crate) fn render_inspect_popup(
         let inner_area = block.inner(popup_area);
         frame.render_widget(block, popup_area);
 
-        let avg_poll = match call.total_poll_duration_ns.checked_div(call.poll_count) {
-            Some(avg) => format_duration(avg),
-            None => "-".to_string(),
-        };
-        let total_poll = if call.poll_count > 0 {
-            format_duration(call.total_poll_duration_ns)
+        let (avg_poll, max_poll, total_poll) = if call.poll_count == 0 {
+            ("-".to_string(), "-".to_string(), "-".to_string())
+        } else if call.sampled_polls == 0 {
+            ("N/A".to_string(), "N/A".to_string(), "N/A".to_string())
         } else {
-            "-".to_string()
-        };
-        let max_poll = if call.poll_count > 0 {
-            format_duration(call.max_poll_duration_ns)
-        } else {
-            "-".to_string()
+            (
+                format_duration(
+                    call.total_poll_duration_ns
+                        .checked_div(call.poll_count)
+                        .unwrap_or(0),
+                ),
+                format_duration(call.max_poll_duration_ns),
+                format_duration(call.total_poll_duration_ns),
+            )
         };
 
         let details_text = format!(

@@ -167,11 +167,16 @@ pub(crate) fn render_logs_panel(
                 .total_poll_alloc_bytes
                 .map(format_bytes)
                 .unwrap_or_else(|| "-".to_string());
+            let no_sampled_polls = future_logs.total_polls > 0
+                && future_logs.calls.iter().all(|c| c.sampled_polls == 0);
+            let total_time = if no_sampled_polls {
+                "N/A".to_string()
+            } else {
+                format_duration(future_logs.total_poll_duration_ns)
+            };
             let summary = format!(
                 "polls: {} | time: {} | alloc: {}",
-                future_logs.total_polls,
-                format_duration(future_logs.total_poll_duration_ns),
-                total_alloc,
+                future_logs.total_polls, total_time, total_alloc,
             );
 
             let [summary_area, table_area] =
@@ -186,10 +191,12 @@ pub(crate) fn render_logs_panel(
                 .calls
                 .iter()
                 .map(|call| {
-                    let total_poll = if call.poll_count > 0 {
-                        format_duration(call.total_poll_duration_ns)
-                    } else {
+                    let total_poll = if call.poll_count == 0 {
                         "-".to_string()
+                    } else if call.sampled_polls == 0 {
+                        "N/A".to_string()
+                    } else {
+                        format_duration(call.total_poll_duration_ns)
                     };
                     let alloc = call
                         .total_poll_alloc_bytes

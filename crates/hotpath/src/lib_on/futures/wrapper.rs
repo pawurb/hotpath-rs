@@ -52,6 +52,7 @@ pin_project! {
         call_id: u32,
         completed: bool,
         visible: bool,
+        timed: bool,
         alloc_bridge: Option<Arc<AsyncAllocBridge>>,
     }
 
@@ -78,7 +79,9 @@ impl<F: Future> InstrumentedFuture<F> {
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
-        let (future_id, call_id) = if visible {
+        // Per-call sampling decision: either every poll of this call is timed or
+        // none are, so per-call poll stats are exact rather than extrapolated.
+        let (future_id, call_id, timed) = if visible {
             ensure_futures_state();
             let (future_id, is_new) = get_or_create_future_id(location);
             let call_id = FUTURE_CALL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -92,9 +95,13 @@ impl<F: Future> InstrumentedFuture<F> {
             }
 
             send_future_event(FutureEvent::CallCreated { future_id, call_id });
-            (future_id, call_id)
+            (
+                future_id,
+                call_id,
+                crate::lib_on::sampling::futures_should_time(),
+            )
         } else {
-            (0, 0)
+            (0, 0, false)
         };
 
         drop(_suspend);
@@ -105,6 +112,7 @@ impl<F: Future> InstrumentedFuture<F> {
             call_id,
             completed: false,
             visible,
+            timed,
             alloc_bridge,
         }
     }
@@ -137,11 +145,11 @@ impl<F: Future> Future for InstrumentedFuture<F> {
         let future_id = *this.future_id;
         let call_id = *this.call_id;
 
-        let start = Instant::now();
+        let start = (*this.timed).then(Instant::now);
         let (result, poll_alloc_bytes, poll_alloc_count) =
             measure_poll_alloc(|| this.inner.poll(cx));
-        let end = Instant::now();
-        let poll_duration_ns = end.duration_since(start).as_nanos() as u64;
+        let poll_duration_ns =
+            start.map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         if let (Some(bytes), Some(count), Some(bridge)) = (
             poll_alloc_bytes,
             poll_alloc_count,
@@ -199,6 +207,7 @@ pin_project! {
         call_id: u32,
         completed: bool,
         visible: bool,
+        timed: bool,
         alloc_bridge: Option<Arc<AsyncAllocBridge>>,
     }
 
@@ -226,7 +235,9 @@ impl<F: Future> InstrumentedFutureLog<F> {
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
-        let (future_id, call_id) = if visible {
+        // Per-call sampling decision: either every poll of this call is timed or
+        // none are, so per-call poll stats are exact rather than extrapolated.
+        let (future_id, call_id, timed) = if visible {
             ensure_futures_state();
             let (future_id, is_new) = get_or_create_future_id(location);
             let call_id = FUTURE_CALL_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -240,9 +251,13 @@ impl<F: Future> InstrumentedFutureLog<F> {
             }
 
             send_future_event(FutureEvent::CallCreated { future_id, call_id });
-            (future_id, call_id)
+            (
+                future_id,
+                call_id,
+                crate::lib_on::sampling::futures_should_time(),
+            )
         } else {
-            (0, 0)
+            (0, 0, false)
         };
 
         drop(_suspend);
@@ -253,6 +268,7 @@ impl<F: Future> InstrumentedFutureLog<F> {
             call_id,
             completed: false,
             visible,
+            timed,
             alloc_bridge,
         }
     }
@@ -287,11 +303,11 @@ where
         let future_id = *this.future_id;
         let call_id = *this.call_id;
 
-        let start = Instant::now();
+        let start = (*this.timed).then(Instant::now);
         let (result, poll_alloc_bytes, poll_alloc_count) =
             measure_poll_alloc(|| this.inner.poll(cx));
-        let end = Instant::now();
-        let poll_duration_ns = end.duration_since(start).as_nanos() as u64;
+        let poll_duration_ns =
+            start.map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         if let (Some(bytes), Some(count), Some(bridge)) = (
             poll_alloc_bytes,
             poll_alloc_count,

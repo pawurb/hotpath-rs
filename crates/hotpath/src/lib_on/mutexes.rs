@@ -37,11 +37,12 @@ pub(crate) enum MutexEvent {
     },
     /// Emitted when a guard is dropped. `wait_nanos` is the time blocked
     /// before the lock was granted; `acquire_nanos` is the held duration
-    /// (granted -> released).
+    /// (granted -> released). Both `None` when timing was skipped under
+    /// time sampling; the event still counts the lock.
     Released {
         id: u32,
-        wait_nanos: u64,
-        acquire_nanos: u64,
+        wait_nanos: Option<u64>,
+        acquire_nanos: Option<u64>,
     },
 }
 
@@ -53,6 +54,7 @@ pub(crate) struct MutexEntry {
     pub(crate) label: Option<String>,
     pub(crate) type_name: &'static str,
     pub(crate) count: u64,
+    pub(crate) sampled_count: u64,
     pub(crate) wait_total_nanos: u64,
     pub(crate) acquire_total_nanos: u64,
     wait_hist: Option<Histogram<u64>>,
@@ -79,12 +81,14 @@ impl MutexEntry {
     }
 
     pub(crate) fn wait_avg_nanos(&self) -> u64 {
-        self.wait_total_nanos.checked_div(self.count).unwrap_or(0)
+        self.wait_total_nanos
+            .checked_div(self.sampled_count)
+            .unwrap_or(0)
     }
 
     pub(crate) fn acquire_avg_nanos(&self) -> u64 {
         self.acquire_total_nanos
-            .checked_div(self.count)
+            .checked_div(self.sampled_count)
             .unwrap_or(0)
     }
 
@@ -96,11 +100,11 @@ impl MutexEntry {
     }
 
     pub(crate) fn wait_percentile_nanos(&self, p: f64) -> u64 {
-        Self::percentile(&self.wait_hist, self.count, p)
+        Self::percentile(&self.wait_hist, self.sampled_count, p)
     }
 
     pub(crate) fn acquire_percentile_nanos(&self, p: f64) -> u64 {
-        Self::percentile(&self.acquire_hist, self.count, p)
+        Self::percentile(&self.acquire_hist, self.sampled_count, p)
     }
 }
 
@@ -141,6 +145,19 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
+/// One sampling decision per acquisition; `None` skips both clock read pairs.
+#[inline]
+pub(crate) fn wait_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::mutexes_should_time().then(Instant::now)
+}
+
+/// Rolls back a `wait_stamp` decision after a failed try-acquisition, so the
+/// sampling rate applies to acquisitions rather than attempts.
+#[inline]
+pub(crate) fn cancel_wait_stamp() {
+    crate::lib_on::sampling::mutexes_untime();
+}
+
 static EVENT_QUEUES: EventQueueRegistry<MutexEvent> = EventQueueRegistry::new();
 
 thread_local! {
@@ -171,6 +188,7 @@ fn placeholder_mutex_entry(id: u32) -> MutexEntry {
         label: None,
         type_name: "",
         count: 0,
+        sampled_count: 0,
         wait_total_nanos: 0,
         acquire_total_nanos: 0,
         wait_hist: Some(MutexEntry::new_histogram()),
@@ -207,10 +225,13 @@ fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
                 .entry(id)
                 .or_insert_with(|| placeholder_mutex_entry(id));
             entry.count += 1;
-            entry.wait_total_nanos += wait_nanos;
-            entry.acquire_total_nanos += acquire_nanos;
-            MutexEntry::record(&mut entry.wait_hist, wait_nanos);
-            MutexEntry::record(&mut entry.acquire_hist, acquire_nanos);
+            if let (Some(wait_nanos), Some(acquire_nanos)) = (wait_nanos, acquire_nanos) {
+                entry.sampled_count += 1;
+                entry.wait_total_nanos += wait_nanos;
+                entry.acquire_total_nanos += acquire_nanos;
+                MutexEntry::record(&mut entry.wait_hist, wait_nanos);
+                MutexEntry::record(&mut entry.acquire_hist, acquire_nanos);
+            }
         }
     }
 }
