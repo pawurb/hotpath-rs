@@ -15,9 +15,15 @@ pub(crate) fn configured_percentiles() -> Vec<f64> {
         .unwrap_or_else(|| vec![95.0])
 }
 
-pub(crate) const WORKER_SHUTDOWN_DRAIN_LIMIT: usize = 1_000;
-pub(crate) const WORKER_BATCH_SIZE: usize = 100;
-pub(crate) const WORKER_FLUSH_INTERVAL_MS: u64 = 50;
+const DEFAULT_DRAIN_INTERVAL_MS: u64 = 50;
+/// Interval between worker sweeps of the per-thread event queues. Lowering it
+/// bounds queue growth for high-traffic apps at the cost of more worker wakeups.
+pub(crate) static DRAIN_INTERVAL_MS: LazyLock<u64> = LazyLock::new(|| {
+    std::env::var("HOTPATH_META_DRAIN_INTERVAL")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_DRAIN_INTERVAL_MS)
+});
 
 const DEFAULT_LOGS_LIMIT: usize = 50;
 pub(crate) static LOGS_LIMIT: LazyLock<usize> = LazyLock::new(|| {
@@ -48,12 +54,12 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc-meta")] {
         use crate::functions::alloc::{
             report::{build_functions_list_alloc, build_functions_list_timing},
-            state::{FunctionStats, FunctionsState, process_measurement, flush_batch},
+            state::{FunctionStats, FunctionsState, drain_all_measurements, process_measurement, set_measurements_active, sweep_measurements},
         };
     } else {
         use crate::functions::timing::{
             report::build_functions_list,
-            state::{FunctionStats, FunctionsState, process_measurement, flush_batch},
+            state::{FunctionStats, FunctionsState, drain_all_measurements, process_measurement, set_measurements_active, sweep_measurements},
         };
     }
 }
@@ -77,6 +83,7 @@ pub struct HotpathGuardBuilder {
     output_path: Option<PathBuf>,
     sections: Option<Vec<Section>>,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
+    time_sampling: crate::lib_on::sampling::TimeSamplingConfig,
 }
 
 impl HotpathGuardBuilder {
@@ -96,6 +103,7 @@ impl HotpathGuardBuilder {
             output_path: None,
             sections: None,
             before_shutdown: None,
+            time_sampling: crate::lib_on::sampling::TimeSamplingConfig::default(),
         }
     }
 
@@ -162,6 +170,50 @@ impl HotpathGuardBuilder {
         self
     }
 
+    /// Sets the fraction of calls whose duration is measured, in `[0.0, 1.0]`
+    /// (e.g. `0.1` times 1 in 10 calls, `0.0` keeps exact counts but no
+    /// durations). Applies to functions, mutexes, rw_locks, futures, and wrap
+    /// channels; per-resource setters override it. Env vars
+    /// (`HOTPATH_META_TIME_SAMPLING_RATE` and per-resource variants) take precedence.
+    /// Under `hotpath-alloc-meta`, function durations respect the rate while
+    /// allocation metrics stay exact.
+    pub fn time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.global = Some(rate);
+        self
+    }
+
+    /// Fraction of function calls whose duration is measured. Overrides
+    /// [`time_sampling_rate`](Self::time_sampling_rate) for functions.
+    pub fn functions_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.functions = Some(rate);
+        self
+    }
+
+    /// Fraction of mutex acquisitions whose wait/acquire time is measured.
+    pub fn mutexes_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.mutexes = Some(rate);
+        self
+    }
+
+    /// Fraction of RwLock acquisitions whose wait/acquire time is measured.
+    pub fn rw_locks_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.rw_locks = Some(rate);
+        self
+    }
+
+    /// Fraction of future calls whose poll durations are measured; the
+    /// decision is made once per call, so a call has all polls timed or none.
+    pub fn futures_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.futures = Some(rate);
+        self
+    }
+
+    /// Fraction of wrap-channel messages whose send->receive latency is measured.
+    pub fn channels_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.channels = Some(rate);
+        self
+    }
+
     pub fn format(mut self, format: Format) -> Self {
         self.format = format;
         self
@@ -205,6 +257,8 @@ impl HotpathGuardBuilder {
     }
 
     pub fn build(self) -> HotpathGuard {
+        crate::lib_on::sampling::init_time_sampling_rate(&self.time_sampling);
+
         let sections = self.resolve_sections();
 
         HotpathGuard::new(
@@ -291,10 +345,6 @@ impl HotpathGuard {
             panic!("More than one _hotpath guard cannot be alive at the same time.");
         }
 
-        // Measurements ride their own channel; shutdown and queries ride dedicated
-        // control channels so the worker can drain them with priority via
-        // `Select::ready()` instead of behind a measurement backlog on one FIFO.
-        let (measurements_tx, measurements_rx) = unbounded::<Vec<Measurement>>();
         let (query_tx, query_rx) = unbounded::<FunctionsQuery>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<HashMap<u32, FunctionStats>>(1);
@@ -302,7 +352,6 @@ impl HotpathGuard {
         let start_time = Instant::now();
 
         let state_arc = Arc::new(RwLock::new(FunctionsState {
-            measurements_tx: Some(measurements_tx),
             shutdown_tx: Some(shutdown_tx),
             completion_rx: Some(Mutex::new(completion_rx)),
             start_time,
@@ -326,33 +375,33 @@ impl HotpathGuard {
                     name_to_id.insert(worker_caller_name, 0);
                 }
 
-                // Wait for readiness with `Select::ready()` (it dequeues nothing), then
-                // drain control channels (shutdown, then queries) BEFORE measurements so
-                // a saturated measurement backlog can never starve shutdown or a query.
+                // Measurements live in per-thread SPSC queues (see `batch.rs`); this
+                // worker is their single consumer and sweeps them on a fixed tick.
+                // Control channels (shutdown, queries) wake the worker early via
+                // `Select::ready_timeout` and are handled right after a sweep, so
+                // both shutdown and queries always see freshly drained data.
                 let mut select = Select::new();
                 let _shutdown_idx = select.recv(&shutdown_rx);
                 let _query_idx = select.recv(&query_rx);
-                let _meas_idx = select.recv(&measurements_rx);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<Measurement> = Vec::new();
 
                 loop {
-                    let _ = select.ready();
+                    let _ = select.ready_timeout(flush_interval);
 
+                    // Uncapped drain on shutdown: producers are already stopped,
+                    // there is no next tick to pick up capped-sweep leftovers.
                     if shutdown_rx.try_recv().is_ok() {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match measurements_rx.try_recv() {
-                                Ok(batch) => {
-                                    for measurement in batch {
-                                        process_measurement(
-                                            &mut local_stats,
-                                            &mut name_to_id,
-                                            measurement,
-                                        );
-                                    }
-                                }
-                                Err(_) => break,
-                            }
+                        drain_all_measurements(&mut swept);
+                        for measurement in swept.drain(..) {
+                            process_measurement(&mut local_stats, &mut name_to_id, measurement);
                         }
                         break;
+                    }
+
+                    sweep_measurements(&mut swept);
+                    for measurement in swept.drain(..) {
+                        process_measurement(&mut local_stats, &mut name_to_id, measurement);
                     }
 
                     while let Ok(query_request) = query_rx.try_recv() {
@@ -410,7 +459,7 @@ impl HotpathGuard {
                                                             .iter()
                                                             .rev()
                                                             .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| FunctionLog {
-                                                                value: Some(*duration_ns),
+                                                                value: *duration_ns,
                                                                 elapsed_nanos: elapsed.as_nanos() as u64,
                                                                 alloc_count: None,
                                                                 tid: *tid,
@@ -422,7 +471,7 @@ impl HotpathGuard {
                                                             .iter()
                                                             .rev()
                                                             .map(|(duration_ns, elapsed, tid, result_log)| FunctionLog {
-                                                                value: Some(*duration_ns),
+                                                                value: *duration_ns,
                                                                 elapsed_nanos: elapsed.as_nanos() as u64,
                                                                 alloc_count: None,
                                                                 tid: *tid,
@@ -471,14 +520,6 @@ impl HotpathGuard {
                                 }
                             }
                         }
-                    // Process at most one batch per iteration so the next
-                    // `select.ready()` re-checks shutdown/query - a fast measurement
-                    // stream can't starve the control channels.
-                    if let Ok(batch) = measurements_rx.try_recv() {
-                        for measurement in batch {
-                            process_measurement(&mut local_stats, &mut name_to_id, measurement);
-                        }
-                    }
                 }
 
                 let _ = completion_tx.send(local_stats);
@@ -486,6 +527,7 @@ impl HotpathGuard {
             .expect("Failed to spawn hotpath-meta-worker thread");
 
         let _ = FUNCTIONS_STATE.set(Arc::clone(&state_arc));
+        set_measurements_active(true);
 
         crate::lib_on::START_TIME.get_or_init(Instant::now);
 
@@ -616,7 +658,9 @@ impl Drop for HotpathGuard {
         let wrapper_guard = self.wrapper_guard.take().unwrap();
         drop(wrapper_guard);
 
-        flush_batch();
+        // Stop producers before signalling shutdown: everything published up to
+        // this point is caught by the worker's final sweep.
+        set_measurements_active(false);
 
         let cpu_baseline = crate::cpu_baseline::shutdown_cpu_baseline();
 
@@ -632,10 +676,6 @@ impl Drop for HotpathGuard {
                 return;
             };
 
-            // Drop the measurement sender to stop new producers, then signal shutdown
-            // on the dedicated control channel. `Select::ready()` wakes the worker
-            // immediately and it drains shutdown ahead of any queued measurements.
-            let _ = state_guard.measurements_tx.take();
             let shutdown_tx = state_guard.shutdown_tx.take();
             let end_time = Instant::now();
 
@@ -741,6 +781,7 @@ impl Drop for HotpathGuard {
                 label: std::env::var("HOTPATH_META_REPORT_LABEL")
                     .ok()
                     .filter(|s| !s.is_empty()),
+                time_sampling: crate::lib_on::sampling::active_rates(),
                 ..Default::default()
             };
 

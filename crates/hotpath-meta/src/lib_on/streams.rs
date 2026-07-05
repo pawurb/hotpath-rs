@@ -1,8 +1,6 @@
 //! Stream instrumentation module - tracks items yielded and stream lifecycle.
 
-use crossbeam_channel::{
-    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
-};
+use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -11,13 +9,11 @@ use crate::instant::Instant;
 
 pub(crate) mod wrapper;
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::channels::{resolve_label, LOGS_LIMIT};
 use crate::json::JsonStreamEntry;
 pub(crate) use crate::json::{ChannelState, DataFlowLogEntry, StreamLogs};
-use crate::lib_on::hotpath_guard::{
-    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
+use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::metrics_server::METRICS_SERVER_PORT;
 pub use crate::Format;
 
@@ -119,7 +115,6 @@ pub(crate) enum StreamEvent {
 }
 
 pub(crate) struct StreamsState {
-    pub(crate) event_tx: CbSender<Vec<StreamEvent>>,
     pub(crate) inner: Arc<RwLock<StreamsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -127,50 +122,31 @@ pub(crate) struct StreamsState {
 
 pub(crate) static STREAMS_STATE: OnceLock<StreamsState> = OnceLock::new();
 
-static EVENT_REGISTRY: BatchRegistry<StreamEvent> = BatchRegistry::new();
+static EVENT_QUEUES: EventQueueRegistry<StreamEvent> = EventQueueRegistry::new();
 
 thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<StreamEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
+    static EVENT_PRODUCER: EventProducer<StreamEvent> = EVENT_QUEUES.register();
 }
 
 #[inline]
 pub(crate) fn send_stream_event(event: StreamEvent) {
+    if !EVENT_QUEUES.is_active() {
+        return;
+    }
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
-        }
-    });
+    let _ = EVENT_PRODUCER.try_with(|producer| producer.push(event));
 }
 
-/// Flushes every thread's buffered stream events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_stream_batch() {
-    EVENT_REGISTRY.flush_all();
+/// Stops producers ahead of the worker's final sweep at shutdown.
+pub(crate) fn stop_stream_events() {
+    EVENT_QUEUES.set_active(false);
 }
 
-impl BatchedMeasurement for StreamEvent {
-    type Tx = CbSender<Vec<Self>>;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        match self {
-            StreamEvent::Yielded { timestamp, .. } => crate::channels::timestamp_nanos(*timestamp),
-            _ => 0,
-        }
-    }
-
-    fn fetch_sender() -> Option<Self::Tx> {
-        Some(STREAMS_STATE.get()?.event_tx.clone())
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-
-    fn is_flush_boundary(&self) -> bool {
-        matches!(self, StreamEvent::Created { .. })
-    }
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata.
+fn placeholder_stream_stats(id: u32) -> StreamStats {
+    StreamStats::new(id, "", None, "", 0, 0)
 }
 
 fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
@@ -183,35 +159,45 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
             type_size,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                StreamStats::new(id, source, display_label, type_name, type_size, iter),
-            );
-            state.logs.insert(id, StreamStatsLogs::new());
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_stream_stats(id));
+            entry.source = source;
+            entry.label = display_label;
+            entry.type_name = type_name;
+            entry.type_size = type_size;
+            entry.iter = iter;
+            state.logs.entry(id).or_insert_with(StreamStatsLogs::new);
         }
         StreamEvent::Yielded { id, log, timestamp } => {
-            if let Some(stream_stats) = state.stats.get_mut(&id) {
-                stream_stats.items_yielded += 1;
+            let stream_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_stream_stats(id));
+            stream_stats.items_yielded += 1;
+            let items_yielded = stream_stats.items_yielded;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(StreamStatsLogs::new);
+            let limit = *crate::channels::LOGS_LIMIT;
+            if entry_logs.logs.len() >= limit {
+                entry_logs.logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let items_yielded = state.stats.get(&id).map_or(0, |s| s.items_yielded);
-                let limit = *crate::channels::LOGS_LIMIT;
-                if entry_logs.logs.len() >= limit {
-                    entry_logs.logs.pop_front();
-                }
-                entry_logs.logs.push_back(DataFlowLogEntry::new(
-                    items_yielded,
-                    crate::channels::timestamp_nanos(timestamp),
-                    log,
-                    None,
-                    None,
-                ));
-            }
+            entry_logs.logs.push_back(DataFlowLogEntry::new(
+                items_yielded,
+                crate::channels::timestamp_nanos(timestamp),
+                log,
+                None,
+                None,
+                None,
+            ));
         }
         StreamEvent::Completed { id } => {
-            if let Some(stream_stats) = state.stats.get_mut(&id) {
-                stream_stats.state = ChannelState::Closed;
-            }
+            state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_stream_stats(id))
+                .state = ChannelState::Closed;
         }
     }
 }
@@ -233,7 +219,6 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
     STREAMS_STATE.get_or_init(|| {
         crate::lib_on::START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<Vec<StreamEvent>>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
         let inner = Arc::new(RwLock::new(StreamsInternalState {
@@ -242,48 +227,31 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
         }));
         let inner_clone = Arc::clone(&inner);
 
+        EVENT_QUEUES.set_active(true);
+
         std::thread::Builder::new()
             .name("hp-meta-streams".into())
             .spawn(move || {
-                let mut local_buffer: Vec<StreamEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<StreamEvent> = Vec::new();
 
-                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
-                let mut select = Select::new();
-                let _shutdown_idx = select.recv(&shutdown_rx);
-                let _event_idx = select.recv(&event_rx);
-
+                // Single consumer of the per-thread event queues: capped sweep on
+                // every tick, then one uncapped drain when shutdown is signalled
+                // (producers are already stopped by then, so nothing is left behind).
                 loop {
-                    if select.ready_timeout(flush_interval).is_err() {
-                        flush_stream_buffer(&mut local_buffer, &inner_clone);
-                        continue;
-                    }
+                    let shutdown = !matches!(
+                        shutdown_rx.recv_timeout(flush_interval),
+                        Err(RecvTimeoutError::Timeout)
+                    );
 
-                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match event_rx.try_recv() {
-                                Ok(events) => local_buffer.extend(events),
-                                Err(_) => break,
-                            }
-                        }
-                        flush_stream_buffer(&mut local_buffer, &inner_clone);
+                    if shutdown {
+                        EVENT_QUEUES.drain_all(&mut swept);
+                        flush_stream_buffer(&mut swept, &inner_clone);
                         break;
                     }
 
-                    match event_rx.try_recv() {
-                        Ok(events) => {
-                            local_buffer.extend(events);
-                            if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                flush_stream_buffer(&mut local_buffer, &inner_clone);
-                            }
-                        }
-                        // A disconnected receiver stays ready; flush and stop, do not spin.
-                        Err(TryRecvError::Disconnected) => {
-                            flush_stream_buffer(&mut local_buffer, &inner_clone);
-                            break;
-                        }
-                        Err(TryRecvError::Empty) => {}
-                    }
+                    EVENT_QUEUES.sweep(&mut swept);
+                    flush_stream_buffer(&mut swept, &inner_clone);
                 }
 
                 let _ = completion_tx.send(());
@@ -293,7 +261,6 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         StreamsState {
-            event_tx,
             inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),

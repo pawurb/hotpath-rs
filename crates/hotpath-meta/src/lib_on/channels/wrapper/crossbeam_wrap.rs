@@ -36,7 +36,7 @@ use crate::channels::{
 /// Tracks every successful send and emits the exact channel length afterwards.
 /// When the last clone is dropped, a `Closed` event is emitted.
 pub struct Sender<T> {
-    inner: InnerSender<(u64, Instant, T)>,
+    inner: InnerSender<(u64, Option<Instant>, T)>,
     id: u32,
     sender_count: Arc<AtomicUsize>,
     /// Monotonic message-id source, shared across all `Sender` clones so ids stay
@@ -46,12 +46,12 @@ pub struct Sender<T> {
 }
 
 impl<T> Sender<T> {
-    fn emit_sent(&self, msg_id: u64, sent_at: Instant, log: Option<String>) {
+    fn emit_sent(&self, msg_id: u64, sent_at: Option<Instant>, log: Option<String>) {
         send_channel_event(ChannelEvent::WrapMessageSent {
             id: self.id,
             msg_id,
             log,
-            timestamp: sent_at,
+            timestamp: crate::channels::anchor_first_msg(msg_id, sent_at),
             queue_len: self.inner.len(),
         });
     }
@@ -62,7 +62,7 @@ impl<T> Sender<T> {
         // Stamp before publishing: a consumer could receive and timestamp the message
         // the instant `inner.send` enqueues it, so stamping after would race the
         // receive and read recv < send. Here send_ts <= recv_ts by construction.
-        let sent_at = Instant::now();
+        let sent_at = sample_stamp(msg_id);
         self.inner
             .send((msg_id, sent_at, msg))
             .map_err(|SendError((_, _, msg))| SendError(msg))?;
@@ -73,7 +73,7 @@ impl<T> Sender<T> {
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = Instant::now();
+        let sent_at = sample_stamp(msg_id);
         self.inner
             .try_send((msg_id, sent_at, msg))
             .map_err(|e| match e {
@@ -91,7 +91,7 @@ impl<T> Sender<T> {
     ) -> Result<(), SendTimeoutError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = Instant::now();
+        let sent_at = sample_stamp(msg_id);
         self.inner
             .send_timeout((msg_id, sent_at, msg), timeout)
             .map_err(|e| match e {
@@ -146,7 +146,7 @@ impl<T> Drop for Sender<T> {
 /// When the last clone is dropped, a `Closed` event is emitted, since dropping all
 /// receivers disconnects the channel.
 pub struct Receiver<T> {
-    inner: InnerReceiver<(u64, Instant, T)>,
+    inner: InnerReceiver<(u64, Option<Instant>, T)>,
     id: u32,
     receiver_count: Arc<AtomicUsize>,
 }
@@ -155,11 +155,11 @@ impl<T> Receiver<T> {
     /// Inner receiver for use with `crossbeam_channel::Select`. Register it, wait
     /// with `Select::ready`/`ready_timeout`, then receive via this wrapper's
     /// `try_recv`/`recv` so instrumentation still fires.
-    pub fn select_handle(&self) -> &InnerReceiver<(u64, Instant, T)> {
+    pub fn select_handle(&self) -> &InnerReceiver<(u64, Option<Instant>, T)> {
         &self.inner
     }
 
-    fn on_received(&self, msg_id: u64, now: Instant, delay_nanos: u64) {
+    fn on_received(&self, msg_id: u64, now: Option<Instant>, delay_nanos: Option<u64>) {
         send_channel_event(ChannelEvent::WrapMessageReceived {
             id: self.id,
             msg_id,
@@ -173,22 +173,22 @@ impl<T> Receiver<T> {
         // `send_ts` rides in the envelope; the delay (`now - send_ts`) is the exact
         // send->receive latency, recorded straight into the processing-time histogram.
         let (msg_id, send_ts, msg) = self.inner.recv()?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
+        let (now, delay) = recv_stamp(send_ts);
+        self.on_received(msg_id, now, delay);
         Ok(msg)
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let (msg_id, send_ts, msg) = self.inner.try_recv()?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
+        let (now, delay) = recv_stamp(send_ts);
+        self.on_received(msg_id, now, delay);
         Ok(msg)
     }
 
     pub fn recv_timeout(&self, timeout: std::time::Duration) -> Result<T, RecvTimeoutError> {
         let (msg_id, send_ts, msg) = self.inner.recv_timeout(timeout)?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
+        let (now, delay) = recv_stamp(send_ts);
+        self.on_received(msg_id, now, delay);
         Ok(msg)
     }
 
@@ -294,6 +294,25 @@ fn delay_nanos(send_ts: Instant, now: Instant) -> u64 {
     now.duration_since(send_ts).as_nanos() as u64
 }
 
+/// Send-side sampling decision keyed on `msg_id % k`; `None` skips the clock
+/// read and travels in the payload so the receiver skips its read too.
+#[inline]
+fn sample_stamp(msg_id: u64) -> Option<Instant> {
+    crate::lib_on::sampling::channels_should_time(msg_id).then(Instant::now)
+}
+
+/// A `Some` payload stamp means the message is sampled: stamp `now`, compute the delay.
+#[inline]
+fn recv_stamp(send_ts: Option<Instant>) -> (Option<Instant>, Option<u64>) {
+    match send_ts {
+        Some(ts) => {
+            let now = Instant::now();
+            (Some(now), Some(delay_nanos(ts, now)))
+        }
+        None => (None, None),
+    }
+}
+
 fn channel_type<T>(tx: &InnerSender<T>) -> ChannelType {
     match tx.capacity() {
         Some(capacity) => ChannelType::Bounded(capacity),
@@ -315,9 +334,11 @@ fn build<T>(
     // channel is discarded (wrap mode is inline-only, see module docs); only its
     // kind/capacity is copied.
     let (tx, rx) = match ch_type {
-        ChannelType::Bounded(cap) => crossbeam_channel::bounded::<(u64, Instant, T)>(cap),
-        ChannelType::Unbounded => crossbeam_channel::unbounded::<(u64, Instant, T)>(),
-        ChannelType::Oneshot => crossbeam_channel::bounded::<(u64, Instant, T)>(1),
+        ChannelType::Bounded(cap) => crossbeam_channel::bounded::<(u64, Option<Instant>, T)>(cap),
+        ChannelType::Unbounded => crossbeam_channel::unbounded::<(u64, Option<Instant>, T)>(),
+        ChannelType::Oneshot => crossbeam_channel::bounded::<(u64, Option<Instant>, T)>(1),
+        // `channel_type` above only returns Bounded or Unbounded.
+        ChannelType::Pending => unreachable!(),
     };
 
     let sender = Sender {

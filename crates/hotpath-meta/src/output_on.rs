@@ -20,11 +20,21 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
         .map(|ns| format!(" (CPU baseline avg: {})", format_duration(ns)))
         .unwrap_or_default();
     let label_str = label.map(|l| format!(" | {}", l)).unwrap_or_default();
+    let sampling_str = crate::lib_on::sampling::active_rates()
+        .map(|rates| {
+            let mut parts: Vec<String> = rates
+                .iter()
+                .map(|(name, rate)| format!("{}={}", name, rate))
+                .collect();
+            parts.sort();
+            format!(" | time sampling: {}", parts.join(", "))
+        })
+        .unwrap_or_default();
 
     let _ = writeln!(
         writer,
-        "[hotpath-meta] {:.2?} | {}{}{}",
-        elapsed, sections_str, baseline_str, label_str,
+        "[hotpath-meta] {:.2?} | {}{}{}{}",
+        elapsed, sections_str, baseline_str, label_str, sampling_str,
     );
     let _ = writeln!(writer);
 }

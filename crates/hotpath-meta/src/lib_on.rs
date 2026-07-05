@@ -51,6 +51,7 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 pub mod hotpath_guard;
 pub(crate) mod report;
+pub(crate) mod sampling;
 
 #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
 pub use functions::alloc::allocator::CountingAllocator;

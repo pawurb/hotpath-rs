@@ -4,7 +4,8 @@ use std::sync::RwLock as StdRwLock;
 
 use crate::instant::Instant;
 use crate::rw_locks::{
-    elapsed_nanos, register_rw_lock, send_rw_lock_event, InstrumentRwLock, RwLockEvent, RwLockKind,
+    cancel_wait_stamp, elapsed_nanos, register_rw_lock, send_rw_lock_event, wait_stamp,
+    InstrumentRwLock, RwLockEvent, RwLockKind,
 };
 
 /// Instrumented drop-in replacement for [`std::sync::RwLock`].
@@ -39,48 +40,54 @@ impl<T> RwLock<T> {
 
     pub fn read(&self) -> std::sync::LockResult<RwLockReadGuard<'_, T>> {
         // Stamp before acquisition to measure wait time; the guard then measures acquire time.
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         match self.inner.read() {
-            Ok(inner) => Ok(self.read_guard(inner, elapsed_nanos(wait_start))),
+            Ok(inner) => Ok(self.read_guard(inner, wait_start.map(elapsed_nanos))),
             Err(poison) => Err(std::sync::PoisonError::new(
-                self.read_guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                self.read_guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
             )),
         }
     }
 
     pub fn try_read(&self) -> std::sync::TryLockResult<RwLockReadGuard<'_, T>> {
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         match self.inner.try_read() {
-            Ok(inner) => Ok(self.read_guard(inner, elapsed_nanos(wait_start))),
+            Ok(inner) => Ok(self.read_guard(inner, wait_start.map(elapsed_nanos))),
             Err(std::sync::TryLockError::Poisoned(poison)) => Err(
                 std::sync::TryLockError::Poisoned(std::sync::PoisonError::new(
-                    self.read_guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                    self.read_guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
                 )),
             ),
-            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                cancel_wait_stamp();
+                Err(std::sync::TryLockError::WouldBlock)
+            }
         }
     }
 
     pub fn write(&self) -> std::sync::LockResult<RwLockWriteGuard<'_, T>> {
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         match self.inner.write() {
-            Ok(inner) => Ok(self.write_guard(inner, elapsed_nanos(wait_start))),
+            Ok(inner) => Ok(self.write_guard(inner, wait_start.map(elapsed_nanos))),
             Err(poison) => Err(std::sync::PoisonError::new(
-                self.write_guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                self.write_guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
             )),
         }
     }
 
     pub fn try_write(&self) -> std::sync::TryLockResult<RwLockWriteGuard<'_, T>> {
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         match self.inner.try_write() {
-            Ok(inner) => Ok(self.write_guard(inner, elapsed_nanos(wait_start))),
+            Ok(inner) => Ok(self.write_guard(inner, wait_start.map(elapsed_nanos))),
             Err(std::sync::TryLockError::Poisoned(poison)) => Err(
                 std::sync::TryLockError::Poisoned(std::sync::PoisonError::new(
-                    self.write_guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                    self.write_guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
                 )),
             ),
-            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                cancel_wait_stamp();
+                Err(std::sync::TryLockError::WouldBlock)
+            }
         }
     }
 
@@ -95,11 +102,11 @@ impl<T> RwLock<T> {
     fn read_guard<'a>(
         &'a self,
         inner: std::sync::RwLockReadGuard<'a, T>,
-        wait_nanos: u64,
+        wait_nanos: Option<u64>,
     ) -> RwLockReadGuard<'a, T> {
         RwLockReadGuard {
             inner: Some(inner),
-            start: Instant::now(),
+            start: wait_nanos.map(|_| Instant::now()),
             wait_nanos,
             id: self.id,
         }
@@ -108,11 +115,11 @@ impl<T> RwLock<T> {
     fn write_guard<'a>(
         &'a self,
         inner: std::sync::RwLockWriteGuard<'a, T>,
-        wait_nanos: u64,
+        wait_nanos: Option<u64>,
     ) -> RwLockWriteGuard<'a, T> {
         RwLockWriteGuard {
             inner: Some(inner),
-            start: Instant::now(),
+            start: wait_nanos.map(|_| Instant::now()),
             wait_nanos,
             id: self.id,
         }
@@ -123,8 +130,8 @@ impl<T> RwLock<T> {
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockReadGuard<'a, T> {
     inner: Option<std::sync::RwLockReadGuard<'a, T>>,
-    start: Instant,
-    wait_nanos: u64,
+    start: Option<Instant>,
+    wait_nanos: Option<u64>,
     id: u32,
 }
 
@@ -140,13 +147,14 @@ impl<T> Drop for RwLockReadGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        let now = Instant::now();
+        let acquire_nanos = self
+            .start
+            .map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         send_rw_lock_event(RwLockEvent::Released {
             id: self.id,
             kind: RwLockKind::Read,
             wait_nanos: self.wait_nanos,
-            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
-            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
+            acquire_nanos,
         });
     }
 }
@@ -155,8 +163,8 @@ impl<T> Drop for RwLockReadGuard<'_, T> {
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockWriteGuard<'a, T> {
     inner: Option<std::sync::RwLockWriteGuard<'a, T>>,
-    start: Instant,
-    wait_nanos: u64,
+    start: Option<Instant>,
+    wait_nanos: Option<u64>,
     id: u32,
 }
 
@@ -178,13 +186,14 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        let now = Instant::now();
+        let acquire_nanos = self
+            .start
+            .map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         send_rw_lock_event(RwLockEvent::Released {
             id: self.id,
             kind: RwLockKind::Write,
             wait_nanos: self.wait_nanos,
-            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
-            elapsed_ns: crate::lib_on::elapsed_since_start_ns(now),
+            acquire_nanos,
         });
     }
 }

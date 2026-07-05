@@ -339,13 +339,6 @@ pub(crate) enum FunctionsQuery {
     },
 }
 
-// Sender for batched function measurements. Carried on its own channel so it can
-// be drained with priority behind the shutdown/query control channels via
-// `crossbeam_channel::Select::ready()`, rather than sharing one FIFO where shutdown
-// could queue behind a measurement backlog. See the `hp-functions` worker loop in
-// `hotpath_guard.rs`.
-pub(crate) type MeasurementsTx = crossbeam_channel::Sender<Vec<Measurement>>;
-
 fn get_current_elapsed_ns() -> u64 {
     START_TIME
         .get()

@@ -1,22 +1,35 @@
 use crossbeam_channel::Receiver;
 use hdrhistogram::Histogram;
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::batch::{BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
 
+static MEASUREMENT_QUEUES: EventQueueRegistry<Measurement> = EventQueueRegistry::new();
+
 thread_local! {
-    static MEASUREMENT_BATCH: RefCell<MeasurementBatch<Measurement>> =
-        RefCell::new(MeasurementBatch::new());
+    static MEASUREMENT_PRODUCER: EventProducer<Measurement> = MEASUREMENT_QUEUES.register();
 }
 
-pub(crate) fn flush_batch() {
-    MEASUREMENT_BATCH.with(|batch| {
-        batch.borrow_mut().flush();
-    });
+fn add_measurement(m: Measurement) {
+    if !MEASUREMENT_QUEUES.is_active() {
+        return;
+    }
+    let _ = MEASUREMENT_PRODUCER.try_with(|producer| producer.push(m));
+}
+
+pub(crate) fn set_measurements_active(active: bool) {
+    MEASUREMENT_QUEUES.set_active(active);
+}
+
+pub(crate) fn sweep_measurements(out: &mut Vec<Measurement>) {
+    MEASUREMENT_QUEUES.sweep(out);
+}
+
+pub(crate) fn drain_all_measurements(out: &mut Vec<Measurement>) {
+    MEASUREMENT_QUEUES.drain_all(out);
 }
 
 #[derive(Debug)]
@@ -24,35 +37,17 @@ pub(crate) struct Measurement {
     pub(crate) name: &'static str,
     pub(crate) bytes_total: Option<u64>,
     pub(crate) count_total: Option<u64>,
-    pub(crate) duration_ns: u64,
+    pub(crate) duration_ns: Option<u64>,
     pub(crate) elapsed_since_start_ns: u64,
     pub(crate) wrapper: bool,
     pub(crate) tid: Option<u64>,
     pub(crate) result_log: Option<String>,
 }
 
-impl BatchedMeasurement for Measurement {
-    type Tx = crate::lib_on::functions::MeasurementsTx;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        self.elapsed_since_start_ns
-    }
-
-    fn fetch_sender() -> Option<Self::Tx> {
-        let state = crate::lib_on::functions::FUNCTIONS_STATE.get()?;
-        let state_guard = state.read().ok()?;
-        state_guard.measurements_tx.clone()
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-}
-
 type LogEntry = (
     Option<u64>,
     Option<u64>,
-    u64,
+    Option<u64>,
     Duration,
     Option<u64>,
     Option<String>,
@@ -63,6 +58,7 @@ pub(crate) struct FunctionStats {
     pub(crate) id: u32,
     pub(crate) name: &'static str,
     pub(crate) count: u64,
+    pub(crate) duration_sampled_count: u64,
     bytes_total_hist: Option<Histogram<u64>>,
     count_total_hist: Option<Histogram<u64>>,
     duration_hist: Option<Histogram<u64>>,
@@ -90,7 +86,7 @@ impl FunctionStats {
         name: &'static str,
         bytes_total: Option<u64>,
         count_total: Option<u64>,
-        duration_ns: u64,
+        duration_ns: Option<u64>,
         elapsed: Duration,
         wrapper: bool,
         tid: Option<u64>,
@@ -125,12 +121,13 @@ impl FunctionStats {
             id,
             name,
             count: 1,
+            duration_sampled_count: 0,
             bytes_total_hist: Some(bytes_total_hist),
             count_total_hist: Some(count_total_hist),
             duration_hist: Some(duration_hist),
             total_bytes_sum: bytes_total.unwrap_or(0),
             total_count_sum: count_total.unwrap_or(0),
-            total_duration_ns: duration_ns,
+            total_duration_ns: 0,
             has_data: true,
             is_async: bytes_total.is_none(),
             wrapper,
@@ -162,7 +159,12 @@ impl FunctionStats {
     }
 
     #[inline]
-    fn record_duration(&mut self, duration_ns: u64) {
+    fn record_duration(&mut self, duration_ns: Option<u64>) {
+        let Some(duration_ns) = duration_ns else {
+            return;
+        };
+        self.duration_sampled_count += 1;
+        self.total_duration_ns += duration_ns;
         if let Some(ref mut duration_hist) = self.duration_hist {
             if duration_ns > 0 {
                 let clamped_duration =
@@ -176,7 +178,7 @@ impl FunctionStats {
         &mut self,
         bytes_total: Option<u64>,
         count_total: Option<u64>,
-        duration_ns: u64,
+        duration_ns: Option<u64>,
         elapsed: Duration,
         tid: Option<u64>,
         result_log: Option<String>,
@@ -187,7 +189,6 @@ impl FunctionStats {
         self.total_count_sum += count_total.unwrap_or(0);
         self.record_alloc(bytes_total, count_total);
 
-        self.total_duration_ns += duration_ns;
         self.record_duration(duration_ns);
 
         if self.recent_logs.len() >= *crate::channels::LOGS_LIMIT {
@@ -255,7 +256,7 @@ impl FunctionStats {
 
     #[inline]
     pub fn duration_percentile(&self, p: f64) -> u64 {
-        if self.count == 0 || self.duration_hist.is_none() {
+        if self.duration_sampled_count == 0 || self.duration_hist.is_none() {
             return 0;
         }
         let p = p.clamp(0.0, 100.0);
@@ -264,15 +265,24 @@ impl FunctionStats {
 
     #[inline]
     pub fn avg_duration_ns(&self) -> u64 {
-        if self.count == 0 || self.duration_hist.is_none() {
+        if self.duration_sampled_count == 0 || self.duration_hist.is_none() {
             return 0;
         }
         self.duration_hist.as_ref().unwrap().mean() as u64
     }
+
+    /// Exact when every call was timed, extrapolated (`avg * count`) under time sampling.
+    #[inline]
+    pub fn display_total_duration_ns(&self) -> u64 {
+        if self.duration_sampled_count == self.count {
+            self.total_duration_ns
+        } else {
+            self.avg_duration_ns() * self.count
+        }
+    }
 }
 
 pub(crate) struct FunctionsState {
-    pub measurements_tx: Option<crate::lib_on::functions::MeasurementsTx>,
     pub shutdown_tx: Option<crossbeam_channel::Sender<()>>,
     pub completion_rx: Option<Mutex<Receiver<HashMap<u32, FunctionStats>>>>,
 
@@ -326,7 +336,7 @@ pub(crate) fn send_alloc_measurement(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration_ns: u64,
+    duration_ns: Option<u64>,
     elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
@@ -348,7 +358,7 @@ pub(crate) fn send_alloc_measurement_with_log(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration_ns: u64,
+    duration_ns: Option<u64>,
     elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
@@ -358,16 +368,14 @@ pub(crate) fn send_alloc_measurement_with_log(
         return;
     }
 
-    MEASUREMENT_BATCH.with(|batch| {
-        batch.borrow_mut().add(Measurement {
-            name,
-            bytes_total,
-            count_total,
-            duration_ns,
-            elapsed_since_start_ns,
-            wrapper,
-            tid,
-            result_log,
-        });
+    add_measurement(Measurement {
+        name,
+        bytes_total,
+        count_total,
+        duration_ns,
+        elapsed_since_start_ns,
+        wrapper,
+        tid,
+        result_log,
     });
 }

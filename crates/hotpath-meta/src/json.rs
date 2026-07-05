@@ -43,6 +43,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Bounded(size) => write!(f, "bounded[{}]", size),
             ChannelType::Unbounded => write!(f, "unbounded"),
             ChannelType::Oneshot => write!(f, "oneshot"),
+            ChannelType::Pending => write!(f, "pending"),
         }
     }
 }
@@ -66,6 +67,7 @@ impl<'de> Deserialize<'de> for ChannelType {
         match s.as_str() {
             "unbounded" => Ok(ChannelType::Unbounded),
             "oneshot" => Ok(ChannelType::Oneshot),
+            "pending" => Ok(ChannelType::Pending),
             _ => {
                 if let Some(inner) = s.strip_prefix("bounded[").and_then(|x| x.strip_suffix(']')) {
                     let size = inner
@@ -91,6 +93,10 @@ pub(crate) struct DataFlowLogEntry {
     /// outside wrap mode (proxy mode, streams).
     #[serde(default)]
     pub msg_id: Option<u64>,
+    /// Send-to-receive latency, set on wrap-mode receive entries. `None` when
+    /// time sampling skipped the message or the entry has no delay to carry.
+    #[serde(default)]
+    pub delay_nanos: Option<u64>,
 }
 
 impl DataFlowLogEntry {
@@ -100,6 +106,7 @@ impl DataFlowLogEntry {
         message: Option<String>,
         tid: Option<u64>,
         msg_id: Option<u64>,
+        delay_nanos: Option<u64>,
     ) -> Self {
         Self {
             index,
@@ -107,6 +114,7 @@ impl DataFlowLogEntry {
             message,
             tid,
             msg_id,
+            delay_nanos,
         }
     }
 }
@@ -124,6 +132,24 @@ pub(crate) struct ChannelLogs {
 pub(crate) struct StreamLogs {
     pub id: u32,
     pub logs: Vec<DataFlowLogEntry>,
+}
+
+/// A single logged execution of a SQL query bucket. `query` holds the
+/// *normalized* statement text - bound params and inline literals are never
+/// captured.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct SqlLogEntry {
+    pub index: u64,
+    pub timestamp: u64,
+    pub duration_nanos: u64,
+    pub query: String,
+}
+
+/// Serializable log response containing recent executions for a SQL query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct SqlLogs {
+    pub id: u32,
+    pub logs: Vec<SqlLogEntry>,
 }
 
 /// State of an instrumented future.
@@ -163,6 +189,8 @@ pub(crate) struct FutureLog {
     pub future_id: u32,
     pub state: FutureState,
     pub poll_count: u64,
+    #[serde(default)]
+    pub sampled_polls: u64,
     pub total_poll_duration_ns: u64,
     pub max_poll_duration_ns: u64,
     pub last_poll_duration_ns: u64,
@@ -180,6 +208,7 @@ impl FutureLog {
             future_id,
             state: FutureState::default(),
             poll_count: 0,
+            sampled_polls: 0,
             total_poll_duration_ns: 0,
             max_poll_duration_ns: 0,
             last_poll_duration_ns: 0,
@@ -309,6 +338,8 @@ pub enum Route {
     Mutexes,
     /// GET /sql - Returns SQL query statistics
     Sql,
+    /// GET /sql/{id}/logs - Returns recent executions for a SQL query
+    SqlLogs { sql_id: u32 },
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
     /// GET /profiler_status - Returns profiler uptime
@@ -343,6 +374,7 @@ impl Route {
             Route::RwLocks => "/rw_locks".to_string(),
             Route::Mutexes => "/mutexes".to_string(),
             Route::Sql => "/sql".to_string(),
+            Route::SqlLogs { sql_id } => format!("/sql/{}/logs", sql_id),
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
         }
@@ -414,6 +446,10 @@ impl FromStr for Route {
 
         if let Some(future_id) = parse_id_from_path(path, "/futures/") {
             return Ok(Route::FutureLogs { future_id });
+        }
+
+        if let Some(sql_id) = parse_id_from_path(path, "/sql/") {
+            return Ok(Route::SqlLogs { sql_id });
         }
 
         Err(())

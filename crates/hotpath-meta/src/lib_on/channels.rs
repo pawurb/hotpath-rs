@@ -1,8 +1,6 @@
 //! Channel instrumentation module - tracks message flow and channel state.
 
-use crossbeam_channel::{
-    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
-};
+use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -14,12 +12,10 @@ pub(crate) mod wrapper;
 
 use std::mem;
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::json::JsonChannelEntry;
 pub(crate) use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
-use crate::lib_on::hotpath_guard::{
-    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
+use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
 pub use crate::Format;
@@ -36,6 +32,9 @@ pub(crate) enum ChannelType {
     Bounded(usize),
     Unbounded,
     Oneshot,
+    /// Placeholder for a channel whose `Created` event has not been processed
+    /// yet; backfilled with the real type when it arrives.
+    Pending,
 }
 
 /// Registers a new channel with the profiling subsystem.
@@ -87,57 +86,38 @@ fn register_channel_inner<T>(
     id
 }
 
-static EVENT_REGISTRY: BatchRegistry<ChannelEvent> = BatchRegistry::new();
+static EVENT_QUEUES: EventQueueRegistry<ChannelEvent> = EventQueueRegistry::new();
 
 thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<ChannelEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
+    static EVENT_PRODUCER: EventProducer<ChannelEvent> = EVENT_QUEUES.register();
 }
 
 #[inline]
 pub(crate) fn send_channel_event(event: ChannelEvent) {
+    if !EVENT_QUEUES.is_active() {
+        return;
+    }
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
     // `try_with`, not `with`: a `wrap = true` endpoint can emit an event (send,
     // recv, or `Closed` on drop) from a producer thread that is tearing down, when
     // this thread-local may already be destroyed. Dropping the event is fine;
     // panicking in a `Drop` would abort the process.
-    let _ = EVENT_BATCH.try_with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
-        }
-    });
+    let _ = EVENT_PRODUCER.try_with(|producer| producer.push(event));
 }
 
-/// Flushes every thread's buffered channel events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_channel_batch() {
-    EVENT_REGISTRY.flush_all();
+/// Stops producers ahead of the worker's final sweep at shutdown.
+pub(crate) fn stop_channel_events() {
+    EVENT_QUEUES.set_active(false);
 }
 
-impl BatchedMeasurement for ChannelEvent {
-    type Tx = CbSender<Vec<Self>>;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        match self {
-            ChannelEvent::MessageSent { timestamp, .. }
-            | ChannelEvent::MessageReceived { timestamp, .. }
-            | ChannelEvent::WrapMessageSent { timestamp, .. }
-            | ChannelEvent::WrapMessageReceived { timestamp, .. } => timestamp_nanos(*timestamp),
-            _ => 0,
-        }
-    }
-
-    fn fetch_sender() -> Option<Self::Tx> {
-        Some(CHANNELS_STATE.get()?.event_tx.clone())
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-
-    fn is_flush_boundary(&self) -> bool {
-        matches!(self, ChannelEvent::Created { .. })
-    }
+/// Event timestamp for a wrap send. Unsampled events are stamped at worker
+/// drain time, except msg 0: its send always gets a real stamp so
+/// `first_msg_ns` anchors throughput rates exactly at every sampling rate,
+/// including count-only mode. The payload stamp (and thus the delay) is
+/// unaffected.
+#[inline]
+pub(crate) fn anchor_first_msg(msg_id: u64, sent_at: Option<Instant>) -> Option<Instant> {
+    sent_at.or_else(|| (msg_id == 0).then(Instant::now))
 }
 
 pub(crate) fn timestamp_nanos(timestamp: Instant) -> u64 {
@@ -165,8 +145,9 @@ pub(crate) struct ChannelEntry {
     /// Derived from `sent_count - received_count` (converged value order-independent).
     pub(crate) queue_size: Option<usize>,
     pub(crate) max_queue_size: Option<usize>,
-    /// Avg denominator is `received_count` (one delay recorded per receive).
+    /// Avg denominator is `proc_sampled_count` (one delay recorded per sampled receive).
     pub(crate) proc_total_nanos: u64,
+    pub(crate) proc_sampled_count: u64,
     /// `Some` only for `wrap` channels; `None` for proxy channels, which cannot
     /// measure latency accurately.
     proc_hist: Option<Histogram<u64>>,
@@ -197,14 +178,21 @@ pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> Json
     let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
     let mut proc_percentiles = HashMap::new();
+    let count_only = stats.proc_sampled_count == 0 && stats.received_count > 0;
     let proc_avg = if stats.has_proc_hist() {
         for &p in percentiles {
-            proc_percentiles.insert(
-                crate::output::format_percentile_key(p),
-                crate::output::format_duration(stats.proc_percentile_nanos(p)),
-            );
+            let value = if count_only {
+                "-".to_string()
+            } else {
+                crate::output::format_duration(stats.proc_percentile_nanos(p))
+            };
+            proc_percentiles.insert(crate::output::format_percentile_key(p), value);
         }
-        Some(crate::output::format_duration(stats.proc_avg_nanos()))
+        if count_only {
+            Some("-".to_string())
+        } else {
+            Some(crate::output::format_duration(stats.proc_avg_nanos()))
+        }
     } else {
         None
     };
@@ -227,6 +215,7 @@ pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> Json
         max_queue_size: stats.max_queue_size,
         proc_avg,
         proc_percentiles,
+        proc_sampled_count: stats.has_proc_hist().then_some(stats.proc_sampled_count),
         iter: stats.iter,
     }
 }
@@ -258,6 +247,7 @@ impl ChannelEntry {
             queue_size: None,
             max_queue_size: None,
             proc_total_nanos: 0,
+            proc_sampled_count: 0,
             proc_hist: wrap.then(Self::new_histogram),
             iter,
         }
@@ -275,6 +265,7 @@ impl ChannelEntry {
     #[inline]
     fn record_proc(&mut self, nanos: u64) {
         if let Some(ref mut hist) = self.proc_hist {
+            self.proc_sampled_count += 1;
             self.proc_total_nanos += nanos;
             hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
                 .unwrap();
@@ -323,13 +314,15 @@ impl ChannelEntry {
 
     pub(crate) fn proc_avg_nanos(&self) -> u64 {
         self.proc_total_nanos
-            .checked_div(self.received_count)
+            .checked_div(self.proc_sampled_count)
             .unwrap_or(0)
     }
 
     pub(crate) fn proc_percentile_nanos(&self, p: f64) -> u64 {
         match &self.proc_hist {
-            Some(hist) if self.received_count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
+            Some(hist) if self.proc_sampled_count > 0 => {
+                hist.value_at_percentile(p.clamp(0.0, 100.0))
+            }
             _ => 0,
         }
     }
@@ -375,19 +368,21 @@ pub(crate) enum ChannelEvent {
         id: u32,
         timestamp: Instant,
     },
+    /// `timestamp` is `None` for messages unsampled under time sampling;
+    /// the worker stamps those at drain time.
     WrapMessageSent {
         id: u32,
         msg_id: u64,
         log: Option<String>,
-        timestamp: Instant,
+        timestamp: Option<Instant>,
         queue_len: usize,
     },
     WrapMessageReceived {
         id: u32,
         msg_id: u64,
-        timestamp: Instant,
+        timestamp: Option<Instant>,
         queue_len: usize,
-        delay_nanos: u64,
+        delay_nanos: Option<u64>,
     },
     Closed {
         id: u32,
@@ -399,7 +394,6 @@ pub(crate) enum ChannelEvent {
 }
 
 pub(crate) struct ChannelsState {
-    pub(crate) event_tx: CbSender<Vec<ChannelEvent>>,
     pub(crate) inner: Arc<RwLock<ChannelsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -410,6 +404,14 @@ pub(crate) static CHANNELS_STATE: OnceLock<ChannelsState> = OnceLock::new();
 pub(crate) use crate::lib_on::START_TIME;
 
 pub(crate) use crate::lib_on::hotpath_guard::LOGS_LIMIT;
+
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata; `wrap` is inferred from the event variant
+/// so wrap-only stats (queue depth, processing histogram) record immediately.
+fn placeholder_channel_entry(id: u32, wrap: bool) -> ChannelEntry {
+    ChannelEntry::new(id, "", None, ChannelType::Pending, "", 0, wrap, 0)
+}
 
 fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent) {
     match event {
@@ -423,60 +425,66 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             wrap,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                ChannelEntry::new(
-                    id,
-                    source,
-                    display_label,
-                    channel_type,
-                    type_name,
-                    type_size,
-                    wrap,
-                    iter,
-                ),
-            );
-            state.logs.insert(id, ChannelEntryLogs::new());
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, wrap));
+            entry.source = source;
+            entry.label = display_label;
+            entry.channel_type = channel_type;
+            entry.type_name = type_name;
+            entry.type_size = type_size;
+            entry.wrap = wrap;
+            entry.iter = iter;
+            if wrap && entry.proc_hist.is_none() {
+                entry.proc_hist = Some(ChannelEntry::new_histogram());
+            }
+            state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
         }
         ChannelEvent::MessageSent { id, log, timestamp } => {
             let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.sent_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false));
+            channel_stats.sent_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            let sent_count = channel_stats.sent_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.sent_logs.len() >= limit {
+                entry_logs.sent_logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let sent_count = state.stats.get(&id).map_or(0, |s| s.sent_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.sent_logs.len() >= limit {
-                    entry_logs.sent_logs.pop_front();
-                }
-                entry_logs
-                    .sent_logs
-                    .push_back(DataFlowLogEntry::new(sent_count, ts_ns, log, None, None));
-            }
+            entry_logs.sent_logs.push_back(DataFlowLogEntry::new(
+                sent_count, ts_ns, log, None, None, None,
+            ));
         }
         ChannelEvent::MessageReceived { id, timestamp } => {
             let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.received_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false));
+            channel_stats.received_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            let received_count = channel_stats.received_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.received_logs.len() >= limit {
+                entry_logs.received_logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.received_logs.len() >= limit {
-                    entry_logs.received_logs.pop_front();
-                }
-                entry_logs.received_logs.push_back(DataFlowLogEntry::new(
-                    received_count,
-                    ts_ns,
-                    None,
-                    None,
-                    None,
-                ));
-            }
+            entry_logs.received_logs.push_back(DataFlowLogEntry::new(
+                received_count,
+                ts_ns,
+                None,
+                None,
+                None,
+                None,
+            ));
         }
         ChannelEvent::WrapMessageSent {
             id,
@@ -485,27 +493,35 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             timestamp,
             queue_len,
         } => {
-            let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.sent_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
-                channel_stats.record_queue(queue_len);
+            // Unsampled events are stamped at drain time; `first_msg_ns` stays
+            // exact because msg 0's send always carries a real stamp
+            // (`anchor_first_msg`), at every rate including count-only.
+            let ts_ns = timestamp
+                .map(timestamp_nanos)
+                .unwrap_or_else(crate::lib_on::current_elapsed_ns);
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, true));
+            channel_stats.sent_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            channel_stats.record_queue(queue_len);
+            let sent_count = channel_stats.sent_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.sent_logs.len() >= limit {
+                entry_logs.sent_logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let sent_count = state.stats.get(&id).map_or(0, |s| s.sent_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.sent_logs.len() >= limit {
-                    entry_logs.sent_logs.pop_front();
-                }
-                entry_logs.sent_logs.push_back(DataFlowLogEntry::new(
-                    sent_count,
-                    ts_ns,
-                    log,
-                    None,
-                    Some(msg_id),
-                ));
-            }
+            entry_logs.sent_logs.push_back(DataFlowLogEntry::new(
+                sent_count,
+                ts_ns,
+                log,
+                None,
+                Some(msg_id),
+                None,
+            ));
         }
         ChannelEvent::WrapMessageReceived {
             id,
@@ -514,39 +530,50 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             queue_len,
             delay_nanos,
         } => {
-            let ts_ns = timestamp_nanos(timestamp);
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.received_count += 1;
-                channel_stats.record_activity(ts_ns);
-                channel_stats.update_state();
-                channel_stats.record_queue(queue_len);
+            let ts_ns = timestamp
+                .map(timestamp_nanos)
+                .unwrap_or_else(crate::lib_on::current_elapsed_ns);
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, true));
+            channel_stats.received_count += 1;
+            channel_stats.record_activity(ts_ns);
+            channel_stats.update_state();
+            channel_stats.record_queue(queue_len);
+            if let Some(delay_nanos) = delay_nanos {
                 channel_stats.record_proc(delay_nanos);
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let received_count = state.stats.get(&id).map_or(0, |s| s.received_count);
-                let limit = *LOGS_LIMIT;
-                if entry_logs.received_logs.len() >= limit {
-                    entry_logs.received_logs.pop_front();
-                }
-                entry_logs.received_logs.push_back(DataFlowLogEntry::new(
-                    received_count,
-                    ts_ns,
-                    None,
-                    None,
-                    Some(msg_id),
-                ));
+            let received_count = channel_stats.received_count;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
+            let limit = *LOGS_LIMIT;
+            if entry_logs.received_logs.len() >= limit {
+                entry_logs.received_logs.pop_front();
             }
+            entry_logs.received_logs.push_back(DataFlowLogEntry::new(
+                received_count,
+                ts_ns,
+                None,
+                None,
+                Some(msg_id),
+                delay_nanos,
+            ));
         }
         ChannelEvent::Closed { id } => {
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                channel_stats.state = ChannelState::Closed;
-            }
+            state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false))
+                .state = ChannelState::Closed;
         }
         ChannelEvent::Notified { id } => {
-            if let Some(channel_stats) = state.stats.get_mut(&id) {
-                if channel_stats.state != ChannelState::Closed {
-                    channel_stats.state = ChannelState::Notified;
-                }
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, false));
+            if channel_stats.state != ChannelState::Closed {
+                channel_stats.state = ChannelState::Notified;
             }
         }
     }
@@ -571,7 +598,6 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
     CHANNELS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<Vec<ChannelEvent>>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
         let inner = Arc::new(RwLock::new(ChannelsInternalState {
@@ -580,48 +606,31 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
         }));
         let inner_clone = Arc::clone(&inner);
 
+        EVENT_QUEUES.set_active(true);
+
         std::thread::Builder::new()
             .name("hp-meta-channels".into())
             .spawn(move || {
-                let mut local_buffer: Vec<ChannelEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<ChannelEvent> = Vec::new();
 
-                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
-                let mut select = Select::new();
-                let _shutdown_idx = select.recv(&shutdown_rx);
-                let _event_idx = select.recv(&event_rx);
-
+                // Single consumer of the per-thread event queues: capped sweep on
+                // every tick, then one uncapped drain when shutdown is signalled
+                // (producers are already stopped by then, so nothing is left behind).
                 loop {
-                    if select.ready_timeout(flush_interval).is_err() {
-                        flush_channel_buffer(&mut local_buffer, &inner_clone);
-                        continue;
-                    }
+                    let shutdown = !matches!(
+                        shutdown_rx.recv_timeout(flush_interval),
+                        Err(RecvTimeoutError::Timeout)
+                    );
 
-                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match event_rx.try_recv() {
-                                Ok(events) => local_buffer.extend(events),
-                                Err(_) => break,
-                            }
-                        }
-                        flush_channel_buffer(&mut local_buffer, &inner_clone);
+                    if shutdown {
+                        EVENT_QUEUES.drain_all(&mut swept);
+                        flush_channel_buffer(&mut swept, &inner_clone);
                         break;
                     }
 
-                    match event_rx.try_recv() {
-                        Ok(events) => {
-                            local_buffer.extend(events);
-                            if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                flush_channel_buffer(&mut local_buffer, &inner_clone);
-                            }
-                        }
-                        // A disconnected receiver stays ready; flush and stop, do not spin.
-                        Err(TryRecvError::Disconnected) => {
-                            flush_channel_buffer(&mut local_buffer, &inner_clone);
-                            break;
-                        }
-                        Err(TryRecvError::Empty) => {}
-                    }
+                    EVENT_QUEUES.sweep(&mut swept);
+                    flush_channel_buffer(&mut swept, &inner_clone);
                 }
 
                 let _ = completion_tx.send(());
@@ -631,7 +640,6 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         ChannelsState {
-            event_tx,
             inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),
@@ -931,9 +939,9 @@ mod tests {
             ChannelEvent::WrapMessageReceived {
                 id,
                 msg_id: 1,
-                timestamp: ts,
+                timestamp: Some(ts),
                 queue_len: 0,
-                delay_nanos: 0,
+                delay_nanos: Some(0),
             },
         );
         process_channel_event(
@@ -942,7 +950,7 @@ mod tests {
                 id,
                 msg_id: 1,
                 log: None,
-                timestamp: ts,
+                timestamp: Some(ts),
                 queue_len: 1,
             },
         );

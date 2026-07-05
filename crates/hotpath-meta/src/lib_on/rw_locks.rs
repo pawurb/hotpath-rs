@@ -1,18 +1,14 @@
 //! RwLock instrumentation module - tracks read/write lock acquisitions and hold durations.
 
-use crossbeam_channel::{
-    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
-};
+use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
-use crate::lib_on::hotpath_guard::{
-    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
+use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
@@ -45,13 +41,13 @@ pub(crate) enum RwLockEvent {
     },
     /// Emitted when a guard is dropped. `wait_nanos` is the time blocked
     /// before the lock was granted; `acquire_nanos` is the held duration
-    /// (granted -> released).
+    /// (granted -> released). Both `None` when timing was skipped under
+    /// time sampling; the event still counts the lock.
     Released {
         id: u32,
         kind: RwLockKind,
-        wait_nanos: u64,
-        acquire_nanos: u64,
-        elapsed_ns: u64,
+        wait_nanos: Option<u64>,
+        acquire_nanos: Option<u64>,
     },
 }
 
@@ -64,6 +60,8 @@ pub(crate) struct RwLockEntry {
     pub(crate) type_name: &'static str,
     pub(crate) read_count: u64,
     pub(crate) write_count: u64,
+    pub(crate) read_sampled_count: u64,
+    pub(crate) write_sampled_count: u64,
     pub(crate) read_wait_total_nanos: u64,
     pub(crate) write_wait_total_nanos: u64,
     pub(crate) read_acquire_total_nanos: u64,
@@ -100,20 +98,27 @@ impl RwLockEntry {
         }
     }
 
+    pub(crate) fn sampled_count(&self, kind: RwLockKind) -> u64 {
+        match kind {
+            RwLockKind::Read => self.read_sampled_count,
+            RwLockKind::Write => self.write_sampled_count,
+        }
+    }
+
     pub(crate) fn wait_avg_nanos(&self, kind: RwLockKind) -> u64 {
-        let (total, count) = match kind {
-            RwLockKind::Read => (self.read_wait_total_nanos, self.read_count),
-            RwLockKind::Write => (self.write_wait_total_nanos, self.write_count),
+        let total = match kind {
+            RwLockKind::Read => self.read_wait_total_nanos,
+            RwLockKind::Write => self.write_wait_total_nanos,
         };
-        total.checked_div(count).unwrap_or(0)
+        total.checked_div(self.sampled_count(kind)).unwrap_or(0)
     }
 
     pub(crate) fn acquire_avg_nanos(&self, kind: RwLockKind) -> u64 {
-        let (total, count) = match kind {
-            RwLockKind::Read => (self.read_acquire_total_nanos, self.read_count),
-            RwLockKind::Write => (self.write_acquire_total_nanos, self.write_count),
+        let total = match kind {
+            RwLockKind::Read => self.read_acquire_total_nanos,
+            RwLockKind::Write => self.write_acquire_total_nanos,
         };
-        total.checked_div(count).unwrap_or(0)
+        total.checked_div(self.sampled_count(kind)).unwrap_or(0)
     }
 
     fn percentile(hist: &Option<Histogram<u64>>, count: u64, p: f64) -> u64 {
@@ -124,19 +129,19 @@ impl RwLockEntry {
     }
 
     pub(crate) fn wait_percentile_nanos(&self, kind: RwLockKind, p: f64) -> u64 {
-        let (hist, count) = match kind {
-            RwLockKind::Read => (&self.read_wait_hist, self.read_count),
-            RwLockKind::Write => (&self.write_wait_hist, self.write_count),
+        let hist = match kind {
+            RwLockKind::Read => &self.read_wait_hist,
+            RwLockKind::Write => &self.write_wait_hist,
         };
-        Self::percentile(hist, count, p)
+        Self::percentile(hist, self.sampled_count(kind), p)
     }
 
     pub(crate) fn acquire_percentile_nanos(&self, kind: RwLockKind, p: f64) -> u64 {
-        let (hist, count) = match kind {
-            RwLockKind::Read => (&self.read_acquire_hist, self.read_count),
-            RwLockKind::Write => (&self.write_acquire_hist, self.write_count),
+        let hist = match kind {
+            RwLockKind::Read => &self.read_acquire_hist,
+            RwLockKind::Write => &self.write_acquire_hist,
         };
-        Self::percentile(hist, count, p)
+        Self::percentile(hist, self.sampled_count(kind), p)
     }
 }
 
@@ -145,7 +150,6 @@ pub(crate) struct RwLocksInternalState {
 }
 
 pub(crate) struct RwLocksState {
-    pub(crate) event_tx: CbSender<Vec<RwLockEvent>>,
     pub(crate) inner: Arc<StdRwLock<RwLocksInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -178,49 +182,61 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
-static EVENT_REGISTRY: BatchRegistry<RwLockEvent> = BatchRegistry::new();
+/// One sampling decision per acquisition; `None` skips both clock read pairs.
+#[inline]
+pub(crate) fn wait_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::rw_locks_should_time().then(Instant::now)
+}
+
+/// Rolls back a `wait_stamp` decision after a failed try-acquisition, so the
+/// sampling rate applies to acquisitions rather than attempts.
+#[inline]
+pub(crate) fn cancel_wait_stamp() {
+    crate::lib_on::sampling::rw_locks_untime();
+}
+
+static EVENT_QUEUES: EventQueueRegistry<RwLockEvent> = EventQueueRegistry::new();
 
 thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<RwLockEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
+    static EVENT_PRODUCER: EventProducer<RwLockEvent> = EVENT_QUEUES.register();
 }
 
 #[inline]
 pub(crate) fn send_rw_lock_event(event: RwLockEvent) {
+    if !EVENT_QUEUES.is_active() {
+        return;
+    }
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
-        }
-    });
+    let _ = EVENT_PRODUCER.try_with(|producer| producer.push(event));
 }
 
-/// Flushes every thread's buffered rw_lock events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_rw_lock_batch() {
-    EVENT_REGISTRY.flush_all();
+/// Stops producers ahead of the worker's final sweep at shutdown.
+pub(crate) fn stop_rw_lock_events() {
+    EVENT_QUEUES.set_active(false);
 }
 
-impl BatchedMeasurement for RwLockEvent {
-    type Tx = CbSender<Vec<Self>>;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        match self {
-            RwLockEvent::Released { elapsed_ns, .. } => *elapsed_ns,
-            _ => 0,
-        }
-    }
-
-    fn fetch_sender() -> Option<Self::Tx> {
-        Some(RW_LOCKS_STATE.get()?.event_tx.clone())
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-
-    fn is_flush_boundary(&self) -> bool {
-        matches!(self, RwLockEvent::Created { .. })
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata.
+fn placeholder_rw_lock_entry(id: u32) -> RwLockEntry {
+    RwLockEntry {
+        id,
+        source: "",
+        label: None,
+        type_name: "",
+        read_count: 0,
+        write_count: 0,
+        read_sampled_count: 0,
+        write_sampled_count: 0,
+        read_wait_total_nanos: 0,
+        write_wait_total_nanos: 0,
+        read_acquire_total_nanos: 0,
+        write_acquire_total_nanos: 0,
+        read_wait_hist: Some(RwLockEntry::new_histogram()),
+        write_wait_hist: Some(RwLockEntry::new_histogram()),
+        read_acquire_hist: Some(RwLockEntry::new_histogram()),
+        write_acquire_hist: Some(RwLockEntry::new_histogram()),
+        iter: 0,
     }
 }
 
@@ -233,45 +249,44 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
             type_name,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                RwLockEntry {
-                    id,
-                    source,
-                    label,
-                    type_name,
-                    read_count: 0,
-                    write_count: 0,
-                    read_wait_total_nanos: 0,
-                    write_wait_total_nanos: 0,
-                    read_acquire_total_nanos: 0,
-                    write_acquire_total_nanos: 0,
-                    read_wait_hist: Some(RwLockEntry::new_histogram()),
-                    write_wait_hist: Some(RwLockEntry::new_histogram()),
-                    read_acquire_hist: Some(RwLockEntry::new_histogram()),
-                    write_acquire_hist: Some(RwLockEntry::new_histogram()),
-                    iter,
-                },
-            );
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_rw_lock_entry(id));
+            entry.source = source;
+            entry.label = label;
+            entry.type_name = type_name;
+            entry.iter = iter;
         }
         RwLockEvent::Released {
             id,
             kind,
             wait_nanos,
             acquire_nanos,
-            elapsed_ns: _,
         } => {
-            if let Some(entry) = state.stats.get_mut(&id) {
-                match kind {
-                    RwLockKind::Read => {
-                        entry.read_count += 1;
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_rw_lock_entry(id));
+            let sampled = match (wait_nanos, acquire_nanos) {
+                (Some(wait), Some(acquire)) => Some((wait, acquire)),
+                _ => None,
+            };
+            match kind {
+                RwLockKind::Read => {
+                    entry.read_count += 1;
+                    if let Some((wait_nanos, acquire_nanos)) = sampled {
+                        entry.read_sampled_count += 1;
                         entry.read_wait_total_nanos += wait_nanos;
                         entry.read_acquire_total_nanos += acquire_nanos;
                         RwLockEntry::record(&mut entry.read_wait_hist, wait_nanos);
                         RwLockEntry::record(&mut entry.read_acquire_hist, acquire_nanos);
                     }
-                    RwLockKind::Write => {
-                        entry.write_count += 1;
+                }
+                RwLockKind::Write => {
+                    entry.write_count += 1;
+                    if let Some((wait_nanos, acquire_nanos)) = sampled {
+                        entry.write_sampled_count += 1;
                         entry.write_wait_total_nanos += wait_nanos;
                         entry.write_acquire_total_nanos += acquire_nanos;
                         RwLockEntry::record(&mut entry.write_wait_hist, wait_nanos);
@@ -318,7 +333,6 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
     RW_LOCKS_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<Vec<RwLockEvent>>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
@@ -327,48 +341,31 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
         }));
         let inner_clone = Arc::clone(&inner);
 
+        EVENT_QUEUES.set_active(true);
+
         std::thread::Builder::new()
             .name("hp-rw-locks".into())
             .spawn(move || {
-                let mut local_buffer: Vec<RwLockEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<RwLockEvent> = Vec::new();
 
-                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
-                let mut select = Select::new();
-                let _shutdown_idx = select.recv(&shutdown_rx);
-                let _event_idx = select.recv(&event_rx);
-
+                // Single consumer of the per-thread event queues: capped sweep on
+                // every tick, then one uncapped drain when shutdown is signalled
+                // (producers are already stopped by then, so nothing is left behind).
                 loop {
-                    if select.ready_timeout(flush_interval).is_err() {
-                        flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
-                        continue;
-                    }
+                    let shutdown = !matches!(
+                        shutdown_rx.recv_timeout(flush_interval),
+                        Err(RecvTimeoutError::Timeout)
+                    );
 
-                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match event_rx.try_recv() {
-                                Ok(events) => local_buffer.extend(events),
-                                Err(_) => break,
-                            }
-                        }
-                        flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
+                    if shutdown {
+                        EVENT_QUEUES.drain_all(&mut swept);
+                        flush_rw_lock_buffer(&mut swept, &inner_clone);
                         break;
                     }
 
-                    match event_rx.try_recv() {
-                        Ok(events) => {
-                            local_buffer.extend(events);
-                            if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
-                            }
-                        }
-                        // A disconnected receiver stays ready; flush and stop, do not spin.
-                        Err(TryRecvError::Disconnected) => {
-                            flush_rw_lock_buffer(&mut local_buffer, &inner_clone);
-                            break;
-                        }
-                        Err(TryRecvError::Empty) => {}
-                    }
+                    EVENT_QUEUES.sweep(&mut swept);
+                    flush_rw_lock_buffer(&mut swept, &inner_clone);
                 }
 
                 let _ = completion_tx.send(());
@@ -378,7 +375,6 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         RwLocksState {
-            event_tx,
             inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),

@@ -3,19 +3,15 @@
 //! Unlike [`crate::rw_locks`], a mutex has a single lock kind (no read/write
 //! distinction), so each entry tracks one set of wait & acquire statistics.
 
-use crossbeam_channel::{
-    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
-};
+use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
-use crate::lib_on::hotpath_guard::{
-    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
+use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
@@ -41,12 +37,12 @@ pub(crate) enum MutexEvent {
     },
     /// Emitted when a guard is dropped. `wait_nanos` is the time blocked
     /// before the lock was granted; `acquire_nanos` is the held duration
-    /// (granted -> released).
+    /// (granted -> released). Both `None` when timing was skipped under
+    /// time sampling; the event still counts the lock.
     Released {
         id: u32,
-        wait_nanos: u64,
-        acquire_nanos: u64,
-        elapsed_ns: u64,
+        wait_nanos: Option<u64>,
+        acquire_nanos: Option<u64>,
     },
 }
 
@@ -58,6 +54,7 @@ pub(crate) struct MutexEntry {
     pub(crate) label: Option<String>,
     pub(crate) type_name: &'static str,
     pub(crate) count: u64,
+    pub(crate) sampled_count: u64,
     pub(crate) wait_total_nanos: u64,
     pub(crate) acquire_total_nanos: u64,
     wait_hist: Option<Histogram<u64>>,
@@ -84,12 +81,14 @@ impl MutexEntry {
     }
 
     pub(crate) fn wait_avg_nanos(&self) -> u64 {
-        self.wait_total_nanos.checked_div(self.count).unwrap_or(0)
+        self.wait_total_nanos
+            .checked_div(self.sampled_count)
+            .unwrap_or(0)
     }
 
     pub(crate) fn acquire_avg_nanos(&self) -> u64 {
         self.acquire_total_nanos
-            .checked_div(self.count)
+            .checked_div(self.sampled_count)
             .unwrap_or(0)
     }
 
@@ -101,11 +100,11 @@ impl MutexEntry {
     }
 
     pub(crate) fn wait_percentile_nanos(&self, p: f64) -> u64 {
-        Self::percentile(&self.wait_hist, self.count, p)
+        Self::percentile(&self.wait_hist, self.sampled_count, p)
     }
 
     pub(crate) fn acquire_percentile_nanos(&self, p: f64) -> u64 {
-        Self::percentile(&self.acquire_hist, self.count, p)
+        Self::percentile(&self.acquire_hist, self.sampled_count, p)
     }
 }
 
@@ -114,7 +113,6 @@ pub(crate) struct MutexesInternalState {
 }
 
 pub(crate) struct MutexesState {
-    pub(crate) event_tx: CbSender<Vec<MutexEvent>>,
     pub(crate) inner: Arc<StdRwLock<MutexesInternalState>>,
     pub(crate) shutdown_tx: StdMutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: StdMutex<Option<CbReceiver<()>>>,
@@ -147,49 +145,55 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
-static EVENT_REGISTRY: BatchRegistry<MutexEvent> = BatchRegistry::new();
+/// One sampling decision per acquisition; `None` skips both clock read pairs.
+#[inline]
+pub(crate) fn wait_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::mutexes_should_time().then(Instant::now)
+}
+
+/// Rolls back a `wait_stamp` decision after a failed try-acquisition, so the
+/// sampling rate applies to acquisitions rather than attempts.
+#[inline]
+pub(crate) fn cancel_wait_stamp() {
+    crate::lib_on::sampling::mutexes_untime();
+}
+
+static EVENT_QUEUES: EventQueueRegistry<MutexEvent> = EventQueueRegistry::new();
 
 thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<MutexEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
+    static EVENT_PRODUCER: EventProducer<MutexEvent> = EVENT_QUEUES.register();
 }
 
 #[inline]
 pub(crate) fn send_mutex_event(event: MutexEvent) {
+    if !EVENT_QUEUES.is_active() {
+        return;
+    }
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
-        }
-    });
+    let _ = EVENT_PRODUCER.try_with(|producer| producer.push(event));
 }
 
-/// Flushes every thread's buffered mutex events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_mutex_batch() {
-    EVENT_REGISTRY.flush_all();
+/// Stops producers ahead of the worker's final sweep at shutdown.
+pub(crate) fn stop_mutex_events() {
+    EVENT_QUEUES.set_active(false);
 }
 
-impl BatchedMeasurement for MutexEvent {
-    type Tx = CbSender<Vec<Self>>;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        match self {
-            MutexEvent::Released { elapsed_ns, .. } => *elapsed_ns,
-            _ => 0,
-        }
-    }
-
-    fn fetch_sender() -> Option<Self::Tx> {
-        Some(MUTEXES_STATE.get()?.event_tx.clone())
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-
-    fn is_flush_boundary(&self) -> bool {
-        matches!(self, MutexEvent::Created { .. })
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata.
+fn placeholder_mutex_entry(id: u32) -> MutexEntry {
+    MutexEntry {
+        id,
+        source: "",
+        label: None,
+        type_name: "",
+        count: 0,
+        sampled_count: 0,
+        wait_total_nanos: 0,
+        acquire_total_nanos: 0,
+        wait_hist: Some(MutexEntry::new_histogram()),
+        acquire_hist: Some(MutexEntry::new_histogram()),
+        iter: 0,
     }
 }
 
@@ -202,30 +206,27 @@ fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
             type_name,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                MutexEntry {
-                    id,
-                    source,
-                    label,
-                    type_name,
-                    count: 0,
-                    wait_total_nanos: 0,
-                    acquire_total_nanos: 0,
-                    wait_hist: Some(MutexEntry::new_histogram()),
-                    acquire_hist: Some(MutexEntry::new_histogram()),
-                    iter,
-                },
-            );
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_mutex_entry(id));
+            entry.source = source;
+            entry.label = label;
+            entry.type_name = type_name;
+            entry.iter = iter;
         }
         MutexEvent::Released {
             id,
             wait_nanos,
             acquire_nanos,
-            elapsed_ns: _,
         } => {
-            if let Some(entry) = state.stats.get_mut(&id) {
-                entry.count += 1;
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_mutex_entry(id));
+            entry.count += 1;
+            if let (Some(wait_nanos), Some(acquire_nanos)) = (wait_nanos, acquire_nanos) {
+                entry.sampled_count += 1;
                 entry.wait_total_nanos += wait_nanos;
                 entry.acquire_total_nanos += acquire_nanos;
                 MutexEntry::record(&mut entry.wait_hist, wait_nanos);
@@ -267,7 +268,6 @@ pub(crate) fn init_mutexes_state() -> &'static MutexesState {
     MUTEXES_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
-        let (event_tx, event_rx) = unbounded::<Vec<MutexEvent>>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
@@ -276,48 +276,31 @@ pub(crate) fn init_mutexes_state() -> &'static MutexesState {
         }));
         let inner_clone = Arc::clone(&inner);
 
+        EVENT_QUEUES.set_active(true);
+
         std::thread::Builder::new()
             .name("hp-mutexes".into())
             .spawn(move || {
-                let mut local_buffer: Vec<MutexEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<MutexEvent> = Vec::new();
 
-                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
-                let mut select = Select::new();
-                let _shutdown_idx = select.recv(&shutdown_rx);
-                let _event_idx = select.recv(&event_rx);
-
+                // Single consumer of the per-thread event queues: capped sweep on
+                // every tick, then one uncapped drain when shutdown is signalled
+                // (producers are already stopped by then, so nothing is left behind).
                 loop {
-                    if select.ready_timeout(flush_interval).is_err() {
-                        flush_mutex_buffer(&mut local_buffer, &inner_clone);
-                        continue;
-                    }
+                    let shutdown = !matches!(
+                        shutdown_rx.recv_timeout(flush_interval),
+                        Err(RecvTimeoutError::Timeout)
+                    );
 
-                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match event_rx.try_recv() {
-                                Ok(events) => local_buffer.extend(events),
-                                Err(_) => break,
-                            }
-                        }
-                        flush_mutex_buffer(&mut local_buffer, &inner_clone);
+                    if shutdown {
+                        EVENT_QUEUES.drain_all(&mut swept);
+                        flush_mutex_buffer(&mut swept, &inner_clone);
                         break;
                     }
 
-                    match event_rx.try_recv() {
-                        Ok(events) => {
-                            local_buffer.extend(events);
-                            if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                flush_mutex_buffer(&mut local_buffer, &inner_clone);
-                            }
-                        }
-                        // A disconnected receiver stays ready; flush and stop, do not spin.
-                        Err(TryRecvError::Disconnected) => {
-                            flush_mutex_buffer(&mut local_buffer, &inner_clone);
-                            break;
-                        }
-                        Err(TryRecvError::Empty) => {}
-                    }
+                    EVENT_QUEUES.sweep(&mut swept);
+                    flush_mutex_buffer(&mut swept, &inner_clone);
                 }
 
                 let _ = completion_tx.send(());
@@ -327,7 +310,6 @@ pub(crate) fn init_mutexes_state() -> &'static MutexesState {
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
         MutexesState {
-            event_tx,
             inner,
             shutdown_tx: StdMutex::new(Some(shutdown_tx)),
             completion_rx: StdMutex::new(Some(completion_rx)),

@@ -1,14 +1,10 @@
 //! Futures instrumentation module - tracks async Future lifecycle and poll statistics.
 
-use crate::batch::{register_thread_batch, BatchRegistry, BatchedMeasurement, MeasurementBatch};
+use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::channels::{resolve_label, LOGS_LIMIT, START_TIME};
-use crate::lib_on::hotpath_guard::{
-    WORKER_BATCH_SIZE, WORKER_FLUSH_INTERVAL_MS, WORKER_SHUTDOWN_DRAIN_LIMIT,
-};
+use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crossbeam_channel::{
-    bounded, unbounded, Receiver as CbReceiver, Select, Sender as CbSender, TryRecvError,
-};
+use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -67,6 +63,7 @@ pub(crate) struct FutureEntry {
     pub(crate) label: Option<String>,
     pub(crate) logs_count: u64,
     pub(crate) total_poll_count: u64,
+    pub(crate) sampled_polls: u64,
     pub(crate) total_poll_duration_ns: u64,
     pub(crate) total_poll_alloc_bytes: Option<u64>,
     pub(crate) total_poll_alloc_count: Option<u64>,
@@ -80,6 +77,7 @@ impl FutureEntry {
             label,
             logs_count: 0,
             total_poll_count: 0,
+            sampled_polls: 0,
             total_poll_duration_ns: 0,
             total_poll_alloc_bytes: None,
             total_poll_alloc_count: None,
@@ -90,8 +88,17 @@ impl FutureEntry {
         self.total_poll_count
     }
 
-    pub(crate) fn total_poll_duration_ns(&self) -> u64 {
-        self.total_poll_duration_ns
+    pub(crate) fn avg_poll_duration_ns(&self) -> Option<u64> {
+        self.total_poll_duration_ns.checked_div(self.sampled_polls)
+    }
+
+    /// Exact when every poll was timed, extrapolated (`avg * polls`) under time sampling.
+    pub(crate) fn display_total_poll_duration_ns(&self) -> u64 {
+        if self.sampled_polls == self.total_poll_count {
+            self.total_poll_duration_ns
+        } else {
+            self.avg_poll_duration_ns().unwrap_or(0) * self.total_poll_count
+        }
     }
 
     pub(crate) fn total_poll_alloc_bytes(&self) -> Option<u64> {
@@ -118,6 +125,21 @@ impl FutureEntryLogs {
     fn find_call_mut(&mut self, id: u32) -> Option<&mut FutureLog> {
         self.logs.iter_mut().find(|c| c.id == id)
     }
+
+    /// Registers a call log entry if absent, whether the call arrives via
+    /// `CallCreated` or via a data event that outran it on another thread's
+    /// queue. The window is best-effort: a call evicted by `LOGS_LIMIT` can be
+    /// re-registered (with reset per-call details) by a late event; call
+    /// counts and poll totals live in `FutureEntry` and are unaffected.
+    fn register_call(&mut self, future_id: u32, call_id: u32) {
+        if self.logs.iter().any(|c| c.id == call_id) {
+            return;
+        }
+        if self.logs.len() >= *LOGS_LIMIT {
+            self.logs.pop_front();
+        }
+        self.logs.push_back(FutureLog::new(call_id, future_id));
+    }
 }
 
 pub(crate) struct FuturesInternalState {
@@ -136,7 +158,8 @@ impl From<&FutureEntry> for JsonFutureEntry {
             has_custom_label: stats.label.is_some(),
             call_count: stats.logs_count,
             total_polls: stats.total_polls(),
-            total_poll_duration_ns: stats.total_poll_duration_ns(),
+            sampled_polls: stats.sampled_polls,
+            total_poll_duration_ns: stats.display_total_poll_duration_ns(),
             total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
             total_poll_alloc_count: stats.total_poll_alloc_count(),
         }
@@ -166,10 +189,11 @@ pub(crate) enum FutureEvent {
         future_id: u32,
         call_id: u32,
         result: PollResult,
-        poll_duration_ns: u64,
+        /// `None` for polls whose duration was not measured under time
+        /// sampling; the poll still counts and alloc fields stay exact.
+        poll_duration_ns: Option<u64>,
         poll_alloc_bytes: Option<u64>,
         poll_alloc_count: Option<u64>,
-        elapsed_ns: u64,
     },
     Completed {
         future_id: u32,
@@ -183,7 +207,6 @@ pub(crate) enum FutureEvent {
 }
 
 pub(crate) struct FuturesState {
-    pub(crate) event_tx: CbSender<Vec<FutureEvent>>,
     pub(crate) inner: Arc<RwLock<FuturesInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
@@ -191,53 +214,24 @@ pub(crate) struct FuturesState {
 
 pub(crate) static FUTURES_STATE: OnceLock<FuturesState> = OnceLock::new();
 
-static EVENT_REGISTRY: BatchRegistry<FutureEvent> = BatchRegistry::new();
+static EVENT_QUEUES: EventQueueRegistry<FutureEvent> = EventQueueRegistry::new();
 
 thread_local! {
-    static EVENT_BATCH: std::sync::Arc<std::sync::Mutex<MeasurementBatch<FutureEvent>>> =
-        register_thread_batch(&EVENT_REGISTRY);
+    static EVENT_PRODUCER: EventProducer<FutureEvent> = EVENT_QUEUES.register();
 }
 
 #[inline]
 pub(crate) fn send_future_event(event: FutureEvent) {
+    if !EVENT_QUEUES.is_active() {
+        return;
+    }
     let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    EVENT_BATCH.with(|b| {
-        if let Ok(mut b) = b.lock() {
-            b.add(event);
-        }
-    });
+    let _ = EVENT_PRODUCER.try_with(|producer| producer.push(event));
 }
 
-/// Flushes every thread's buffered future events into the worker channel.
-/// Called at shutdown before the worker is signalled to stop.
-pub(crate) fn flush_future_batch() {
-    EVENT_REGISTRY.flush_all();
-}
-
-impl BatchedMeasurement for FutureEvent {
-    type Tx = CbSender<Vec<Self>>;
-
-    fn elapsed_since_start_ns(&self) -> u64 {
-        match self {
-            FutureEvent::Polled { elapsed_ns, .. } => *elapsed_ns,
-            _ => 0,
-        }
-    }
-
-    fn fetch_sender() -> Option<Self::Tx> {
-        Some(FUTURES_STATE.get()?.event_tx.clone())
-    }
-
-    fn send_batch(tx: &Self::Tx, batch: Vec<Self>) {
-        let _ = tx.send(batch);
-    }
-
-    fn is_flush_boundary(&self) -> bool {
-        matches!(
-            self,
-            FutureEvent::Created { .. } | FutureEvent::CallCreated { .. }
-        )
-    }
+/// Stops producers ahead of the worker's final sweep at shutdown.
+pub(crate) fn stop_future_events() {
+    EVENT_QUEUES.set_active(false);
 }
 
 /// Initialize the futures event collection system (called on first instrumented future).
@@ -263,7 +257,6 @@ fn get_futures_state() -> &'static FuturesState {
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
-        let (event_tx, event_rx) = unbounded::<Vec<FutureEvent>>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
         let inner = Arc::new(RwLock::new(FuturesInternalState {
@@ -272,48 +265,31 @@ fn get_futures_state() -> &'static FuturesState {
         }));
         let inner_clone = Arc::clone(&inner);
 
+        EVENT_QUEUES.set_active(true);
+
         std::thread::Builder::new()
             .name("hp-meta-futures".into())
             .spawn(move || {
-                let mut local_buffer: Vec<FutureEvent> = Vec::with_capacity(WORKER_BATCH_SIZE);
-                let flush_interval = std::time::Duration::from_millis(WORKER_FLUSH_INTERVAL_MS);
+                let flush_interval = std::time::Duration::from_millis(*DRAIN_INTERVAL_MS);
+                let mut swept: Vec<FutureEvent> = Vec::new();
 
-                // Shutdown is checked before events; the `ready_timeout` tick flushes a partial buffer.
-                let mut select = Select::new();
-                let _shutdown_idx = select.recv(&shutdown_rx);
-                let _event_idx = select.recv(&event_rx);
-
+                // Single consumer of the per-thread event queues: capped sweep on
+                // every tick, then one uncapped drain when shutdown is signalled
+                // (producers are already stopped by then, so nothing is left behind).
                 loop {
-                    if select.ready_timeout(flush_interval).is_err() {
-                        flush_future_buffer(&mut local_buffer, &inner_clone);
-                        continue;
-                    }
+                    let shutdown = !matches!(
+                        shutdown_rx.recv_timeout(flush_interval),
+                        Err(RecvTimeoutError::Timeout)
+                    );
 
-                    if !matches!(shutdown_rx.try_recv(), Err(TryRecvError::Empty)) {
-                        for _ in 0..WORKER_SHUTDOWN_DRAIN_LIMIT {
-                            match event_rx.try_recv() {
-                                Ok(events) => local_buffer.extend(events),
-                                Err(_) => break,
-                            }
-                        }
-                        flush_future_buffer(&mut local_buffer, &inner_clone);
+                    if shutdown {
+                        EVENT_QUEUES.drain_all(&mut swept);
+                        flush_future_buffer(&mut swept, &inner_clone);
                         break;
                     }
 
-                    match event_rx.try_recv() {
-                        Ok(events) => {
-                            local_buffer.extend(events);
-                            if local_buffer.len() >= WORKER_BATCH_SIZE {
-                                flush_future_buffer(&mut local_buffer, &inner_clone);
-                            }
-                        }
-                        // A disconnected receiver stays ready; flush and stop, do not spin.
-                        Err(TryRecvError::Disconnected) => {
-                            flush_future_buffer(&mut local_buffer, &inner_clone);
-                            break;
-                        }
-                        Err(TryRecvError::Empty) => {}
-                    }
+                    EVENT_QUEUES.sweep(&mut swept);
+                    flush_future_buffer(&mut swept, &inner_clone);
                 }
 
                 let _ = completion_tx.send(());
@@ -321,7 +297,6 @@ fn get_futures_state() -> &'static FuturesState {
             .expect("Failed to spawn futures event collector thread");
 
         FuturesState {
-            event_tx,
             inner,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
             completion_rx: Mutex::new(Some(completion_rx)),
@@ -340,6 +315,13 @@ fn update_future_state(call: &mut FutureLog, state: FutureState) {
     }
 }
 
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata.
+fn placeholder_future_entry(future_id: u32) -> FutureEntry {
+    FutureEntry::new(future_id, "", None)
+}
+
 /// Process a future event and update stats.
 fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
     fn add_optional(total: &mut Option<u64>, delta: Option<u64>) {
@@ -348,31 +330,39 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
         }
     }
 
+    // Any event may outrun its `Created`/`CallCreated` (sweeps only preserve
+    // per-thread order), so every arm materializes missing entries and the
+    // lifecycle events backfill metadata instead of blindly inserting.
     match event {
         FutureEvent::Created {
             future_id,
             source,
             display_label,
         } => {
-            state.stats.insert(
-                future_id,
-                FutureEntry::new(future_id, source, display_label),
-            );
-            state.logs.insert(future_id, FutureEntryLogs::new());
+            let entry = state
+                .stats
+                .entry(future_id)
+                .or_insert_with(|| placeholder_future_entry(future_id));
+            entry.source = source;
+            entry.label = display_label;
+            state
+                .logs
+                .entry(future_id)
+                .or_insert_with(FutureEntryLogs::new);
         }
         FutureEvent::CallCreated { future_id, call_id } => {
-            if let Some(future_stats) = state.stats.get_mut(&future_id) {
-                future_stats.logs_count += 1;
-            }
-            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
-                let limit = *LOGS_LIMIT;
-                if entry_logs.logs.len() >= limit {
-                    entry_logs.logs.pop_front();
-                }
-                entry_logs
-                    .logs
-                    .push_back(FutureLog::new(call_id, future_id));
-            }
+            state
+                .logs
+                .entry(future_id)
+                .or_insert_with(FutureEntryLogs::new)
+                .register_call(future_id, call_id);
+            // `CallCreated` fires exactly once per call, so it alone counts
+            // calls - placeholder registration from data events must not.
+            state
+                .stats
+                .entry(future_id)
+                .or_insert_with(|| placeholder_future_entry(future_id))
+                .logs_count += 1;
         }
         FutureEvent::Polled {
             future_id,
@@ -381,42 +371,53 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
             poll_duration_ns,
             poll_alloc_bytes,
             poll_alloc_count,
-            elapsed_ns: _,
         } => {
-            if let Some(future_stats) = state.stats.get_mut(&future_id) {
-                future_stats.total_poll_count += 1;
+            let future_stats = state
+                .stats
+                .entry(future_id)
+                .or_insert_with(|| placeholder_future_entry(future_id));
+            future_stats.total_poll_count += 1;
+            if let Some(poll_duration_ns) = poll_duration_ns {
+                future_stats.sampled_polls += 1;
                 future_stats.total_poll_duration_ns += poll_duration_ns;
-                add_optional(&mut future_stats.total_poll_alloc_bytes, poll_alloc_bytes);
-                add_optional(&mut future_stats.total_poll_alloc_count, poll_alloc_count);
             }
-            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
-                if let Some(call) = entry_logs.find_call_mut(call_id) {
-                    call.poll_count += 1;
+            add_optional(&mut future_stats.total_poll_alloc_bytes, poll_alloc_bytes);
+            add_optional(&mut future_stats.total_poll_alloc_count, poll_alloc_count);
+
+            let entry_logs = state
+                .logs
+                .entry(future_id)
+                .or_insert_with(FutureEntryLogs::new);
+            entry_logs.register_call(future_id, call_id);
+            if let Some(call) = entry_logs.find_call_mut(call_id) {
+                call.poll_count += 1;
+                if let Some(poll_duration_ns) = poll_duration_ns {
+                    call.sampled_polls += 1;
                     call.total_poll_duration_ns += poll_duration_ns;
                     call.last_poll_duration_ns = poll_duration_ns;
-                    add_optional(&mut call.total_poll_alloc_bytes, poll_alloc_bytes);
-                    add_optional(&mut call.total_poll_alloc_count, poll_alloc_count);
-                    call.last_poll_alloc_bytes = poll_alloc_bytes;
                     if poll_duration_ns > call.max_poll_duration_ns {
                         call.max_poll_duration_ns = poll_duration_ns;
                     }
-                    if let Some(poll_alloc_bytes) = poll_alloc_bytes {
-                        if call
-                            .max_poll_alloc_bytes
-                            .is_none_or(|max| poll_alloc_bytes > max)
-                        {
-                            call.max_poll_alloc_bytes = Some(poll_alloc_bytes);
-                        }
-                    }
-                    match result {
-                        PollResult::Pending => {
-                            update_future_state(call, FutureState::Suspended);
-                        }
-                        PollResult::Ready => {
-                            update_future_state(call, FutureState::Ready);
-                        }
-                    };
                 }
+                add_optional(&mut call.total_poll_alloc_bytes, poll_alloc_bytes);
+                add_optional(&mut call.total_poll_alloc_count, poll_alloc_count);
+                call.last_poll_alloc_bytes = poll_alloc_bytes;
+                if let Some(poll_alloc_bytes) = poll_alloc_bytes {
+                    if call
+                        .max_poll_alloc_bytes
+                        .is_none_or(|max| poll_alloc_bytes > max)
+                    {
+                        call.max_poll_alloc_bytes = Some(poll_alloc_bytes);
+                    }
+                }
+                match result {
+                    PollResult::Pending => {
+                        update_future_state(call, FutureState::Suspended);
+                    }
+                    PollResult::Ready => {
+                        update_future_state(call, FutureState::Ready);
+                    }
+                };
             }
         }
         FutureEvent::Completed {
@@ -424,18 +425,24 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
             call_id,
             log_message,
         } => {
-            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
-                if let Some(call) = entry_logs.find_call_mut(call_id) {
-                    update_future_state(call, FutureState::Ready);
-                    call.result = log_message;
-                }
+            let entry_logs = state
+                .logs
+                .entry(future_id)
+                .or_insert_with(FutureEntryLogs::new);
+            entry_logs.register_call(future_id, call_id);
+            if let Some(call) = entry_logs.find_call_mut(call_id) {
+                update_future_state(call, FutureState::Ready);
+                call.result = log_message;
             }
         }
         FutureEvent::Cancelled { future_id, call_id } => {
-            if let Some(entry_logs) = state.logs.get_mut(&future_id) {
-                if let Some(call) = entry_logs.find_call_mut(call_id) {
-                    update_future_state(call, FutureState::Cancelled);
-                }
+            let entry_logs = state
+                .logs
+                .entry(future_id)
+                .or_insert_with(FutureEntryLogs::new);
+            entry_logs.register_call(future_id, call_id);
+            if let Some(call) = entry_logs.find_call_mut(call_id) {
+                update_future_state(call, FutureState::Cancelled);
             }
         }
     }
@@ -523,7 +530,7 @@ pub(crate) fn get_future_logs_list(future_id: u32) -> Option<FutureLogsList> {
         id: future_id.to_string(),
         call_count: stats.logs_count,
         total_polls: stats.total_polls(),
-        total_poll_duration_ns: stats.total_poll_duration_ns(),
+        total_poll_duration_ns: stats.display_total_poll_duration_ns(),
         total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
         total_poll_alloc_count: stats.total_poll_alloc_count(),
         calls: entry_logs.logs.iter().rev().cloned().collect(),

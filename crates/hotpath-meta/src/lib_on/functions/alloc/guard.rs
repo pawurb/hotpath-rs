@@ -90,7 +90,7 @@ fn send_alloc_measurement(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration_ns: u64,
+    duration_ns: Option<u64>,
     elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
@@ -114,7 +114,7 @@ fn send_alloc_measurement_with_log(
     name: &'static str,
     bytes_total: Option<u64>,
     count_total: Option<u64>,
-    duration_ns: u64,
+    duration_ns: Option<u64>,
     elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
@@ -134,12 +134,26 @@ fn send_alloc_measurement_with_log(
     );
 }
 
+/// Wrapper guards are never sampled - their exact total is the `%` denominator.
+/// Unsampled guards keep exact allocation tracking; only the duration is skipped.
+#[inline]
+fn sampled_start(wrapper: bool, skipped: bool) -> Option<Instant> {
+    if skipped {
+        return None;
+    }
+    if wrapper || crate::lib_on::sampling::functions_should_time() {
+        Some(Instant::now())
+    } else {
+        None
+    }
+}
+
 #[must_use = "guard is dropped immediately without measuring anything"]
 pub struct MeasurementGuardSync {
     name: &'static str,
     wrapper: bool,
     tid: u64,
-    start: Instant,
+    start: Option<Instant>,
     skipped: bool,
 }
 
@@ -154,7 +168,7 @@ impl MeasurementGuardSync {
             name,
             wrapper,
             tid: crate::tid::current_tid(),
-            start: Instant::now(),
+            start: sampled_start(wrapper, skipped),
             skipped,
         }
     }
@@ -168,7 +182,9 @@ impl Drop for MeasurementGuardSync {
         }
 
         let end = Instant::now();
-        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let duration_ns = self
+            .start
+            .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
@@ -196,7 +212,7 @@ pub struct MeasurementGuardAsync {
     name: &'static str,
     wrapper: bool,
     tid: u64,
-    start: Instant,
+    start: Option<Instant>,
     skipped: bool,
     alloc_bridge: Option<Arc<AsyncAllocBridge>>,
 }
@@ -213,7 +229,7 @@ impl MeasurementGuardAsync {
             name,
             wrapper,
             tid: crate::tid::current_tid(),
-            start: Instant::now(),
+            start: sampled_start(wrapper, skipped),
             skipped,
             alloc_bridge,
         }
@@ -228,7 +244,9 @@ impl Drop for MeasurementGuardAsync {
         }
 
         let end = Instant::now();
-        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let duration_ns = self
+            .start
+            .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let (bytes_total, count_total) = self
             .alloc_bridge
@@ -252,7 +270,7 @@ pub(crate) struct MeasurementGuardSyncWithLog {
     name: &'static str,
     wrapper: bool,
     tid: u64,
-    start: Instant,
+    start: Option<Instant>,
     finished: bool,
     skipped: bool,
 }
@@ -268,7 +286,7 @@ impl MeasurementGuardSyncWithLog {
             name,
             wrapper,
             tid: crate::tid::current_tid(),
-            start: Instant::now(),
+            start: sampled_start(wrapper, skipped),
             finished: false,
             skipped,
         }
@@ -282,7 +300,9 @@ impl MeasurementGuardSyncWithLog {
         }
 
         let end = Instant::now();
-        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let duration_ns = self
+            .start
+            .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let result_str = crate::output::format_debug_truncated(result);
         let cross_thread = crate::tid::current_tid() != self.tid;
@@ -315,7 +335,9 @@ impl Drop for MeasurementGuardSyncWithLog {
         }
 
         let end = Instant::now();
-        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let duration_ns = self
+            .start
+            .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
@@ -344,7 +366,7 @@ pub(crate) struct MeasurementGuardAsyncWithLog {
     name: &'static str,
     wrapper: bool,
     tid: u64,
-    start: Instant,
+    start: Option<Instant>,
     finished: bool,
     skipped: bool,
     alloc_bridge: Option<Arc<AsyncAllocBridge>>,
@@ -362,7 +384,7 @@ impl MeasurementGuardAsyncWithLog {
             name,
             wrapper,
             tid: crate::tid::current_tid(),
-            start: Instant::now(),
+            start: sampled_start(wrapper, skipped),
             finished: false,
             skipped,
             alloc_bridge,
@@ -377,7 +399,9 @@ impl MeasurementGuardAsyncWithLog {
         }
 
         let end = Instant::now();
-        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let duration_ns = self
+            .start
+            .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let result_str = crate::output::format_debug_truncated(result);
         let (bytes_total, count_total) = self
@@ -406,7 +430,9 @@ impl Drop for MeasurementGuardAsyncWithLog {
         }
 
         let end = Instant::now();
-        let duration_ns = end.duration_since(self.start).as_nanos() as u64;
+        let duration_ns = self
+            .start
+            .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let (bytes_total, count_total) = self
             .alloc_bridge

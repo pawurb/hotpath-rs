@@ -24,6 +24,15 @@ use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS
 use crate::sql::{compare_sql_entries, SqlEntry, SQL_STATE};
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
 
+/// `-` for entries with events but no measured duration (count-only sampling).
+fn format_sampled_duration(nanos: u64, sampled_count: u64, count: u64) -> String {
+    if sampled_count == 0 && count > 0 {
+        "-".to_string()
+    } else {
+        format_duration(nanos)
+    }
+}
+
 fn styled_header(text: &str) -> Cell {
     if crate::output::use_colors() {
         Cell::new(text)
@@ -43,7 +52,7 @@ fn print_table(table: &Table, writer: &mut dyn Write) {
 }
 
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
-    crate::channels::flush_channel_batch();
+    crate::channels::stop_channel_events();
     CHANNELS_STATE
         .get()
         .and_then(|state| {
@@ -155,15 +164,21 @@ pub(crate) fn report_channel_latency_table(
 
     for channel in rows {
         let label = resolve_label(channel.source, channel.label.as_deref(), Some(channel.iter));
+        let count_only = channel.proc_sampled_count == 0;
+        let duration_cell = |nanos: u64| {
+            if count_only {
+                Cell::new("-")
+            } else {
+                Cell::new(&format_duration(nanos))
+            }
+        };
         let mut row = vec![
             Cell::new(&label),
             Cell::new(&channel.received_count.to_string()),
-            Cell::new(&format_duration(channel.proc_avg_nanos())),
+            duration_cell(channel.proc_avg_nanos()),
         ];
         for &p in percentiles {
-            row.push(Cell::new(&format_duration(
-                channel.proc_percentile_nanos(p),
-            )));
+            row.push(duration_cell(channel.proc_percentile_nanos(p)));
         }
         table.add_row(Row::new(row));
     }
@@ -188,7 +203,7 @@ pub(crate) fn collect_channels_json(
 }
 
 pub(crate) fn shutdown_rw_locks() -> Vec<RwLockEntry> {
-    crate::lib_on::rw_locks::flush_rw_lock_batch();
+    crate::lib_on::rw_locks::stop_rw_lock_events();
     RW_LOCKS_STATE
         .get()
         .and_then(|state| {
@@ -276,21 +291,20 @@ fn report_rw_locks_subtable(
 
     for rw_lock in rows {
         let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
+        let fmt = |nanos: u64| {
+            format_sampled_duration(nanos, rw_lock.sampled_count(kind), rw_lock.count(kind))
+        };
         let mut row = vec![
             Cell::new(&label),
             Cell::new(&rw_lock.count(kind).to_string()),
-            Cell::new(&format_duration(rw_lock.wait_avg_nanos(kind))),
+            Cell::new(&fmt(rw_lock.wait_avg_nanos(kind))),
         ];
         for &p in percentiles {
-            row.push(Cell::new(&format_duration(
-                rw_lock.wait_percentile_nanos(kind, p),
-            )));
+            row.push(Cell::new(&fmt(rw_lock.wait_percentile_nanos(kind, p))));
         }
-        row.push(Cell::new(&format_duration(rw_lock.acquire_avg_nanos(kind))));
+        row.push(Cell::new(&fmt(rw_lock.acquire_avg_nanos(kind))));
         for &p in percentiles {
-            row.push(Cell::new(&format_duration(
-                rw_lock.acquire_percentile_nanos(kind, p),
-            )));
+            row.push(Cell::new(&fmt(rw_lock.acquire_percentile_nanos(kind, p))));
         }
         table.add_row(Row::new(row));
     }
@@ -302,6 +316,9 @@ fn report_rw_locks_subtable(
 fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntry {
     let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
 
+    let fmt = |kind: RwLockKind, nanos: u64| {
+        format_sampled_duration(nanos, rw_lock.sampled_count(kind), rw_lock.count(kind))
+    };
     let mut read_wait_percentiles = HashMap::new();
     let mut write_wait_percentiles = HashMap::new();
     let mut read_acquire_percentiles = HashMap::new();
@@ -310,19 +327,31 @@ fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntr
         let key = format_percentile_key(p);
         read_wait_percentiles.insert(
             key.clone(),
-            format_duration(rw_lock.wait_percentile_nanos(RwLockKind::Read, p)),
+            fmt(
+                RwLockKind::Read,
+                rw_lock.wait_percentile_nanos(RwLockKind::Read, p),
+            ),
         );
         write_wait_percentiles.insert(
             key.clone(),
-            format_duration(rw_lock.wait_percentile_nanos(RwLockKind::Write, p)),
+            fmt(
+                RwLockKind::Write,
+                rw_lock.wait_percentile_nanos(RwLockKind::Write, p),
+            ),
         );
         read_acquire_percentiles.insert(
             key.clone(),
-            format_duration(rw_lock.acquire_percentile_nanos(RwLockKind::Read, p)),
+            fmt(
+                RwLockKind::Read,
+                rw_lock.acquire_percentile_nanos(RwLockKind::Read, p),
+            ),
         );
         write_acquire_percentiles.insert(
             key,
-            format_duration(rw_lock.acquire_percentile_nanos(RwLockKind::Write, p)),
+            fmt(
+                RwLockKind::Write,
+                rw_lock.acquire_percentile_nanos(RwLockKind::Write, p),
+            ),
         );
     }
 
@@ -334,10 +363,18 @@ fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntr
         type_name: rw_lock.type_name.to_string(),
         read_count: rw_lock.read_count,
         write_count: rw_lock.write_count,
-        read_wait_avg: format_duration(rw_lock.wait_avg_nanos(RwLockKind::Read)),
-        write_wait_avg: format_duration(rw_lock.wait_avg_nanos(RwLockKind::Write)),
-        read_acquire_avg: format_duration(rw_lock.acquire_avg_nanos(RwLockKind::Read)),
-        write_acquire_avg: format_duration(rw_lock.acquire_avg_nanos(RwLockKind::Write)),
+        read_sampled_count: rw_lock.read_sampled_count,
+        write_sampled_count: rw_lock.write_sampled_count,
+        read_wait_avg: fmt(RwLockKind::Read, rw_lock.wait_avg_nanos(RwLockKind::Read)),
+        write_wait_avg: fmt(RwLockKind::Write, rw_lock.wait_avg_nanos(RwLockKind::Write)),
+        read_acquire_avg: fmt(
+            RwLockKind::Read,
+            rw_lock.acquire_avg_nanos(RwLockKind::Read),
+        ),
+        write_acquire_avg: fmt(
+            RwLockKind::Write,
+            rw_lock.acquire_avg_nanos(RwLockKind::Write),
+        ),
         read_wait_percentiles,
         write_wait_percentiles,
         read_acquire_percentiles,
@@ -362,7 +399,7 @@ pub(crate) fn collect_rw_locks_json(
 }
 
 pub(crate) fn shutdown_mutexes() -> Vec<MutexEntry> {
-    crate::lib_on::mutexes::flush_mutex_batch();
+    crate::lib_on::mutexes::stop_mutex_events();
     MUTEXES_STATE
         .get()
         .and_then(|state| {
@@ -431,19 +468,18 @@ pub(crate) fn report_mutexes_table(
 
     for mutex in rows {
         let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
+        let fmt = |nanos: u64| format_sampled_duration(nanos, mutex.sampled_count, mutex.count);
         let mut row = vec![
             Cell::new(&label),
             Cell::new(&mutex.count.to_string()),
-            Cell::new(&format_duration(mutex.wait_avg_nanos())),
+            Cell::new(&fmt(mutex.wait_avg_nanos())),
         ];
         for &p in percentiles {
-            row.push(Cell::new(&format_duration(mutex.wait_percentile_nanos(p))));
+            row.push(Cell::new(&fmt(mutex.wait_percentile_nanos(p))));
         }
-        row.push(Cell::new(&format_duration(mutex.acquire_avg_nanos())));
+        row.push(Cell::new(&fmt(mutex.acquire_avg_nanos())));
         for &p in percentiles {
-            row.push(Cell::new(&format_duration(
-                mutex.acquire_percentile_nanos(p),
-            )));
+            row.push(Cell::new(&fmt(mutex.acquire_percentile_nanos(p))));
         }
         table.add_row(Row::new(row));
     }
@@ -455,12 +491,13 @@ pub(crate) fn report_mutexes_table(
 fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64]) -> JsonMutexEntry {
     let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
 
+    let fmt = |nanos: u64| format_sampled_duration(nanos, mutex.sampled_count, mutex.count);
     let mut wait_percentiles = HashMap::new();
     let mut acquire_percentiles = HashMap::new();
     for &p in percentiles {
         let key = format_percentile_key(p);
-        wait_percentiles.insert(key.clone(), format_duration(mutex.wait_percentile_nanos(p)));
-        acquire_percentiles.insert(key, format_duration(mutex.acquire_percentile_nanos(p)));
+        wait_percentiles.insert(key.clone(), fmt(mutex.wait_percentile_nanos(p)));
+        acquire_percentiles.insert(key, fmt(mutex.acquire_percentile_nanos(p)));
     }
 
     JsonMutexEntry {
@@ -470,8 +507,9 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64]) -> JsonMutexEntry {
         has_custom_label: mutex.label.is_some(),
         type_name: mutex.type_name.to_string(),
         count: mutex.count,
-        wait_avg: format_duration(mutex.wait_avg_nanos()),
-        acquire_avg: format_duration(mutex.acquire_avg_nanos()),
+        sampled_count: mutex.sampled_count,
+        wait_avg: fmt(mutex.wait_avg_nanos()),
+        acquire_avg: fmt(mutex.acquire_avg_nanos()),
         wait_percentiles,
         acquire_percentiles,
         iter: mutex.iter,
@@ -494,7 +532,7 @@ pub(crate) fn collect_mutexes_json(
 }
 
 pub(crate) fn shutdown_sql() -> Vec<SqlEntry> {
-    crate::lib_on::sql::flush_sql_batch();
+    crate::lib_on::sql::stop_sql_events();
     SQL_STATE
         .get()
         .and_then(|state| {
@@ -631,7 +669,7 @@ pub(crate) fn collect_sql_json(
 }
 
 pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
-    crate::streams::flush_stream_batch();
+    crate::streams::stop_stream_events();
     STREAMS_STATE
         .get()
         .and_then(|state| {
@@ -709,7 +747,7 @@ pub(crate) fn collect_streams_json(
 }
 
 pub(crate) fn shutdown_futures() -> Vec<FutureEntry> {
-    crate::lib_on::futures::flush_future_batch();
+    crate::lib_on::futures::stop_future_events();
     FUTURES_STATE
         .get()
         .and_then(|state| {
@@ -763,9 +801,9 @@ pub(crate) fn report_futures_table(
         let label = resolve_label(future_stats.source, future_stats.label.as_deref(), None);
         let total_calls = future_stats.logs_count;
         let total_polls = future_stats.total_polls();
-        let total_poll_dur = future_stats.total_poll_duration_ns();
+        let total_poll_dur = future_stats.display_total_poll_duration_ns();
         let total_alloc_bytes_across_polls = future_stats.total_poll_alloc_bytes();
-        let avg_poll = match total_poll_dur.checked_div(total_polls) {
+        let avg_poll = match future_stats.avg_poll_duration_ns() {
             Some(avg) => format_duration(avg),
             None => "-".to_string(),
         };
@@ -778,12 +816,17 @@ pub(crate) fn report_futures_table(
         let total_alloc = total_alloc_bytes_across_polls
             .map(format_bytes)
             .unwrap_or_else(|| "-".to_string());
+        let total_poll_dur = if future_stats.sampled_polls == 0 && total_polls > 0 {
+            "-".to_string()
+        } else {
+            format_duration(total_poll_dur)
+        };
         table.add_row(Row::new(vec![
             Cell::new(&label),
             Cell::new(&total_calls.to_string()),
             Cell::new(&total_polls.to_string()),
             Cell::new(&avg_poll),
-            Cell::new(&format_duration(total_poll_dur)),
+            Cell::new(&total_poll_dur),
             Cell::new(&avg_alloc_per_call),
             Cell::new(&total_alloc),
         ]));
