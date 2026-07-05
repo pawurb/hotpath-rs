@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::json::{
-    ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, StreamLogs, ThreadMetrics,
+    ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, SqlLogs, StreamLogs, ThreadMetrics,
 };
 
 use crate::output::{format_bytes, format_duration, FunctionLog, FunctionLogsList, ProfilingMode};
@@ -394,6 +394,40 @@ pub struct JsonSqlEntry {
     pub total: String,
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonSqlLog {
+    pub index: u64,
+    pub timestamp: String,
+    pub ago: String,
+    pub duration: String,
+    pub query: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonSqlLogsList {
+    pub id: String,
+    pub logs: Vec<JsonSqlLog>,
+}
+
+impl JsonSqlLogsList {
+    pub(crate) fn from_logs(logs: &SqlLogs, current_elapsed_ns: u64) -> Self {
+        JsonSqlLogsList {
+            id: logs.id.to_string(),
+            logs: logs
+                .logs
+                .iter()
+                .map(|entry| JsonSqlLog {
+                    index: entry.index,
+                    timestamp: format_duration(entry.timestamp),
+                    ago: format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp)),
+                    duration: format_duration(entry.duration_nanos),
+                    query: entry.query.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

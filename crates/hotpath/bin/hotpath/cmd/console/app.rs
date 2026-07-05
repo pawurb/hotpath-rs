@@ -4,7 +4,8 @@ use hotpath::json::{
     JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
     JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonMutexesList, JsonRuntimeSnapshot,
-    JsonRwLocksList, JsonSqlList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonRwLocksList, JsonSqlList, JsonSqlLog, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList,
+    JsonThreadsList,
 };
 use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
 use ratatui::widgets::TableState;
@@ -172,6 +173,14 @@ pub(crate) enum DebugFocus {
     Inspect,
 }
 
+/// Represents which UI component has focus in the I/O tab
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IoFocus {
+    List,
+    Logs,
+    Inspect,
+}
+
 /// Inspected function log entry for the inspect popup
 #[derive(Debug, Clone)]
 pub(crate) struct InspectedFunctionLog {
@@ -260,6 +269,11 @@ pub(crate) struct App {
     pub(crate) rw_locks_table_state: TableState,
     pub(crate) mutexes_table_state: TableState,
     pub(crate) sql_table_state: TableState,
+    pub(crate) io_focus: IoFocus,
+    pub(crate) show_sql_logs: bool,
+    pub(crate) sql_logs: Option<JsonSqlLogsList>,
+    pub(crate) sql_logs_table_state: TableState,
+    pub(crate) inspected_sql_log: Option<JsonSqlLog>,
     pub(crate) data_flow_focus: DataFlowFocus,
     pub(crate) show_data_flow_logs: bool,
     pub(crate) data_flow_logs: Option<DataFlowLogs>,
@@ -406,6 +420,11 @@ impl App {
             rw_locks_table_state: TableState::default().with_selected(0),
             mutexes_table_state: TableState::default().with_selected(0),
             sql_table_state: TableState::default().with_selected(0),
+            io_focus: IoFocus::List,
+            show_sql_logs: false,
+            sql_logs: None,
+            sql_logs_table_state: TableState::default(),
+            inspected_sql_log: None,
             data_flow_focus: DataFlowFocus::List,
             show_data_flow_logs: false,
             data_flow_logs: None,
@@ -530,6 +549,11 @@ impl App {
     pub(crate) fn selected_future_id(&self) -> Option<u32> {
         let idx = self.futures_table_state.selected()?;
         self.futures.data.get(idx).map(|e| e.id)
+    }
+
+    pub(crate) fn selected_sql_id(&self) -> Option<u32> {
+        let idx = self.sql_table_state.selected()?;
+        self.sql.data.get(idx).map(|e| e.id)
     }
 
     pub(crate) fn run(

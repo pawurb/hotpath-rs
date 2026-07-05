@@ -13,15 +13,17 @@
 
 use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
+use std::sync::{Arc, LazyLock, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
-use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
+use crate::json::{SqlLogEntry, SqlLogs};
+use crate::lib_on::hotpath_guard::{DRAIN_INTERVAL_MS, LOGS_LIMIT};
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
+use crate::output::MAX_LOG_LEN;
 
 #[cfg(feature = "diesel")]
 pub(crate) mod diesel;
@@ -34,6 +36,12 @@ pub use diesel::instrument_diesel_sql;
 #[cfg(feature = "sqlx")]
 pub use tracing_layer::sqlx_tracing_layer;
 
+/// Opt-in: store the *raw* statement text in execution logs instead of the
+/// normalized form. Exposes inline literals (query params rendered into the
+/// statement) through the logs and the metrics server - off by default.
+pub(crate) static SQL_RAW_LOGS: LazyLock<bool> =
+    LazyLock::new(|| crate::shared::env_flag("HOTPATH_SQL_RAW_LOGS"));
+
 static SQL_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 fn next_sql_id() -> u32 {
@@ -45,7 +53,12 @@ fn next_sql_id() -> u32 {
 pub(crate) enum SqlEvent {
     /// Emitted when an executed query (or query stream) completes. `sql` is the
     /// raw statement text; the worker normalizes it to derive the bucket key.
-    Executed { sql: Arc<str>, duration_nanos: u64 },
+    /// `timestamp_ns` is the completion time in ns since profiler start.
+    Executed {
+        sql: Arc<str>,
+        duration_nanos: u64,
+        timestamp_ns: u64,
+    },
 }
 
 /// Aggregated statistics for a single normalized query.
@@ -96,6 +109,11 @@ impl SqlEntry {
 
 pub(crate) struct SqlInternalState {
     pub(crate) stats: HashMap<String, SqlEntry>,
+    /// Recent executions per entry id, capped at `LOGS_LIMIT`. Log entries keep
+    /// the *normalized* statement text - raw text would leak inline literals
+    /// (query params), which must never reach the report or metrics server
+    /// unless the user opts in via `HOTPATH_SQL_RAW_LOGS`.
+    pub(crate) logs: HashMap<u32, VecDeque<SqlLogEntry>>,
 }
 
 pub(crate) struct SqlState {
@@ -114,6 +132,17 @@ pub(crate) fn get_sorted_sql_entries() -> Vec<SqlEntry> {
     let mut stats: Vec<SqlEntry> = guard.stats.values().cloned().collect();
     stats.sort_by(compare_sql_entries);
     stats
+}
+
+/// Returns recent executions of the entry with the given id, newest first.
+pub(crate) fn get_sql_logs(id: u32) -> Option<SqlLogs> {
+    let state = SQL_STATE.get()?;
+    let guard = state.inner.read().unwrap();
+    let logs = guard.logs.get(&id)?;
+    Some(SqlLogs {
+        id,
+        logs: logs.iter().rev().cloned().collect(),
+    })
 }
 
 pub(crate) fn get_sql_json() -> crate::json::JsonSqlList {
@@ -152,6 +181,7 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
     let SqlEvent::Executed {
         sql,
         duration_nanos,
+        timestamp_ns,
     } = event;
 
     let key = normalize::normalize(&sql);
@@ -162,6 +192,32 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
     entry.count += 1;
     entry.total_nanos += duration_nanos;
     entry.record(duration_nanos);
+
+    let logs = state.logs.entry(entry.id).or_default();
+    if logs.len() >= *LOGS_LIMIT {
+        logs.pop_front();
+    }
+    let log_text: &str = if *SQL_RAW_LOGS { &sql } else { &entry.query };
+    logs.push_back(SqlLogEntry {
+        index: entry.count,
+        timestamp: timestamp_ns,
+        duration_nanos,
+        query: truncate_query(log_text),
+    });
+}
+
+/// Caps the statement text stored per log entry at `MAX_LOG_LEN` chars,
+/// appending `...` when cut (same convention as `log = true` return values).
+fn truncate_query(sql: &str) -> String {
+    let limit = *MAX_LOG_LEN;
+    if sql.len() <= limit {
+        return sql.to_string();
+    }
+    let mut end = limit.saturating_sub(3);
+    while !sql.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &sql[..end])
 }
 
 fn flush_sql_buffer(buffer: &mut Vec<SqlEvent>, inner: &Arc<StdRwLock<SqlInternalState>>) {
@@ -185,6 +241,7 @@ pub(crate) fn init_sql_state() -> &'static SqlState {
 
         let inner = Arc::new(StdRwLock::new(SqlInternalState {
             stats: HashMap::new(),
+            logs: HashMap::new(),
         }));
         let inner_clone = Arc::clone(&inner);
 

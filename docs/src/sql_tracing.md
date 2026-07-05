@@ -96,3 +96,9 @@ The number of queries shown is unlimited by default (`0`). Cap it with:
 Live SQL queries metrics display in the `I/O -> SQL` TUI tab:
 
 <img loading="lazy" src="{{#asset-hash images/sql-query-execution-time.png}}" alt="hotpath-rs SQL report showing per-query execution time, call counts, and percentiles for normalized sqlx and Diesel queries">
+
+### Raw statement logs (opt-in)
+
+Set `HOTPATH_SQL_RAW_LOGS=1` to store the raw statement text in execution logs instead of the normalized form. Queries still merge into normalized buckets, but each log entry then shows the exact statement as sent to the database - so parameter-varied executions of one bucket stay distinguishable in the logs panel and inspect popup.
+
+**Privacy caveat:** raw text exposes inline literals (values rendered into the SQL string, e.g. via `format!`) through the TUI and the unauthenticated local metrics server. Bound parameters (`.bind(...)`) are never visible either way - the driver only ever reports the placeholder form.

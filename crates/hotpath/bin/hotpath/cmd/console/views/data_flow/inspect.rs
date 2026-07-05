@@ -9,6 +9,8 @@ use ratatui::{
 };
 
 fn wrap_text(text: &str, max_width: usize) -> Vec<Line<'static>> {
+    // A zero width would make the split loop below yield empty slices forever.
+    let max_width = max_width.max(1);
     text.lines()
         .flat_map(|line| {
             if line.len() <= max_width {

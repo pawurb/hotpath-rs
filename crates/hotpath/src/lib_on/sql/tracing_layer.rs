@@ -56,6 +56,7 @@ where
         send_sql_event(SqlEvent::Executed {
             sql: sql.into(),
             duration_nanos: visitor.elapsed_ns.unwrap_or(0),
+            timestamp_ns: crate::lib_on::current_elapsed_ns(),
         });
     }
 }

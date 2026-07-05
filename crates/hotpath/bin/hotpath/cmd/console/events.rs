@@ -6,7 +6,7 @@ use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
     JsonFunctionTimingLogsList, JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList,
     JsonFuturesList, JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonRwLocksList,
-    JsonSqlList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonSqlList, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
@@ -29,6 +29,7 @@ pub(crate) enum DataRequest {
     FetchChannelLogs(u32),
     FetchStreamLogs(u32),
     FetchFutureLogs(u32),
+    FetchSqlLogs(u32),
     FetchDebugDbgLogs(u32),
     FetchDebugValLogs(u32),
     FetchDebugGaugeLogs(u32),
@@ -60,6 +61,7 @@ impl DataRequest {
             DataRequest::FetchChannelLogs(id) => Route::ChannelLogs { channel_id: *id },
             DataRequest::FetchStreamLogs(id) => Route::StreamLogs { stream_id: *id },
             DataRequest::FetchFutureLogs(id) => Route::FutureLogs { future_id: *id },
+            DataRequest::FetchSqlLogs(id) => Route::SqlLogs { sql_id: *id },
             DataRequest::FetchDebugDbgLogs(id) => Route::DebugDbgLogs { id: *id },
             DataRequest::FetchDebugValLogs(id) => Route::DebugValLogs { id: *id },
             DataRequest::FetchDebugGaugeLogs(id) => Route::DebugGaugeLogs { id: *id },
@@ -106,6 +108,10 @@ pub(crate) enum DataResponse {
         id: u32,
         calls: JsonFutureLogsList,
     },
+    SqlLogs {
+        id: u32,
+        logs: JsonSqlLogsList,
+    },
     ChannelLogsNotFound {
         id: u32,
     },
@@ -113,6 +119,9 @@ pub(crate) enum DataResponse {
         id: u32,
     },
     FutureLogsNotFound {
+        id: u32,
+    },
+    SqlLogsNotFound {
         id: u32,
     },
     Threads(JsonThreadsList),

@@ -1,7 +1,7 @@
 //! UI state management - navigation, selection, and focus handling
 
 use crate::cmd::console::app::{
-    App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, InspectedFunctionLog,
+    App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, InspectedFunctionLog, IoFocus,
     SelectedTab,
 };
 use hotpath::dev_logging::{debug, info};
@@ -67,7 +67,20 @@ impl App {
     pub(crate) fn cycle_io_sub_tab(&mut self) {
         self.io_sub_tab = self.io_sub_tab.cycle();
         debug!("Cycled I/O subtab: {}", self.io_sub_tab.name());
+        self.io_focus = IoFocus::List;
+        self.sql_logs = None;
+        self.show_sql_logs = false;
+        self.sql_logs_table_state.select(None);
+        self.inspected_sql_log = None;
         self.request_refresh_for_current_tab();
+    }
+
+    fn refresh_sql_logs_after_selection(&mut self) {
+        if self.paused && self.show_sql_logs {
+            self.sql_logs = None;
+        } else if self.show_sql_logs {
+            self.request_sql_logs();
+        }
     }
 
     pub(crate) fn select_next_io(&mut self) {
@@ -81,6 +94,7 @@ impl App {
             None => 0,
         };
         table_state.select(Some(i));
+        self.refresh_sql_logs_after_selection();
     }
 
     pub(crate) fn select_previous_io(&mut self) {
@@ -94,6 +108,7 @@ impl App {
             None => 0,
         };
         table_state.select(Some(i));
+        self.refresh_sql_logs_after_selection();
     }
 
     pub(crate) fn first_io(&mut self) {
@@ -101,6 +116,7 @@ impl App {
             return;
         }
         self.active_table_state_mut().select(Some(0));
+        self.refresh_sql_logs_after_selection();
     }
 
     pub(crate) fn last_io(&mut self) {
@@ -109,6 +125,142 @@ impl App {
             return;
         }
         self.active_table_state_mut().select(Some(count - 1));
+        self.refresh_sql_logs_after_selection();
+    }
+
+    pub(crate) fn toggle_sql_logs(&mut self) {
+        let count = self.io_entries_len();
+        let has_valid_selection = self
+            .sql_table_state
+            .selected()
+            .map(|i| i < count)
+            .unwrap_or(false);
+
+        if count > 0 && has_valid_selection {
+            if self.show_sql_logs {
+                self.hide_sql_logs();
+            } else {
+                self.show_sql_logs = true;
+                if self.paused {
+                    self.sql_logs = None;
+                } else {
+                    self.request_sql_logs();
+                }
+            }
+        }
+    }
+
+    pub(crate) fn hide_sql_logs(&mut self) {
+        self.show_sql_logs = false;
+        self.sql_logs = None;
+        self.sql_logs_table_state.select(None);
+        self.io_focus = IoFocus::List;
+    }
+
+    pub(crate) fn focus_io_list(&mut self) {
+        self.io_focus = IoFocus::List;
+        self.sql_logs_table_state.select(None);
+    }
+
+    pub(crate) fn focus_sql_logs(&mut self) {
+        if !self.show_sql_logs {
+            self.toggle_sql_logs();
+        } else if self.io_entries_len() > 0 {
+            if let Some(ref logs) = self.sql_logs {
+                if !logs.logs.is_empty() {
+                    self.io_focus = IoFocus::Logs;
+                    if self.sql_logs_table_state.selected().is_none() {
+                        self.sql_logs_table_state.select(Some(0));
+                    }
+                }
+            }
+        }
+    }
+
+    fn sql_logs_len(&self) -> usize {
+        self.sql_logs.as_ref().map(|l| l.logs.len()).unwrap_or(0)
+    }
+
+    fn update_inspected_sql_log(&mut self, i: usize) {
+        self.inspected_sql_log = self
+            .sql_logs
+            .as_ref()
+            .and_then(|logs| logs.logs.get(i).cloned());
+    }
+
+    pub(crate) fn select_previous_sql_log(&mut self) {
+        let log_count = self.sql_logs_len();
+        if log_count > 0 {
+            let i = match self.sql_logs_table_state.selected() {
+                Some(i) => i.saturating_sub(1),
+                None => 0,
+            };
+            self.sql_logs_table_state.select(Some(i));
+
+            if self.io_focus == IoFocus::Inspect {
+                self.update_inspected_sql_log(i);
+            }
+        }
+    }
+
+    pub(crate) fn select_next_sql_log(&mut self) {
+        let log_count = self.sql_logs_len();
+        if log_count > 0 {
+            let i = match self.sql_logs_table_state.selected() {
+                Some(i) => (i + 1).min(log_count - 1),
+                None => 0,
+            };
+            self.sql_logs_table_state.select(Some(i));
+
+            if self.io_focus == IoFocus::Inspect {
+                self.update_inspected_sql_log(i);
+            }
+        }
+    }
+
+    pub(crate) fn first_sql_log(&mut self) {
+        let log_count = self.sql_logs_len();
+        if log_count > 0 {
+            self.sql_logs_table_state.select(Some(0));
+            if self.io_focus == IoFocus::Inspect {
+                self.update_inspected_sql_log(0);
+            }
+        }
+    }
+
+    pub(crate) fn last_sql_log(&mut self) {
+        let log_count = self.sql_logs_len();
+        if log_count > 0 {
+            self.sql_logs_table_state.select(Some(log_count - 1));
+            if self.io_focus == IoFocus::Inspect {
+                self.update_inspected_sql_log(log_count - 1);
+            }
+        }
+    }
+
+    pub(crate) fn toggle_sql_inspect(&mut self) {
+        if self.io_focus == IoFocus::Inspect {
+            self.io_focus = IoFocus::Logs;
+            self.inspected_sql_log = None;
+        } else if self.io_focus == IoFocus::Logs {
+            if let Some(selected) = self.sql_logs_table_state.selected() {
+                self.update_inspected_sql_log(selected);
+                if self.inspected_sql_log.is_some() {
+                    self.io_focus = IoFocus::Inspect;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn close_sql_inspect_and_refocus(&mut self) {
+        self.inspected_sql_log = None;
+        self.hide_sql_logs();
+    }
+
+    pub(crate) fn close_sql_inspect_only(&mut self) {
+        self.inspected_sql_log = None;
+        self.io_focus = IoFocus::List;
+        self.sql_logs_table_state.select(None);
     }
 
     pub(crate) fn cycle_data_flow_sub_tab(&mut self) {
