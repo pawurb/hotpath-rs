@@ -122,7 +122,7 @@ I'm actively improving the library, so any feedback, issues, bug reports are app
 
 ### Send-receive latency and queue depth (`wrap = true`)
 
-For `crossbeam`, `std`, `tokio` (`mpsc`), and `flume` channels you can opt into **endpoint wrapping** with `wrap = true`. Instead of inserting a forwarder-proxy, this wraps the `Sender`/`Receiver` directly and stamps each message with its send time, so the report gains an exact **send-receive latency** histogram (`proc_avg` plus the configured percentiles), alongside an exact live queue depth:
+For `crossbeam`, `std`, `tokio` (`mpsc`), `flume`, and `async-channel` channels you can opt into **endpoint wrapping** with `wrap = true`. Instead of inserting a forwarder-proxy, this wraps the `Sender`/`Receiver` directly and stamps each message with its send time, so the report gains an exact **send-receive latency** histogram (`proc_avg` plus the configured percentiles), alongside an exact live queue depth:
 
 ```rust
 let (tx, rx) = hotpath::channel!(
@@ -141,13 +141,13 @@ let (tx, rx) = hotpath::channel!(
 
 The recorded latency is the full interval from `send()` to `recv()`, including backpressure wait on bounded channels. Because the timestamps are taken inside your own `send`/`recv` calls rather than in a forwarder task or thread, the value is exact - and wrap mode is also lighter than the proxy, since it adds no extra task/thread or hop. Tokio and flume benefit the most: their proxies relay every message through a background task and a second channel, costing a scheduler round-trip per message, whereas wrap mode hits the real channel directly.
 
-Tokio bounded wrap channels do not need a `capacity` argument - the bound is recovered from `Sender::max_capacity()`. flume wrap channels (bounded or unbounded) likewise need no `capacity` argument - the bound is recovered from the endpoint.
+Tokio bounded wrap channels do not need a `capacity` argument - the bound is recovered from `Sender::max_capacity()`. flume and async-channel wrap channels (bounded or unbounded) likewise need no `capacity` argument - the bound is recovered from the endpoint.
 
 Latency is reported **only for wrap channels**. A proxy channel stamps its events inside the forwarder thread, in the middle of the pipeline, so it cannot observe the producer-side or consumer-side wait accurately. Prefer `wrap = true` when you care about channel latency.
 
 ### Instrumentation overhead
 
-Because wrap mode hits the real channel directly instead of relaying every message through a forwarder task or thread, it is dramatically cheaper for the channel libraries whose proxy needs a background relay. For `tokio` and `flume`, wrap mode cuts per-message instrumentation overhead roughly **5-6x** versus the forwarder proxy, since their proxies cost a scheduler round-trip per message. `std` also gets a large reduction (its proxy overhead drops by around **4x**). `crossbeam`'s forwarder is already cheap (a tight relay thread, no async scheduling), so the two modes are close there. Whenever a channel type supports `wrap = true`, prefer it over the proxy for both lower overhead and exact latency.
+Because wrap mode hits the real channel directly instead of relaying every message through a forwarder task or thread, it is dramatically cheaper for the channel libraries whose proxy needs a background relay. For `tokio` and `flume`, wrap mode cuts per-message instrumentation overhead roughly **5-6x** versus the forwarder proxy, since their proxies cost a scheduler round-trip per message. `async-channel`'s proxy also relays every message through a background async task, so it benefits similarly. `std` also gets a large reduction (its proxy overhead drops by around **4x**). `crossbeam`'s forwarder is already cheap (a tight relay thread, no async scheduling), so the two modes are close there. Whenever a channel type supports `wrap = true`, prefer it over the proxy for both lower overhead and exact latency.
 
 ## Streams monitoring
 
@@ -257,5 +257,6 @@ The same prefix works for every wrap-capable library:
 - `hotpath::wrap::tokio::sync::mpsc::{Sender, Receiver, UnboundedSender, UnboundedReceiver}`
 - `hotpath::wrap::crossbeam_channel::{Sender, Receiver}`
 - `hotpath::wrap::flume::{Sender, Receiver}`
+- `hotpath::wrap::async_channel::{Sender, Receiver}`
 
 This is purely to keep the compiler police happy: the `hotpath::wrap::` types are noop unless the `hotpath` feature is enabled. With the feature off they are plain re-exports of the original endpoints (zero overhead, **identical behavior**); with the feature on they resolve to the instrumented wrappers. Either way the field type lines up with what the macro returns, so the same code compiles in both configurations.
