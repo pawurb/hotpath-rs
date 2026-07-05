@@ -72,7 +72,7 @@ cargo run -p test-tokio-async --example benchmark_instant --features hotpath --r
 
 #### Mutexes and RwLocks
 
-RwLock examples run a write loop followed by a read loop.
+Each benchmark runs both an uninstrumented **baseline** (raw lock) and the instrumented `hotpath::mutex!` / `hotpath::rw_lock!` version in a single command, printing their per-op cost side by side so the delta isolates the instrumentation overhead. RwLock benchmarks run a write loop followed by a read loop, reporting each separately.
 
 ```bash
 cargo run -p test-mutex-std --example benchmark_mutex_std --features hotpath --release

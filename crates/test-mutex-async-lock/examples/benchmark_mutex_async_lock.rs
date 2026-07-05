@@ -1,9 +1,11 @@
 use futures_lite::future;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-// Simple single-threaded stress test: hammers a single instrumented mutex in a
-// tight loop with no contention, so the measured time reflects per-lock
-// instrumentation overhead. Compare `--features hotpath` against a plain run.
+// Single-threaded stress test comparing mutex instrumentation overhead in one run: an
+// uninstrumented baseline (raw mutex) and the `hotpath::mutex!` instrumented version. Each
+// is hammered in a tight uncontended lock loop, so the delta vs baseline isolates the
+// per-lock instrumentation cost. Run with `--features hotpath` (without it the macro is a
+// no-op and both modes are the raw mutex). Iteration count via `HOTPATH_BENCH_RUNS`.
 fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
         .sections(vec![hotpath::Section::Mutexes])
@@ -12,22 +14,39 @@ fn main() {
     let runs = bench_runs();
 
     future::block_on(async {
-        let lock = hotpath::mutex!(async_lock::Mutex::new(0u64), label = "counter");
-
-        let start = Instant::now();
-        for _ in 0..runs {
-            let mut v = lock.lock().await;
-            *v += 1;
-            spin_1us();
+        macro_rules! bench {
+            ($lock:expr) => {{
+                let lock = $lock;
+                let start = Instant::now();
+                for _ in 0..runs {
+                    let mut v = lock.lock().await;
+                    *v += 1;
+                    spin_1us();
+                }
+                start.elapsed()
+            }};
         }
-        let elapsed = start.elapsed();
 
-        println!(
-            "async-lock Mutex: {runs} lock cycles in {elapsed:?} ({:.1} ns/op)",
-            elapsed.as_nanos() as f64 / runs as f64
-        );
-        println!("Final value: {}", *lock.lock().await);
+        let baseline = bench!(async_lock::Mutex::new(0u64));
+        let instrumented = bench!(hotpath::mutex!(
+            async_lock::Mutex::new(0u64),
+            label = "counter"
+        ));
+
+        report("async-lock Mutex", runs, baseline, instrumented);
     });
+}
+
+fn report(name: &str, runs: u64, baseline: Duration, instrumented: Duration) {
+    let per = |d: Duration| d.as_nanos() as f64 / runs as f64;
+    let b = per(baseline);
+    let ins = per(instrumented);
+    println!("\n{name}: {runs} lock cycles per mode");
+    println!("  baseline (raw)  {b:>8.1} ns/op");
+    println!(
+        "  instrumented    {ins:>8.1} ns/op  ({:+.1} ns/op vs baseline)",
+        ins - b
+    );
 }
 
 #[inline(never)]
