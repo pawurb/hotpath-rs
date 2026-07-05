@@ -86,22 +86,15 @@ cargo run -p test-rw-lock-async-lock --example benchmark_rw_lock_async_lock --fe
 
 #### Channels
 
+Each benchmark runs three modes in a single command and prints their per-op cost side by side: an uninstrumented **baseline** (raw channel), the `proxy = true` **forwarder**, and the default **wrap** mode (endpoint wrapping). The delta vs baseline isolates the instrumentation overhead, so you can compare wrap-vs-forwarder directly. `futures_channel` has no wrap implementation, so its benchmark shows baseline and proxy only.
+
 ```bash
 cargo run -p test-channels-std --example benchmark_channel_std --features hotpath --release
 cargo run -p test-channels-crossbeam --example benchmark_channel_crossbeam --features hotpath --release
 cargo run -p test-channels-tokio --example benchmark_channel_tokio --features hotpath --release
-cargo run -p test-channels-ftc --example benchmark_channel_ftc --features hotpath --release
-cargo run -p test-channels-asc --example benchmark_channel_asc --features hotpath --release
 cargo run -p test-channels-flume --example benchmark_channel_flume --features hotpath --release
-```
-
-Wrap-mode variants instrument the channel endpoints directly instead of relaying every message through a forwarder task/thread and a second channel. Compare each against its non-wrap counterpart above to see the wrap-vs-forwarder cost difference.
-
-```bash
-cargo run -p test-channels-std --example benchmark_channel_wrap_std --features hotpath --release
-cargo run -p test-channels-crossbeam --example benchmark_channel_wrap_crossbeam --features hotpath --release
-cargo run -p test-channels-tokio --example benchmark_channel_wrap_tokio --features hotpath --release
-cargo run -p test-channels-flume --example benchmark_channel_wrap_flume --features hotpath --release
+cargo run -p test-channels-asc --example benchmark_channel_asc --features hotpath --release
+cargo run -p test-channels-ftc --example benchmark_channel_ftc --features hotpath --release
 ```
 
 #### Futures and Streams
