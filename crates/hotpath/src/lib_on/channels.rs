@@ -112,6 +112,16 @@ pub(crate) fn stop_channel_events() {
     EVENT_QUEUES.set_active(false);
 }
 
+/// Event timestamp for a wrap send. Unsampled events are stamped at worker
+/// drain time, except msg 0: its send always gets a real stamp so
+/// `first_msg_ns` anchors throughput rates exactly at every sampling rate,
+/// including count-only mode. The payload stamp (and thus the delay) is
+/// unaffected.
+#[inline]
+pub(crate) fn anchor_first_msg(msg_id: u64, sent_at: Option<Instant>) -> Option<Instant> {
+    sent_at.or_else(|| (msg_id == 0).then(Instant::now))
+}
+
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn timestamp_nanos(timestamp: Instant) -> u64 {
     let start_time = START_TIME.get().copied().unwrap_or(timestamp);
@@ -138,8 +148,9 @@ pub(crate) struct ChannelEntry {
     /// Derived from `sent_count - received_count` (converged value order-independent).
     pub(crate) queue_size: Option<usize>,
     pub(crate) max_queue_size: Option<usize>,
-    /// Avg denominator is `received_count` (one delay recorded per receive).
+    /// Avg denominator is `proc_sampled_count` (one delay recorded per sampled receive).
     pub(crate) proc_total_nanos: u64,
+    pub(crate) proc_sampled_count: u64,
     /// `Some` only for `wrap` channels; `None` for proxy channels, which cannot
     /// measure latency accurately.
     proc_hist: Option<Histogram<u64>>,
@@ -170,14 +181,21 @@ pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> Json
     let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
     let mut proc_percentiles = HashMap::new();
+    let count_only = stats.proc_sampled_count == 0 && stats.received_count > 0;
     let proc_avg = if stats.has_proc_hist() {
         for &p in percentiles {
-            proc_percentiles.insert(
-                crate::output::format_percentile_key(p),
-                crate::output::format_duration(stats.proc_percentile_nanos(p)),
-            );
+            let value = if count_only {
+                "-".to_string()
+            } else {
+                crate::output::format_duration(stats.proc_percentile_nanos(p))
+            };
+            proc_percentiles.insert(crate::output::format_percentile_key(p), value);
         }
-        Some(crate::output::format_duration(stats.proc_avg_nanos()))
+        if count_only {
+            Some("-".to_string())
+        } else {
+            Some(crate::output::format_duration(stats.proc_avg_nanos()))
+        }
     } else {
         None
     };
@@ -200,6 +218,7 @@ pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> Json
         max_queue_size: stats.max_queue_size,
         proc_avg,
         proc_percentiles,
+        proc_sampled_count: stats.has_proc_hist().then_some(stats.proc_sampled_count),
         iter: stats.iter,
     }
 }
@@ -232,6 +251,7 @@ impl ChannelEntry {
             queue_size: None,
             max_queue_size: None,
             proc_total_nanos: 0,
+            proc_sampled_count: 0,
             proc_hist: wrap.then(Self::new_histogram),
             iter,
         }
@@ -249,6 +269,7 @@ impl ChannelEntry {
     #[inline]
     fn record_proc(&mut self, nanos: u64) {
         if let Some(ref mut hist) = self.proc_hist {
+            self.proc_sampled_count += 1;
             self.proc_total_nanos += nanos;
             hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
                 .unwrap();
@@ -297,13 +318,15 @@ impl ChannelEntry {
 
     pub(crate) fn proc_avg_nanos(&self) -> u64 {
         self.proc_total_nanos
-            .checked_div(self.received_count)
+            .checked_div(self.proc_sampled_count)
             .unwrap_or(0)
     }
 
     pub(crate) fn proc_percentile_nanos(&self, p: f64) -> u64 {
         match &self.proc_hist {
-            Some(hist) if self.received_count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
+            Some(hist) if self.proc_sampled_count > 0 => {
+                hist.value_at_percentile(p.clamp(0.0, 100.0))
+            }
             _ => 0,
         }
     }
@@ -349,19 +372,21 @@ pub(crate) enum ChannelEvent {
         id: u32,
         timestamp: Instant,
     },
+    /// `timestamp` is `None` for messages unsampled under time sampling;
+    /// the worker stamps those at drain time.
     WrapMessageSent {
         id: u32,
         msg_id: u64,
         log: Option<String>,
-        timestamp: Instant,
+        timestamp: Option<Instant>,
         queue_len: usize,
     },
     WrapMessageReceived {
         id: u32,
         msg_id: u64,
-        timestamp: Instant,
+        timestamp: Option<Instant>,
         queue_len: usize,
-        delay_nanos: u64,
+        delay_nanos: Option<u64>,
     },
     Closed {
         id: u32,
@@ -437,9 +462,9 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             if entry_logs.sent_logs.len() >= limit {
                 entry_logs.sent_logs.pop_front();
             }
-            entry_logs
-                .sent_logs
-                .push_back(DataFlowLogEntry::new(sent_count, ts_ns, log, None, None));
+            entry_logs.sent_logs.push_back(DataFlowLogEntry::new(
+                sent_count, ts_ns, log, None, None, None,
+            ));
         }
         ChannelEvent::MessageReceived { id, timestamp } => {
             let ts_ns = timestamp_nanos(timestamp);
@@ -463,6 +488,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
                 None,
                 None,
                 None,
+                None,
             ));
         }
         ChannelEvent::WrapMessageSent {
@@ -472,7 +498,12 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             timestamp,
             queue_len,
         } => {
-            let ts_ns = timestamp_nanos(timestamp);
+            // Unsampled events are stamped at drain time; `first_msg_ns` stays
+            // exact because msg 0's send always carries a real stamp
+            // (`anchor_first_msg`), at every rate including count-only.
+            let ts_ns = timestamp
+                .map(timestamp_nanos)
+                .unwrap_or_else(crate::lib_on::current_elapsed_ns);
             let channel_stats = state
                 .stats
                 .entry(id)
@@ -494,6 +525,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
                 log,
                 None,
                 Some(msg_id),
+                None,
             ));
         }
         ChannelEvent::WrapMessageReceived {
@@ -503,7 +535,9 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             queue_len,
             delay_nanos,
         } => {
-            let ts_ns = timestamp_nanos(timestamp);
+            let ts_ns = timestamp
+                .map(timestamp_nanos)
+                .unwrap_or_else(crate::lib_on::current_elapsed_ns);
             let channel_stats = state
                 .stats
                 .entry(id)
@@ -512,7 +546,9 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             channel_stats.record_activity(ts_ns);
             channel_stats.update_state();
             channel_stats.record_queue(queue_len);
-            channel_stats.record_proc(delay_nanos);
+            if let Some(delay_nanos) = delay_nanos {
+                channel_stats.record_proc(delay_nanos);
+            }
             let received_count = channel_stats.received_count;
 
             let entry_logs = state.logs.entry(id).or_insert_with(ChannelEntryLogs::new);
@@ -526,6 +562,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
                 None,
                 None,
                 Some(msg_id),
+                delay_nanos,
             ));
         }
         ChannelEvent::Closed { id } => {
@@ -914,9 +951,9 @@ mod tests {
             ChannelEvent::WrapMessageReceived {
                 id,
                 msg_id: 1,
-                timestamp: ts,
+                timestamp: Some(ts),
                 queue_len: 0,
-                delay_nanos: 0,
+                delay_nanos: Some(0),
             },
         );
         process_channel_event(
@@ -925,7 +962,7 @@ mod tests {
                 id,
                 msg_id: 1,
                 log: None,
-                timestamp: ts,
+                timestamp: Some(ts),
                 queue_len: 1,
             },
         );

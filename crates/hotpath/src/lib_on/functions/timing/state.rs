@@ -34,7 +34,7 @@ pub(crate) fn drain_all_measurements(out: &mut Vec<Measurement>) {
 
 #[derive(Debug)]
 pub(crate) struct Measurement {
-    pub(crate) duration_ns: u64,
+    pub(crate) duration_ns: Option<u64>,
     pub(crate) elapsed_since_start_ns: u64,
     pub(crate) name: &'static str,
     pub(crate) wrapper: bool,
@@ -42,16 +42,21 @@ pub(crate) struct Measurement {
     pub(crate) result_log: Option<String>,
 }
 
+/// (duration_ns, elapsed, tid, result_log); `duration_ns` is `None` when time
+/// sampling skipped the call.
+pub(crate) type TimingLogEntry = (Option<u64>, Duration, Option<u64>, Option<String>);
+
 #[derive(Debug)]
 pub(crate) struct FunctionStats {
     pub(crate) id: u32,
     pub(crate) name: &'static str,
     pub(crate) total_duration_ns: u64,
     pub(crate) count: u64,
+    pub(crate) sampled_count: u64,
     hist: Option<Histogram<u64>>,
     pub(crate) has_data: bool,
     pub(crate) wrapper: bool,
-    pub(crate) recent_logs: VecDeque<(u64, Duration, Option<u64>, Option<String>)>, // (duration_ns, elapsed, tid, result_log)
+    pub(crate) recent_logs: VecDeque<TimingLogEntry>,
 }
 
 impl FunctionStats {
@@ -59,33 +64,21 @@ impl FunctionStats {
     const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
     const SIGFIGS: u8 = 3;
 
-    pub fn new_duration(
-        id: u32,
-        name: &'static str,
-        first_ns: u64,
-        elapsed: Duration,
-        wrapper: bool,
-        tid: Option<u64>,
-        result_log: Option<String>,
-    ) -> Self {
+    fn new(id: u32, name: &'static str, wrapper: bool) -> Self {
         let hist = Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
             .expect("hdrhistogram init");
 
-        let mut recent_logs = VecDeque::with_capacity(*crate::channels::LOGS_LIMIT);
-        recent_logs.push_back((first_ns, elapsed, tid, result_log));
-
-        let mut s = Self {
+        Self {
             id,
             name,
-            total_duration_ns: first_ns,
-            count: 1,
+            total_duration_ns: 0,
+            count: 0,
+            sampled_count: 0,
             hist: Some(hist),
-            has_data: true,
+            has_data: false,
             wrapper,
-            recent_logs,
-        };
-        s.record_time(first_ns);
-        s
+            recent_logs: VecDeque::with_capacity(*crate::channels::LOGS_LIMIT),
+        }
     }
 
     #[inline]
@@ -96,16 +89,21 @@ impl FunctionStats {
         }
     }
 
-    pub fn update_duration(
+    pub fn update(
         &mut self,
-        duration_ns: u64,
+        duration_ns: Option<u64>,
         elapsed: Duration,
         tid: Option<u64>,
         result_log: Option<String>,
     ) {
-        self.total_duration_ns += duration_ns;
         self.count += 1;
-        self.record_time(duration_ns);
+        self.has_data = true;
+
+        if let Some(duration_ns) = duration_ns {
+            self.sampled_count += 1;
+            self.total_duration_ns += duration_ns;
+            self.record_time(duration_ns);
+        }
 
         if self.recent_logs.len() >= *crate::channels::LOGS_LIMIT {
             self.recent_logs.pop_front();
@@ -115,12 +113,23 @@ impl FunctionStats {
     }
 
     pub fn avg_duration_ns(&self) -> u64 {
-        self.total_duration_ns.checked_div(self.count).unwrap_or(0)
+        self.total_duration_ns
+            .checked_div(self.sampled_count)
+            .unwrap_or(0)
+    }
+
+    /// Exact when every call was timed, extrapolated (`avg * count`) under time sampling.
+    pub fn display_total_ns(&self) -> u64 {
+        if self.sampled_count == self.count {
+            self.total_duration_ns
+        } else {
+            self.avg_duration_ns() * self.count
+        }
     }
 
     #[inline]
     pub fn percentile(&self, p: f64) -> Duration {
-        if self.count == 0 || self.hist.is_none() {
+        if self.sampled_count == 0 || self.hist.is_none() {
             return Duration::ZERO;
         }
         let p = p.clamp(0.0, 100.0);
@@ -145,25 +154,17 @@ pub(crate) fn process_measurement(
     m: Measurement,
 ) {
     let elapsed = Duration::from_nanos(m.elapsed_since_start_ns);
-    if let Some(&id) = name_to_id.get(m.name) {
-        if let Some(s) = stats.get_mut(&id) {
-            s.update_duration(m.duration_ns, elapsed, m.tid, m.result_log);
+    let id = match name_to_id.get(m.name) {
+        Some(&id) => id,
+        None => {
+            let id = crate::functions::next_function_id();
+            name_to_id.insert(m.name, id);
+            stats.insert(id, FunctionStats::new(id, m.name, m.wrapper));
+            id
         }
-    } else {
-        let id = crate::functions::next_function_id();
-        name_to_id.insert(m.name, id);
-        stats.insert(
-            id,
-            FunctionStats::new_duration(
-                id,
-                m.name,
-                m.duration_ns,
-                elapsed,
-                m.wrapper,
-                m.tid,
-                m.result_log,
-            ),
-        );
+    };
+    if let Some(s) = stats.get_mut(&id) {
+        s.update(m.duration_ns, elapsed, m.tid, m.result_log);
     }
 }
 
@@ -171,7 +172,7 @@ use crate::lib_on::functions::FUNCTIONS_STATE;
 
 pub(crate) fn send_duration_measurement(
     name: &'static str,
-    duration_ns: u64,
+    duration_ns: Option<u64>,
     elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,
@@ -188,7 +189,7 @@ pub(crate) fn send_duration_measurement(
 
 pub(crate) fn send_duration_measurement_with_log(
     name: &'static str,
-    duration_ns: u64,
+    duration_ns: Option<u64>,
     elapsed_since_start_ns: u64,
     wrapper: bool,
     tid: Option<u64>,

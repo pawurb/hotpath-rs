@@ -41,12 +41,13 @@ pub(crate) enum RwLockEvent {
     },
     /// Emitted when a guard is dropped. `wait_nanos` is the time blocked
     /// before the lock was granted; `acquire_nanos` is the held duration
-    /// (granted -> released).
+    /// (granted -> released). Both `None` when timing was skipped under
+    /// time sampling; the event still counts the lock.
     Released {
         id: u32,
         kind: RwLockKind,
-        wait_nanos: u64,
-        acquire_nanos: u64,
+        wait_nanos: Option<u64>,
+        acquire_nanos: Option<u64>,
     },
 }
 
@@ -59,6 +60,8 @@ pub(crate) struct RwLockEntry {
     pub(crate) type_name: &'static str,
     pub(crate) read_count: u64,
     pub(crate) write_count: u64,
+    pub(crate) read_sampled_count: u64,
+    pub(crate) write_sampled_count: u64,
     pub(crate) read_wait_total_nanos: u64,
     pub(crate) write_wait_total_nanos: u64,
     pub(crate) read_acquire_total_nanos: u64,
@@ -95,20 +98,27 @@ impl RwLockEntry {
         }
     }
 
+    pub(crate) fn sampled_count(&self, kind: RwLockKind) -> u64 {
+        match kind {
+            RwLockKind::Read => self.read_sampled_count,
+            RwLockKind::Write => self.write_sampled_count,
+        }
+    }
+
     pub(crate) fn wait_avg_nanos(&self, kind: RwLockKind) -> u64 {
-        let (total, count) = match kind {
-            RwLockKind::Read => (self.read_wait_total_nanos, self.read_count),
-            RwLockKind::Write => (self.write_wait_total_nanos, self.write_count),
+        let total = match kind {
+            RwLockKind::Read => self.read_wait_total_nanos,
+            RwLockKind::Write => self.write_wait_total_nanos,
         };
-        total.checked_div(count).unwrap_or(0)
+        total.checked_div(self.sampled_count(kind)).unwrap_or(0)
     }
 
     pub(crate) fn acquire_avg_nanos(&self, kind: RwLockKind) -> u64 {
-        let (total, count) = match kind {
-            RwLockKind::Read => (self.read_acquire_total_nanos, self.read_count),
-            RwLockKind::Write => (self.write_acquire_total_nanos, self.write_count),
+        let total = match kind {
+            RwLockKind::Read => self.read_acquire_total_nanos,
+            RwLockKind::Write => self.write_acquire_total_nanos,
         };
-        total.checked_div(count).unwrap_or(0)
+        total.checked_div(self.sampled_count(kind)).unwrap_or(0)
     }
 
     fn percentile(hist: &Option<Histogram<u64>>, count: u64, p: f64) -> u64 {
@@ -119,19 +129,19 @@ impl RwLockEntry {
     }
 
     pub(crate) fn wait_percentile_nanos(&self, kind: RwLockKind, p: f64) -> u64 {
-        let (hist, count) = match kind {
-            RwLockKind::Read => (&self.read_wait_hist, self.read_count),
-            RwLockKind::Write => (&self.write_wait_hist, self.write_count),
+        let hist = match kind {
+            RwLockKind::Read => &self.read_wait_hist,
+            RwLockKind::Write => &self.write_wait_hist,
         };
-        Self::percentile(hist, count, p)
+        Self::percentile(hist, self.sampled_count(kind), p)
     }
 
     pub(crate) fn acquire_percentile_nanos(&self, kind: RwLockKind, p: f64) -> u64 {
-        let (hist, count) = match kind {
-            RwLockKind::Read => (&self.read_acquire_hist, self.read_count),
-            RwLockKind::Write => (&self.write_acquire_hist, self.write_count),
+        let hist = match kind {
+            RwLockKind::Read => &self.read_acquire_hist,
+            RwLockKind::Write => &self.write_acquire_hist,
         };
-        Self::percentile(hist, count, p)
+        Self::percentile(hist, self.sampled_count(kind), p)
     }
 }
 
@@ -172,6 +182,19 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
+/// One sampling decision per acquisition; `None` skips both clock read pairs.
+#[inline]
+pub(crate) fn wait_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::rw_locks_should_time().then(Instant::now)
+}
+
+/// Rolls back a `wait_stamp` decision after a failed try-acquisition, so the
+/// sampling rate applies to acquisitions rather than attempts.
+#[inline]
+pub(crate) fn cancel_wait_stamp() {
+    crate::lib_on::sampling::rw_locks_untime();
+}
+
 static EVENT_QUEUES: EventQueueRegistry<RwLockEvent> = EventQueueRegistry::new();
 
 thread_local! {
@@ -203,6 +226,8 @@ fn placeholder_rw_lock_entry(id: u32) -> RwLockEntry {
         type_name: "",
         read_count: 0,
         write_count: 0,
+        read_sampled_count: 0,
+        write_sampled_count: 0,
         read_wait_total_nanos: 0,
         write_wait_total_nanos: 0,
         read_acquire_total_nanos: 0,
@@ -243,17 +268,25 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_rw_lock_entry(id));
-            {
-                match kind {
-                    RwLockKind::Read => {
-                        entry.read_count += 1;
+            let sampled = match (wait_nanos, acquire_nanos) {
+                (Some(wait), Some(acquire)) => Some((wait, acquire)),
+                _ => None,
+            };
+            match kind {
+                RwLockKind::Read => {
+                    entry.read_count += 1;
+                    if let Some((wait_nanos, acquire_nanos)) = sampled {
+                        entry.read_sampled_count += 1;
                         entry.read_wait_total_nanos += wait_nanos;
                         entry.read_acquire_total_nanos += acquire_nanos;
                         RwLockEntry::record(&mut entry.read_wait_hist, wait_nanos);
                         RwLockEntry::record(&mut entry.read_acquire_hist, acquire_nanos);
                     }
-                    RwLockKind::Write => {
-                        entry.write_count += 1;
+                }
+                RwLockKind::Write => {
+                    entry.write_count += 1;
+                    if let Some((wait_nanos, acquire_nanos)) = sampled {
+                        entry.write_sampled_count += 1;
                         entry.write_wait_total_nanos += wait_nanos;
                         entry.write_acquire_total_nanos += acquire_nanos;
                         RwLockEntry::record(&mut entry.write_wait_hist, wait_nanos);

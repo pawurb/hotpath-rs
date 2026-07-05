@@ -192,6 +192,7 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
                 log,
                 None,
                 None,
+                None,
             ));
         }
         StreamEvent::Completed { id } => {

@@ -106,6 +106,7 @@ pub struct HotpathGuardBuilder {
     output_path: Option<PathBuf>,
     sections: Option<Vec<Section>>,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
+    time_sampling: crate::lib_on::sampling::TimeSamplingConfig,
 }
 
 impl HotpathGuardBuilder {
@@ -142,6 +143,7 @@ impl HotpathGuardBuilder {
             output_path: None,
             sections: None,
             before_shutdown: None,
+            time_sampling: crate::lib_on::sampling::TimeSamplingConfig::default(),
         }
     }
 
@@ -214,6 +216,50 @@ impl HotpathGuardBuilder {
         self
     }
 
+    /// Sets the fraction of calls whose duration is measured, in `[0.0, 1.0]`
+    /// (e.g. `0.1` times 1 in 10 calls, `0.0` keeps exact counts but no
+    /// durations). Applies to functions, mutexes, rw_locks, futures, and wrap
+    /// channels; per-resource setters override it. Env vars
+    /// (`HOTPATH_TIME_SAMPLING_RATE` and per-resource variants) take precedence.
+    /// Under `hotpath-alloc`, function durations respect the rate while
+    /// allocation metrics stay exact.
+    pub fn time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.global = Some(rate);
+        self
+    }
+
+    /// Fraction of function calls whose duration is measured. Overrides
+    /// [`time_sampling_rate`](Self::time_sampling_rate) for functions.
+    pub fn functions_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.functions = Some(rate);
+        self
+    }
+
+    /// Fraction of mutex acquisitions whose wait/acquire time is measured.
+    pub fn mutexes_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.mutexes = Some(rate);
+        self
+    }
+
+    /// Fraction of RwLock acquisitions whose wait/acquire time is measured.
+    pub fn rw_locks_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.rw_locks = Some(rate);
+        self
+    }
+
+    /// Fraction of future calls whose poll durations are measured; the
+    /// decision is made once per call, so a call has all polls timed or none.
+    pub fn futures_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.futures = Some(rate);
+        self
+    }
+
+    /// Fraction of wrap-channel messages whose send->receive latency is measured.
+    pub fn channels_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.channels = Some(rate);
+        self
+    }
+
     /// Sets the output format. Overridden at runtime by `HOTPATH_OUTPUT_FORMAT` env var.
     pub fn format(mut self, format: Format) -> Self {
         self.format = format;
@@ -268,6 +314,8 @@ impl HotpathGuardBuilder {
     pub fn build(self) -> HotpathGuard {
         #[cfg(feature = "dev")]
         crate::dev_logging::init_logging();
+
+        crate::lib_on::sampling::init_time_sampling_rate(&self.time_sampling);
 
         let sections = self.resolve_sections();
 
@@ -483,7 +531,7 @@ impl HotpathGuard {
                                                             .iter()
                                                             .rev()
                                                             .map(|(_bytes, _count, duration_ns, elapsed, tid, result_log)| FunctionLog {
-                                                                value: Some(*duration_ns),
+                                                                value: *duration_ns,
                                                                 elapsed_nanos: elapsed.as_nanos() as u64,
                                                                 alloc_count: None,
                                                                 tid: *tid,
@@ -495,7 +543,7 @@ impl HotpathGuard {
                                                             .iter()
                                                             .rev()
                                                             .map(|(duration_ns, elapsed, tid, result_log)| FunctionLog {
-                                                                value: Some(*duration_ns),
+                                                                value: *duration_ns,
                                                                 elapsed_nanos: elapsed.as_nanos() as u64,
                                                                 alloc_count: None,
                                                                 tid: *tid,
@@ -837,6 +885,7 @@ impl Drop for HotpathGuard {
                 label: std::env::var("HOTPATH_REPORT_LABEL")
                     .ok()
                     .filter(|s| !s.is_empty()),
+                time_sampling: crate::lib_on::sampling::active_rates(),
                 ..Default::default()
             };
 

@@ -93,6 +93,10 @@ pub(crate) struct DataFlowLogEntry {
     /// outside wrap mode (proxy mode, streams).
     #[serde(default)]
     pub msg_id: Option<u64>,
+    /// Send-to-receive latency, set on wrap-mode receive entries. `None` when
+    /// time sampling skipped the message or the entry has no delay to carry.
+    #[serde(default)]
+    pub delay_nanos: Option<u64>,
 }
 
 impl DataFlowLogEntry {
@@ -102,6 +106,7 @@ impl DataFlowLogEntry {
         message: Option<String>,
         tid: Option<u64>,
         msg_id: Option<u64>,
+        delay_nanos: Option<u64>,
     ) -> Self {
         Self {
             index,
@@ -109,6 +114,7 @@ impl DataFlowLogEntry {
             message,
             tid,
             msg_id,
+            delay_nanos,
         }
     }
 }
@@ -183,6 +189,8 @@ pub(crate) struct FutureLog {
     pub future_id: u32,
     pub state: FutureState,
     pub poll_count: u64,
+    #[serde(default)]
+    pub sampled_polls: u64,
     pub total_poll_duration_ns: u64,
     pub max_poll_duration_ns: u64,
     pub last_poll_duration_ns: u64,
@@ -200,6 +208,7 @@ impl FutureLog {
             future_id,
             state: FutureState::default(),
             poll_count: 0,
+            sampled_polls: 0,
             total_poll_duration_ns: 0,
             max_poll_duration_ns: 0,
             last_poll_duration_ns: 0,

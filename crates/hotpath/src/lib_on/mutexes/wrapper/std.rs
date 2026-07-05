@@ -4,7 +4,8 @@ use std::sync::Mutex as StdMutex;
 
 use crate::instant::Instant;
 use crate::mutexes::{
-    elapsed_nanos, register_mutex, send_mutex_event, InstrumentMutex, MutexEvent,
+    cancel_wait_stamp, elapsed_nanos, register_mutex, send_mutex_event, wait_stamp,
+    InstrumentMutex, MutexEvent,
 };
 
 /// Instrumented drop-in replacement for [`std::sync::Mutex`].
@@ -40,25 +41,28 @@ impl<T> Mutex<T> {
 
     pub fn lock(&self) -> std::sync::LockResult<MutexGuard<'_, T>> {
         // Stamp before acquisition to measure wait time; the guard then measures acquire time.
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         match self.inner.lock() {
-            Ok(inner) => Ok(self.guard(inner, elapsed_nanos(wait_start))),
+            Ok(inner) => Ok(self.guard(inner, wait_start.map(elapsed_nanos))),
             Err(poison) => Err(std::sync::PoisonError::new(
-                self.guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                self.guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
             )),
         }
     }
 
     pub fn try_lock(&self) -> std::sync::TryLockResult<MutexGuard<'_, T>> {
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         match self.inner.try_lock() {
-            Ok(inner) => Ok(self.guard(inner, elapsed_nanos(wait_start))),
+            Ok(inner) => Ok(self.guard(inner, wait_start.map(elapsed_nanos))),
             Err(std::sync::TryLockError::Poisoned(poison)) => Err(
                 std::sync::TryLockError::Poisoned(std::sync::PoisonError::new(
-                    self.guard(poison.into_inner(), elapsed_nanos(wait_start)),
+                    self.guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
                 )),
             ),
-            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                cancel_wait_stamp();
+                Err(std::sync::TryLockError::WouldBlock)
+            }
         }
     }
 
@@ -73,11 +77,11 @@ impl<T> Mutex<T> {
     fn guard<'a>(
         &'a self,
         inner: std::sync::MutexGuard<'a, T>,
-        wait_nanos: u64,
+        wait_nanos: Option<u64>,
     ) -> MutexGuard<'a, T> {
         MutexGuard {
             inner: Some(inner),
-            start: Instant::now(),
+            start: wait_nanos.map(|_| Instant::now()),
             wait_nanos,
             id: self.id,
         }
@@ -88,8 +92,8 @@ impl<T> Mutex<T> {
 #[must_use = "if unused the Mutex will immediately unlock"]
 pub struct MutexGuard<'a, T> {
     inner: Option<std::sync::MutexGuard<'a, T>>,
-    start: Instant,
-    wait_nanos: u64,
+    start: Option<Instant>,
+    wait_nanos: Option<u64>,
     id: u32,
 }
 
@@ -111,11 +115,13 @@ impl<T> Drop for MutexGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        let now = Instant::now();
+        let acquire_nanos = self
+            .start
+            .map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         send_mutex_event(MutexEvent::Released {
             id: self.id,
             wait_nanos: self.wait_nanos,
-            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
+            acquire_nanos,
         });
     }
 }

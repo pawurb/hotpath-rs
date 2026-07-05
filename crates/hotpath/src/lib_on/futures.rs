@@ -66,6 +66,7 @@ pub(crate) struct FutureEntry {
     pub(crate) label: Option<String>,
     pub(crate) logs_count: u64,
     pub(crate) total_poll_count: u64,
+    pub(crate) sampled_polls: u64,
     pub(crate) total_poll_duration_ns: u64,
     pub(crate) total_poll_alloc_bytes: Option<u64>,
     pub(crate) total_poll_alloc_count: Option<u64>,
@@ -80,6 +81,7 @@ impl FutureEntry {
             label,
             logs_count: 0,
             total_poll_count: 0,
+            sampled_polls: 0,
             total_poll_duration_ns: 0,
             total_poll_alloc_bytes: None,
             total_poll_alloc_count: None,
@@ -90,8 +92,17 @@ impl FutureEntry {
         self.total_poll_count
     }
 
-    pub(crate) fn total_poll_duration_ns(&self) -> u64 {
-        self.total_poll_duration_ns
+    pub(crate) fn avg_poll_duration_ns(&self) -> Option<u64> {
+        self.total_poll_duration_ns.checked_div(self.sampled_polls)
+    }
+
+    /// Exact when every poll was timed, extrapolated (`avg * polls`) under time sampling.
+    pub(crate) fn display_total_poll_duration_ns(&self) -> u64 {
+        if self.sampled_polls == self.total_poll_count {
+            self.total_poll_duration_ns
+        } else {
+            self.avg_poll_duration_ns().unwrap_or(0) * self.total_poll_count
+        }
     }
 
     pub(crate) fn total_poll_alloc_bytes(&self) -> Option<u64> {
@@ -151,7 +162,8 @@ impl From<&FutureEntry> for JsonFutureEntry {
             has_custom_label: stats.label.is_some(),
             call_count: stats.logs_count,
             total_polls: stats.total_polls(),
-            total_poll_duration_ns: stats.total_poll_duration_ns(),
+            sampled_polls: stats.sampled_polls,
+            total_poll_duration_ns: stats.display_total_poll_duration_ns(),
             total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
             total_poll_alloc_count: stats.total_poll_alloc_count(),
         }
@@ -181,7 +193,9 @@ pub(crate) enum FutureEvent {
         future_id: u32,
         call_id: u32,
         result: PollResult,
-        poll_duration_ns: u64,
+        /// `None` for polls whose duration was not measured under time
+        /// sampling; the poll still counts and alloc fields stay exact.
+        poll_duration_ns: Option<u64>,
         poll_alloc_bytes: Option<u64>,
         poll_alloc_count: Option<u64>,
     },
@@ -371,7 +385,10 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
                 .entry(future_id)
                 .or_insert_with(|| placeholder_future_entry(future_id));
             future_stats.total_poll_count += 1;
-            future_stats.total_poll_duration_ns += poll_duration_ns;
+            if let Some(poll_duration_ns) = poll_duration_ns {
+                future_stats.sampled_polls += 1;
+                future_stats.total_poll_duration_ns += poll_duration_ns;
+            }
             add_optional(&mut future_stats.total_poll_alloc_bytes, poll_alloc_bytes);
             add_optional(&mut future_stats.total_poll_alloc_count, poll_alloc_count);
 
@@ -382,14 +399,17 @@ fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
             entry_logs.register_call(future_id, call_id);
             if let Some(call) = entry_logs.find_call_mut(call_id) {
                 call.poll_count += 1;
-                call.total_poll_duration_ns += poll_duration_ns;
-                call.last_poll_duration_ns = poll_duration_ns;
+                if let Some(poll_duration_ns) = poll_duration_ns {
+                    call.sampled_polls += 1;
+                    call.total_poll_duration_ns += poll_duration_ns;
+                    call.last_poll_duration_ns = poll_duration_ns;
+                    if poll_duration_ns > call.max_poll_duration_ns {
+                        call.max_poll_duration_ns = poll_duration_ns;
+                    }
+                }
                 add_optional(&mut call.total_poll_alloc_bytes, poll_alloc_bytes);
                 add_optional(&mut call.total_poll_alloc_count, poll_alloc_count);
                 call.last_poll_alloc_bytes = poll_alloc_bytes;
-                if poll_duration_ns > call.max_poll_duration_ns {
-                    call.max_poll_duration_ns = poll_duration_ns;
-                }
                 if let Some(poll_alloc_bytes) = poll_alloc_bytes {
                     if call
                         .max_poll_alloc_bytes
@@ -522,7 +542,7 @@ pub(crate) fn get_future_logs_list(future_id: u32) -> Option<FutureLogsList> {
         id: future_id.to_string(),
         call_count: stats.logs_count,
         total_polls: stats.total_polls(),
-        total_poll_duration_ns: stats.total_poll_duration_ns(),
+        total_poll_duration_ns: stats.display_total_poll_duration_ns(),
         total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
         total_poll_alloc_count: stats.total_poll_alloc_count(),
         calls: entry_logs.logs.iter().rev().cloned().collect(),

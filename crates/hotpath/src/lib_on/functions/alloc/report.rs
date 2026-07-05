@@ -140,6 +140,7 @@ pub(crate) fn build_functions_list_alloc(
                 id: s.id,
                 name: s.name.to_string(),
                 calls: s.count,
+                sampled_calls: s.count,
                 avg,
                 percentiles,
                 total,
@@ -195,9 +196,10 @@ pub(crate) fn build_functions_list_timing(
         stats
             .values()
             .filter(|s| !s.wrapper && s.has_data)
-            .map(|s| s.total_duration_ns)
+            .map(|s| s.display_total_duration_ns())
             .sum::<u64>()
     } else {
+        // The wrapper guard is exempt from time sampling, so its total is exact.
         let wrapper_total = stats
             .values()
             .find(|s| s.wrapper)
@@ -211,8 +213,8 @@ pub(crate) fn build_functions_list_timing(
         .collect();
 
     entries.sort_by(|a, b| {
-        b.total_duration_ns
-            .cmp(&a.total_duration_ns)
+        b.display_total_duration_ns()
+            .cmp(&a.display_total_duration_ns())
             .then_with(|| a.name.cmp(b.name))
     });
 
@@ -230,26 +232,45 @@ pub(crate) fn build_functions_list_timing(
     let data: Vec<JsonFunctionEntry> = entries
         .into_iter()
         .map(|s| {
+            let count_only = s.duration_sampled_count == 0 && s.count > 0;
+            let display_total = s.display_total_duration_ns();
             let percentage = if reference_total > 0 {
-                (s.total_duration_ns as f64 / reference_total as f64) * 100.0
+                (display_total as f64 / reference_total as f64) * 100.0
             } else {
                 0.0
             };
 
             let mut percentiles = HashMap::new();
             for &p in &config.percentiles {
-                let duration_ns = s.duration_percentile(p);
-                percentiles.insert(format_percentile_key(p), format_duration(duration_ns));
+                let value = if count_only {
+                    "-".to_string()
+                } else {
+                    format_duration(s.duration_percentile(p))
+                };
+                percentiles.insert(format_percentile_key(p), value);
             }
 
             JsonFunctionEntry {
                 id: s.id,
                 name: s.name.to_string(),
                 calls: s.count,
-                avg: format_duration(s.avg_duration_ns()),
+                sampled_calls: s.duration_sampled_count,
+                avg: if count_only {
+                    "-".to_string()
+                } else {
+                    format_duration(s.avg_duration_ns())
+                },
                 percentiles,
-                total: format_duration(s.total_duration_ns),
-                percent_total: format!("{:.2}%", percentage),
+                total: if count_only {
+                    "-".to_string()
+                } else {
+                    format_duration(display_total)
+                },
+                percent_total: if count_only {
+                    "-".to_string()
+                } else {
+                    format!("{:.2}%", percentage)
+                },
             }
         })
         .collect();

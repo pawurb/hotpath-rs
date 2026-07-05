@@ -4,7 +4,8 @@ use async_lock::RwLock as AlRwLock;
 
 use crate::instant::Instant;
 use crate::rw_locks::{
-    elapsed_nanos, register_rw_lock, send_rw_lock_event, InstrumentRwLock, RwLockEvent, RwLockKind,
+    cancel_wait_stamp, elapsed_nanos, register_rw_lock, send_rw_lock_event, wait_stamp,
+    InstrumentRwLock, RwLockEvent, RwLockKind,
 };
 
 /// Instrumented drop-in replacement for [`async_lock::RwLock`].
@@ -40,29 +41,33 @@ impl<T> RwLock<T> {
 
     pub async fn read(&self) -> RwLockReadGuard<'_, T> {
         // Stamp before acquisition to measure wait time; the guard then measures acquire time.
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         let inner = self.inner.read().await;
-        self.read_guard(inner, elapsed_nanos(wait_start))
+        self.read_guard(inner, wait_start.map(elapsed_nanos))
     }
 
     pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
-        let wait_start = Instant::now();
-        self.inner
-            .try_read()
-            .map(|inner| self.read_guard(inner, elapsed_nanos(wait_start)))
+        let wait_start = wait_stamp();
+        let inner = self.inner.try_read();
+        if inner.is_none() {
+            cancel_wait_stamp();
+        }
+        inner.map(|inner| self.read_guard(inner, wait_start.map(elapsed_nanos)))
     }
 
     pub async fn write(&self) -> RwLockWriteGuard<'_, T> {
-        let wait_start = Instant::now();
+        let wait_start = wait_stamp();
         let inner = self.inner.write().await;
-        self.write_guard(inner, elapsed_nanos(wait_start))
+        self.write_guard(inner, wait_start.map(elapsed_nanos))
     }
 
     pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
-        let wait_start = Instant::now();
-        self.inner
-            .try_write()
-            .map(|inner| self.write_guard(inner, elapsed_nanos(wait_start)))
+        let wait_start = wait_stamp();
+        let inner = self.inner.try_write();
+        if inner.is_none() {
+            cancel_wait_stamp();
+        }
+        inner.map(|inner| self.write_guard(inner, wait_start.map(elapsed_nanos)))
     }
 
     pub fn into_inner(self) -> T {
@@ -76,11 +81,11 @@ impl<T> RwLock<T> {
     fn read_guard<'a>(
         &'a self,
         inner: async_lock::RwLockReadGuard<'a, T>,
-        wait_nanos: u64,
+        wait_nanos: Option<u64>,
     ) -> RwLockReadGuard<'a, T> {
         RwLockReadGuard {
             inner: Some(inner),
-            start: Instant::now(),
+            start: wait_nanos.map(|_| Instant::now()),
             wait_nanos,
             id: self.id,
         }
@@ -89,11 +94,11 @@ impl<T> RwLock<T> {
     fn write_guard<'a>(
         &'a self,
         inner: async_lock::RwLockWriteGuard<'a, T>,
-        wait_nanos: u64,
+        wait_nanos: Option<u64>,
     ) -> RwLockWriteGuard<'a, T> {
         RwLockWriteGuard {
             inner: Some(inner),
-            start: Instant::now(),
+            start: wait_nanos.map(|_| Instant::now()),
             wait_nanos,
             id: self.id,
         }
@@ -104,8 +109,8 @@ impl<T> RwLock<T> {
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockReadGuard<'a, T> {
     inner: Option<async_lock::RwLockReadGuard<'a, T>>,
-    start: Instant,
-    wait_nanos: u64,
+    start: Option<Instant>,
+    wait_nanos: Option<u64>,
     id: u32,
 }
 
@@ -121,12 +126,14 @@ impl<T> Drop for RwLockReadGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        let now = Instant::now();
+        let acquire_nanos = self
+            .start
+            .map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         send_rw_lock_event(RwLockEvent::Released {
             id: self.id,
             kind: RwLockKind::Read,
             wait_nanos: self.wait_nanos,
-            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
+            acquire_nanos,
         });
     }
 }
@@ -135,8 +142,8 @@ impl<T> Drop for RwLockReadGuard<'_, T> {
 #[must_use = "if unused the RwLock will immediately unlock"]
 pub struct RwLockWriteGuard<'a, T> {
     inner: Option<async_lock::RwLockWriteGuard<'a, T>>,
-    start: Instant,
-    wait_nanos: u64,
+    start: Option<Instant>,
+    wait_nanos: Option<u64>,
     id: u32,
 }
 
@@ -158,12 +165,14 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
         // Release the real lock before stamping/sending so the held duration
         // excludes the event-send cost and the lock frees as early as possible.
         drop(self.inner.take());
-        let now = Instant::now();
+        let acquire_nanos = self
+            .start
+            .map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         send_rw_lock_event(RwLockEvent::Released {
             id: self.id,
             kind: RwLockKind::Write,
             wait_nanos: self.wait_nanos,
-            acquire_nanos: now.duration_since(self.start).as_nanos() as u64,
+            acquire_nanos,
         });
     }
 }

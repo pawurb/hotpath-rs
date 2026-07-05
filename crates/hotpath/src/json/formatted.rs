@@ -65,6 +65,8 @@ pub struct JsonFunctionEntry {
     pub id: u32,
     pub name: String,
     pub calls: u64,
+    #[serde(default)]
+    pub sampled_calls: u64,
     pub avg: String,
     #[serde(flatten)]
     pub percentiles: HashMap<String, String>,
@@ -325,6 +327,8 @@ pub struct JsonChannelEntry {
     pub proc_avg: Option<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub proc_percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proc_sampled_count: Option<u64>,
     pub iter: u32,
 }
 
@@ -344,6 +348,10 @@ pub struct JsonRwLockEntry {
     pub type_name: String,
     pub read_count: u64,
     pub write_count: u64,
+    #[serde(default)]
+    pub read_sampled_count: u64,
+    #[serde(default)]
+    pub write_sampled_count: u64,
     pub read_wait_avg: String,
     pub write_wait_avg: String,
     pub read_acquire_avg: String,
@@ -370,6 +378,8 @@ pub struct JsonMutexEntry {
     pub has_custom_label: bool,
     pub type_name: String,
     pub count: u64,
+    #[serde(default)]
+    pub sampled_count: u64,
     pub wait_avg: String,
     pub acquire_avg: String,
     pub wait_percentiles: HashMap<String, String>,
@@ -485,11 +495,16 @@ fn format_sent_log_entry(
 ) -> JsonChannelSentLog {
     // Pair by message identity (wrap mode only). Proxy channels have no `msg_id` and
     // their forwarder-stamped timestamps aren't true latency, so they get no delay.
+    // A received message without `delay_nanos` was skipped by time sampling.
     let delay = entry.msg_id.and_then(|sent_id| {
         received_logs
             .iter()
             .find(|recv| recv.msg_id == Some(sent_id))
-            .map(|recv| format_delay(recv.timestamp.saturating_sub(entry.timestamp)))
+            .map(|recv| {
+                recv.delay_nanos
+                    .map(format_delay)
+                    .unwrap_or_else(|| "N/A".to_string())
+            })
     });
 
     JsonChannelSentLog {
@@ -564,6 +579,8 @@ pub struct JsonFutureEntry {
     pub has_custom_label: bool,
     pub call_count: u64,
     pub total_polls: u64,
+    #[serde(default)]
+    pub sampled_polls: u64,
     pub total_poll_duration_ns: u64,
     pub total_poll_alloc_bytes: Option<u64>,
     pub total_poll_alloc_count: Option<u64>,
@@ -575,6 +592,8 @@ pub struct JsonFutureLog {
     pub future_id: u32,
     pub state: String,
     pub poll_count: u64,
+    #[serde(default)]
+    pub sampled_polls: u64,
     pub total_poll_duration_ns: u64,
     pub max_poll_duration_ns: u64,
     pub last_poll_duration_ns: u64,
@@ -603,6 +622,9 @@ impl From<&FutureLog> for JsonFutureLog {
             future_id: log.future_id,
             state: log.state.as_str().to_string(),
             poll_count: log.poll_count,
+            sampled_polls: log.sampled_polls,
+            // Sampling is decided per call, so an unsampled call's raw total is
+            // simply 0 and a sampled call's is exact - no extrapolation needed.
             total_poll_duration_ns: log.total_poll_duration_ns,
             max_poll_duration_ns: log.max_poll_duration_ns,
             last_poll_duration_ns: log.last_poll_duration_ns,
@@ -808,6 +830,8 @@ pub struct JsonReport {
     pub r#type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_sampling: Option<HashMap<String, f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub functions_timing: Option<JsonFunctionsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -839,6 +863,7 @@ impl Default for JsonReport {
         Self {
             r#type: default_report_type(),
             label: None,
+            time_sampling: None,
             functions_timing: None,
             functions_alloc: None,
             functions_cpu: None,
@@ -951,14 +976,14 @@ mod parse_tests {
     fn delay_pairs_by_msg_id_not_arrival_index() {
         let logs = ChannelLogs {
             id: 1,
-            // (index, timestamp, message, tid, msg_id)
+            // (index, timestamp, message, tid, msg_id, delay_nanos)
             sent_logs: vec![
-                DataFlowLogEntry::new(1, 10, None, None, Some(100)),
-                DataFlowLogEntry::new(2, 15, None, None, Some(200)),
+                DataFlowLogEntry::new(1, 10, None, None, Some(100), None),
+                DataFlowLogEntry::new(2, 15, None, None, Some(200), None),
             ],
             received_logs: vec![
-                DataFlowLogEntry::new(1, 18, None, None, Some(200)),
-                DataFlowLogEntry::new(2, 30, None, None, Some(100)),
+                DataFlowLogEntry::new(1, 18, None, None, Some(200), Some(3)),
+                DataFlowLogEntry::new(2, 30, None, None, Some(100), Some(20)),
             ],
         };
 
@@ -982,11 +1007,39 @@ mod parse_tests {
     fn delay_is_none_for_proxy_channels_without_msg_id() {
         let logs = ChannelLogs {
             id: 1,
-            sent_logs: vec![DataFlowLogEntry::new(1, 10, None, None, None)],
-            received_logs: vec![DataFlowLogEntry::new(1, 25, None, None, None)],
+            sent_logs: vec![DataFlowLogEntry::new(1, 10, None, None, None, None)],
+            received_logs: vec![DataFlowLogEntry::new(1, 25, None, None, None, None)],
         };
 
         let out = JsonChannelLogsList::from_logs(&logs, 1_000);
         assert_eq!(out.sent_logs[0].delay, None);
+    }
+
+    /// Unsampled wrap messages carry no `delay_nanos`, so the delay must read
+    /// "N/A", not a bogus near-zero derived from drain-time stamps.
+    #[test]
+    fn delay_is_na_for_unsampled_wrap_messages() {
+        let logs = ChannelLogs {
+            id: 1,
+            sent_logs: vec![
+                DataFlowLogEntry::new(1, 10, None, None, Some(100), None),
+                DataFlowLogEntry::new(2, 15, None, None, Some(101), None),
+            ],
+            received_logs: vec![
+                DataFlowLogEntry::new(1, 30, None, None, Some(100), Some(20)),
+                DataFlowLogEntry::new(2, 15, None, None, Some(101), None),
+            ],
+        };
+
+        let out = JsonChannelLogsList::from_logs(&logs, 1_000);
+
+        let by_index: HashMap<u64, Option<String>> = out
+            .sent_logs
+            .iter()
+            .map(|s| (s.index, s.delay.clone()))
+            .collect();
+
+        assert_eq!(by_index[&1], Some("20 ns".to_string()));
+        assert_eq!(by_index[&2], Some("N/A".to_string()));
     }
 }
