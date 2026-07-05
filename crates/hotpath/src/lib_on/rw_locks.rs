@@ -192,6 +192,29 @@ pub(crate) fn stop_rw_lock_events() {
     EVENT_QUEUES.set_active(false);
 }
 
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata.
+fn placeholder_rw_lock_entry(id: u32) -> RwLockEntry {
+    RwLockEntry {
+        id,
+        source: "",
+        label: None,
+        type_name: "",
+        read_count: 0,
+        write_count: 0,
+        read_wait_total_nanos: 0,
+        write_wait_total_nanos: 0,
+        read_acquire_total_nanos: 0,
+        write_acquire_total_nanos: 0,
+        read_wait_hist: Some(RwLockEntry::new_histogram()),
+        write_wait_hist: Some(RwLockEntry::new_histogram()),
+        read_acquire_hist: Some(RwLockEntry::new_histogram()),
+        write_acquire_hist: Some(RwLockEntry::new_histogram()),
+        iter: 0,
+    }
+}
+
 fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
     match event {
         RwLockEvent::Created {
@@ -201,26 +224,14 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
             type_name,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                RwLockEntry {
-                    id,
-                    source,
-                    label,
-                    type_name,
-                    read_count: 0,
-                    write_count: 0,
-                    read_wait_total_nanos: 0,
-                    write_wait_total_nanos: 0,
-                    read_acquire_total_nanos: 0,
-                    write_acquire_total_nanos: 0,
-                    read_wait_hist: Some(RwLockEntry::new_histogram()),
-                    write_wait_hist: Some(RwLockEntry::new_histogram()),
-                    read_acquire_hist: Some(RwLockEntry::new_histogram()),
-                    write_acquire_hist: Some(RwLockEntry::new_histogram()),
-                    iter,
-                },
-            );
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_rw_lock_entry(id));
+            entry.source = source;
+            entry.label = label;
+            entry.type_name = type_name;
+            entry.iter = iter;
         }
         RwLockEvent::Released {
             id,
@@ -228,7 +239,11 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
             wait_nanos,
             acquire_nanos,
         } => {
-            if let Some(entry) = state.stats.get_mut(&id) {
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_rw_lock_entry(id));
+            {
                 match kind {
                     RwLockKind::Read => {
                         entry.read_count += 1;

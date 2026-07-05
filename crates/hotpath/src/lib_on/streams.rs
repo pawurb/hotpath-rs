@@ -144,6 +144,13 @@ pub(crate) fn stop_stream_events() {
     EVENT_QUEUES.set_active(false);
 }
 
+/// Entry for events that arrive ahead of their `Created` (sweeps only preserve
+/// per-thread order, so another thread's data events can be drained first).
+/// `Created` backfills the metadata.
+fn placeholder_stream_stats(id: u32) -> StreamStats {
+    StreamStats::new(id, "", None, "", 0, 0)
+}
+
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
     match event {
@@ -155,35 +162,44 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
             type_size,
         } => {
             let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
-            state.stats.insert(
-                id,
-                StreamStats::new(id, source, display_label, type_name, type_size, iter),
-            );
-            state.logs.insert(id, StreamStatsLogs::new());
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_stream_stats(id));
+            entry.source = source;
+            entry.label = display_label;
+            entry.type_name = type_name;
+            entry.type_size = type_size;
+            entry.iter = iter;
+            state.logs.entry(id).or_insert_with(StreamStatsLogs::new);
         }
         StreamEvent::Yielded { id, log, timestamp } => {
-            if let Some(stream_stats) = state.stats.get_mut(&id) {
-                stream_stats.items_yielded += 1;
+            let stream_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_stream_stats(id));
+            stream_stats.items_yielded += 1;
+            let items_yielded = stream_stats.items_yielded;
+
+            let entry_logs = state.logs.entry(id).or_insert_with(StreamStatsLogs::new);
+            let limit = *crate::channels::LOGS_LIMIT;
+            if entry_logs.logs.len() >= limit {
+                entry_logs.logs.pop_front();
             }
-            if let Some(entry_logs) = state.logs.get_mut(&id) {
-                let items_yielded = state.stats.get(&id).map_or(0, |s| s.items_yielded);
-                let limit = *crate::channels::LOGS_LIMIT;
-                if entry_logs.logs.len() >= limit {
-                    entry_logs.logs.pop_front();
-                }
-                entry_logs.logs.push_back(DataFlowLogEntry::new(
-                    items_yielded,
-                    crate::channels::timestamp_nanos(timestamp),
-                    log,
-                    None,
-                    None,
-                ));
-            }
+            entry_logs.logs.push_back(DataFlowLogEntry::new(
+                items_yielded,
+                crate::channels::timestamp_nanos(timestamp),
+                log,
+                None,
+                None,
+            ));
         }
         StreamEvent::Completed { id } => {
-            if let Some(stream_stats) = state.stats.get_mut(&id) {
-                stream_stats.state = ChannelState::Closed;
-            }
+            state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_stream_stats(id))
+                .state = ChannelState::Closed;
         }
     }
 }

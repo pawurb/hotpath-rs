@@ -318,6 +318,8 @@ fn build<T>(
         ChannelType::Bounded(cap) => crossbeam_channel::bounded::<(u64, Instant, T)>(cap),
         ChannelType::Unbounded => crossbeam_channel::unbounded::<(u64, Instant, T)>(),
         ChannelType::Oneshot => crossbeam_channel::bounded::<(u64, Instant, T)>(1),
+        // `channel_type` above only returns Bounded or Unbounded.
+        ChannelType::Pending => unreachable!(),
     };
 
     let sender = Sender {

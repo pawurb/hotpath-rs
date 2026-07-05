@@ -260,6 +260,7 @@ pub mod channels {
         Bounded(usize),
         Unbounded,
         Oneshot,
+        Pending,
     }
 }
 
