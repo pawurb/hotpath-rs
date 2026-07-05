@@ -1,6 +1,6 @@
 [package]
 name = "hotpath-meta"
-version = "0.19.1"
+version = "0.20.0"
 edition = "2021"
 description = "Hotpath meta - a version of hotpath used to profile the profiler itself. Not intended for external use."
 repository = "https://github.com/pawurb/hotpath-rs"
