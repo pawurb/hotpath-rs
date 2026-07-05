@@ -275,12 +275,8 @@ pub(crate) fn init_mutexes_state() -> &'static MutexesState {
 
         let (event_tx, event_rx) = unbounded::<Vec<MutexEvent>>();
         #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) = hotpath_meta::channel!(
-            (event_tx, event_rx),
-            wrap = true,
-            log = true,
-            label = "hp-mx-events"
-        );
+        let (event_tx, event_rx) =
+            hotpath_meta::channel!((event_tx, event_rx), log = true, label = "hp-mx-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 

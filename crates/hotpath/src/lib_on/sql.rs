@@ -224,7 +224,7 @@ pub(crate) fn init_sql_state() -> &'static SqlState {
         let (event_tx, event_rx) = unbounded::<Vec<SqlEvent>>();
         #[cfg(feature = "hotpath-meta")]
         let (event_tx, event_rx) =
-            hotpath_meta::channel!((event_tx, event_rx), wrap = true, label = "hp-sql-events");
+            hotpath_meta::channel!((event_tx, event_rx), label = "hp-sql-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 

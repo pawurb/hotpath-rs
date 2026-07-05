@@ -277,12 +277,8 @@ fn get_futures_state() -> &'static FuturesState {
 
         let (event_tx, event_rx) = unbounded::<Vec<FutureEvent>>();
         #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) = hotpath_meta::channel!(
-            (event_tx, event_rx),
-            wrap = true,
-            log = true,
-            label = "hp-ft-events"
-        );
+        let (event_tx, event_rx) =
+            hotpath_meta::channel!((event_tx, event_rx), log = true, label = "hp-ft-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
         let inner = Arc::new(RwLock::new(FuturesInternalState {

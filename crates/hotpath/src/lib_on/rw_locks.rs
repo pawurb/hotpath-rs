@@ -326,12 +326,8 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
 
         let (event_tx, event_rx) = unbounded::<Vec<RwLockEvent>>();
         #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) = hotpath_meta::channel!(
-            (event_tx, event_rx),
-            wrap = true,
-            log = true,
-            label = "hp-rw-events"
-        );
+        let (event_tx, event_rx) =
+            hotpath_meta::channel!((event_tx, event_rx), log = true, label = "hp-rw-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 

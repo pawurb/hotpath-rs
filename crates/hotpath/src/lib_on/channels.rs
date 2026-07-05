@@ -585,12 +585,8 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
 
         let (event_tx, event_rx) = unbounded::<Vec<ChannelEvent>>();
         #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) = hotpath_meta::channel!(
-            (event_tx, event_rx),
-            wrap = true,
-            log = true,
-            label = "hp-ch-events"
-        );
+        let (event_tx, event_rx) =
+            hotpath_meta::channel!((event_tx, event_rx), log = true, label = "hp-ch-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
         let inner = Arc::new(RwLock::new(ChannelsInternalState {

@@ -245,12 +245,8 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
 
         let (event_tx, event_rx) = unbounded::<Vec<StreamEvent>>();
         #[cfg(feature = "hotpath-meta")]
-        let (event_tx, event_rx) = hotpath_meta::channel!(
-            (event_tx, event_rx),
-            wrap = true,
-            log = true,
-            label = "hp-st-events"
-        );
+        let (event_tx, event_rx) =
+            hotpath_meta::channel!((event_tx, event_rx), log = true, label = "hp-st-events");
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
         let inner = Arc::new(RwLock::new(StreamsInternalState {

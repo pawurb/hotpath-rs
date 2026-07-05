@@ -367,11 +367,8 @@ impl HotpathGuard {
         // via `Select::ready()` instead of behind a measurement backlog on one FIFO.
         let (measurements_tx, measurements_rx) = unbounded::<Vec<Measurement>>();
         #[cfg(feature = "hotpath-meta")]
-        let (measurements_tx, measurements_rx) = hotpath_meta::channel!(
-            (measurements_tx, measurements_rx),
-            wrap = true,
-            label = "hp-fn"
-        );
+        let (measurements_tx, measurements_rx) =
+            hotpath_meta::channel!((measurements_tx, measurements_rx), label = "hp-fn");
         let (query_tx, query_rx) = unbounded::<FunctionsQuery>();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<HashMap<u32, FunctionStats>>(1);

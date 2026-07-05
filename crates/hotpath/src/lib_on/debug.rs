@@ -2,7 +2,9 @@
 
 use crate::channels::{LOGS_LIMIT, START_TIME};
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crossbeam_channel::{unbounded, Sender as CbSender};
+use crossbeam_channel::unbounded;
+#[cfg(not(feature = "hotpath-meta"))]
+use crossbeam_channel::Sender as CbSender;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -149,8 +151,14 @@ pub(crate) enum DebugEvent {
 
 use gauge::{GaugeEntry, GaugeLog};
 
+// `wrap` endpoint wrapper under `hotpath-meta` (instrumented), plain sender otherwise.
+#[cfg(feature = "hotpath-meta")]
+type DebugEventTx = hotpath_meta::wrap::crossbeam::Sender<DebugEvent>;
+#[cfg(not(feature = "hotpath-meta"))]
+type DebugEventTx = CbSender<DebugEvent>;
+
 struct DebugState {
-    event_tx: CbSender<DebugEvent>,
+    event_tx: DebugEventTx,
     dbg: Arc<RwLock<HashMap<u32, DbgEntry>>>,
     val: Arc<RwLock<HashMap<u32, ValEntry>>>,
     gauge: Arc<RwLock<HashMap<u32, GaugeEntry>>>,
