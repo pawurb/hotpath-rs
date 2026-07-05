@@ -219,9 +219,9 @@ pub(crate) fn wrap_oneshot_log<T: Send + std::fmt::Debug + 'static>(
     })
 }
 
-use crate::channels::InstrumentChannel;
+use crate::channels::InstrumentChannelProxy;
 
-impl<T: Send + 'static> InstrumentChannel
+impl<T: Send + 'static> InstrumentChannelProxy
     for (
         futures_channel::mpsc::Sender<T>,
         futures_channel::mpsc::Receiver<T>,
@@ -244,7 +244,7 @@ impl<T: Send + 'static> InstrumentChannel
     }
 }
 
-impl<T: Send + 'static> InstrumentChannel
+impl<T: Send + 'static> InstrumentChannelProxy
     for (
         futures_channel::mpsc::UnboundedSender<T>,
         futures_channel::mpsc::UnboundedReceiver<T>,
@@ -264,7 +264,7 @@ impl<T: Send + 'static> InstrumentChannel
     }
 }
 
-impl<T: Send + 'static> InstrumentChannel
+impl<T: Send + 'static> InstrumentChannelProxy
     for (
         futures_channel::oneshot::Sender<T>,
         futures_channel::oneshot::Receiver<T>,
@@ -284,9 +284,9 @@ impl<T: Send + 'static> InstrumentChannel
     }
 }
 
-use crate::channels::InstrumentChannelLog;
+use crate::channels::InstrumentChannelProxyLog;
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
     for (
         futures_channel::mpsc::Sender<T>,
         futures_channel::mpsc::Receiver<T>,
@@ -309,7 +309,7 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
     }
 }
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
     for (
         futures_channel::mpsc::UnboundedSender<T>,
         futures_channel::mpsc::UnboundedReceiver<T>,
@@ -329,7 +329,7 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
     }
 }
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
     for (
         futures_channel::oneshot::Sender<T>,
         futures_channel::oneshot::Receiver<T>,

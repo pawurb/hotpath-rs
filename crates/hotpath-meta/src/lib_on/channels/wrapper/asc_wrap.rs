@@ -1,37 +1,36 @@
-//! Endpoint-wrapping flume channel instrumentation for the `channel!` macro.
+//! Endpoint-wrapping async-channel instrumentation for the `channel!` macro.
 //!
 //! Wraps the `Sender`/`Receiver` endpoints directly (unlike the forwarder-proxy in
-//! [`crate::channels::wrapper::flume`]): no extra task or proxy channel, so send/recv
-//! hit the real channel. `queue_len` is a snapshot taken right after each op via the
-//! exact `flume::Sender::len`/`Receiver::len` - exact single-threaded, may skew under
+//! [`crate::channels::wrapper::asc`]): no extra task or proxy channel, so send/recv hit
+//! the real channel. `queue_len` is a snapshot taken right after each op via the exact
+//! `async_channel::Sender::len`/`Receiver::len` - exact single-threaded, may skew under
 //! concurrent endpoints.
 //!
-//! The inner channel carries `(msg_id, send_ts, T)`. Monotonic `msg_id` pairs a send
-//! with its matching receive under multiple producers/consumers. `send_ts` is stamped
-//! before publishing, so `send_ts <= recv_ts` always holds and the reported delay is
-//! non-negative; for bounded channels it precedes the blocking send, so the delay
-//! includes backpressure wait. Both fields are internal - the public API still uses `T`.
+//! The inner channel carries `(msg_id, send_ts, T)`. Monotonic `msg_id` pairs a send with
+//! its matching receive under multiple producers/consumers. `send_ts` is stamped before
+//! publishing, so `send_ts <= recv_ts` always holds and the reported delay is non-negative;
+//! for bounded channels it precedes the awaited send, so the delay includes backpressure
+//! wait. Both fields are internal - the public API still uses `T`.
 //!
-//! flume is mpmc and both ends are `Clone`. Sender and receiver clones are counted, and
-//! a `Closed` event fires when the last clone of either end is dropped (dropping all
+//! async-channel is mpmc and both ends are `Clone`. Sender and receiver clones are counted,
+//! and a `Closed` event fires when the last clone of either end is dropped (dropping all
 //! receivers disconnects the channel, just like dropping all senders).
 //!
-//! The sync (`send`/`recv` + timeouts) and async (`send_async`/`recv_async`) APIs are
-//! instrumented. The `Stream`/`Sink` adapters (`rx.stream()`, `rx.into_stream()`, the
-//! `Sender` `Sink` impl) and `send_deadline`/`recv_deadline`/`drain` are NOT wrapped in
-//! v1 - users on those paths silently lose instrumentation.
+//! The async (`send`/`recv`) and blocking (`send_blocking`/`recv_blocking`) APIs plus the
+//! `try_*` variants are instrumented. `force_send`, `close`, and the `Receiver`'s `Stream`
+//! impl are NOT wrapped in v1 - users on those paths silently lose instrumentation.
 //!
-//! The wrapper rebuilds the inner channel, so the `channel!` expression must be
-//! constructed inline; endpoints cloned before wrapping are orphaned.
+//! The wrapper rebuilds the inner channel, so the `channel!` expression must be constructed
+//! inline; endpoints cloned before wrapping are orphaned.
 //!
-//! Returns [`Sender`]/[`Receiver`], re-exported as `hotpath_meta::wrap::flume::{Sender, Receiver}`.
+//! Returns [`Sender`]/[`Receiver`], re-exported as `hotpath_meta::wrap::async_channel::{Sender, Receiver}`.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use flume::{
-    Receiver as InnerReceiver, RecvError, RecvTimeoutError, SendError, SendTimeoutError,
-    Sender as InnerSender, TryRecvError, TrySendError,
+use async_channel::{
+    Receiver as InnerReceiver, RecvError, SendError, Sender as InnerSender, TryRecvError,
+    TrySendError,
 };
 
 use crate::channels::{
@@ -41,7 +40,13 @@ use crate::channels::{
 
 type Payload<T> = (u64, Instant, T);
 
-/// Instrumented flume [`flume::Sender`] wrapper.
+/// `send_ts` is stamped before the (possibly awaited) send, so it is always `<= now`.
+#[inline]
+fn delay_nanos(send_ts: Instant, now: Instant) -> u64 {
+    now.duration_since(send_ts).as_nanos() as u64
+}
+
+/// Instrumented async-channel [`async_channel::Sender`] wrapper.
 ///
 /// Tracks every successful send and emits the exact channel length afterwards.
 /// When the last clone is dropped, a `Closed` event is emitted.
@@ -66,28 +71,28 @@ impl<T> Sender<T> {
         });
     }
 
-    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+    pub async fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        // Stamp before publishing: a consumer could receive and timestamp the message
-        // the instant `inner.send` enqueues it, so stamping after would race the
-        // receive and read recv < send. Here send_ts <= recv_ts by construction.
+        // Stamp before publishing: a consumer could receive and timestamp the message the
+        // instant `inner.send` enqueues it, so stamping after would race the receive and
+        // read recv < send. Here send_ts <= recv_ts by construction.
         let sent_at = Instant::now();
         self.inner
             .send((msg_id, sent_at, msg))
-            .map_err(|SendError((_, _, msg))| SendError(msg))?;
+            .await
+            .map_err(|e| SendError(e.into_inner().2))?;
         self.emit_sent(msg_id, sent_at, log);
         Ok(())
     }
 
-    pub async fn send_async(&self, msg: T) -> Result<(), SendError<T>> {
+    pub fn send_blocking(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let sent_at = Instant::now();
         self.inner
-            .send_async((msg_id, sent_at, msg))
-            .await
-            .map_err(|SendError((_, _, msg))| SendError(msg))?;
+            .send_blocking((msg_id, sent_at, msg))
+            .map_err(|e| SendError(e.into_inner().2))?;
         self.emit_sent(msg_id, sent_at, log);
         Ok(())
     }
@@ -100,25 +105,7 @@ impl<T> Sender<T> {
             .try_send((msg_id, sent_at, msg))
             .map_err(|e| match e {
                 TrySendError::Full((_, _, msg)) => TrySendError::Full(msg),
-                TrySendError::Disconnected((_, _, msg)) => TrySendError::Disconnected(msg),
-            })?;
-        self.emit_sent(msg_id, sent_at, log);
-        Ok(())
-    }
-
-    pub fn send_timeout(
-        &self,
-        msg: T,
-        timeout: std::time::Duration,
-    ) -> Result<(), SendTimeoutError<T>> {
-        let log = self.log_fn.map(|f| f(&msg));
-        let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = Instant::now();
-        self.inner
-            .send_timeout((msg_id, sent_at, msg), timeout)
-            .map_err(|e| match e {
-                SendTimeoutError::Timeout((_, _, msg)) => SendTimeoutError::Timeout(msg),
-                SendTimeoutError::Disconnected((_, _, msg)) => SendTimeoutError::Disconnected(msg),
+                TrySendError::Closed((_, _, msg)) => TrySendError::Closed(msg),
             })?;
         self.emit_sent(msg_id, sent_at, log);
         Ok(())
@@ -162,7 +149,7 @@ impl<T> Drop for Sender<T> {
     }
 }
 
-/// Instrumented flume [`flume::Receiver`] wrapper.
+/// Instrumented async-channel [`async_channel::Receiver`] wrapper.
 ///
 /// Tracks every successful receive and emits the exact channel length afterwards.
 /// When the last clone is dropped, a `Closed` event is emitted, since dropping all
@@ -184,17 +171,17 @@ impl<T> Receiver<T> {
         });
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
+    pub async fn recv(&self) -> Result<T, RecvError> {
         // `send_ts` rides in the envelope; the delay (`now - send_ts`) is the exact
         // send->receive latency, recorded straight into the processing-time histogram.
-        let (msg_id, send_ts, msg) = self.inner.recv()?;
+        let (msg_id, send_ts, msg) = self.inner.recv().await?;
         let now = Instant::now();
         self.on_received(msg_id, now, delay_nanos(send_ts, now));
         Ok(msg)
     }
 
-    pub async fn recv_async(&self) -> Result<T, RecvError> {
-        let (msg_id, send_ts, msg) = self.inner.recv_async().await?;
+    pub fn recv_blocking(&self) -> Result<T, RecvError> {
+        let (msg_id, send_ts, msg) = self.inner.recv_blocking()?;
         let now = Instant::now();
         self.on_received(msg_id, now, delay_nanos(send_ts, now));
         Ok(msg)
@@ -205,21 +192,6 @@ impl<T> Receiver<T> {
         let now = Instant::now();
         self.on_received(msg_id, now, delay_nanos(send_ts, now));
         Ok(msg)
-    }
-
-    pub fn recv_timeout(&self, timeout: std::time::Duration) -> Result<T, RecvTimeoutError> {
-        let (msg_id, send_ts, msg) = self.inner.recv_timeout(timeout)?;
-        let now = Instant::now();
-        self.on_received(msg_id, now, delay_nanos(send_ts, now));
-        Ok(msg)
-    }
-
-    pub fn iter(&self) -> Iter<'_, T> {
-        Iter { rx: self }
-    }
-
-    pub fn try_iter(&self) -> TryIter<'_, T> {
-        TryIter { rx: self }
     }
 
     pub fn len(&self) -> usize {
@@ -258,64 +230,6 @@ impl<T> Drop for Receiver<T> {
     }
 }
 
-/// Blocking iterator over a [`Receiver`], mirroring `flume::Iter`.
-pub struct Iter<'a, T> {
-    rx: &'a Receiver<T>,
-}
-
-impl<T> Iterator for Iter<'_, T> {
-    type Item = T;
-    fn next(&mut self) -> Option<T> {
-        self.rx.recv().ok()
-    }
-}
-
-/// Non-blocking iterator over a [`Receiver`], mirroring `flume::TryIter`.
-pub struct TryIter<'a, T> {
-    rx: &'a Receiver<T>,
-}
-
-impl<T> Iterator for TryIter<'_, T> {
-    type Item = T;
-    fn next(&mut self) -> Option<T> {
-        self.rx.try_recv().ok()
-    }
-}
-
-/// Owning blocking iterator, mirroring `flume::IntoIter`.
-pub struct IntoIter<T> {
-    rx: Receiver<T>,
-}
-
-impl<T> Iterator for IntoIter<T> {
-    type Item = T;
-    fn next(&mut self) -> Option<T> {
-        self.rx.recv().ok()
-    }
-}
-
-impl<T> IntoIterator for Receiver<T> {
-    type Item = T;
-    type IntoIter = IntoIter<T>;
-    fn into_iter(self) -> IntoIter<T> {
-        IntoIter { rx: self }
-    }
-}
-
-impl<'a, T> IntoIterator for &'a Receiver<T> {
-    type Item = T;
-    type IntoIter = Iter<'a, T>;
-    fn into_iter(self) -> Iter<'a, T> {
-        self.iter()
-    }
-}
-
-/// `send_ts` is stamped before the (possibly blocking) `send`, so it is always `<= now`.
-#[inline]
-fn delay_nanos(send_ts: Instant, now: Instant) -> u64 {
-    now.duration_since(send_ts).as_nanos() as u64
-}
-
 fn channel_type<T>(tx: &InnerSender<T>) -> ChannelType {
     match tx.capacity() {
         Some(capacity) => ChannelType::Bounded(capacity),
@@ -337,9 +251,9 @@ fn build<T>(
     // channel is discarded (wrap mode is inline-only, see module docs); only its
     // kind/capacity is copied.
     let (tx, rx) = match ch_type {
-        ChannelType::Bounded(cap) => flume::bounded::<Payload<T>>(cap),
-        ChannelType::Unbounded => flume::unbounded::<Payload<T>>(),
-        ChannelType::Oneshot => flume::bounded::<Payload<T>>(1),
+        ChannelType::Bounded(cap) => async_channel::bounded::<Payload<T>>(cap),
+        ChannelType::Unbounded => async_channel::unbounded::<Payload<T>>(),
+        ChannelType::Oneshot => async_channel::bounded::<Payload<T>>(1),
     };
 
     let sender = Sender {

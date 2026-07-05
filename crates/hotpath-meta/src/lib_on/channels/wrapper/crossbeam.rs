@@ -130,9 +130,9 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     })
 }
 
-use crate::channels::InstrumentChannel;
+use crate::channels::InstrumentChannelProxy;
 
-impl<T: Send + 'static> InstrumentChannel
+impl<T: Send + 'static> InstrumentChannelProxy
     for (crossbeam_channel::Sender<T>, crossbeam_channel::Receiver<T>)
 {
     type Output = (crossbeam_channel::Sender<T>, crossbeam_channel::Receiver<T>);
@@ -151,9 +151,9 @@ impl<T: Send + 'static> InstrumentChannel
     }
 }
 
-use crate::channels::InstrumentChannelLog;
+use crate::channels::InstrumentChannelProxyLog;
 
-impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelLog
+impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
     for (crossbeam_channel::Sender<T>, crossbeam_channel::Receiver<T>)
 {
     type Output = (crossbeam_channel::Sender<T>, crossbeam_channel::Receiver<T>);

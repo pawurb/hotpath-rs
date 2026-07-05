@@ -1,4 +1,4 @@
-//! Endpoint-wrapping Tokio `mpsc` channel instrumentation (`channel!(..., wrap = true)`).
+//! Endpoint-wrapping Tokio `mpsc` channel instrumentation for the `channel!` macro.
 //!
 //! Wraps the `Sender`/`Receiver` endpoints directly, unlike the forwarder-proxy in
 //! [`crate::channels::wrapper::tokio`], which spawns a background task that relays every

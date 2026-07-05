@@ -668,7 +668,7 @@ pub(crate) fn extract_filename(path: &str) -> String {
 ///
 /// This trait is not intended for direct use. Use the `channel!` macro instead.
 #[doc(hidden)]
-pub trait InstrumentChannel {
+pub trait InstrumentChannelProxy {
     type Output;
     fn instrument(
         self,
@@ -682,7 +682,7 @@ pub trait InstrumentChannel {
 ///
 /// This trait is not intended for direct use. Use the `channel!` macro with `log = true` instead.
 #[doc(hidden)]
-pub trait InstrumentChannelLog {
+pub trait InstrumentChannelProxyLog {
     type Output;
     fn instrument_log(
         self,
@@ -696,8 +696,12 @@ pub trait InstrumentChannelLog {
 ///
 /// Returns wrapper types (`hotpath_meta::wrap::<backend>::{Sender, Receiver}`) instead of
 /// the original channel types, so queue depth is measured exactly with no forwarder.
-/// Not intended for direct use. Use the `channel!` macro with `wrap = true` instead.
+/// This is the default mode of the `channel!` macro; not intended for direct use.
 #[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "channel type `{Self}` cannot be instrumented by the default `channel!` mode",
+    note = "this backend is forwarder-only; pass `proxy = true`, e.g. `channel!(expr, proxy = true)`"
+)]
 pub trait InstrumentChannelWrap {
     type Output;
     fn instrument_wrap(
@@ -711,8 +715,12 @@ pub trait InstrumentChannelWrap {
 /// Trait for instrumenting channels by wrapping their endpoints, with message logging.
 ///
 /// This trait is not intended for direct use. Use the `channel!` macro with
-/// `wrap = true, log = true` instead.
+/// `log = true`.
 #[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "channel type `{Self}` cannot be instrumented by the default `channel!` mode",
+    note = "this backend is forwarder-only; pass `proxy = true`, e.g. `channel!(expr, proxy = true, log = true)`"
+)]
 pub trait InstrumentChannelWrapLog {
     type Output;
     fn instrument_wrap_log(
@@ -733,33 +741,41 @@ cfg_if::cfg_if! {
     }
 }
 
-/// Instrument a channel creation to wrap it with debugging proxies.
+/// Instrument a channel creation for profiling.
 ///
-/// Optional parameters: `label`, `log = true`, `capacity` (in any order).
-/// `capacity` is required for `futures_channel::mpsc` bounded channels.
+/// By default the macro **wraps the endpoints** (`wrap` mode): it returns
+/// `hotpath_meta::wrap::<backend>::{Sender, Receiver}` instead of the raw channel types and
+/// measures exact queue depth plus send->receive latency, with no forwarder task.
+///
+/// Optional parameters: `label`, `log = true`, `capacity`, `proxy = true` (in any order).
 /// `log = true` requires `Debug` on the message type.
 ///
-/// # `wrap = true`
+/// # Default (wrap) mode
 ///
 /// The channel expression **must be constructed inline**, e.g.
-/// `channel!(crossbeam_channel::unbounded::<T>(), wrap = true)`. The wrapper rebuilds
-/// the inner channel (to carry a per-message id) and discards the one you pass in, so
-/// any endpoint cloned before wrapping is orphaned and its messages are silently
-/// dropped. Clone the returned wrapper endpoints instead.
+/// `channel!(crossbeam_channel::unbounded::<T>())`. The wrapper rebuilds the inner channel
+/// (to carry a per-message id) and discards the one you pass in, so any endpoint cloned
+/// before wrapping is orphaned and its messages are silently dropped. Clone the returned
+/// wrapper endpoints instead.
 ///
-/// Bounded `std::sync::mpsc` wrappers (`sync_channel`) cannot recover their capacity
-/// from the endpoint, so `capacity = N` is required, e.g.
-/// `channel!(std::sync::mpsc::sync_channel::<T>(100), wrap = true, capacity = 100)`.
-/// Unbounded std and crossbeam wrappers need no `capacity`.
+/// Bounded `std::sync::mpsc` (`sync_channel`) cannot recover its capacity from the
+/// endpoint, so `capacity = N` is required, e.g.
+/// `channel!(std::sync::mpsc::sync_channel::<T>(100), capacity = 100)`. **The value must
+/// match the `sync_channel(N)` argument** - wrap mode rebuilds the inner channel from
+/// `capacity`, so a mismatch silently changes backpressure (and only in profiled builds,
+/// since with `hotpath-meta` off `channel!` returns your original channel untouched). std
+/// exposes no capacity accessor, so keep the two numbers equal. Unbounded std, crossbeam,
+/// flume, tokio and async-channel wrappers recover the bound from the endpoint and need no
+/// `capacity`.
 ///
-/// **The `capacity` you pass must match the `sync_channel(N)` argument.** Wrap mode
-/// rebuilds the inner channel from `capacity` and discards the one you constructed, so a
-/// mismatch (e.g. `sync_channel(100)` with `capacity = 1`) silently builds a different
-/// bounded channel - and only in profiled builds: with `hotpath-meta` off, `channel!`
-/// returns your original `sync_channel(100)` untouched. The result is different
-/// backpressure (and potentially a deadlock) that appears only when profiling. There is
-/// no way to verify this for you, because std exposes no capacity accessor - keep the two
-/// numbers equal.
+/// # `proxy = true` (forwarder mode)
+///
+/// Passing `proxy = true` selects the forwarder-based mode: the original endpoint types are
+/// preserved (type-transparent) and a background task/thread relays every message through a
+/// second channel. This is the only mode available for backends without a wrap
+/// implementation (`futures_channel`, `tokio::sync::oneshot`); using them without
+/// `proxy = true` is a compile error that points you here. `capacity` is required for
+/// `futures_channel::mpsc` bounded channels.
 ///
 /// # Examples
 ///
@@ -775,380 +791,49 @@ cfg_if::cfg_if! {
 /// ```
 #[macro_export]
 macro_rules! channel {
-    // Wrap mode (`wrap = true`) returns instrumented endpoint wrappers
-    // (`hotpath_meta::wrap::<backend>::{Sender, Receiver}`) for exact queue tracking.
-    // `wrap`, `label`, and `log` may appear in any order.
-    ($expr:expr, wrap = true) => {{
+    // Default: wrap mode. `channel!(expr)` -> endpoint-wrapping instrumentation.
+    ($expr:expr) => {{
         const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
         $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, None)
     }};
 
-    ($expr:expr, wrap = true, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrap::instrument_wrap(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, wrap = true, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log($expr, CHANNEL_ID, None, None)
-    }};
-
-    ($expr:expr, wrap = true, label = $label:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, wrap = true, log = true, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    // Wrap mode with explicit `capacity` (required for bounded `std::sync::mpsc`
-    // wrappers, which cannot recover their capacity from the endpoint).
-    ($expr:expr, wrap = true, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, Some($capacity))
-    }};
-
-    ($expr:expr, capacity = $capacity:expr, wrap = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, Some($capacity))
-    }};
-
-    ($expr:expr, wrap = true, capacity = $capacity:expr, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrap::instrument_wrap(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, wrap = true, label = $label:expr, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrap::instrument_wrap(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, wrap = true, capacity = $capacity:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            None,
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, wrap = true, log = true, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            None,
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, wrap = true, capacity = $capacity:expr, label = $label:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, wrap = true, label = $label:expr, capacity = $capacity:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, label = $label:expr, wrap = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrap::instrument_wrap(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, log = true, wrap = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log($expr, CHANNEL_ID, None, None)
-    }};
-
-    ($expr:expr, label = $label:expr, wrap = true, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, log = true, wrap = true, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, label = $label:expr, log = true, wrap = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, log = true, label = $label:expr, wrap = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannel::instrument($expr, CHANNEL_ID, None, None)
-    }};
-
-    ($expr:expr, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannel::instrument($expr, CHANNEL_ID, Some($label.to_string()), None)
-    }};
-
-    ($expr:expr, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannel::instrument($expr, CHANNEL_ID, None, Some($capacity))
-    }};
-
-    ($expr:expr, label = $label:expr, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannel::instrument(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, capacity = $capacity:expr, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannel::instrument(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    // Variants with log = true
-    ($expr:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelLog::instrument_log($expr, CHANNEL_ID, None, None)
-    }};
-
-    ($expr:expr, label = $label:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, log = true, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            None,
-        )
-    }};
-
-    ($expr:expr, capacity = $capacity:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log($expr, CHANNEL_ID, None, Some($capacity))
-    }};
-
-    ($expr:expr, log = true, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log($expr, CHANNEL_ID, None, Some($capacity))
-    }};
-
-    ($expr:expr, label = $label:expr, capacity = $capacity:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, label = $label:expr, log = true, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, capacity = $capacity:expr, label = $label:expr, log = true) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, capacity = $capacity:expr, log = true, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, log = true, label = $label:expr, capacity = $capacity:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    ($expr:expr, log = true, capacity = $capacity:expr, label = $label:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        const _: usize = $capacity;
-        $crate::InstrumentChannelLog::instrument_log(
-            $expr,
-            CHANNEL_ID,
-            Some($label.to_string()),
-            Some($capacity),
-        )
-    }};
-
-    // Order-independent muncher for wrap-mode arguments. Accumulates `label`, `capacity`
-    // and `log` in any order (the explicit arms above cover the common no-capacity
-    // orders; this handles the rest, notably bounded-std `capacity` permutations).
-    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ;) => {
-        $crate::channel!(@wrap_dispatch $id, $e ; $lbl $cap $log $wrap)
-    };
-    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; wrap = true $(, $($r:tt)*)?) => {
-        $crate::channel!(@wrap_munch $id, $e ; $lbl $cap $log [wrap] ; $($($r)*)?)
-    };
-    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; label = $l:expr $(, $($r:tt)*)?) => {
-        $crate::channel!(@wrap_munch $id, $e ; [$l] $cap $log $wrap ; $($($r)*)?)
-    };
-    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; capacity = $c:expr $(, $($r:tt)*)?) => {
-        $crate::channel!(@wrap_munch $id, $e ; $lbl [$c] $log $wrap ; $($($r)*)?)
-    };
-    (@wrap_munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $wrap:tt ; log = true $(, $($r:tt)*)?) => {
-        $crate::channel!(@wrap_munch $id, $e ; $lbl $cap [log] $wrap ; $($($r)*)?)
-    };
-
-    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [$c:expr] [log] [wrap]) => {
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, Some($l.to_string()), Some($c))
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [$c:expr] [nolog] [wrap]) => {
-        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, Some($l.to_string()), Some($c))
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; [] [$c:expr] [log] [wrap]) => {
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, None, Some($c))
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; [] [$c:expr] [nolog] [wrap]) => {
-        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, None, Some($c))
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [] [log] [wrap]) => {
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, Some($l.to_string()), None)
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; [$l:expr] [] [nolog] [wrap]) => {
-        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, Some($l.to_string()), None)
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; [] [] [log] [wrap]) => {
-        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, None, None)
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; [] [] [nolog] [wrap]) => {
-        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, None, None)
-    };
-    (@wrap_dispatch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt [nowrap]) => {
-        compile_error!("channel!: unsupported argument combination")
-    };
-
-    // Fallback entry for `wrap = true` calls whose argument order is not covered by an
-    // explicit arm above. `CHANNEL_ID` is captured once here at the call site and
-    // threaded through the muncher so `file!()`/`line!()` resolve to the user's location.
+    // Any argument list is parsed order-independently by the muncher below. Slots are
+    // `label capacity log proxy`; `label`/`capacity` are stored as ready-to-use `Option`
+    // tokens so the dispatch only branches on `log` x `proxy`. `CHANNEL_ID` is captured
+    // once here so `file!()`/`line!()` resolve to the user's call site.
     ($expr:expr, $($rest:tt)*) => {{
         const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::channel!(@wrap_munch CHANNEL_ID, $expr ; [] [] [nolog] [nowrap] ; $($rest)*)
+        $crate::channel!(@munch CHANNEL_ID, $expr ; (None) (None) [nolog] [wrap] ; $($rest)*)
     }};
+
+    (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $proxy:tt ;) => {
+        $crate::channel!(@dispatch $id, $e ; $lbl $cap $log $proxy)
+    };
+    (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $proxy:tt ; proxy = true $(, $($r:tt)*)?) => {
+        $crate::channel!(@munch $id, $e ; $lbl $cap $log [proxy] ; $($($r)*)?)
+    };
+    (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $proxy:tt ; label = $l:expr $(, $($r:tt)*)?) => {
+        $crate::channel!(@munch $id, $e ; (Some($l.to_string())) $cap $log $proxy ; $($($r)*)?)
+    };
+    (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $proxy:tt ; capacity = $c:expr $(, $($r:tt)*)?) => {
+        $crate::channel!(@munch $id, $e ; $lbl (Some($c)) $log $proxy ; $($($r)*)?)
+    };
+    (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $proxy:tt ; log = true $(, $($r:tt)*)?) => {
+        $crate::channel!(@munch $id, $e ; $lbl $cap [log] $proxy ; $($($r)*)?)
+    };
+
+    (@dispatch $id:ident, $e:expr ; $lbl:tt $cap:tt [nolog] [wrap]) => {
+        $crate::InstrumentChannelWrap::instrument_wrap($e, $id, $lbl, $cap)
+    };
+    (@dispatch $id:ident, $e:expr ; $lbl:tt $cap:tt [log] [wrap]) => {
+        $crate::InstrumentChannelWrapLog::instrument_wrap_log($e, $id, $lbl, $cap)
+    };
+    (@dispatch $id:ident, $e:expr ; $lbl:tt $cap:tt [nolog] [proxy]) => {
+        $crate::InstrumentChannelProxy::instrument($e, $id, $lbl, $cap)
+    };
+    (@dispatch $id:ident, $e:expr ; $lbl:tt $cap:tt [log] [proxy]) => {
+        $crate::InstrumentChannelProxyLog::instrument_log($e, $id, $lbl, $cap)
+    };
 }
 
 /// Compare two channel stats for sorting.

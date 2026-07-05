@@ -1,4 +1,4 @@
-//! Endpoint-wrapping crossbeam channel instrumentation (`channel!(..., wrap = true)`).
+//! Endpoint-wrapping crossbeam channel instrumentation for the `channel!` macro.
 //!
 //! Wraps the `Sender`/`Receiver` endpoints directly (unlike the forwarder-proxy in
 //! [`crate::channels::wrapper::crossbeam`]): no extra thread or proxy channel, so
