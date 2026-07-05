@@ -193,6 +193,18 @@ pub mod wrap {
         #[cfg(not(feature = "hotpath"))]
         pub use flume::{Receiver, Sender};
     }
+
+    /// Instrumented async-channel endpoints for `channel!(..., wrap = true)`.
+    /// With `hotpath` enabled these are the instrumented wrappers; otherwise
+    /// `channel!` is a no-op and the endpoints are the raw async-channel types, so the
+    /// alias resolves the same way regardless of feature configuration.
+    #[cfg(feature = "async-channel")]
+    pub mod async_channel {
+        #[cfg(feature = "hotpath")]
+        pub use crate::lib_on::channels::wrapper::asc_wrap::{Receiver, Sender};
+        #[cfg(not(feature = "hotpath"))]
+        pub use async_channel::{Receiver, Sender};
+    }
 }
 
 mod shared;
