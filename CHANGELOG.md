@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.1] - 2026-07-06
+
+### 🐛 Bug Fixes
+
+- Restore Sync for tokio wrapper
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.21.1
+
+
 ## [0.21.0] - 2026-07-06
 
 ### 🚀 Features
