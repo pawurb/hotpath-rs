@@ -2,7 +2,7 @@
 
 <img loading="lazy" src="{{#asset-hash images/sql-report.png}}" alt="hotpath-rs terminal SQL report table showing normalized queries with call counts, average, P95, total, and percent-of-total execution time">
 
-`hotpath` profiles SQL queries in Rust applications, helping you identify slow statements, repetitive query patterns, and unexpected database activity. Queries are grouped by their normalized SQL text, so parameterized executions of the same statement are reported together. For example, 1,000 executions of `SELECT ... WHERE id = ?` appear as a single entry with call count, average latency, percentiles, and total execution time.
+`hotpath` profiles SQL queries in Rust applications, helping you identify slow statements, repetitive query patterns, and unexpected database activity. Queries are grouped by their normalized SQL text, so parameterized executions of the same statement are reported together. For example, 1,000 executions of `SELECT * FROM users WHERE id = ?` appear as a single entry with call count, average latency, percentiles, and total execution time.
 
 The same profiling backend powers both sqlx and Diesel with more integrations coming soon. Instrumentation is inactive unless the `hotpath` feature is enabled.
 
