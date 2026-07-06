@@ -265,10 +265,9 @@ impl FunctionStats {
 
     #[inline]
     pub fn avg_duration_ns(&self) -> u64 {
-        if self.duration_sampled_count == 0 || self.duration_hist.is_none() {
-            return 0;
-        }
-        self.duration_hist.as_ref().unwrap().mean() as u64
+        self.total_duration_ns
+            .checked_div(self.duration_sampled_count)
+            .unwrap_or(0)
     }
 
     /// Exact when every call was timed, extrapolated (`avg * count`) under time sampling.
