@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.0] - 2026-07-06
+
+### 🚀 Features
+
+- [**breaking**] Extent tokio wrap channel APIs
+
+Bump min tokio version to account for new wrapped APIs.
+
+
+
+### 🐛 Bug Fixes
+
+- Dont display delay for proxy channels
+
+
+### ⚡ Performance
+
+- Fix avg duration overhead
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.21.0
+
+
 ## [0.20.0] - 2026-07-05
 
 ### 🚀 Features
