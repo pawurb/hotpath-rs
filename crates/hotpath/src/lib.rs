@@ -162,10 +162,14 @@ pub mod wrap {
             pub mod mpsc {
                 #[cfg(feature = "hotpath")]
                 pub use crate::lib_on::channels::wrapper::tokio_wrap::{
-                    Receiver, Sender, UnboundedReceiver, UnboundedSender,
+                    Receiver, Sender, UnboundedReceiver, UnboundedSender, WeakSender,
+                    WeakUnboundedSender,
                 };
                 #[cfg(not(feature = "hotpath"))]
-                pub use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+                pub use tokio::sync::mpsc::{
+                    Receiver, Sender, UnboundedReceiver, UnboundedSender, WeakSender,
+                    WeakUnboundedSender,
+                };
             }
         }
     }
