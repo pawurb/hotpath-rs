@@ -1559,7 +1559,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hotpath"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "arc-swap",
  "async-channel",
@@ -1605,7 +1605,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath-macros"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1614,7 +1614,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath-macros-meta"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1623,7 +1623,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath-meta"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "arc-swap",
  "async-channel",
