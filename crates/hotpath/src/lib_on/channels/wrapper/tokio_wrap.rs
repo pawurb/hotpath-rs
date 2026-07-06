@@ -485,6 +485,11 @@ impl<T> Drop for Receiver<T> {
     }
 }
 
+// Restores tokio's `Receiver<T>: Sync` bound of `T: Send`, which the auto impl
+// loses to `poll_buf` (`Vec<T>` demands `T: Sync`). Sound because `poll_buf` is
+// only touched through `&mut self` - no `&self` method can reach a `T` in it.
+unsafe impl<T: Send> Sync for Receiver<T> {}
+
 /// Instrumented [`tokio::sync::mpsc::UnboundedSender`] wrapper.
 pub struct UnboundedSender<T> {
     inner: mpsc::UnboundedSender<Payload<T>>,
@@ -756,6 +761,12 @@ impl<T> Drop for UnboundedReceiver<T> {
     }
 }
 
+// Restores tokio's `UnboundedReceiver<T>: Sync` bound of `T: Send`, which the
+// auto impl loses to `poll_buf` (`Vec<T>` demands `T: Sync`). Sound because
+// `poll_buf` is only touched through `&mut self` - no `&self` method can reach
+// a `T` in it.
+unsafe impl<T: Send> Sync for UnboundedReceiver<T> {}
+
 // Tokio's endpoints implement `Debug` for any `T`, so the wrappers delegate
 // unconditionally too.
 macro_rules! impl_debug_via_inner {
@@ -903,6 +914,19 @@ mod tests {
 
     fn unbounded<T: Send + 'static>() -> (UnboundedSender<T>, UnboundedReceiver<T>) {
         build_unbounded::<T>("test", None, None)
+    }
+
+    #[test]
+    fn send_only_payload_keeps_endpoints_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        // `Cell<u8>` is `Send` but not `Sync`, matching payloads like `Box<dyn Trait + Send>`.
+        type P = std::cell::Cell<u8>;
+        assert_send_sync::<Sender<P>>();
+        assert_send_sync::<Receiver<P>>();
+        assert_send_sync::<UnboundedSender<P>>();
+        assert_send_sync::<UnboundedReceiver<P>>();
+        assert_send_sync::<WeakSender<P>>();
+        assert_send_sync::<WeakUnboundedSender<P>>();
     }
 
     #[test]
