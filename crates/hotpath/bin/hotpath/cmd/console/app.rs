@@ -8,6 +8,7 @@ use hotpath::json::{
     JsonThreadsList,
 };
 use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
+use ratatui::layout::Rect;
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
 
@@ -15,6 +16,7 @@ use super::events::{AppEvent, DataRequest};
 
 mod data;
 mod keys;
+mod mouse;
 mod state;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -147,6 +149,15 @@ impl IoSubTab {
             IoSubTab::Sql => IoSubTab::Sql,
         }
     }
+}
+
+/// Clickable sub-tab label; only the active tab's sub-tab row is on screen,
+/// so one list covers all three variants.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubTabHit {
+    Functions(FunctionsSubTab),
+    DataFlow(DataFlowSubTab),
+    Io(IoSubTab),
 }
 
 /// Represents which UI component has focus in the Functions tab
@@ -301,6 +312,10 @@ pub(crate) struct App {
     pub(crate) auto_select_index: Option<usize>,
 
     pub(crate) pending_g: Option<Instant>,
+
+    /// Clickable label regions, rebuilt on every draw for mouse hit testing
+    pub(crate) tab_hit_areas: Vec<(Rect, SelectedTab)>,
+    pub(crate) sub_tab_hit_areas: Vec<(Rect, SubTabHit)>,
 }
 
 #[hotpath::measure_all]
@@ -458,6 +473,8 @@ impl App {
             auto_expand_logs,
             auto_select_index,
             pending_g: None,
+            tab_hit_areas: Vec::new(),
+            sub_tab_hit_areas: Vec::new(),
         }
     }
 
@@ -572,6 +589,7 @@ impl App {
             // semantics: an event is handled, a timeout refreshes the current tab.
             match self.event_rx.recv_timeout(self.refresh_interval) {
                 Ok(AppEvent::Key(key_code)) => self.handle_key_event(key_code),
+                Ok(AppEvent::Mouse(mouse_event)) => self.handle_mouse_event(mouse_event),
                 Ok(AppEvent::Data(response)) => self.handle_data_response(*response),
                 Err(RecvTimeoutError::Timeout) => {
                     if !self.paused {

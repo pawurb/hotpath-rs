@@ -44,13 +44,34 @@ impl ConsoleArgs {
         let mut app = App::new(&self.metrics_host, self.metrics_port, self.refresh_interval);
 
         let mut terminal = ratatui::init();
+        enable_mouse_capture();
 
         let app_result = app.run(&mut terminal);
 
+        disable_mouse_capture();
         ratatui::restore();
 
         app_result.map_err(|e| eyre::eyre!("TUI error: {}", e))
     }
+}
+
+/// Mouse capture is not part of `ratatui::init()`/`restore()`, so the panic
+/// hook installed by `ratatui::init()` would leave it enabled on panic and the
+/// terminal would keep printing mouse escape sequences. Chain a hook that
+/// disables it before the ratatui restore hook runs.
+fn enable_mouse_capture() {
+    if crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture).is_err() {
+        return;
+    }
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        disable_mouse_capture();
+        prev_hook(info);
+    }));
+}
+
+fn disable_mouse_capture() {
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
 }
 
 impl Default for ConsoleArgs {

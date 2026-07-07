@@ -1,6 +1,6 @@
 use crate::cmd::console::app::{
     App, DataFlowFocus, DataFlowLogs, DataFlowSubTab, DebugFocus, FunctionsFocus, FunctionsSubTab,
-    IoFocus, IoSubTab, SelectedTab,
+    IoFocus, IoSubTab, SelectedTab, SubTabHit,
 };
 use crate::cmd::console::views::data_flow::{inspect as data_flow_inspect, logs as data_flow_logs};
 use crate::cmd::console::views::debug::{inspect as debug_inspect, logs as debug_logs};
@@ -55,14 +55,17 @@ pub(crate) fn render_ui(frame: &mut Frame, app: &mut App) {
         SelectedTab::Runtime => app.tokio_runtime.is_some(),
     };
 
-    render_tabs(frame, main_chunks[0], app.selected_tab);
+    app.tab_hit_areas.clear();
+    app.sub_tab_hit_areas.clear();
+
+    render_tabs(frame, main_chunks[0], app);
 
     if app.selected_tab == SelectedTab::Functions {
-        render_functions_subtabs(frame, main_chunks[1], app.functions_sub_tab);
+        render_functions_subtabs(frame, main_chunks[1], app);
     } else if app.selected_tab == SelectedTab::DataFlow {
-        render_data_flow_subtabs(frame, main_chunks[1], app.data_flow_sub_tab);
+        render_data_flow_subtabs(frame, main_chunks[1], app);
     } else if app.selected_tab == SelectedTab::Io {
-        render_io_subtabs(frame, main_chunks[1], app.io_sub_tab);
+        render_io_subtabs(frame, main_chunks[1], app);
     }
 
     top_bar::render_status_bar(
@@ -181,109 +184,110 @@ fn render_functions_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-#[hotpath::measure]
-fn render_functions_subtabs(frame: &mut Frame, area: Rect, sub_tab: FunctionsSubTab) {
-    let label = |tab: FunctionsSubTab| {
-        if tab == sub_tab {
-            Span::styled(
-                format!(" {}*", tab.name()),
-                Style::default()
-                    .bg(Color::Cyan)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else {
-            Span::styled(
-                format!(" {} ", tab.name()),
-                Style::default().fg(Color::Gray),
-            )
-        }
-    };
-
-    let line = Line::from(vec![
+fn sub_tab_label(name: &str, active: bool) -> Span<'static> {
+    if active {
         Span::styled(
-            " [1]",
+            format!(" {}*", name),
             Style::default()
-                .fg(Color::Cyan)
+                .bg(Color::Cyan)
+                .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
-        ),
-        label(FunctionsSubTab::Timing),
-        Span::raw("|"),
-        label(FunctionsSubTab::Memory),
-        Span::raw("|"),
-        label(FunctionsSubTab::Cpu),
-    ]);
-    frame.render_widget(Paragraph::new(line), area);
+        )
+    } else {
+        Span::styled(format!(" {} ", name), Style::default().fg(Color::Gray))
+    }
+}
+
+/// Renders a sub-tab row (`[N] Label |Label |...`) and records each label's
+/// screen region into `hit_areas` for mouse hit testing.
+fn render_sub_tab_line(
+    frame: &mut Frame,
+    area: Rect,
+    prefix: &'static str,
+    labels: Vec<(Span<'static>, SubTabHit)>,
+    hit_areas: &mut Vec<(Rect, SubTabHit)>,
+) {
+    let mut spans = vec![Span::styled(
+        prefix,
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )];
+    let mut x = area.x.saturating_add(prefix.len() as u16);
+    let last = labels.len().saturating_sub(1);
+    for (i, (span, hit)) in labels.into_iter().enumerate() {
+        let width = span.width() as u16;
+        let rect = Rect {
+            x,
+            y: area.y,
+            width,
+            height: 1,
+        }
+        .intersection(area);
+        hit_areas.push((rect, hit));
+        spans.push(span);
+        x = x.saturating_add(width);
+        if i != last {
+            spans.push(Span::raw("|"));
+            x = x.saturating_add(1);
+        }
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 #[hotpath::measure]
-fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, sub_tab: DataFlowSubTab) {
-    let label = |tab: DataFlowSubTab| {
-        if tab == sub_tab {
-            Span::styled(
-                format!(" {}*", tab.name()),
-                Style::default()
-                    .bg(Color::Cyan)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else {
-            Span::styled(
-                format!(" {} ", tab.name()),
-                Style::default().fg(Color::Gray),
-            )
-        }
-    };
-
-    let line = Line::from(vec![
-        Span::styled(
-            " [2]",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        label(DataFlowSubTab::Channels),
-        Span::raw("|"),
-        label(DataFlowSubTab::Streams),
-        Span::raw("|"),
-        label(DataFlowSubTab::Futures),
-        Span::raw("|"),
-        label(DataFlowSubTab::RwLocks),
-        Span::raw("|"),
-        label(DataFlowSubTab::Mutexes),
-    ]);
-    frame.render_widget(Paragraph::new(line), area);
+fn render_functions_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
+    let sub_tab = app.functions_sub_tab;
+    let labels = [
+        FunctionsSubTab::Timing,
+        FunctionsSubTab::Memory,
+        FunctionsSubTab::Cpu,
+    ]
+    .into_iter()
+    .map(|tab| {
+        (
+            sub_tab_label(tab.name(), tab == sub_tab),
+            SubTabHit::Functions(tab),
+        )
+    })
+    .collect();
+    render_sub_tab_line(frame, area, " [1]", labels, &mut app.sub_tab_hit_areas);
 }
 
 #[hotpath::measure]
-fn render_io_subtabs(frame: &mut Frame, area: Rect, sub_tab: IoSubTab) {
-    let label = |tab: IoSubTab| {
-        if tab == sub_tab {
-            Span::styled(
-                format!(" {}*", tab.name()),
-                Style::default()
-                    .bg(Color::Cyan)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else {
-            Span::styled(
-                format!(" {} ", tab.name()),
-                Style::default().fg(Color::Gray),
-            )
-        }
-    };
+fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
+    let sub_tab = app.data_flow_sub_tab;
+    let labels = [
+        DataFlowSubTab::Channels,
+        DataFlowSubTab::Streams,
+        DataFlowSubTab::Futures,
+        DataFlowSubTab::RwLocks,
+        DataFlowSubTab::Mutexes,
+    ]
+    .into_iter()
+    .map(|tab| {
+        (
+            sub_tab_label(tab.name(), tab == sub_tab),
+            SubTabHit::DataFlow(tab),
+        )
+    })
+    .collect();
+    render_sub_tab_line(frame, area, " [2]", labels, &mut app.sub_tab_hit_areas);
+}
 
-    let line = Line::from(vec![
-        Span::styled(
-            " [3]",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        label(IoSubTab::Sql),
-    ]);
-    frame.render_widget(Paragraph::new(line), area);
+#[hotpath::measure]
+fn render_io_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
+    let sub_tab = app.io_sub_tab;
+    let labels = [IoSubTab::Sql]
+        .into_iter()
+        .map(|tab| {
+            (
+                sub_tab_label(tab.name(), tab == sub_tab),
+                SubTabHit::Io(tab),
+            )
+        })
+        .collect();
+    render_sub_tab_line(frame, area, " [3]", labels, &mut app.sub_tab_hit_areas);
 }
 
 #[hotpath::measure]
@@ -806,7 +810,8 @@ fn render_runtime_view(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 #[hotpath::measure]
-fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: SelectedTab) {
+fn render_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
+    let selected_tab = app.selected_tab;
     let create_tab_line = |tab: SelectedTab| {
         let name = if tab == selected_tab {
             format!(" {}*", tab.name())
@@ -824,14 +829,34 @@ fn render_tabs(frame: &mut Frame, area: ratatui::layout::Rect, selected_tab: Sel
         ])
     };
 
-    let titles = vec![
-        create_tab_line(SelectedTab::Functions),
-        create_tab_line(SelectedTab::DataFlow),
-        create_tab_line(SelectedTab::Io),
-        create_tab_line(SelectedTab::Threads),
-        create_tab_line(SelectedTab::Debug),
-        create_tab_line(SelectedTab::Runtime),
+    let all_tabs = [
+        SelectedTab::Functions,
+        SelectedTab::DataFlow,
+        SelectedTab::Io,
+        SelectedTab::Threads,
+        SelectedTab::Debug,
+        SelectedTab::Runtime,
     ];
+    let titles: Vec<Line> = all_tabs.iter().map(|tab| create_tab_line(*tab)).collect();
+
+    // Mirror the `Tabs` widget layout: 1-char padding on each side of every
+    // title, with the divider between tabs. The padded region is the hit area.
+    let mut x = area.x;
+    for (i, (tab, title)) in all_tabs.iter().zip(&titles).enumerate() {
+        let width = (title.width() as u16).saturating_add(2);
+        let rect = Rect {
+            x,
+            y: area.y,
+            width,
+            height: 1,
+        }
+        .intersection(area);
+        app.tab_hit_areas.push((rect, *tab));
+        x = x.saturating_add(width);
+        if i != all_tabs.len() - 1 {
+            x = x.saturating_add(" | ".len() as u16);
+        }
+    }
 
     let selected_index = (selected_tab.number() - 1) as usize;
 

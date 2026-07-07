@@ -1,6 +1,6 @@
 //! Event types for async TUI communication
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseEvent};
 use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
@@ -149,5 +149,6 @@ pub(crate) enum DataResponse {
 #[derive(Debug)]
 pub(crate) enum AppEvent {
     Key(KeyCode),
+    Mouse(MouseEvent),
     Data(Box<DataResponse>),
 }

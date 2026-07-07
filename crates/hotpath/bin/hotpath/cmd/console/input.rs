@@ -1,6 +1,6 @@
-//! Dedicated thread for reading keyboard events
+//! Dedicated thread for reading keyboard and mouse events
 
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEventKind};
 use hotpath::wrap::crossbeam_channel::Sender;
 
 use super::events::AppEvent;
@@ -11,6 +11,11 @@ pub(crate) fn spawn_input_reader(event_tx: Sender<AppEvent>) {
             let app_event = match evt {
                 Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                     Some(AppEvent::Key(key_event.code))
+                }
+                Event::Mouse(mouse_event)
+                    if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) =>
+                {
+                    Some(AppEvent::Mouse(mouse_event))
                 }
                 _ => None,
             };

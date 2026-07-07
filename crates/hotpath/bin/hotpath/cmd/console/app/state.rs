@@ -1,8 +1,8 @@
 //! UI state management - navigation, selection, and focus handling
 
 use crate::cmd::console::app::{
-    App, DataFlowFocus, DebugFocus, FunctionsFocus, FunctionsSubTab, InspectedFunctionLog, IoFocus,
-    SelectedTab,
+    App, DataFlowFocus, DataFlowSubTab, DebugFocus, FunctionsFocus, FunctionsSubTab,
+    InspectedFunctionLog, IoFocus, IoSubTab, SelectedTab,
 };
 use hotpath::dev_logging::{debug, info};
 
@@ -66,7 +66,19 @@ impl App {
 
     pub(crate) fn cycle_io_sub_tab(&mut self) {
         self.io_sub_tab = self.io_sub_tab.cycle();
-        debug!("Cycled I/O subtab: {}", self.io_sub_tab.name());
+        self.reset_io_sub_tab_state();
+    }
+
+    pub(crate) fn set_io_sub_tab(&mut self, tab: IoSubTab) {
+        if self.io_sub_tab == tab {
+            return;
+        }
+        self.io_sub_tab = tab;
+        self.reset_io_sub_tab_state();
+    }
+
+    fn reset_io_sub_tab_state(&mut self) {
+        debug!("Switched I/O subtab: {}", self.io_sub_tab.name());
         self.io_focus = IoFocus::List;
         self.sql_logs = None;
         self.show_sql_logs = false;
@@ -265,7 +277,22 @@ impl App {
 
     pub(crate) fn cycle_data_flow_sub_tab(&mut self) {
         self.data_flow_sub_tab = self.data_flow_sub_tab.cycle();
-        debug!("Cycled data flow subtab: {}", self.data_flow_sub_tab.name());
+        self.reset_data_flow_sub_tab_state();
+    }
+
+    pub(crate) fn set_data_flow_sub_tab(&mut self, tab: DataFlowSubTab) {
+        if self.data_flow_sub_tab == tab {
+            return;
+        }
+        self.data_flow_sub_tab = tab;
+        self.reset_data_flow_sub_tab_state();
+    }
+
+    fn reset_data_flow_sub_tab_state(&mut self) {
+        debug!(
+            "Switched data flow subtab: {}",
+            self.data_flow_sub_tab.name()
+        );
         self.data_flow_focus = DataFlowFocus::List;
         self.data_flow_logs = None;
         self.show_data_flow_logs = false;
@@ -276,7 +303,22 @@ impl App {
 
     pub(crate) fn toggle_functions_sub_tab(&mut self) {
         self.functions_sub_tab = self.functions_sub_tab.cycle();
-        debug!("Cycled functions subtab: {}", self.functions_sub_tab.name());
+        self.reset_functions_sub_tab_state();
+    }
+
+    pub(crate) fn set_functions_sub_tab(&mut self, tab: FunctionsSubTab) {
+        if self.functions_sub_tab == tab {
+            return;
+        }
+        self.functions_sub_tab = tab;
+        self.reset_functions_sub_tab_state();
+    }
+
+    fn reset_functions_sub_tab_state(&mut self) {
+        debug!(
+            "Switched functions subtab: {}",
+            self.functions_sub_tab.name()
+        );
         self.functions_focus = FunctionsFocus::Functions;
         self.function_logs_table_state.select(None);
         self.inspected_function_log = None;
