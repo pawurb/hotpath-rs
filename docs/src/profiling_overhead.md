@@ -1,6 +1,6 @@
 # Profiling overhead
 
-hotpath-rs is designed to collect detailed performance data with minimal impact on the profiled programs. In this docs section I will present the current overhead numbers and discuss ways to further reduce them.
+hotpath-rs is designed to collect detailed performance data with minimal impact on the profiled programs. In this docs section I will present the current overhead numbers and ways to further reduce them.
 
 ## Zero overhead when disabled
 

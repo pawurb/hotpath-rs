@@ -45,7 +45,6 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 - [ ] [Instrument AsyncRead/AsyncWrite and Read/Write wrappers](https://github.com/pawurb/hotpath-rs/issues/379)
 - [ ] `hotpath::sql!(...)` 
 - [ ] `hotpath::http!(...)` 
-- [ ] `ENV['HOTPATH_DISABLE_TIMING']`
 
 ## Getting Started
 
@@ -156,15 +155,18 @@ See the full docs and advanced config tutorials at [hotpath.rs](https://hotpath.
 
 - [Sampling Comparison](https://hotpath.rs/blog/sampling_comparison) - when to use `hotpath` vs CPU sampling profilers
 - [Profiling modes](https://hotpath.rs/profiling_modes) - static reports vs live TUI dashboard
+- [Profiling overhead](https://hotpath.rs/profiling_overhead) - per-operation instrumentation cost and time sampling
 - [Functions](https://hotpath.rs/functions) - measure execution time and memory allocations
 - [CPU profiling](https://hotpath.rs/cpu_profiling) - attribute CPU samples to instrumented functions
-- [A/B Benchmarks](https://hotpath.rs/benchmarks) - compare performance between app versions
-- [Async Data Flow](https://hotpath.rs/data_flow) - monitor channels, streams, and futures
-- [Debug & Metrics](https://hotpath.rs/debug) - track custom values with `dbg!`, `val!`, and `gauge!` macros
 - [Threads](https://hotpath.rs/threads) - monitor threads usage
+- [Async Data Flow](https://hotpath.rs/data_flow) - monitor channels, streams, and futures
+- [Locks](https://hotpath.rs/locks) - track Mutex and RwLock wait and hold times
+- [SQL queries](https://hotpath.rs/sql_tracing) - profile query execution time for sqlx and Diesel
 - [Tokio Runtime](https://hotpath.rs/tokio_runtime) - monitor Tokio runtime worker stats and task scheduling
-- [MCP Server](https://hotpath.rs/mcp) - LLM integration via Model Context Protocol
+- [Debug & Metrics](https://hotpath.rs/debug) - track custom values with `dbg!`, `val!`, and `gauge!` macros
+- [A/B Benchmarks](https://hotpath.rs/benchmarks) - compare performance between app versions
 - [GitHub CI](https://hotpath.rs/github_ci) - automated benchmarking and regression detection in CI
+- [MCP Server](https://hotpath.rs/mcp) - LLM integration via Model Context Protocol
 - [Configuration](https://hotpath.rs/configuration) - explore all config options
 
 ## Waitlist
