@@ -17,9 +17,13 @@ You can use it to produce one-off performance (timing, memory or CPU) reports:
 
 ![hotpath alloc report](media/hotpath-alloc-report2.png)
 
-compare performance between different app versions:
+monitor throughput, performance and max queue depth of instrumented channels:
 
-![hotpath-rs showing performance diff between different git commits](media/compare-perf2.png)
+![hotpath-rs channel profiling report showing throughput, send-to-receive latency and max queue depth per channel](media/channel_metrics.png)
+
+analyze SQL calls performance:
+
+![hotpath-rs SQL query profiling report showing per-query call counts, average and P95 execution time](media/sql_metrics.png)
 
 or use the live TUI dashboard to monitor real-time performance metrics with debug info:
 
@@ -27,8 +31,9 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
 ## Features
 
-- **Time, CPU & memory profiling** - identify expensive functions and allocations.
+- **Time, CPU & memory profiling** - identify expensive functions, allocation hotspots, and investigate memory leaks.
 - **Async observability** - futures, channels and streams.
+- **SQL query profiling** - query performance metrics for sqlx and Diesel.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
