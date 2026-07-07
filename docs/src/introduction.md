@@ -58,11 +58,15 @@ You can use it to produce one-off performance (timing, memory or CPU) reports:
 
 <img loading="lazy" src="{{#asset-hash images/hotpath-alloc-report.png}}" alt="hotpath-rs memory allocation profiling report showing per-function byte counts">
 
-compare performance between different app versions:
+monitor throughput, performance and max queue depth of instrumented channels:
 
-<img loading="lazy" src="{{#asset-hash images/compare-perf.png}}" alt="hotpath-rs showing performance diff between different git commits">
+<img loading="lazy" src="{{#asset-hash images/channel_metrics.png}}" alt="hotpath-rs channel profiling report showing throughput, send-to-receive latency and max queue depth per channel">
 
-or use the live TUI dashboard to monitor real-time performance and data flow metrics with debug info:
+analyze SQL calls performance:
+
+<img loading="lazy" src="{{#asset-hash images/sql_metrics.png}}" alt="hotpath-rs SQL query profiling report showing per-query call counts, average and P95 execution time">
+
+or use the live TUI dashboard to monitor real-time performance and async data flow metrics with debug info:
 
 <video loading="lazy" width="100%" loop muted playsinline controls poster="{{#asset-hash images/hotpath-live-dashboard-poster.jpg}}">
   <source src="{{#asset-hash videos/hotpath-live-dashboard.mp4}}" type="video/mp4">

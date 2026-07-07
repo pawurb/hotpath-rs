@@ -1,4 +1,8 @@
 {
+  "images/channel_metrics.png": {
+    "hash": "0435519b",
+    "hashed_path": "images/channel_metrics.0435519b.png"
+  },
   "images/channels-log.png": {
     "hash": "35cb2dd8",
     "hashed_path": "images/channels-log.35cb2dd8.png"
@@ -58,6 +62,10 @@
   "images/sql-report.png": {
     "hash": "db329ad1",
     "hashed_path": "images/sql-report.db329ad1.png"
+  },
+  "images/sql_metrics.png": {
+    "hash": "839a435d",
+    "hashed_path": "images/sql_metrics.839a435d.png"
   },
   "images/stars-apache-opendal.svg": {
     "hash": "4954748b",

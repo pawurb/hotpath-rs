@@ -147,7 +147,7 @@ pub(crate) fn report_channel_latency_table(
     write_section_header(
         writer,
         "channels latency",
-        "Channel send->receive latency statistics (wrap channels only).",
+        "Channel send->receive latency statistics.",
     );
     let _ = writeln!(writer);
 

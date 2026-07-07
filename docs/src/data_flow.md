@@ -6,9 +6,7 @@ All monitoring macros (`channel!`, `stream!`, `future!` and `future_fn`) are noo
 
 ## Channels monitoring
 
-### channel! macro
-
-This macro wraps channel creation to automatically track performance metrics and data flow:
+`hotpath::channel!` macro wraps channel creation to automatically track performance metrics and data flow:
 
 ```rust
 use tokio::sync::mpsc;
@@ -25,12 +23,46 @@ async fn main() {
 }
 ```
 
-By default `channel!` uses **wrap mode**: it returns instrumented endpoint wrappers
-(`hotpath::wrap::<backend>::{Sender, Receiver}`) that intercept `send`/`recv` inline. This
-gives an exact live queue depth and an exact send-receive latency histogram, with no
-forwarder task or thread. See [Wrapped types](#wrapped-types) for how this affects the
-return type, and [`proxy = true`](#proxy--true-forwarder-mode) for the alternative
-forwarder mode (and the backends that require it).
+### Wrapped channel types
+
+By default `channel!` does not return the endpoints you passed in - it returns *instrumented wrappers* around them. The macro expands to a different type than the original:
+
+```rust
+// before: a plain crossbeam receiver
+let (tx, rx): (crossbeam_channel::Sender<i32>, crossbeam_channel::Receiver<i32>) =
+    crossbeam_channel::unbounded();
+
+// after: the macro returns hotpath wrappers, not crossbeam_channel::Sender/Receiver
+let (tx, rx) = hotpath::channel!(crossbeam_channel::unbounded::<i32>());
+```
+
+At a `let` binding this is invisible - type inference picks up whatever the macro returns. It only matters when you need to *name* the type, for example a struct field or a function signature. There you cannot write `crossbeam_channel::Sender<T>`, because the value is a wrapper, not a `crossbeam_channel::Sender`. (If you would rather keep the original endpoint types, use the legacy [`proxy = true`](#legacy-proxy--true-mode), which is type-transparent.)
+
+Use the `hotpath::wrap::` path instead. It mirrors the original module layout, so you prefix the original path with `hotpath::wrap::`:
+
+```rust
+// before
+struct Pipeline {
+    jobs_tx: crossbeam_channel::Sender<Job>,
+    jobs_rx: crossbeam_channel::Receiver<Job>,
+}
+
+// after - prefix the type with hotpath::wrap::
+struct Pipeline {
+    jobs_tx: hotpath::wrap::crossbeam_channel::Sender<Job>,
+    jobs_rx: hotpath::wrap::crossbeam_channel::Receiver<Job>,
+}
+```
+
+The same prefix works for every wrap-capable library:
+
+- `hotpath::wrap::std::sync::mpsc::{Sender, SyncSender, Receiver}`
+- `hotpath::wrap::tokio::sync::mpsc::{Sender, Receiver, UnboundedSender, UnboundedReceiver}`
+- `hotpath::wrap::crossbeam_channel::{Sender, Receiver}`
+- `hotpath::wrap::flume::{Sender, Receiver}`
+- `hotpath::wrap::async_channel::{Sender, Receiver}`
+
+This is purely to keep the compiler police happy: the `hotpath::wrap::` types are noop unless the `hotpath` feature is enabled. With the feature off they are plain re-exports of the original endpoints (zero overhead, **identical behavior**); with the feature on they resolve to the instrumented wrappers. Either way the field type lines up with what the macro returns, so the same code compiles in both configurations.
 
 ### Supported channel libraries
 
@@ -80,7 +112,6 @@ Enable the `flume` feature.
 - [`flume::bounded`](https://docs.rs/flume/latest/flume/fn.bounded.html)
 - [`flume::unbounded`](https://docs.rs/flume/latest/flume/fn.unbounded.html)
 
-
 ### Optional config
 
 ```rust
@@ -94,27 +125,6 @@ let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), log = true);
 Label channels to display them on top of the list. By passing `log = true` TUI will display messages that a channel received.
 
 <img loading="lazy" src="{{#asset-hash images/channels-log.png}}" alt="hotpath-rs TUI showing channel message flow monitoring with send and receive logs">
-
-### Send-receive latency and queue depth (default)
-
-By default `channel!` wraps the `Sender`/`Receiver` endpoints directly and stamps each message with its send time, so the report gains an exact **send-receive latency** histogram (`proc_avg` plus the configured percentiles), alongside an exact live queue depth. No forwarder task or thread is inserted:
-
-```rust
-let (tx, rx) = hotpath::channel!(
-    crossbeam_channel::unbounded::<i32>(),
-    label = "jobs"
-);
-
-// tokio mpsc, bounded or unbounded - no `capacity` argument needed
-let (tx, rx) = hotpath::channel!(
-    tokio::sync::mpsc::channel::<i32>(100),
-    label = "jobs"
-);
-```
-
-The recorded latency is the full interval from `send()` to `recv()`, including backpressure wait on bounded channels. Because the timestamps are taken inside your own `send`/`recv` calls rather than in a forwarder task or thread, the value is exact - and wrap mode is lighter than the proxy, since it adds no extra task/thread or hop.
-
-Wrap mode is available for `tokio` (`mpsc`), `std`, `crossbeam`, `flume`, and `async-channel`. It is **not** available for `futures_channel` (any kind) or `tokio::sync::oneshot` - those are forwarder-only and require [`proxy = true`](#proxy--true-forwarder-mode).
 
 ### Capacity parameter requirement
 
@@ -131,9 +141,9 @@ Wrap mode rebuilds the inner channel from `capacity` (std exposes no way to read
 
 Tokio, crossbeam, flume, and async-channel recover the bound from the endpoint, so they need no `capacity` argument. `futures_channel::mpsc` bounded channels (forwarder-only, see below) also require `capacity = N` because their API doesn't expose it after creation.
 
-### `proxy = true` (forwarder mode)
+### Legacy `proxy = true` mode
 
-Passing `proxy = true` selects the original forwarder-based mode. Instead of wrapping the endpoints, `hotpath` keeps your original endpoint types (the return type is unchanged) and spawns a background task/thread that relays every message through a second internal channel, observing sent/received counts at that boundary:
+Passing `proxy = true` selects the legacy proxy forwarder-based instrumentation mode. Instead of wrapping the endpoints, `hotpath` spawns a background task/thread that relays every message through a second internal channel and observes sent/received counts at that boundary:
 
 ```rust
 // keep the raw endpoint types; instrument via a forwarder
@@ -144,13 +154,9 @@ let (tx, rx) = hotpath::channel!(futures_channel::mpsc::channel::<i32>(10), prox
 let (tx, rx) = hotpath::channel!(tokio::sync::oneshot::channel::<i32>(), proxy = true);
 ```
 
-Use `proxy = true` when you need type-transparent endpoints (see [Wrapped types](#wrapped-types)), or for a backend that has no wrap implementation - `futures_channel` (mpsc and oneshot) and `tokio::sync::oneshot`. Calling `channel!` on one of those without `proxy = true` is a compile error that tells you to add it.
+Its only advantage is that it returns the original endpoint types unchanged (see [Wrapped types](#wrapped-types)), and it is required for backends that have no wrap implementation - `futures_channel` (mpsc and oneshot) and `tokio::sync::oneshot`. Calling `channel!` on one of those without `proxy = true` is a compile error that tells you to add it.
 
-Forwarder mode has two accuracy caveats. The proxy is bounded to capacity 1, so sent/received counts are observed at the proxy boundary rather than at the final consumer, and `try_send` may behave slightly differently since the proxy adds one slot of extra capacity. It also **cannot measure send-receive latency**: it stamps events inside the forwarder, in the middle of the pipeline, so `proc_avg`/percentiles and exact queue depth are omitted. Prefer the default wrap mode when you care about latency or queue depth.
-
-### Instrumentation overhead
-
-Because wrap mode hits the real channel directly instead of relaying every message through a forwarder task or thread, the default is dramatically cheaper than `proxy = true` for the libraries whose proxy needs a background relay. For `tokio` and `flume`, wrap mode cuts per-message instrumentation overhead roughly **5-6x** versus the forwarder proxy, since their proxies cost a scheduler round-trip per message. `async-channel`'s proxy also relays every message through a background async task, so it benefits similarly. `std` also gets a large reduction (its proxy overhead drops by around **4x**). `crossbeam`'s forwarder is already cheap (a tight relay thread, no async scheduling), so the two modes are close there.
+The trade-offs are significant. It **cannot measure send-receive latency accurately**: events are stamped inside the forwarder, in the middle of the pipeline, so `proc_avg`/percentiles and exact queue depth are omitted. Relaying every message through an extra channel and task also costs more - for some channel libraries up to **6x higher overhead** than the default wrap mode. Sent/received counts are observed at the proxy boundary rather than at the final consumer, and `try_send` may behave slightly differently since the proxy adds one slot of extra capacity. Prefer the default wrap mode unless you need the original endpoint types.
 
 ## Streams monitoring
 
@@ -222,44 +228,3 @@ let result = hotpath::future!(async { 42 }, log = true).await;
 Label futures to display them on top of the list. By passing `log = true` TUI will display values that future resolved to:
 
 <img loading="lazy" src="{{#asset-hash images/futures-log.png}}" alt="hotpath-rs TUI showing async futures poll tracking and value logging">
-
-## Wrapped types
-
-By default `channel!` does not return the endpoints you passed in - it returns *instrumented wrappers* around them. The macro expands to a different type than the original:
-
-```rust
-// before: a plain crossbeam receiver
-let (tx, rx): (crossbeam_channel::Sender<i32>, crossbeam_channel::Receiver<i32>) =
-    crossbeam_channel::unbounded();
-
-// after: the macro returns hotpath wrappers, not crossbeam_channel::Sender/Receiver
-let (tx, rx) = hotpath::channel!(crossbeam_channel::unbounded::<i32>());
-```
-
-At a `let` binding this is invisible - type inference picks up whatever the macro returns. It only matters when you need to *name* the type, for example a struct field or a function signature. There you cannot write `crossbeam_channel::Sender<T>`, because the value is a wrapper, not a `crossbeam_channel::Sender`. (If you would rather keep the original endpoint types, use [`proxy = true`](#proxy--true-forwarder-mode), which is type-transparent.)
-
-Use the `hotpath::wrap::` path instead. It mirrors the original module layout, so you prefix the original path with `hotpath::wrap::`:
-
-```rust
-// before
-struct Pipeline {
-    jobs_tx: crossbeam_channel::Sender<Job>,
-    jobs_rx: crossbeam_channel::Receiver<Job>,
-}
-
-// after - prefix the type with hotpath::wrap::
-struct Pipeline {
-    jobs_tx: hotpath::wrap::crossbeam_channel::Sender<Job>,
-    jobs_rx: hotpath::wrap::crossbeam_channel::Receiver<Job>,
-}
-```
-
-The same prefix works for every wrap-capable library:
-
-- `hotpath::wrap::std::sync::mpsc::{Sender, SyncSender, Receiver}`
-- `hotpath::wrap::tokio::sync::mpsc::{Sender, Receiver, UnboundedSender, UnboundedReceiver}`
-- `hotpath::wrap::crossbeam_channel::{Sender, Receiver}`
-- `hotpath::wrap::flume::{Sender, Receiver}`
-- `hotpath::wrap::async_channel::{Sender, Receiver}`
-
-This is purely to keep the compiler police happy: the `hotpath::wrap::` types are noop unless the `hotpath` feature is enabled. With the feature off they are plain re-exports of the original endpoints (zero overhead, **identical behavior**); with the feature on they resolve to the instrumented wrappers. Either way the field type lines up with what the macro returns, so the same code compiles in both configurations.

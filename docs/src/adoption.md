@@ -1,6 +1,6 @@
 # Open-source Rust projects using hotpath-rs
 
-These public GitHub repositories declare `hotpath` as a dependency in their `Cargo.toml`. The list is refreshed regularly from a GitHub code search.
+These public (unique, non-fork) GitHub repositories declare `hotpath` as a dependency in their `Cargo.toml`. The list is refreshed regularly from a GitHub code search.
 
 {{#adoption}}
 
