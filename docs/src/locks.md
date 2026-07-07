@@ -80,6 +80,12 @@ Built-in, no feature flag required.
 
 - [`std::sync::Mutex`](https://doc.rust-lang.org/stable/std/sync/struct.Mutex.html)
 
+#### [parking_lot](https://github.com/Amanieu/parking_lot)
+
+Enable the `parking_lot` feature.
+
+- [`parking_lot::Mutex`](https://docs.rs/parking_lot/latest/parking_lot/type.Mutex.html)
+
 #### [Tokio](https://github.com/tokio-rs/tokio)
 
 Enable the `tokio` feature.

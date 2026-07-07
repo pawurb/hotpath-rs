@@ -15,6 +15,7 @@ members = [
     "crates/test-rw-lock-async-lock",
     "crates/test-rw-lock-tokio",
     "crates/test-mutex-std",
+    "crates/test-mutex-parking-lot",
     "crates/test-mutex-tokio",
     "crates/test-mutex-async-lock",
     "crates/test-streams",
