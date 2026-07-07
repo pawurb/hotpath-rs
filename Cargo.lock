@@ -4294,6 +4294,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-mutex-parking-lot"
+version = "0.0.0"
+dependencies = [
+ "hotpath",
+ "parking_lot",
+]
+
+[[package]]
 name = "test-mutex-std"
 version = "0.0.0"
 dependencies = [

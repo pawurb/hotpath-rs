@@ -1,0 +1,17 @@
+[package]
+name = "test-mutex-parking-lot"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for parking_lot Mutex instrumentation."
+
+[dependencies]
+hotpath = { workspace = true, features = ["parking_lot"] }
+parking_lot = "0.12"
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-cpu = ["hotpath/hotpath-cpu"]
+hotpath-meta = ["hotpath/hotpath-meta"]
+hotpath-alloc-meta = ["hotpath/hotpath-alloc-meta"]

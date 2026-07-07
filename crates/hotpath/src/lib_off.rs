@@ -304,7 +304,7 @@ pub mod mutexes {
 
 #[cfg(feature = "parking_lot")]
 pub mod parking_lot {
-    pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+    pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 }
 
 #[cfg(feature = "async-lock")]

@@ -119,7 +119,11 @@ pub mod wrap {
     #[cfg(feature = "parking_lot")]
     pub mod parking_lot {
         #[cfg(not(feature = "hotpath"))]
-        pub use crate::lib_off::parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+        pub use crate::lib_off::parking_lot::{
+            Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        };
+        #[cfg(feature = "hotpath")]
+        pub use crate::lib_on::mutexes::wrapper::parking_lot::{Mutex, MutexGuard};
         #[cfg(feature = "hotpath")]
         pub use crate::lib_on::rw_locks::wrapper::parking_lot::{
             RwLock, RwLockReadGuard, RwLockWriteGuard,
