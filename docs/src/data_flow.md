@@ -66,7 +66,7 @@ This is purely to keep the compiler police happy: the `hotpath::wrap::` types ar
 
 ### Supported channel libraries
 
-[std::sync](https://doc.rust-lang.org/stable/std/sync/mpsc/index.html) channels are instrumented by default. Enable the matching feature flag for each third-party library.
+[std::sync](https://doc.rust-lang.org/stable/std/sync/mpsc/index.html) channels can be instrumented by default. Enable the matching feature flag for each third-party library.
 
 #### [std](https://github.com/rust-lang/rust)
 
