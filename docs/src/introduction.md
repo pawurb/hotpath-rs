@@ -221,14 +221,17 @@ cargo install hotpath --features='tui' --version '^{{HOTPATH_VERSION}}'
 Explore the docs for customization options and advanced profiling features.
 
 - [Profiling modes](./profiling_modes.html) - static reports vs live TUI dashboard
+- [Profiling overhead](./profiling_overhead.html) - per-operation instrumentation cost and time sampling
 - [Functions](./functions.html) - measure execution time and memory allocations
 - [CPU profiling](./cpu_profiling.html) - attribute CPU samples to instrumented functions
-- [A/B Benchmarks](./benchmarks.html) - compare performance between app versions
-- [Async Data Flow](./data_flow.html) - monitor channels, streams, and futures
-- [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
 - [Threads](./threads.html) - monitor threads usage
+- [Async Data Flow](./data_flow.html) - monitor channels, streams, and futures
+- [Locks](./locks.html) - track Mutex and RwLock wait and hold times
+- [SQL queries](./sql_tracing.html) - profile query execution time for sqlx and Diesel
 - [Tokio Runtime](./tokio_runtime.html) - monitor Tokio runtime worker stats and task scheduling
-- [MCP Server](./mcp.html) - LLM integration via Model Context Protocol
+- [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
+- [A/B Benchmarks](./benchmarks.html) - compare performance between app versions
 - [GitHub CI](./github_ci.html) - automated benchmarking and regression detection in CI
+- [MCP Server](./mcp.html) - LLM integration via Model Context Protocol
 - [Cargo flamegraph alternatives](/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply
 - [Configuration](./configuration.html) - explore all config options
