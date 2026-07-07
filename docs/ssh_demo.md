@@ -215,7 +215,7 @@ sudo mkdir -p /run/sshd && sudo chmod 755 /run/sshd
 
 ```bash
 cd /root/hotpath-rs/crates/hotpath/
-RUSTFLAGS="--cfg tokio_unstable" cargo install --path . --features='tui,hotpath,hotpath-alloc'
+RUSTFLAGS="--cfg tokio_unstable" cargo install --path . --features='tui,hotpath,hotpath-alloc,demo-sql'
 cargo install --path . --bin hotpath-samply --features='hotpath'
 ```
 
