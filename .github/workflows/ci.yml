@@ -72,6 +72,10 @@ jobs:
         if: matrix.rust == 'stable'
         run: |
           cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings
+      - name: Lint custom features combination
+        if: matrix.rust == 'stable'
+        run: |
+          cargo clippy -p test-custom-feature --features hotpath-profile --all-targets -- -D warnings
       - name: Lint feature matrix (cargo-hack each-feature)
         if: matrix.rust == 'stable'
         run: |
