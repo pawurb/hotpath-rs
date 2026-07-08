@@ -1,0 +1,13 @@
+[package]
+name = "test-custom-feature"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests that hotpath compiles when enabled via a custom features combination."
+
+[features]
+hotpath-profile = ["hotpath/hotpath", "hotpath/hotpath-alloc"]
+
+[dependencies]
+hotpath = { path = "../hotpath", features = ["tokio"] }
+tokio = { version = "1", features = ["full"] }

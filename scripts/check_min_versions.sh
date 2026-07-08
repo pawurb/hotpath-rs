@@ -47,6 +47,7 @@ drop = (
     "crates/test-tokio-async",
     "crates/test-smol-async",
     "crates/test-all-features",
+    "crates/test-custom-feature",
     "crates/test-channels-asc",
     "crates/test-channels-crossbeam",
     "crates/test-channels-ftc",

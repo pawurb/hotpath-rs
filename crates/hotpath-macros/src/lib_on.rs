@@ -405,11 +405,14 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|path| quote! { #path })
         .unwrap_or_else(|| quote! { ::std::alloc::System });
 
-    let allocator_item = quote! {
-        #[cfg(feature = "hotpath-alloc")]
-        #[global_allocator]
-        static __HOTPATH_GLOBAL_ALLOCATOR: hotpath::CountingAllocator<#allocator_path> =
-            hotpath::CountingAllocator::new();
+    let allocator_item = if cfg!(feature = "hotpath-alloc") {
+        quote! {
+            #[global_allocator]
+            static __HOTPATH_GLOBAL_ALLOCATOR: hotpath::CountingAllocator<#allocator_path> =
+                hotpath::CountingAllocator::new();
+        }
+    } else {
+        quote! {}
     };
 
     let body = quote! {
