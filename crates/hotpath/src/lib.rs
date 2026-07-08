@@ -16,20 +16,12 @@ pub use lib_on::*;
 #[cfg(feature = "hotpath")]
 mod lib_on;
 
-#[cfg(feature = "hotpath")]
-pub use lib_on::channels;
-#[cfg(feature = "hotpath")]
-pub use lib_on::futures;
-#[cfg(feature = "hotpath")]
-pub use lib_on::mutexes;
-#[cfg(feature = "hotpath")]
-pub use lib_on::sql;
-#[cfg(feature = "hotpath")]
-pub use lib_on::streams;
 #[cfg(all(feature = "hotpath", feature = "threads"))]
 pub use lib_on::threads;
 #[cfg(all(feature = "hotpath", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
+#[cfg(feature = "hotpath")]
+pub use lib_on::{channels, futures, mutexes, sql, streams};
 
 #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub(crate) mod output;
@@ -70,13 +62,7 @@ pub use lib_off::*;
 mod lib_off;
 
 #[cfg(not(feature = "hotpath"))]
-pub use lib_off::channels;
-#[cfg(not(feature = "hotpath"))]
-pub use lib_off::futures;
-#[cfg(not(feature = "hotpath"))]
-pub use lib_off::streams;
-#[cfg(not(feature = "hotpath"))]
-pub use lib_off::threads;
+pub use lib_off::{channels, futures, streams, threads};
 
 /// Mirror of `std` paths so instrumented types can be used as drop-in
 /// replacements by prefixing imports with `hotpath::wrap::` (e.g.
@@ -90,14 +76,14 @@ pub mod wrap {
     pub mod std {
         pub mod sync {
             #[cfg(not(feature = "hotpath"))]
-            pub use crate::lib_off::mutexes::{Mutex, MutexGuard};
-            #[cfg(not(feature = "hotpath"))]
-            pub use crate::lib_off::rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+            pub use crate::lib_off::{
+                mutexes::{Mutex, MutexGuard},
+                rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+            };
             #[cfg(feature = "hotpath")]
-            pub use crate::lib_on::mutexes::wrapper::std::{Mutex, MutexGuard};
-            #[cfg(feature = "hotpath")]
-            pub use crate::lib_on::rw_locks::wrapper::std::{
-                RwLock, RwLockReadGuard, RwLockWriteGuard,
+            pub use crate::lib_on::{
+                mutexes::wrapper::std::{Mutex, MutexGuard},
+                rw_locks::wrapper::std::{RwLock, RwLockReadGuard, RwLockWriteGuard},
             };
 
             /// Instrumented `std::sync::mpsc` channel endpoints for
@@ -123,10 +109,9 @@ pub mod wrap {
             Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
         };
         #[cfg(feature = "hotpath")]
-        pub use crate::lib_on::mutexes::wrapper::parking_lot::{Mutex, MutexGuard};
-        #[cfg(feature = "hotpath")]
-        pub use crate::lib_on::rw_locks::wrapper::parking_lot::{
-            RwLock, RwLockReadGuard, RwLockWriteGuard,
+        pub use crate::lib_on::{
+            mutexes::wrapper::parking_lot::{Mutex, MutexGuard},
+            rw_locks::wrapper::parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard},
         };
     }
 
@@ -137,10 +122,9 @@ pub mod wrap {
             Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
         };
         #[cfg(feature = "hotpath")]
-        pub use crate::lib_on::mutexes::wrapper::async_lock::{Mutex, MutexGuard};
-        #[cfg(feature = "hotpath")]
-        pub use crate::lib_on::rw_locks::wrapper::async_lock::{
-            RwLock, RwLockReadGuard, RwLockWriteGuard,
+        pub use crate::lib_on::{
+            mutexes::wrapper::async_lock::{Mutex, MutexGuard},
+            rw_locks::wrapper::async_lock::{RwLock, RwLockReadGuard, RwLockWriteGuard},
         };
     }
 
@@ -152,10 +136,9 @@ pub mod wrap {
                 Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
             };
             #[cfg(feature = "hotpath")]
-            pub use crate::lib_on::mutexes::wrapper::tokio::{Mutex, MutexGuard};
-            #[cfg(feature = "hotpath")]
-            pub use crate::lib_on::rw_locks::wrapper::tokio::{
-                RwLock, RwLockReadGuard, RwLockWriteGuard,
+            pub use crate::lib_on::{
+                mutexes::wrapper::tokio::{Mutex, MutexGuard},
+                rw_locks::wrapper::tokio::{RwLock, RwLockReadGuard, RwLockWriteGuard},
             };
 
             /// Instrumented `tokio::sync::mpsc` channel endpoints for
