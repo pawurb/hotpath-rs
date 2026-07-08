@@ -20,20 +20,12 @@ pub use lib_on::*;
 #[cfg(feature = "hotpath-meta")]
 mod lib_on;
 
-#[cfg(feature = "hotpath-meta")]
-pub use lib_on::channels;
-#[cfg(feature = "hotpath-meta")]
-pub use lib_on::futures;
-#[cfg(feature = "hotpath-meta")]
-pub use lib_on::mutexes;
-#[cfg(feature = "hotpath-meta")]
-pub use lib_on::sql;
-#[cfg(feature = "hotpath-meta")]
-pub use lib_on::streams;
 #[cfg(all(feature = "hotpath-meta", feature = "threads"))]
 pub use lib_on::threads;
 #[cfg(all(feature = "hotpath-meta", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
+#[cfg(feature = "hotpath-meta")]
+pub use lib_on::{channels, futures, mutexes, sql, streams};
 
 #[cfg(any(feature = "hotpath-meta", feature = "tui"))]
 pub(crate) mod output;
@@ -74,13 +66,7 @@ pub use lib_off::*;
 mod lib_off;
 
 #[cfg(not(feature = "hotpath-meta"))]
-pub use lib_off::channels;
-#[cfg(not(feature = "hotpath-meta"))]
-pub use lib_off::futures;
-#[cfg(not(feature = "hotpath-meta"))]
-pub use lib_off::streams;
-#[cfg(not(feature = "hotpath-meta"))]
-pub use lib_off::threads;
+pub use lib_off::{channels, futures, streams, threads};
 
 /// Mirror of `std` paths so instrumented types can be used as drop-in
 /// replacements by prefixing imports with `hotpath_meta::wrap::` (e.g.
@@ -89,14 +75,14 @@ pub mod wrap {
     pub mod std {
         pub mod sync {
             #[cfg(not(feature = "hotpath-meta"))]
-            pub use crate::lib_off::mutexes::{Mutex, MutexGuard};
-            #[cfg(not(feature = "hotpath-meta"))]
-            pub use crate::lib_off::rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+            pub use crate::lib_off::{
+                mutexes::{Mutex, MutexGuard},
+                rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+            };
             #[cfg(feature = "hotpath-meta")]
-            pub use crate::lib_on::mutexes::wrapper::std::{Mutex, MutexGuard};
-            #[cfg(feature = "hotpath-meta")]
-            pub use crate::lib_on::rw_locks::wrapper::std::{
-                RwLock, RwLockReadGuard, RwLockWriteGuard,
+            pub use crate::lib_on::{
+                mutexes::wrapper::std::{Mutex, MutexGuard},
+                rw_locks::wrapper::std::{RwLock, RwLockReadGuard, RwLockWriteGuard},
             };
 
             /// Instrumented `std::sync::mpsc` channel endpoints for
@@ -126,10 +112,14 @@ pub mod wrap {
             pub mod mpsc {
                 #[cfg(feature = "hotpath-meta")]
                 pub use crate::lib_on::channels::wrapper::tokio_wrap::{
-                    Receiver, Sender, UnboundedReceiver, UnboundedSender,
+                    Receiver, Sender, UnboundedReceiver, UnboundedSender, WeakSender,
+                    WeakUnboundedSender,
                 };
                 #[cfg(not(feature = "hotpath-meta"))]
-                pub use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+                pub use tokio::sync::mpsc::{
+                    Receiver, Sender, UnboundedReceiver, UnboundedSender, WeakSender,
+                    WeakUnboundedSender,
+                };
             }
         }
     }

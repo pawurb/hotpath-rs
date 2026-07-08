@@ -493,19 +493,21 @@ fn format_sent_log_entry(
     current_elapsed_ns: u64,
     received_logs: &[DataFlowLogEntry],
 ) -> JsonChannelSentLog {
-    // Pair by message identity (wrap mode only). Proxy channels have no `msg_id` and
-    // their forwarder-stamped timestamps aren't true latency, so they get no delay.
-    // A received message without `delay_nanos` was skipped by time sampling.
-    let delay = entry.msg_id.and_then(|sent_id| {
-        received_logs
+    // Pair by message identity (wrap mode only). Proxy channels have no `msg_id`
+    // and their forwarder-stamped timestamps aren't true latency, so their delay
+    // is always "N/A". A received message without `delay_nanos` was skipped by
+    // time sampling.
+    let delay = match entry.msg_id {
+        Some(sent_id) => received_logs
             .iter()
             .find(|recv| recv.msg_id == Some(sent_id))
             .map(|recv| {
                 recv.delay_nanos
                     .map(format_delay)
                     .unwrap_or_else(|| "N/A".to_string())
-            })
-    });
+            }),
+        None => Some("N/A".to_string()),
+    };
 
     JsonChannelSentLog {
         index: entry.index,
@@ -975,11 +977,11 @@ mod parse_tests {
         assert_eq!(by_index[&2], Some("3 ns".to_string()));
     }
 
-    /// Proxy channels (no `msg_id`) carry no log delay: their events are stamped
+    /// Proxy channels (no `msg_id`) always show "N/A": their events are stamped
     /// inside the forwarder thread, so the interval would be a misleading
     /// forwarder-hop time rather than true send->receive latency.
     #[test]
-    fn delay_is_none_for_proxy_channels_without_msg_id() {
+    fn delay_is_na_for_proxy_channels_without_msg_id() {
         let logs = ChannelLogs {
             id: 1,
             sent_logs: vec![DataFlowLogEntry::new(1, 10, None, None, None, None)],
@@ -987,7 +989,7 @@ mod parse_tests {
         };
 
         let out = JsonChannelLogsList::from_logs(&logs, 1_000);
-        assert_eq!(out.sent_logs[0].delay, None);
+        assert_eq!(out.sent_logs[0].delay, Some("N/A".to_string()));
     }
 
     /// Unsampled wrap messages carry no `delay_nanos`, so the delay must read
