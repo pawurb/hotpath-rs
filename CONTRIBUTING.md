@@ -77,6 +77,7 @@ Each benchmark runs both an uninstrumented **baseline** (raw lock) and the instr
 ```bash
 cargo run -p test-mutex-std --example benchmark_mutex_std --features hotpath --release
 cargo run -p test-mutex-tokio --example benchmark_mutex_tokio --features hotpath --release
+cargo run -p test-mutex-parking-lot --example benchmark_mutex_parking_lot --features hotpath --release
 cargo run -p test-mutex-async-lock --example benchmark_mutex_async_lock --features hotpath --release
 cargo run -p test-rw-lock-std --example benchmark_rw_lock_std --features hotpath --release
 cargo run -p test-rw-lock-tokio --example benchmark_rw_lock_tokio --features hotpath --release

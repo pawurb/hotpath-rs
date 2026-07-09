@@ -32,7 +32,7 @@ Two design choices keep the hot path cheap:
 | Profiled type | Macro | Overhead per operation |
 |---|---|---|
 | Functions | `#[hotpath::measure]` | ~40 ns per call |
-| Mutexes | `mutex!` | 33-54 ns per lock cycle |
+| Mutexes | `mutex!` | 29-54 ns per lock cycle |
 | RwLocks | `rw_lock!` | 34-66 ns per acquisition |
 | Channels (default wrap mode) | `channel!` | 47-88 ns per send/recv cycle |
 | Channels (legacy proxy mode) | `channel!(..., proxy = true)` | 3.5-11 µs per send/recv cycle |
@@ -45,10 +45,11 @@ Two design choices keep the hot path cheap:
 
 ### Mutexes and RwLocks
 
-`mutex!` and `rw_lock!` wrappers add **33-66 ns per lock cycle** (acquire + release), measured uncontended:
+`mutex!` and `rw_lock!` wrappers add **29-66 ns per lock cycle** (acquire + release), measured uncontended:
 
 | Lock | Overhead per cycle |
 |---|---|
+| `parking_lot::Mutex` | +29 ns |
 | `tokio::sync::Mutex` | +33 ns |
 | `std::sync::Mutex` | +54 ns |
 | `async_lock::Mutex` | +54 ns |
