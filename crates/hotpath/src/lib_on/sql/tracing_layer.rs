@@ -112,10 +112,9 @@ fn parse_duration_debug(s: &str) -> Option<u64> {
         (rest, 1_000.0)
     } else if let Some(rest) = s.strip_suffix("ms") {
         (rest, 1_000_000.0)
-    } else if let Some(rest) = s.strip_suffix('s') {
-        (rest, 1_000_000_000.0)
     } else {
-        return None;
+        let rest = s.strip_suffix('s')?;
+        (rest, 1_000_000_000.0)
     };
     num.trim().parse::<f64>().ok().map(|v| (v * scale) as u64)
 }
