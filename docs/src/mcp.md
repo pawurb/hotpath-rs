@@ -26,9 +26,14 @@ These tools return aggregated performance summaries:
 |------|-------------|
 | `functions_timing` | Function timing statistics (calls, avg, p99, total time) |
 | `functions_alloc` | Function memory allocation statistics |
+| `functions_cpu` | CPU sampling attribution per function (requires `hotpath-cpu` feature) |
+| `functions_cpu_snapshot` | Trigger an on-demand CPU sampling snapshot (requires `hotpath-cpu` feature) |
 | `channels` | Channel metrics (sends, receives, buffer usage) |
 | `streams` | Stream metrics (items processed, throughput) |
 | `futures` | Future execution statistics |
+| `rw_locks` | RwLock read/write wait & acquire-time statistics |
+| `mutexes` | Mutex wait & acquire-time statistics |
+| `sql` | SQL query execution-time statistics per normalized query (requires `sqlx_tracing_layer()`) |
 | `threads` | Thread activity and timing |
 | `gauges` | Custom gauge values |
 | `dbg_entries` | All `dbg!` debug entries |
@@ -47,6 +52,7 @@ These tools accept parameters to retrieve detailed execution logs:
 | `channel_logs` | `channel_name`, `limit` | Channel operation logs |
 | `stream_logs` | `stream_name`, `limit` | Stream operation logs |
 | `future_logs` | `future_name`, `limit` | Future execution logs |
+| `sql_logs` | `sql_id` | Individual execution logs for a SQL query |
 | `gauge_logs` | `gauge_name`, `limit` | Gauge value history |
 | `dbg_logs` | `debug_id` | Detailed logs for a `dbg!` entry |
 | `val_logs` | `debug_id` | Detailed logs for a `val!` entry |
