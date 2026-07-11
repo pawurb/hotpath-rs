@@ -116,6 +116,12 @@ jobs:
       - name: Build tests
         run: |
           cargo build --tests
+      - name: Compile tests (tui only)
+        run: |
+          cargo test -p hotpath --features tui --no-run
+      - name: Compile tests (utils only)
+        run: |
+          cargo test -p hotpath --features utils --no-run
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui

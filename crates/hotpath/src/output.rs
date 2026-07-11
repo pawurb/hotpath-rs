@@ -395,7 +395,7 @@ pub(crate) struct FunctionLogsList {
     pub count: usize,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 mod truncation_tests {
     use super::*;
 
