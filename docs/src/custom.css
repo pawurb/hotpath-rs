@@ -167,6 +167,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+    min-width: 0;
     padding: 0.5rem 1rem;
     background: #0d0d0d;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -197,6 +198,10 @@
     color: #ffb454;
     -webkit-text-fill-color: #ffb454;
     text-decoration: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .trusted-by-project:hover .trusted-by-name {
@@ -205,6 +210,7 @@
 
 .trusted-by-project img {
     height: 20px;
+    flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
@@ -215,5 +221,9 @@
 
     .trusted-by-project {
         padding: 0.3rem 0.6rem;
+    }
+
+    .trusted-by-name {
+        font-size: 0.85em;
     }
 }
