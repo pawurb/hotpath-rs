@@ -7,7 +7,7 @@ description = "Tests for sqlx 0.8 SQL query instrumentation via the tracing laye
 
 [dependencies]
 hotpath = { workspace = true, features = ["sqlx"] }
-sqlx = { version = "0.8.0", default-features = false, features = ["sqlite", "runtime-tokio"] }
+sqlx = { version = "0.8.0", default-features = false, features = ["sqlite", "postgres", "runtime-tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tracing-subscriber = { version = "0.3", features = ["registry"] }
 

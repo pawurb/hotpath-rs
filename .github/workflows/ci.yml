@@ -10,6 +10,20 @@ jobs:
     name: test ${{ matrix.rust }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: hotpath
+          POSTGRES_PASSWORD: hotpath
+          POSTGRES_DB: hotpath
+        ports:
+          - 5439:5432
+        options: >-
+          --health-cmd "pg_isready -U hotpath"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
     strategy:
       fail-fast: false
       matrix:
@@ -177,6 +191,14 @@ jobs:
       - name: Run futures tests
         run: |
           cargo test --features hotpath --test futures -- --nocapture --test-threads=1
+      - name: Run sql sqlite tests
+        # sqlx 0.9 (test-sqlx-09) has MSRV 1.94
+        if: matrix.rust != '1.89'
+        run: |
+          cargo test --features hotpath --test sql_sqlite -- --nocapture --test-threads=1
+      - name: Run sql postgres tests
+        run: |
+          cargo test --features hotpath --test sql_pg -- --nocapture --test-threads=1
       - name: Run debug tests
         run: |
           cargo test --features hotpath --test debug -- --nocapture --test-threads=1

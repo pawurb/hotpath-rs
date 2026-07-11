@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      # Non-default host port so a system-wide postgres (or another project's
+      # container) on 5432 doesn't collide.
+      - "5439:5432"
+    environment:
+      POSTGRES_USER: hotpath
+      POSTGRES_PASSWORD: hotpath
+      POSTGRES_DB: hotpath
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hotpath"]
+      interval: 2s
+      timeout: 2s
+      retries: 15

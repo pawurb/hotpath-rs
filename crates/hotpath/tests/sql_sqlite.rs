@@ -1,4 +1,4 @@
-//! Integration tests for the `sqlx` tracing-layer front-end.
+//! Integration tests for the `sqlx` tracing-layer front-end (sqlite backend).
 //!
 //! These run the `test-sqlx-08` and `test-sqlx-09` `basic` examples as
 //! subprocesses and assert on their reports. The same hotpath layer feeds both:
@@ -6,6 +6,8 @@
 //! `elapsed_secs`) is identical across sqlx 0.8 and 0.9, so a single layer
 //! covers both. These tests also pin that schema - a sqlx upgrade that renames
 //! or drops those fields would empty the SQL report and fail here.
+//!
+//! PostgreSQL coverage lives in `sql_pg.rs`.
 #[cfg(test)]
 pub mod tests {
     use std::process::Command;
