@@ -27,6 +27,10 @@ It helps you distinguish between functions that are slow because they wait on I/
 <div class="trusted-by">
   <p class="trusted-by-tagline">Integrated by <a href="/adoption">{{#adoption_count}} open-source projects</a>, including:</p>
   <div class="trusted-by-grid">
+    <a href="https://github.com/rustfs/rustfs" target="_blank" class="trusted-by-project">
+      <span class="trusted-by-name">rustfs/rustfs</span>
+      <img src="{{#asset-hash images/stars-rustfs-rustfs.svg}}" alt="rustfs GitHub stars">
+    </a>
     <a href="https://github.com/apache/opendal" target="_blank" class="trusted-by-project">
       <span class="trusted-by-name">apache/opendal</span>
       <img src="{{#asset-hash images/stars-apache-opendal.svg}}" alt="opendal GitHub stars">
@@ -46,10 +50,6 @@ It helps you distinguish between functions that are slow because they wait on I/
     <a href="https://github.com/tqwewe/kameo" target="_blank" class="trusted-by-project">
       <span class="trusted-by-name">tqwewe/kameo</span>
       <img src="{{#asset-hash images/stars-tqwewe-kameo.svg}}" alt="kameo GitHub stars">
-    </a>
-    <a href="https://github.com/tryandromeda/andromeda" target="_blank" class="trusted-by-project">
-      <span class="trusted-by-name">tryandromeda/andromeda</span>
-      <img src="{{#asset-hash images/stars-tryandromeda-andromeda.svg}}" alt="andromeda GitHub stars">
     </a>
   </div>
 </div>
