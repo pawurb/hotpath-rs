@@ -25,45 +25,89 @@ use crate::functions::{
 use crate::futures::{get_future_logs_list, get_futures_json};
 use crate::json::{
     JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFutureLogsList,
-    JsonProfilerStatus, JsonStreamLogsList,
+    JsonProfilerStatus, JsonSqlLogsList, JsonStreamLogsList,
 };
 use crate::output::format_duration;
 use crate::streams::{get_stream_logs, get_streams_json};
 use crate::threads::get_threads_json;
 
+// Accepts both a JSON number and its string form ("3"), so clients that
+// stringify tool parameters keep working.
+fn id_from_number_or_string<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct IdVisitor;
+
+    impl serde::de::Visitor<'_> for IdVisitor {
+        type Value = u32;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an integer id or its string form")
+        }
+
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<u32, E> {
+            u32::try_from(v).map_err(E::custom)
+        }
+
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<u32, E> {
+            u32::try_from(v).map_err(E::custom)
+        }
+
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<u32, E> {
+            v.trim().parse().map_err(E::custom)
+        }
+    }
+
+    deserializer.deserialize_any(IdVisitor)
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 struct FunctionIdParam {
     #[schemars(description = "Function ID from the functions_timing or functions_alloc response")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
     function_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct ChannelIdParam {
-    #[schemars(description = "Channel identifier from the channels list")]
-    channel_id: String,
+    #[schemars(description = "Channel id from the channels list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    channel_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct StreamIdParam {
-    #[schemars(description = "Stream identifier from the streams list")]
-    stream_id: String,
+    #[schemars(description = "Stream id from the streams list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    stream_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct FutureIdParam {
-    #[schemars(description = "Future identifier from the futures list")]
-    future_id: String,
+    #[schemars(description = "Future id from the futures list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    future_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct SqlIdParam {
+    #[schemars(description = "SQL query id from the sql list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    sql_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GaugeIdParam {
-    #[schemars(description = "Gauge identifier from the gauges list")]
-    gauge_id: String,
+    #[schemars(description = "Gauge id from the gauges list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    gauge_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct DebugIdParam {
     #[schemars(description = "Debug entry ID from the debug tool response")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
     debug_id: u32,
 }
 
@@ -132,6 +176,62 @@ Returns error if hotpath-alloc feature is not enabled. Cross-reference with func
     }
 
     #[tool(
+        description = r#"Get CPU sampling attribution per instrumented function (requires hotpath-cpu feature).
+
+Returns JSON envelope with:
+- status: "idle", "capturing", "ready", or "error"
+- functions: when ready, array of functions with sample counts and CPU time attribution
+- session/profile metadata
+
+Use functions_cpu_snapshot to trigger an on-demand capture, then poll this tool until status is "ready". Returns error if hotpath-cpu feature is not enabled."#
+    )]
+    async fn functions_cpu(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: functions_cpu");
+
+        #[cfg(feature = "hotpath-cpu")]
+        {
+            let envelope = crate::functions::cpu::get_cpu_envelope();
+            Ok(CallToolResult::success(vec![Content::text(to_json(
+                &envelope,
+            )?)]))
+        }
+
+        #[cfg(not(feature = "hotpath-cpu"))]
+        Ok(CallToolResult::error(vec![Content::text(
+            "CPU profiling not available - enable hotpath-cpu feature",
+        )]))
+    }
+
+    #[tool(
+        description = r#"Trigger an on-demand CPU sampling snapshot (requires hotpath-cpu feature).
+
+Starts a background capture of CPU samples collected since profiling began. Returns immediately with status "capturing". Poll the functions_cpu tool until its status is "ready" to read the results.
+
+Returns error if a snapshot is already in progress or the hotpath-cpu feature is not enabled."#
+    )]
+    async fn functions_cpu_snapshot(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: functions_cpu_snapshot");
+
+        #[cfg(feature = "hotpath-cpu")]
+        {
+            if crate::functions::cpu::try_spawn_snapshot() {
+                Ok(CallToolResult::success(vec![Content::text(
+                    r#"{"status":"capturing"}"#,
+                )]))
+            } else {
+                Ok(CallToolResult::error(vec![Content::text(
+                    "Snapshot already in progress",
+                )]))
+            }
+        }
+
+        #[cfg(not(feature = "hotpath-cpu"))]
+        Ok(CallToolResult::error(vec![Content::text(
+            "CPU profiling not available - enable hotpath-cpu feature",
+        )]))
+    }
+
+    #[tool(
         description = r#"Get metrics for all monitored async channels (tokio, crossbeam, std, futures-channel).
 
 Returns JSON array with:
@@ -188,6 +288,83 @@ High poll counts can indicate futures that wake frequently without making progre
         Ok(CallToolResult::success(vec![Content::text(to_json(
             &futures,
         )?)]))
+    }
+
+    #[tool(
+        description = r#"Get wait and acquire-time metrics for all monitored RwLocks.
+
+Returns JSON with per-lock entries split into read and write sections. Each section contains:
+- count: number of lock acquisitions
+- wait: time blocked before the lock was granted (avg and configured percentiles, in nanoseconds)
+- acquire: time the lock was held, granted to released (avg and configured percentiles, in nanoseconds)
+
+High wait times indicate lock contention; high acquire times indicate long critical sections. Locks are instrumented via hotpath::rw_lock!(expr)."#
+    )]
+    async fn rw_locks(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: rw_locks");
+
+        let rw_locks = crate::rw_locks::get_rw_locks_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &rw_locks,
+        )?)]))
+    }
+
+    #[tool(
+        description = r#"Get wait and acquire-time metrics for all monitored Mutexes.
+
+Returns JSON with per-mutex entries containing:
+- count: number of lock acquisitions
+- wait: time blocked before the lock was granted (avg and configured percentiles, in nanoseconds)
+- acquire: time the lock was held, granted to released (avg and configured percentiles, in nanoseconds)
+
+High wait times indicate lock contention; high acquire times indicate long critical sections. Mutexes are instrumented via hotpath::mutex!(expr)."#
+    )]
+    async fn mutexes(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: mutexes");
+
+        let mutexes = crate::mutexes::get_mutexes_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &mutexes,
+        )?)]))
+    }
+
+    #[tool(
+        description = r#"Get execution-time metrics for SQL queries captured via the sqlx tracing layer.
+
+Returns JSON array with one entry per normalized query (parameter-varied executions merge into one bucket):
+- id: query identifier
+- query: normalized SQL statement text
+- call_count: number of executions
+- avg, configured percentiles, and total duration in nanoseconds
+
+Requires hotpath::sqlx_tracing_layer() added to the profiled application's tracing subscriber. Use sql_logs with a query id to get recent individual executions."#
+    )]
+    async fn sql(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: sql");
+
+        let sql = crate::sql::get_sql_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(&sql)?)]))
+    }
+
+    #[tool(description = r#"Get detailed execution logs for a specific SQL query.
+
+Returns JSON array of recent executions with timestamps and durations. Use sql first to get query IDs, then use this tool to get detailed logs."#)]
+    async fn sql_logs(&self, params: Parameters<SqlIdParam>) -> Result<CallToolResult, McpError> {
+        let sql_id = params.0.sql_id;
+        log_debug(&format!("Tool called: sql_logs({})", sql_id));
+
+        match crate::sql::get_sql_logs(sql_id) {
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = JsonSqlLogsList::from_logs(&logs, current_elapsed_ns);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &formatted,
+                )?)]))
+            }
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "SQL query not found",
+            )])),
+        }
     }
 
     #[tool(description = r#"Get CPU usage metrics for all monitored threads.
@@ -270,14 +447,10 @@ Returns JSON array of recent send/receive events with timestamps. Use channels f
         &self,
         params: Parameters<ChannelIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let channel_id = &params.0.channel_id;
+        let channel_id = params.0.channel_id;
         log_debug(&format!("Tool called: channel_logs({})", channel_id));
 
-        let id: u32 = channel_id.parse().map_err(|_| {
-            McpError::invalid_params(format!("Invalid channel_id: {}", channel_id), None)
-        })?;
-
-        match get_channel_logs(id) {
+        match get_channel_logs(channel_id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonChannelLogsList::from_logs(&logs, current_elapsed_ns);
@@ -298,14 +471,10 @@ Returns JSON array of recent yield events with timestamps. Use streams first to 
         &self,
         params: Parameters<StreamIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let stream_id = &params.0.stream_id;
+        let stream_id = params.0.stream_id;
         log_debug(&format!("Tool called: stream_logs({})", stream_id));
 
-        let id: u32 = stream_id.parse().map_err(|_| {
-            McpError::invalid_params(format!("Invalid stream_id: {}", stream_id), None)
-        })?;
-
-        match get_stream_logs(id) {
+        match get_stream_logs(stream_id) {
             Some(logs) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonStreamLogsList::from_logs(&logs, current_elapsed_ns);
@@ -326,14 +495,10 @@ Returns JSON array of poll events and completion status. Use futures first to ge
         &self,
         params: Parameters<FutureIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let future_id = &params.0.future_id;
+        let future_id = params.0.future_id;
         log_debug(&format!("Tool called: future_logs({})", future_id));
 
-        let id: u32 = future_id.parse().map_err(|_| {
-            McpError::invalid_params(format!("Invalid future_id: {}", future_id), None)
-        })?;
-
-        match get_future_logs_list(id) {
+        match get_future_logs_list(future_id) {
             Some(calls) => {
                 let formatted = JsonFutureLogsList::from(&calls);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
@@ -373,14 +538,10 @@ Returns JSON array of recent value updates with timestamps. Use gauges first to 
         &self,
         params: Parameters<GaugeIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let gauge_id = &params.0.gauge_id;
+        let gauge_id = params.0.gauge_id;
         log_debug(&format!("Tool called: gauge_logs({})", gauge_id));
 
-        let id: u32 = gauge_id.parse().map_err(|_| {
-            McpError::invalid_params(format!("Invalid gauge_id: {}", gauge_id), None)
-        })?;
-
-        match get_debug_gauge_logs(id) {
+        match get_debug_gauge_logs(gauge_id) {
             Some(logs) => Ok(CallToolResult::success(vec![Content::text(to_json(
                 &logs,
             )?)])),
@@ -512,7 +673,7 @@ impl ServerHandler for HotPathMcpServer {
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.server_info = server_info;
         info.instructions = Some(
-            "hothath profiler metrics MCP server. Provides tools to query profiling data.".into(),
+            "hotpath profiler metrics MCP server. Provides tools to query profiling data.".into(),
         );
         info
     }
@@ -680,5 +841,17 @@ mod tests {
     fn auth_enabled_accepts_correct() {
         assert!(check_auth(Some("secret"), Some("secret")));
         assert!(check_auth(Some("Bearer token"), Some("Bearer token")));
+    }
+
+    #[test]
+    fn id_param_accepts_number_and_string() {
+        let param: SqlIdParam = serde_json::from_str(r#"{"sql_id": 3}"#).unwrap();
+        assert_eq!(param.sql_id, 3);
+
+        let param: SqlIdParam = serde_json::from_str(r#"{"sql_id": "3"}"#).unwrap();
+        assert_eq!(param.sql_id, 3);
+
+        assert!(serde_json::from_str::<SqlIdParam>(r#"{"sql_id": "abc"}"#).is_err());
+        assert!(serde_json::from_str::<SqlIdParam>(r#"{"sql_id": -1}"#).is_err());
     }
 }
