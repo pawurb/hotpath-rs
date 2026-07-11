@@ -3,6 +3,7 @@
 //!
 //! Transformations, applied in order:
 //! - single-quoted string literals -> `?`
+//! - PostgreSQL positional placeholders (`$1`, `$2`, ...) -> `?`
 //! - numeric literals -> `?`
 //! - runs of `?` inside an `IN (...)` list -> `IN (?)`
 //! - collapse all whitespace to single spaces
@@ -14,6 +15,11 @@ fn string_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     // Single-quoted literal, with '' as an escaped quote inside.
     RE.get_or_init(|| Regex::new(r"'(?:[^']|'')*'").unwrap())
+}
+
+fn pg_placeholder_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\$\d+\b").unwrap())
 }
 
 fn number_re() -> &'static Regex {
@@ -35,6 +41,7 @@ fn whitespace_re() -> &'static Regex {
 /// Normalize a raw SQL string into a stable bucket key.
 pub(crate) fn normalize(sql: &str) -> String {
     let s = string_re().replace_all(sql, "?");
+    let s = pg_placeholder_re().replace_all(&s, "?");
     let s = number_re().replace_all(&s, "?");
     let s = in_list_re().replace_all(&s, "IN (?)");
     let s = whitespace_re().replace_all(&s, " ");
@@ -73,6 +80,18 @@ mod tests {
         );
         assert_eq!(
             normalize("SELECT * FROM t WHERE id IN (1, 2, 3)"),
+            "SELECT * FROM t WHERE id IN (?)",
+        );
+    }
+
+    #[test]
+    fn merges_pg_placeholders() {
+        assert_eq!(
+            normalize("INSERT INTO users (name, age) VALUES ($1, $2)"),
+            "INSERT INTO users (name, age) VALUES (?, ?)",
+        );
+        assert_eq!(
+            normalize("SELECT * FROM t WHERE id IN ($1, $2, $3)"),
             "SELECT * FROM t WHERE id IN (?)",
         );
     }
