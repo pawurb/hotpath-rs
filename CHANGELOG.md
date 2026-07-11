@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.2] - 2026-07-11
+
+### 🚀 Features
+
+- TUI tabs mouse navigation
+
+- Add parking_lot mutex wrapper
+
+- Add missing MCP tools
+
+
+### 🐛 Bug Fixes
+
+- Fix passing hotpath-alloc to macro crate
+
+- Hotpath-cpu symbols in rustc 1.97
+
+- Support PG queries normalization
+
+
+### 🚜 Refactor
+
+- Cleanup conditional imports
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Extract adoption script
+
+- Release 0.21.2
+
+
 ## [0.21.1] - 2026-07-06
 
 ### 🐛 Bug Fixes
