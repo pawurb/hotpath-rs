@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
@@ -254,7 +255,8 @@ fn build_lib_index(
         };
         let demangled = format!("{:#}", rustc_demangle::demangle(raw_name));
         let normalized = strip_hash_suffix(&demangled);
-        if let Some(display) = match_eligible_symbol(normalized, match_to_display) {
+        let normalized = strip_inherent_impl_brackets(normalized);
+        if let Some(display) = match_eligible_symbol(&normalized, match_to_display) {
             matched_pending.push((rel, sym.size(), display));
         }
     }
@@ -313,6 +315,41 @@ fn strip_hash_suffix(s: &str) -> &str {
     s
 }
 
+// v0 mangling demangles inherent impl methods as `<path::Type>::method`; rewrite
+// to `path::Type::method` so they match registered instrumented names. Trait impl
+// symbols (`<Type as Trait>::method`) are left untouched and stay unmatched.
+fn strip_inherent_impl_brackets(s: &str) -> Cow<'_, str> {
+    let Some(rest) = s.strip_prefix('<') else {
+        return Cow::Borrowed(s);
+    };
+
+    let mut depth = 1usize;
+    let mut close = None;
+    for (idx, ch) in rest.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(idx);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let Some(close) = close else {
+        return Cow::Borrowed(s);
+    };
+    let inner = &rest[..close];
+    let tail = &rest[close + 1..];
+    if inner.contains(" as ") || !tail.starts_with("::") {
+        return Cow::Borrowed(s);
+    }
+    Cow::Owned(format!("{inner}{tail}"))
+}
+
 fn match_eligible_symbol(
     normalized: &str,
     match_to_display: &HashMap<&'static str, &'static str>,
@@ -351,7 +388,9 @@ fn sample_cpu_weight(
 mod tests {
     use std::collections::HashMap;
 
-    use crate::lib_on::functions::cpu::samply::{match_eligible_symbol, strip_hash_suffix};
+    use crate::lib_on::functions::cpu::samply::{
+        match_eligible_symbol, strip_hash_suffix, strip_inherent_impl_brackets,
+    };
 
     fn identity_map<const N: usize>(
         items: [&'static str; N],
@@ -366,6 +405,40 @@ mod tests {
             "mevlog::main"
         );
         assert_eq!(strip_hash_suffix("mevlog::main"), "mevlog::main");
+    }
+
+    #[test]
+    fn strips_v0_inherent_impl_brackets() {
+        assert_eq!(
+            strip_inherent_impl_brackets("<cpu_symbols::Worker>::method_heavy_work"),
+            "cpu_symbols::Worker::method_heavy_work"
+        );
+        assert_eq!(
+            strip_inherent_impl_brackets("<foo::Bar<u32>>::method::{closure#0}"),
+            "foo::Bar<u32>::method::{closure#0}"
+        );
+        assert_eq!(
+            strip_inherent_impl_brackets("<foo::Bar as core::fmt::Debug>::fmt"),
+            "<foo::Bar as core::fmt::Debug>::fmt"
+        );
+        assert_eq!(
+            strip_inherent_impl_brackets("cpu_symbols::free_heavy_work"),
+            "cpu_symbols::free_heavy_work"
+        );
+        assert_eq!(
+            strip_inherent_impl_brackets("<unclosed::Bracket"),
+            "<unclosed::Bracket"
+        );
+    }
+
+    #[test]
+    fn matches_v0_inherent_impl_method() {
+        let eligible = identity_map(["cpu_symbols::Worker::method_heavy_work"]);
+
+        let normalized = strip_inherent_impl_brackets("<cpu_symbols::Worker>::method_heavy_work");
+        let matched = match_eligible_symbol(&normalized, &eligible);
+
+        assert_eq!(matched, Some("cpu_symbols::Worker::method_heavy_work"));
     }
 
     #[test]
