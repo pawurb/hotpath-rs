@@ -1,4 +1,4 @@
-# Rust SQL Query Profiling for sqlx and Diesel
+# Rust SQL Performance Profiling for sqlx and Diesel
 
 <img loading="lazy" src="{{#asset-hash images/sql-report.png}}" alt="hotpath-rs terminal SQL report table showing normalized queries with call counts, average, P95, total, and percent-of-total execution time">
 
