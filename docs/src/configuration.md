@@ -33,6 +33,19 @@
 | `HOTPATH_KEEP_INLINE` | Set to `true` or `1` to preserve user-provided `#[inline(...)]` attributes instead of rewriting measured functions to `#[inline(never)]` under `hotpath-cpu`. This env var is read during proc-macro expansion, so run `cargo clean` before rebuilding for changes to take effect. (default: `false`) |
 | `HOTPATH_FUNCTIONS_NAME_DEPTH` | Number of module segments to keep when displaying function names (including the function name itself). `1` = function name only, `2` = one module + function, `0` = unlimited (full path). When using the TUI, set this env var for the TUI process too, since the console applies name shortening in its own process. (default: `2`) |
 
+## Time Sampling
+
+Measure durations for only a fraction of calls to reduce profiling overhead in extremely hot code paths. Rates are fractions in `[0.0, 1.0]`: `0.1` times 1 in 10 calls, `0.0` is count-only mode (counts, states, and queue sizes stay exact, no durations at all), `1.0` or unset measures everything. Per-resource variables take precedence over the global rate, and all env vars take precedence over the [`HotpathGuardBuilder`](https://docs.rs/hotpath/latest/hotpath/struct.HotpathGuardBuilder.html) setters. See [Profiling overhead](profiling_overhead.md#reducing-overhead-time-sampling) for details.
+
+| Variable | Description |
+|----------|-------------|
+| `HOTPATH_TIME_SAMPLING_RATE` | Global sampling rate applied to all resource types below. (default: unset, measure everything) |
+| `HOTPATH_FUNCTIONS_TIME_SAMPLING_RATE` | Sampling rate for function timings. (default: unset) |
+| `HOTPATH_MUTEXES_TIME_SAMPLING_RATE` | Sampling rate for mutex wait & acquire timings. (default: unset) |
+| `HOTPATH_RW_LOCKS_TIME_SAMPLING_RATE` | Sampling rate for RwLock wait & acquire timings. (default: unset) |
+| `HOTPATH_FUTURES_TIME_SAMPLING_RATE` | Sampling rate for future poll timings. (default: unset) |
+| `HOTPATH_CHANNELS_TIME_SAMPLING_RATE` | Sampling rate for channel send/receive latency timings. (default: unset) |
+
 ## CPU Sampling
 
 | Variable | Description |
