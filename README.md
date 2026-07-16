@@ -55,14 +55,14 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
 ### AI Setup (Recommended)
 
-The quickest way to set up hotpath is to let an AI coding agent do it. Install the `hotpath` CLI (it compiles with zero external dependencies) and run `init` inside your project:
+The quickest way to set up hotpath is to let an AI coding agent do it. Install the `hotpath` CLI and run `init` inside your project:
 
 ```bash
 cargo install hotpath --version '^0.21'
 hotpath init --agent claude # or --agent codex
 ```
 
-`hotpath init` downloads the version-matched [hotpath_init agent skill](skills/hotpath_init/SKILL.md) from GitHub and starts an interactive Claude Code or Codex session with it as setup instructions. The agent inspects your project, adds the feature-gated dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled. You review and approve each edit through the agent's regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
+`hotpath init` downloads the [hotpath_init agent skill](skills/hotpath_init/SKILL.md) from GitHub and starts an interactive Claude Code or Codex session with it as setup instructions. The agent inspects your project, adds the feature-gated dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled. You review and approve each edit through the agent's regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
 
 You can also use the skill directly, without the hotpath CLI: copy it to `~/.claude/skills/hotpath_init/SKILL.md` and run `/hotpath_init` in a Claude Code session.
 
