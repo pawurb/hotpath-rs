@@ -13,11 +13,11 @@ pub enum Agent {
 }
 
 impl Agent {
-    pub fn from_arg(arg: Option<&str>) -> Result<Self, String> {
+    pub fn from_arg(arg: &str) -> Result<Self, String> {
         match arg {
-            None | Some("claude") => Ok(Self::Claude),
-            Some("codex") => Ok(Self::Codex),
-            Some(other) => Err(format!(
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            other => Err(format!(
                 "Unknown agent '{other}'. Supported agents: claude, codex"
             )),
         }
