@@ -1,0 +1,116 @@
+---
+name: hotpath_init
+description: Configure hotpath profiling in a Rust project. Adds the hotpath dependency with feature-gated setup, instruments main with #[hotpath::main], functions with #[measure]/#[measure_all], and wraps channels, mutexes, rw_locks, streams and futures with hotpath macros. Use when the user wants to add or set up hotpath profiling in a crate.
+allowed-tools: Bash, Read, Edit, Write, Glob, Grep
+---
+
+# Initialize hotpath Profiling
+
+Set up [hotpath](https://hotpath.rs) profiling in the current Rust project. The setup is fully feature-gated: zero compile-time and runtime overhead unless the `hotpath` feature is explicitly enabled. All macros are noops when the feature is off, so no `cfg_attr` wrapping is needed.
+
+## Steps
+
+### 1. Inspect the project
+
+- Find the binary crate(s) and the `main` function. If there is no `main` you control (e.g. a library or a test harness), use the `HotpathGuardBuilder` API instead of `#[hotpath::main]` (see step 3).
+- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `futures_channel`), `std::sync::Mutex`, `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx.
+
+### 2. Add the dependency and feature passthrough
+
+In the target crate's `Cargo.toml`:
+
+```toml
+[dependencies]
+hotpath = "0.21"
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+```
+
+Enable extra hotpath cargo features on the dependency based on what the project uses:
+
+- `tokio` - for `tokio::sync` channel instrumentation and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.21", features = ["tokio"] }`
+- `crossbeam` - for `crossbeam_channel` instrumentation
+- `futures` - for `futures_channel` instrumentation
+- `sqlx` - for SQL query profiling via `hotpath::sqlx_tracing_layer()`
+
+If the crate already has a `[features]` section, merge the entries; don't clobber it.
+
+### 3. Instrument main
+
+`#[hotpath::main]` initializes the profiler and prints the report when main exits. With tokio, `#[tokio::main]` must come FIRST (above):
+
+```rust
+#[tokio::main]
+#[hotpath::main]
+async fn main() {
+    // ...
+}
+```
+
+Optional parameters: `#[hotpath::main(percentiles = [50, 95, 99.9], format = "json", limit = 20)]`. Defaults are fine for a first setup; don't add parameters unless asked.
+
+If attribute placement on main is not possible, build a guard programmatically (report prints when the guard drops):
+
+```rust
+let _hotpath = hotpath::HotpathGuardBuilder::new("main")
+    .percentiles(&[50.0, 95.0, 99.9])
+    .build();
+```
+
+### 4. Instrument functions
+
+- Prefer `#[hotpath::measure_all]` on whole modules and `impl` blocks - it instruments every function inside. Exclude noisy or trivial functions with `#[hotpath::skip]`.
+- Use `#[hotpath::measure]` on individual functions.
+- Useful parameters: `log = true` (log return values, requires `Debug`), `label = "name"` (custom identifier, duplicates panic at runtime).
+- `hotpath::measure_block!("label", { ... })` for ad-hoc code blocks.
+- `#[hotpath::future_fn]` on async functions to track future lifecycle (poll counts, completion) instead of plain timing.
+
+Start with hot paths: request handlers, worker loops, parsing/serialization, IO-heavy functions. Don't instrument one-line getters.
+
+Async functions are measured runtime-agnostically, and under `hotpath-alloc` their allocations are tracked too (per-poll attribution via an async bridge), so no special handling is needed.
+
+### 5. Wrap data-flow primitives
+
+Wrap at the creation site; all wrappers accept optional `label = "name"` and (where noted) `log = true`:
+
+```rust
+// Channels (tokio mpsc/oneshot, std mpsc, crossbeam, futures_channel)
+let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), label = "jobs", log = true);
+// futures_channel bounded requires proxy mode and explicit capacity:
+let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(10), proxy = true, capacity = 10);
+
+// Locks (wait time + held time)
+let mutex = hotpath::mutex!(std::sync::Mutex::new(state), label = "state");
+let lock = hotpath::rw_lock!(tokio::sync::RwLock::new(config), label = "config");
+
+// Streams and futures
+let s = hotpath::stream!(stream::iter(1..=10), label = "events");
+let result = hotpath::future!(some_async_operation(), label = "fetch").await;
+```
+
+Wrapped locks/channels are drop-in: the wrappers expose the same API, so call sites don't change. If passing them across function boundaries requires type-signature changes, note that to the user rather than rewriting half the codebase silently.
+
+### 6. Optional extras (only when relevant)
+
+- Tokio runtime metrics: call `hotpath::tokio_runtime!();` once at startup (requires `tokio` feature).
+- SQL profiling (sqlx 0.8/0.9): add the layer to the tracing subscriber once - `tracing_subscriber::registry().with(hotpath::sqlx_tracing_layer()).init();` (requires `sqlx` feature). Don't filter out the `sqlx::query` target.
+- Debug helpers: `hotpath::dbg!(expr)`, `hotpath::val!("key").set(&value)`, `hotpath::gauge!("name").set(42.0)`.
+
+### 7. Verify
+
+```bash
+cargo check                       # feature off: must still compile, zero overhead
+cargo check --features hotpath    # feature on
+cargo run --features hotpath      # prints report on exit
+```
+
+Optionally verify alloc mode: `cargo run --features 'hotpath,hotpath-alloc'`.
+
+Report what was instrumented and mention next steps: the live TUI (`cargo install hotpath --features tui`, then `hotpath console` while the app runs - metrics server listens on port 6770 by default), `HOTPATH_REPORT=all` for all report sections, and `HOTPATH_OUTPUT_FORMAT=json` for machine-readable output.
+
+## Rules
+
+- Never enable the `hotpath` feature by default (`default = []`); profiling must stay opt-in.
+- Keep edits minimal: dependency, main, and a sensible starting set of instrumented functions/primitives. Expand coverage only when the user asks.
