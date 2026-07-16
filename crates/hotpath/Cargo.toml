@@ -11,7 +11,6 @@ categories = ["development-tools"]
 [[bin]]
 name = "hotpath"
 path = "bin/hotpath/main.rs"
-required-features = ["tui"]
 
 [[bin]]
 name = "hotpath-utils"
