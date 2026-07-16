@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.3] - 2026-07-16
+
+### 🚀 Features
+
+- Add init CLI
+
+
+### 🐛 Bug Fixes
+
+- Fix tests compilation
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Add hotpath_init agent skill
+
+- Release 0.21.3
+
+
 ## [0.21.2] - 2026-07-11
 
 ### 🚀 Features
