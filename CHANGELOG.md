@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.4] - 2026-07-16
+
+### 🐛 Bug Fixes
+
+- Fix init CLI params
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.21.4
+
+
 ## [0.21.3] - 2026-07-16
 
 ### 🚀 Features
