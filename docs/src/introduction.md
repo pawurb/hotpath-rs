@@ -15,8 +15,32 @@
       <span class="terminal-prompt">$</span>
       <span class="terminal-command">ssh demo.hotpath.rs</span>
     </div>
+    <p class="ssh-demo-label">Or let your AI agent configure hotpath in a repo:</p>
+    <div class="terminal-shell terminal-shell-multi">
+      <div class="terminal-tabs">
+        <button class="terminal-tab active" data-agent="claude" onclick="hotpathInitAgent('claude')">Claude</button>
+        <button class="terminal-tab" data-agent="codex" onclick="hotpathInitAgent('codex')">Codex</button>
+      </div>
+      <div class="terminal-line">
+        <span class="terminal-prompt">$</span>
+        <span class="terminal-command">cargo install hotpath --version '^{{HOTPATH_VERSION}}'</span>
+      </div>
+      <div class="terminal-line">
+        <span class="terminal-prompt">$</span>
+        <span class="terminal-command">hotpath init --agent <span id="init-agent-name">claude</span></span>
+      </div>
+    </div>
   </div>
 </div>
+
+<script>
+function hotpathInitAgent(agent) {
+  document.getElementById('init-agent-name').textContent = agent;
+  document.querySelectorAll('.terminal-tab').forEach(function (tab) {
+    tab.classList.toggle('active', tab.dataset.agent === agent);
+  });
+}
+</script>
 
 [hotpath-rs](https://github.com/pawurb/hotpath-rs) is an easy-to-configure Rust performance profiling toolkit that shows exactly where your code spends time, burns CPU, and allocates memory. 
 
@@ -97,7 +121,20 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 
 ## Getting Started
 
-### Installation
+### AI Setup (Recommended)
+
+The quickest way to set up hotpath is to let an AI coding agent do it. Install the `hotpath` CLI and run `init` inside your project repo:
+
+```bash
+cargo install hotpath --version '^{{HOTPATH_VERSION}}'
+hotpath init --agent claude # or --agent codex
+```
+
+`hotpath init` downloads the [hotpath_init agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init/SKILL.md) from GitHub and starts an interactive Claude Code or Codex session with it as setup instructions. The agent inspects your project, adds the feature-gated dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled. You review and approve each edit through the agent's regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
+
+You can also use the skill directly, without the hotpath CLI: copy it to `~/.claude/skills/hotpath_init/SKILL.md` and run `/hotpath_init` in a Claude Code session.
+
+### Manual installation
 
 Add to your `Cargo.toml`:
 
