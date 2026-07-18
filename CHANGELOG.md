@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.5] - 2026-07-18
+
+### 🐛 Bug Fixes
+
+- Allow updating init skill without binary release
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.21.5
+
+
 ## [0.21.4] - 2026-07-16
 
 ### 🐛 Bug Fixes
