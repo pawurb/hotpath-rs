@@ -61,11 +61,10 @@ let _hotpath = hotpath::HotpathGuardBuilder::new("main")
 
 ### 4. Instrument functions
 
-- Prefer `#[hotpath::measure_all]` on whole modules and `impl` blocks - it instruments every function inside. Exclude noisy or trivial functions with `#[hotpath::skip]`.
-- Use `#[hotpath::measure]` on individual functions.
-- Useful parameters: `log = true` (log return values, requires `Debug`), `label = "name"` (custom identifier, duplicates panic at runtime).
+- Prefer `#[hotpath::measure_all]` on inline modules and `impl` blocks - it instruments every function inside. Exclude noisy or trivial functions with `#[hotpath::skip]`.
+- Use `#[hotpath::measure]` on individual functions, both sync and async. 
+- Useful parameters: `log = true` (log return values, requires `Debug`), `label = "name"` (custom identifier, duplicates panic at runtime). Apply `log = true` only if `Debug` is already implemented.
 - `hotpath::measure_block!("label", { ... })` for ad-hoc code blocks.
-- `#[hotpath::future_fn]` on async functions to track future lifecycle (poll counts, completion) instead of plain timing.
 
 Start with hot paths: request handlers, worker loops, parsing/serialization, IO-heavy functions. Don't instrument one-line getters.
 
@@ -92,11 +91,14 @@ let result = hotpath::future!(some_async_operation(), label = "fetch").await;
 
 Wrapped locks/channels are drop-in: the wrappers expose the same API, so call sites don't change. If passing them across function boundaries requires type-signature changes, note that to the user rather than rewriting half the codebase silently.
 
+Wrapper macros return types prefixed with `hotpath::wrap`, make sure to update type signatures where needed. Explain to user that these types are no-op unless `hotpath` feature is enabled.
+
+Apply `log = true` only if `Debug` is already implemented.
+
 ### 6. Optional extras (only when relevant)
 
 - Tokio runtime metrics: call `hotpath::tokio_runtime!();` once at startup (requires `tokio` feature).
 - SQL profiling (sqlx 0.8/0.9): add the layer to the tracing subscriber once - `tracing_subscriber::registry().with(hotpath::sqlx_tracing_layer()).init();` (requires `sqlx` feature). Don't filter out the `sqlx::query` target.
-- Debug helpers: `hotpath::dbg!(expr)`, `hotpath::val!("key").set(&value)`, `hotpath::gauge!("name").set(42.0)`.
 
 ### 7. Verify
 

@@ -130,7 +130,7 @@ cargo install hotpath --version '^{{HOTPATH_VERSION}}'
 hotpath init --agent claude # or --agent codex
 ```
 
-`hotpath init` downloads the [hotpath_init agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init/SKILL.md) from GitHub and starts an interactive Claude Code or Codex session with it as setup instructions. The agent inspects your project, adds the feature-gated dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled. You review and approve each edit through the agent's regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
+`hotpath init` downloads the [hotpath_init agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init/SKILL.md) from GitHub and starts an interactive Claude Code or Codex session with it as setup instructions. The agent inspects your project, adds the dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled. You review and approve each edit through the agent's regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
 
 You can also use the skill directly, without the hotpath CLI: copy it to `~/.claude/skills/hotpath_init/SKILL.md` and run `/hotpath_init` in a Claude Code session.
 
