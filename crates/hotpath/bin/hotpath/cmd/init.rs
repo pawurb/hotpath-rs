@@ -1,7 +1,9 @@
 use std::io::ErrorKind;
 use std::process::Command;
 
-const SKILL_URL_TEMPLATE: &str =
+const SKILL_URL_BRANCH_TEMPLATE: &str =
+    "https://raw.githubusercontent.com/pawurb/hotpath-rs/init-v{minor}/skills/hotpath_init/SKILL.md";
+const SKILL_URL_TAG_TEMPLATE: &str =
     "https://raw.githubusercontent.com/pawurb/hotpath-rs/v{version}/skills/hotpath_init/SKILL.md";
 
 const KICKOFF_PROMPT: &str = "Set up hotpath profiling in this repo.";
@@ -32,9 +34,16 @@ impl Agent {
 }
 
 pub fn run(agent: Agent) -> Result<(), String> {
-    let url = skill_url();
-    println!("Downloading setup instructions from {url}");
-    let skill = download_skill(&url)?;
+    let branch_url = branch_skill_url();
+    println!("Downloading setup instructions from {branch_url}");
+    let skill = match download_skill(&branch_url) {
+        Ok(skill) => skill,
+        Err(branch_err) => {
+            let tag_url = tag_skill_url();
+            println!("Branch download failed, retrying from {tag_url}");
+            download_skill(&tag_url).map_err(|tag_err| format!("{branch_err}\n{tag_err}"))?
+        }
+    };
     let instructions = strip_frontmatter(&skill);
 
     println!(
@@ -75,8 +84,16 @@ pub fn run(agent: Agent) -> Result<(), String> {
     Ok(())
 }
 
-fn skill_url() -> String {
-    SKILL_URL_TEMPLATE.replace("{version}", env!("CARGO_PKG_VERSION"))
+fn branch_skill_url() -> String {
+    SKILL_URL_BRANCH_TEMPLATE.replace("{minor}", minor_version(env!("CARGO_PKG_VERSION")))
+}
+
+fn tag_skill_url() -> String {
+    SKILL_URL_TAG_TEMPLATE.replace("{version}", env!("CARGO_PKG_VERSION"))
+}
+
+fn minor_version(version: &str) -> &str {
+    version.rsplit_once('.').map_or(version, |(minor, _)| minor)
 }
 
 fn download_skill(url: &str) -> Result<String, String> {
@@ -115,7 +132,23 @@ fn strip_frontmatter(skill: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_frontmatter;
+    use super::{minor_version, strip_frontmatter, SKILL_URL_BRANCH_TEMPLATE};
+
+    #[test]
+    fn derives_minor_version() {
+        assert_eq!(minor_version("0.21.4"), "0.21");
+        assert_eq!(minor_version("1.0.0"), "1.0");
+        assert_eq!(minor_version("0.21"), "0");
+    }
+
+    #[test]
+    fn branch_url_uses_minor_version() {
+        let url = SKILL_URL_BRANCH_TEMPLATE.replace("{minor}", minor_version("0.21.4"));
+        assert_eq!(
+            url,
+            "https://raw.githubusercontent.com/pawurb/hotpath-rs/init-v0.21/skills/hotpath_init/SKILL.md"
+        );
+    }
 
     #[test]
     fn strips_yaml_frontmatter() {
