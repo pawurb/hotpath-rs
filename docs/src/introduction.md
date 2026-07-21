@@ -123,16 +123,26 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 
 ### AI Setup (Recommended)
 
-The quickest way to set up hotpath is to let an AI coding agent do it. Install the `hotpath` CLI and run `init` inside your project repo:
+The quickest way to set up hotpath is to let your own AI coding agent do it. Install the `hotpath` CLI and run `init` inside your project repo:
 
 ```bash
 cargo install hotpath --version '^{{HOTPATH_VERSION}}'
 hotpath init --agent claude # or --agent codex
 ```
 
-`hotpath init` downloads the [hotpath_init agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init/SKILL.md) from GitHub and starts an interactive Claude Code or Codex session with it as setup instructions. The agent inspects your project, adds the dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled. You review and approve each edit through the agent's regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
+`hotpath init` downloads the [hotpath_init agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init/SKILL.md) from GitHub and starts your installed Claude Code or Codex with it as setup instructions. The agent inspects your project, adds the dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled.
 
-You can also use the skill directly, without the hotpath CLI: copy it to `~/.claude/skills/hotpath_init/SKILL.md` and run `/hotpath_init` in a Claude Code session.
+Your agent remains in control: you review and approve edits through its regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
+
+You can also install the skill directly, without the hotpath CLI:
+
+```bash
+mkdir -p ~/.claude/skills/hotpath_init
+curl -fsSL https://raw.githubusercontent.com/pawurb/hotpath-rs/main/skills/hotpath_init/SKILL.md \
+  -o ~/.claude/skills/hotpath_init/SKILL.md
+```
+
+Then run `/hotpath_init` in a Claude Code session.
 
 ### Manual installation
 
