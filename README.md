@@ -11,6 +11,12 @@ Try the TUI demo via SSH - no installation required:
 ssh demo.hotpath.rs
 ```
 
+Or let your own AI agent configure profiling in a repo:
+```
+cargo install hotpath
+hotpath init --agent claude 
+```
+
 Explore the full documentation at [hotpath.rs](https://hotpath.rs). See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 You can use it to produce one-off performance (timing, memory or CPU) reports:
