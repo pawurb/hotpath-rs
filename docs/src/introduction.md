@@ -23,7 +23,7 @@
       </div>
       <div class="terminal-line">
         <span class="terminal-prompt">$</span>
-        <span class="terminal-command">cargo install hotpath --version '^{{HOTPATH_VERSION}}'</span>
+        <span class="terminal-command">cargo install hotpath</span>
       </div>
       <div class="terminal-line">
         <span class="terminal-prompt">$</span>
