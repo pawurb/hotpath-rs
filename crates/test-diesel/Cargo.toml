@@ -9,6 +9,12 @@ description = "Tests for Diesel SQL query instrumentation via connection::Instru
 hotpath = { workspace = true, features = ["diesel"] }
 diesel = { version = "2.3", default-features = false, features = ["sqlite"] }
 libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+pq-sys = { version = "0.7", features = ["bundled"], optional = true }
 
 [features]
 hotpath = ["hotpath/hotpath"]
+pg = ["diesel/postgres", "dep:pq-sys"]
+
+[[example]]
+name = "basic_postgres"
+required-features = ["hotpath", "pg"]
