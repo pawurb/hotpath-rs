@@ -30,6 +30,11 @@ members = [
     "crates/hotpath-macros-meta",
 ]
 resolver = "2"
+# test-toasty is a standalone crate, not a workspace member: toasty's sqlite
+# driver (rusqlite -> libsqlite3-sys 0.37) and the workspace's sqlx-sqlite
+# (libsqlite3-sys 0.30) both `links = "sqlite3"`, which cargo forbids in a
+# single resolution graph. Build it via --manifest-path.
+exclude = ["crates/test-toasty"]
 
 [workspace.dependencies]
 hotpath-macros = { path = "./crates/hotpath-macros", version = "0.21.5" }
