@@ -15,7 +15,7 @@
       <span class="terminal-prompt">$</span>
       <span class="terminal-command">ssh demo.hotpath.rs</span>
     </div>
-    <p class="ssh-demo-label">Or let your AI agent configure hotpath in a repo:</p>
+    <p class="ssh-demo-label">Or let your own AI agent configure profiling in a repo:</p>
     <div class="terminal-shell terminal-shell-multi">
       <div class="terminal-tabs">
         <button class="terminal-tab active" data-agent="claude" onclick="hotpathInitAgent('claude')">Claude</button>
