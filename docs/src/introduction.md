@@ -19,7 +19,7 @@
     <div class="terminal-shell terminal-shell-multi">
       <div class="terminal-tabs">
         <button class="terminal-tab active" data-agent="claude" onclick="hotpathInitAgent('claude')">Claude</button>
-        <button class="terminal-tab" data-agent="codex" onclick="hotpathInitAgent('codex')">Codex</button>
+        <button class="terminal-tab" data-agent="codex&nbsp;" onclick="hotpathInitAgent('codex&nbsp;')">Codex</button>
       </div>
       <div class="terminal-line">
         <span class="terminal-prompt">$</span>
