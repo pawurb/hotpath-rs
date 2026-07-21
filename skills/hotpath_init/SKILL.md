@@ -1,6 +1,6 @@
 ---
 name: hotpath_init
-description: Configure hotpath profiling in a Rust project. Adds the hotpath dependency with feature-gated setup, instruments main with #[hotpath::main], functions with #[measure]/#[measure_all], and wraps channels, mutexes, rw_locks, streams and futures with hotpath macros. Use when the user wants to add or set up hotpath profiling in a crate.
+description: Configure hotpath profiling in a Rust project. Adds the hotpath dependency with feature-gated setup, instruments main with hotpath::main, functions with measure/measure_all, and wraps channels, mutexes, rw_locks, streams and futures with hotpath macros. Use when the user wants to add or set up hotpath profiling in a crate.
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
@@ -13,7 +13,7 @@ Set up [hotpath](https://hotpath.rs) profiling in the current Rust project. The 
 ### 1. Inspect the project
 
 - Find the binary crate(s) and the `main` function. If there is no `main` you control (e.g. a library or a test harness), use the `HotpathGuardBuilder` API instead of `#[hotpath::main]` (see step 3).
-- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `futures_channel`), `std::sync::Mutex`, `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx.
+- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `flume`, `async-channel`, `futures_channel`), `std::sync::Mutex`, `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx.
 
 ### 2. Add the dependency and feature passthrough
 
@@ -35,7 +35,7 @@ Enable extra hotpath cargo features on the dependency based on what the project 
 - `futures` - for `futures_channel` instrumentation
 - `sqlx` - for SQL query profiling via `hotpath::sqlx_tracing_layer()`
 
-If the crate already has a `[features]` section, merge the entries; don't clobber it.
+If the crate already has a `[features]` section, merge the entries.
 
 ### 3. Instrument main
 
@@ -55,7 +55,6 @@ If attribute placement on main is not possible, build a guard programmatically (
 
 ```rust
 let _hotpath = hotpath::HotpathGuardBuilder::new("main")
-    .percentiles(&[50.0, 95.0, 99.9])
     .build();
 ```
 
@@ -63,21 +62,24 @@ let _hotpath = hotpath::HotpathGuardBuilder::new("main")
 
 - Prefer `#[hotpath::measure_all]` on inline modules and `impl` blocks - it instruments every function inside. Exclude noisy or trivial functions with `#[hotpath::skip]`.
 - Use `#[hotpath::measure]` on individual functions, both sync and async. 
-- Useful parameters: `log = true` (log return values, requires `Debug`), `label = "name"` (custom identifier, duplicates panic at runtime). Apply `log = true` only if `Debug` is already implemented.
+- Useful parameters: `log = true` (log return values, requires `Debug`), `label = "name"` (custom identifier, duplicates panic at runtime).
 - `hotpath::measure_block!("label", { ... })` for ad-hoc code blocks.
 
 Start with hot paths: request handlers, worker loops, parsing/serialization, IO-heavy functions. Don't instrument one-line getters.
 
 Async functions are measured runtime-agnostically, and under `hotpath-alloc` their allocations are tracked too (per-poll attribution via an async bridge), so no special handling is needed.
 
+Don't try to instrument everything, use up to ~5 `hotpath::measure_all` annotations and up to 30 `hotpath::measure`. Goal of the initial setup is not to measure all functions, but to get the initial working instrumentation in place.
+
 ### 5. Wrap data-flow primitives
 
 Wrap at the creation site; all wrappers accept optional `label = "name"` and (where noted) `log = true`:
 
 ```rust
-// Channels (tokio mpsc/oneshot, std mpsc, crossbeam, futures_channel)
+// Channels (tokio mpsc/oneshot, std mpsc, crossbeam, flume, async-channel, futures_channel)
 let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), label = "jobs", log = true);
-// futures_channel bounded requires proxy mode and explicit capacity:
+// tokio oneshot + futures_channel need proxy mode (compile error otherwise);
+// bounded std sync_channel and futures_channel mpsc also need capacity = N (must match):
 let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(10), proxy = true, capacity = 10);
 
 // Locks (wait time + held time)
