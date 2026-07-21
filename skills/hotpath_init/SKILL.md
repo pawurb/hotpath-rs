@@ -13,7 +13,7 @@ Set up [hotpath](https://hotpath.rs) profiling in the current Rust project. The 
 ### 1. Inspect the project
 
 - Find the binary crate(s) and the `main` function. If there is no `main` you control (e.g. a library or a test harness), use the `HotpathGuardBuilder` API instead of `#[hotpath::main]` (see step 3).
-- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `flume`, `async-channel`, `futures_channel`), `std::sync::Mutex`, `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx.
+- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `flume`, `async-channel`, `futures_channel`), `Mutex` and `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx, diesel.
 
 ### 2. Add the dependency and feature passthrough
 
@@ -33,7 +33,12 @@ Enable extra hotpath cargo features on the dependency based on what the project 
 - `tokio` - for `tokio::sync` channel instrumentation and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.21", features = ["tokio"] }`
 - `crossbeam` - for `crossbeam_channel` instrumentation
 - `futures` - for `futures_channel` instrumentation
+- `flume` - for `flume` channel instrumentation
+- `async-channel` - for `async-channel` instrumentation
+- `parking_lot` - for `parking_lot` `RwLock`/`Mutex` instrumentation
+- `async-lock` - for `async-lock` `RwLock`/`Mutex` instrumentation
 - `sqlx` - for SQL query profiling via `hotpath::sqlx_tracing_layer()`
+- `diesel` - for SQL query profiling via `hotpath::instrument_diesel_sql()`
 
 If the crate already has a `[features]` section, merge the entries.
 
@@ -101,6 +106,7 @@ Apply `log = true` only if `Debug` is already implemented.
 
 - Tokio runtime metrics: call `hotpath::tokio_runtime!();` once at startup (requires `tokio` feature).
 - SQL profiling (sqlx 0.8/0.9): add the layer to the tracing subscriber once - `tracing_subscriber::registry().with(hotpath::sqlx_tracing_layer()).init();` (requires `sqlx` feature). Don't filter out the `sqlx::query` target.
+- SQL profiling (diesel): call `hotpath::instrument_diesel_sql();` once at startup (requires `diesel` feature).
 
 ### 7. Verify
 
