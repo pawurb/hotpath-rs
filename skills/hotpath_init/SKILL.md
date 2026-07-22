@@ -1,6 +1,6 @@
 ---
 name: hotpath_init
-description: Configure hotpath profiling in a Rust project. Adds the hotpath dependency with feature-gated setup, instruments main with hotpath::main, functions with measure/measure_all, and wraps channels, mutexes, rw_locks, streams and futures with hotpath macros. Use when the user wants to add or set up hotpath profiling in a crate.
+description: Configure hotpath profiling in a Rust project. Adds the hotpath dependency with feature-gated setup, instruments main with hotpath::main, functions with measure/measure_all, and wraps channels, mutexes, rw_locks, streams, futures and reqwest clients with hotpath macros. Use when the user wants to add or set up hotpath profiling in a crate.
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
@@ -13,7 +13,7 @@ Set up [hotpath](https://hotpath.rs) profiling in the current Rust project. The 
 ### 1. Inspect the project
 
 - Find the binary crate(s) and the `main` function. If there is no `main` you control (e.g. a library or a test harness), use the `HotpathGuardBuilder` API instead of `#[hotpath::main]` (see step 3).
-- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `flume`, `async-channel`, `futures_channel`), `Mutex` and `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx, diesel.
+- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `flume`, `async-channel`, `futures_channel`), `Mutex` and `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx, diesel, reqwest clients (async only; note which reqwest major - 0.12 or 0.13).
 
 ### 2. Add the dependency and feature passthrough
 
@@ -39,6 +39,7 @@ Enable extra hotpath cargo features on the dependency based on what the project 
 - `async-lock` - for `async-lock` `RwLock`/`Mutex` instrumentation
 - `sqlx` - for SQL query profiling via `hotpath::sqlx_tracing_layer()`
 - `diesel` - for SQL query profiling via `hotpath::instrument_diesel_sql()`
+- `reqwest-0-12` / `reqwest-0-13` - for HTTP request profiling via `hotpath::http!(client)`; pick the feature matching the project's reqwest major version
 
 If the crate already has a `[features]` section, merge the entries.
 
@@ -107,6 +108,7 @@ Apply `log = true` only if `Debug` is already implemented.
 - Tokio runtime metrics: call `hotpath::tokio_runtime!();` once at startup (requires `tokio` feature).
 - SQL profiling (sqlx 0.8/0.9): add the layer to the tracing subscriber once - `tracing_subscriber::registry().with(hotpath::sqlx_tracing_layer()).init();` (requires `sqlx` feature). Don't filter out the `sqlx::query` target.
 - SQL profiling (diesel): call `hotpath::instrument_diesel_sql();` once at startup (requires `diesel` feature).
+- HTTP profiling (reqwest, async client only): wrap the client once at creation - `let client = hotpath::http!(reqwest::Client::new());` (requires `reqwest-0-12` or `reqwest-0-13` feature). Call sites stay unchanged; requests are reported per normalized endpoint (`GET host/path` with id-like segments collapsed to `{id}`) with an error count. Optional `label = "name"` prefixes endpoint keys - use it when the app has several clients. Where the client is stored in a struct or named in signatures, use `hotpath::wrap::reqwest::Client` (it resolves to the raw `reqwest::Client` when the feature is off). If the app already uses reqwest-middleware, attach `hotpath::ReqwestHttpMiddleware::new()` to its existing stack instead of the macro.
 
 ### 7. Verify
 

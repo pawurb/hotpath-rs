@@ -10,10 +10,12 @@ use crate::debug::{
     get_sorted_debug_dbg_entries, get_sorted_debug_gauge_entries, get_sorted_debug_val_entries,
 };
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
+use crate::http::{compare_http_entries, HttpEntry, HTTP_STATE};
 use crate::json::JsonDebugEntry;
 use crate::json::{
-    JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonMutexEntry, JsonMutexesList,
-    JsonRwLockEntry, JsonRwLocksList, JsonSqlEntry, JsonSqlList, JsonStreamEntry, JsonStreamsList,
+    JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonHttpEntry, JsonHttpList,
+    JsonMutexEntry, JsonMutexesList, JsonRwLockEntry, JsonRwLocksList, JsonSqlEntry, JsonSqlList,
+    JsonStreamEntry, JsonStreamsList,
 };
 use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
@@ -665,6 +667,127 @@ pub(crate) fn collect_sql_json(
         data: entries
             .iter()
             .map(|entry| sql_to_json(entry, reference_total, percentiles))
+            .collect(),
+    }
+}
+
+pub(crate) fn shutdown_http() -> Vec<HttpEntry> {
+    crate::lib_on::http::stop_http_events();
+    HTTP_STATE
+        .get()
+        .and_then(|state| {
+            if let Ok(mut guard) = state.shutdown_tx.lock() {
+                if let Some(tx) = guard.take() {
+                    let _ = tx.send(());
+                }
+            }
+            state
+                .completion_rx
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take())
+                .and_then(|rx| rx.recv().ok());
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+        })
+        .map(|mut entries| {
+            entries.sort_by(compare_http_entries);
+            entries
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn report_http_table(
+    entries: &[HttpEntry],
+    total_count: usize,
+    reference_total: u64,
+    percentiles: &[f64],
+    writer: &mut dyn Write,
+) {
+    if entries.is_empty() {
+        return;
+    }
+
+    write_section_header(writer, "http", "HTTP request execution time statistics.");
+    if entries.len() < total_count {
+        let _ = write!(writer, " ({}/{})", entries.len(), total_count);
+    }
+    let _ = writeln!(writer);
+
+    let mut header = vec![
+        styled_header("Endpoint"),
+        styled_header("Calls"),
+        styled_header("Errors"),
+        styled_header("Avg"),
+    ];
+    for &p in percentiles {
+        header.push(styled_header(&format_percentile_header(p)));
+    }
+    header.push(styled_header("Total"));
+    header.push(styled_header("% Total"));
+
+    let mut table = Table::new();
+    table.add_row(Row::new(header));
+
+    for entry in entries {
+        let mut row = vec![
+            Cell::new(&truncate_query(&entry.endpoint)),
+            Cell::new(&entry.count.to_string()),
+            Cell::new(&entry.error_count.to_string()),
+            Cell::new(&format_duration(entry.avg_nanos())),
+        ];
+        for &p in percentiles {
+            row.push(Cell::new(&format_duration(entry.percentile_nanos(p))));
+        }
+        row.push(Cell::new(&format_duration(entry.total_nanos)));
+        row.push(Cell::new(&format_sql_percent(
+            entry.total_nanos,
+            reference_total,
+        )));
+        table.add_row(Row::new(row));
+    }
+
+    print_table(&table, writer);
+    let _ = writeln!(writer);
+}
+
+fn http_to_json(entry: &HttpEntry, reference_total: u64, percentiles: &[f64]) -> JsonHttpEntry {
+    let mut percentile_map = HashMap::new();
+    for &p in percentiles {
+        percentile_map.insert(
+            format_percentile_key(p),
+            format_duration(entry.percentile_nanos(p)),
+        );
+    }
+
+    JsonHttpEntry {
+        id: entry.id,
+        endpoint: entry.endpoint.clone(),
+        count: entry.count,
+        errors: entry.error_count,
+        avg: format_duration(entry.avg_nanos()),
+        total: format_duration(entry.total_nanos),
+        percent_total: format_sql_percent(entry.total_nanos, reference_total),
+        percentiles: percentile_map,
+    }
+}
+
+pub(crate) fn collect_http_json(
+    entries: &[HttpEntry],
+    elapsed: std::time::Duration,
+    reference_total: u64,
+    percentiles: &[f64],
+) -> JsonHttpList {
+    JsonHttpList {
+        current_elapsed_ns: elapsed.as_nanos() as u64,
+        total_ns: reference_total,
+        percentiles: percentiles.to_vec(),
+        data: entries
+            .iter()
+            .map(|entry| http_to_json(entry, reference_total, percentiles))
             .collect(),
     }
 }

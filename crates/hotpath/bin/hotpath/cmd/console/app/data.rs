@@ -8,7 +8,7 @@ use hotpath::dev_logging::{trace, warn};
 use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
     JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList,
-    JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList,
+    JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonHttpList,
     JsonMutexesList, JsonRwLocksList, JsonSqlList, JsonStreamLogsList, JsonStreamsList,
     JsonThreadsList,
 };
@@ -38,7 +38,7 @@ impl App {
             }
             SelectedTab::Io if self.io_entries_len() > 0 => {
                 self.auto_expand_logs = false;
-                self.toggle_sql_logs();
+                self.toggle_io_logs();
             }
             SelectedTab::Debug if !self.debug_stats.is_empty() => {
                 self.auto_expand_logs = false;
@@ -367,6 +367,54 @@ impl App {
         }
     }
 
+    pub(crate) fn update_http(&mut self, http: JsonHttpList) {
+        let selected_id = self.selected_http_id();
+        self.http = http;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        let len = self.http.data.len();
+        // Entries re-sort by total time on every refresh; follow the selected
+        // endpoint by id so the cursor (and its open logs) don't jump rows.
+        if let Some(id) = selected_id {
+            if let Some(new_idx) = self.http.data.iter().position(|e| e.id == id) {
+                self.http_table_state.select(Some(new_idx));
+            } else if len > 0 {
+                self.http_table_state.select(Some(len - 1));
+            }
+        } else if let Some(selected) = self.http_table_state.selected() {
+            if selected >= len && len > 0 {
+                self.http_table_state.select(Some(len - 1));
+            }
+        }
+
+        if self.show_http_logs {
+            self.request_http_logs();
+        }
+        self.try_auto_expand_logs();
+    }
+
+    pub(crate) fn request_http_logs(&self) {
+        if self.paused {
+            return;
+        }
+
+        if let Some(id) = self.selected_http_id() {
+            let _ = self.request_tx.send(DataRequest::FetchHttpLogs(id));
+        }
+    }
+
+    pub(crate) fn handle_http_logs(&mut self, _id: u32, logs: hotpath::json::JsonHttpLogsList) {
+        self.http_logs = Some(logs);
+
+        let log_count = self.http_logs.as_ref().map(|l| l.logs.len()).unwrap_or(0);
+        if let Some(selected) = self.http_logs_table_state.selected() {
+            if selected >= log_count && log_count > 0 {
+                self.http_logs_table_state.select(Some(log_count - 1));
+            }
+        }
+    }
+
     pub(crate) fn request_data_flow_logs(&self) {
         if self.paused {
             return;
@@ -563,6 +611,7 @@ impl App {
                 self.loading_io = true;
                 match self.io_sub_tab {
                     IoSubTab::Sql => DataRequest::RefreshSql,
+                    IoSubTab::Http => DataRequest::RefreshHttp,
                 }
             }
             SelectedTab::Threads => {
@@ -671,6 +720,11 @@ impl App {
                 self.loading_io = false;
                 self.update_sql(data);
             }
+            DataResponse::Http(data) => {
+                trace!("Received http: {} entries", data.data.len());
+                self.loading_io = false;
+                self.update_http(data);
+            }
             DataResponse::ChannelLogs { id, logs } => {
                 trace!(
                     "Received channel {} logs: {} sent, {} received",
@@ -703,6 +757,13 @@ impl App {
             }
             DataResponse::SqlLogsNotFound { .. } => {
                 self.sql_logs = None;
+            }
+            DataResponse::HttpLogs { id, logs } => {
+                trace!("Received http {} logs: {} entries", id, logs.logs.len());
+                self.handle_http_logs(id, logs);
+            }
+            DataResponse::HttpLogsNotFound { .. } => {
+                self.http_logs = None;
             }
             DataResponse::Threads(data) => {
                 trace!("Received threads data: {} threads", data.data.len());

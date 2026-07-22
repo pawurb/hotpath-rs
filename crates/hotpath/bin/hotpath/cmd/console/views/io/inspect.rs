@@ -1,4 +1,4 @@
-use hotpath::json::JsonSqlLog;
+use hotpath::json::{JsonHttpLog, JsonSqlLog};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     symbols::border,
@@ -70,4 +70,44 @@ pub(crate) fn render_sql_inspect_popup(log: &JsonSqlLog, area: Rect, frame: &mut
     let query_lines = wrap_text(&log.query, max_width);
     let query = Paragraph::new(query_lines).wrap(Wrap { trim: false });
     frame.render_widget(query, query_area);
+}
+
+pub(crate) fn render_http_inspect_popup(log: &JsonHttpLog, area: Rect, frame: &mut Frame) {
+    let popup_width = (area.width as f32 * 0.8) as u16;
+    let popup_height = (area.height as f32 * 0.8) as u16;
+    let x = (area.width.saturating_sub(popup_width)) / 2;
+    let y = (area.height.saturating_sub(popup_height)) / 2;
+
+    let popup_area = Rect {
+        x: area.x + x,
+        y: area.y + y,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::bordered()
+        .title(format!(" Request execution #{} ", log.index))
+        .border_set(border::DOUBLE);
+
+    let inner_area = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+
+    let details_text = format!("Time: {} | Executed: {}", log.duration, log.ago);
+
+    let [details_area, _, status_area] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .areas(inner_area);
+
+    let details = Paragraph::new(details_text).wrap(Wrap { trim: false });
+    frame.render_widget(details, details_area);
+
+    let max_width = status_area.width.saturating_sub(2) as usize;
+    let status_lines = wrap_text(&format!("Status: {}", log.status), max_width);
+    let status = Paragraph::new(status_lines).wrap(Wrap { trim: false });
+    frame.render_widget(status, status_area);
 }

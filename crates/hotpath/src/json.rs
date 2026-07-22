@@ -152,6 +152,24 @@ pub(crate) struct SqlLogs {
     pub logs: Vec<SqlLogEntry>,
 }
 
+/// A single logged request of an HTTP endpoint bucket. `status` is `None` for
+/// transport errors. Raw URLs are never captured - the bucket's normalized
+/// endpoint identifies the route.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct HttpLogEntry {
+    pub index: u64,
+    pub timestamp: u64,
+    pub duration_nanos: u64,
+    pub status: Option<u16>,
+}
+
+/// Serializable log response containing recent requests for an HTTP endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct HttpLogs {
+    pub id: u32,
+    pub logs: Vec<HttpLogEntry>,
+}
+
 /// State of an instrumented future.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -340,6 +358,10 @@ pub enum Route {
     Sql,
     /// GET /sql/{id}/logs - Returns recent executions for a SQL query
     SqlLogs { sql_id: u32 },
+    /// GET /http - Returns HTTP endpoint statistics
+    Http,
+    /// GET /http/{id}/logs - Returns recent requests for an HTTP endpoint
+    HttpLogs { http_id: u32 },
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
     /// GET /profiler_status - Returns profiler uptime
@@ -375,6 +397,8 @@ impl Route {
             Route::Mutexes => "/mutexes".to_string(),
             Route::Sql => "/sql".to_string(),
             Route::SqlLogs { sql_id } => format!("/sql/{}/logs", sql_id),
+            Route::Http => "/http".to_string(),
+            Route::HttpLogs { http_id } => format!("/http/{}/logs", http_id),
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
         }
@@ -411,6 +435,7 @@ impl FromStr for Route {
             "/rw_locks" => return Ok(Route::RwLocks),
             "/mutexes" => return Ok(Route::Mutexes),
             "/sql" => return Ok(Route::Sql),
+            "/http" => return Ok(Route::Http),
             "/tokio_runtime" => return Ok(Route::TokioRuntime),
             "/profiler_status" => return Ok(Route::ProfilerStatus),
             _ => {}
@@ -450,6 +475,10 @@ impl FromStr for Route {
 
         if let Some(sql_id) = parse_id_from_path(path, "/sql/") {
             return Ok(Route::SqlLogs { sql_id });
+        }
+
+        if let Some(http_id) = parse_id_from_path(path, "/http/") {
+            return Ok(Route::HttpLogs { http_id });
         }
 
         Err(())

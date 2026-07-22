@@ -278,7 +278,7 @@ fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
 #[hotpath::measure]
 fn render_io_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
     let sub_tab = app.io_sub_tab;
-    let labels = [IoSubTab::Sql]
+    let labels = [IoSubTab::Sql, IoSubTab::Http]
         .into_iter()
         .map(|tab| {
             (
@@ -325,6 +325,12 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 Line::from("Add hotpath::sqlx_tracing_layer() to your tracing subscriber")
                     .centered(),
             ],
+            IoSubTab::Http => vec![
+                Line::from(""),
+                Line::from("No HTTP requests found").yellow().centered(),
+                Line::from(""),
+                Line::from("Wrap your reqwest client with hotpath::http!(...)").centered(),
+            ],
         };
 
         let block = Block::bordered().border_set(border::THICK);
@@ -332,7 +338,11 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    let (table_area, logs_area) = if app.show_sql_logs {
+    let show_logs = match app.io_sub_tab {
+        IoSubTab::Sql => app.show_sql_logs,
+        IoSubTab::Http => app.show_http_logs,
+    };
+    let (table_area, logs_area) = if show_logs {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -342,7 +352,10 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
         (area, None)
     };
 
-    let selected_index = app.sql_table_state.selected().unwrap_or(0);
+    let selected_index = match app.io_sub_tab {
+        IoSubTab::Sql => app.sql_table_state.selected().unwrap_or(0),
+        IoSubTab::Http => app.http_table_state.selected().unwrap_or(0),
+    };
     let position = selected_index + 1;
 
     match app.io_sub_tab {
@@ -358,40 +371,87 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
             position,
             total,
         ),
+        IoSubTab::Http => data_flow::render_http_panel(
+            &app.http.data,
+            &app.http.percentiles,
+            app.http.total_ns,
+            table_area,
+            frame,
+            &mut app.http_table_state,
+            app.show_http_logs,
+            app.io_focus == IoFocus::List,
+            position,
+            total,
+        ),
     };
 
     if let Some(logs_area) = logs_area {
-        let label = app
-            .sql_table_state
-            .selected()
-            .and_then(|i| app.sql.data.get(i))
-            .map(|e| truncate_message(&e.query, 48))
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        if let Some(ref logs) = app.sql_logs {
-            io_logs::render_sql_logs_panel(
-                logs,
-                &label,
-                logs_area,
-                frame,
-                &mut app.sql_logs_table_state,
-                app.io_focus == IoFocus::Logs,
-            );
+        let message = if app.paused {
+            "(refresh paused)"
+        } else if app.error_message.is_some() {
+            "(cannot fetch new data)"
         } else {
-            let message = if app.paused {
-                "(refresh paused)"
-            } else if app.error_message.is_some() {
-                "(cannot fetch new data)"
-            } else {
-                "(no data)"
-            };
-            data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
+            "(no data)"
+        };
+
+        match app.io_sub_tab {
+            IoSubTab::Sql => {
+                let label = app
+                    .sql_table_state
+                    .selected()
+                    .and_then(|i| app.sql.data.get(i))
+                    .map(|e| truncate_message(&e.query, 48))
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                if let Some(ref logs) = app.sql_logs {
+                    io_logs::render_sql_logs_panel(
+                        logs,
+                        &label,
+                        logs_area,
+                        frame,
+                        &mut app.sql_logs_table_state,
+                        app.io_focus == IoFocus::Logs,
+                    );
+                } else {
+                    data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
+                }
+            }
+            IoSubTab::Http => {
+                let label = app
+                    .http_table_state
+                    .selected()
+                    .and_then(|i| app.http.data.get(i))
+                    .map(|e| truncate_message(&e.endpoint, 48))
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                if let Some(ref logs) = app.http_logs {
+                    io_logs::render_http_logs_panel(
+                        logs,
+                        &label,
+                        logs_area,
+                        frame,
+                        &mut app.http_logs_table_state,
+                        app.io_focus == IoFocus::Logs,
+                    );
+                } else {
+                    data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
+                }
+            }
         }
     }
 
     if app.io_focus == IoFocus::Inspect {
-        if let Some(ref inspected) = app.inspected_sql_log {
-            io_inspect::render_sql_inspect_popup(inspected, area, frame);
+        match app.io_sub_tab {
+            IoSubTab::Sql => {
+                if let Some(ref inspected) = app.inspected_sql_log {
+                    io_inspect::render_sql_inspect_popup(inspected, area, frame);
+                }
+            }
+            IoSubTab::Http => {
+                if let Some(ref inspected) = app.inspected_http_log {
+                    io_inspect::render_http_inspect_popup(inspected, area, frame);
+                }
+            }
         }
     }
 }

@@ -67,6 +67,8 @@ drop = (
     "crates/test-debug",
     "crates/test-sqlx-08",
     "crates/test-sqlx-09",
+    "crates/test-reqwest-012",
+    "crates/test-reqwest-013",
     "crates/test-diesel",
 )
 p = pathlib.Path("Cargo.toml")
@@ -83,12 +85,16 @@ src = re.sub(r'^hotpath-meta\s*=.*\n', '', src, flags=re.MULTILINE)
 src = re.sub(r'"hotpath-meta\??/[^"]+",?\s*', '', src)
 src = re.sub(r'"dep:hotpath-meta",?\s*', '', src)
 extras = ("schemars", "rmcp", "axum", "tokio-util", "ureq", "reqwest",
+          "reqwest-012", "reqwest-middleware-04", "reqwest-middleware-05",
+          "async-trait", "http",
           "clap", "crossterm", "ratatui", "eyre", "tracing",
           "tracing-subscriber", "time", "sqlx", "diesel", "libsqlite3-sys")
 for dep in extras:
     src = re.sub(rf'^{re.escape(dep)}\s*=.*\n', '', src, flags=re.MULTILINE)
     src = re.sub(rf'"dep:{re.escape(dep)}",?\s*', '', src)
-src = re.sub(r'^demo-sql\s*=.*\n', '', src, flags=re.MULTILINE)
+    src = re.sub(rf'"{re.escape(dep)}/[^"]*",?\s*', '', src)
+src = re.sub(r'^demo\s*=.*\n', '', src, flags=re.MULTILINE)
+src = re.sub(r'^"reqwest-0-1[23]"\s*=.*\n', '', src, flags=re.MULTILINE)
 p.write_text(src)
 PY
 

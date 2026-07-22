@@ -9,10 +9,12 @@ pub fn init() {
     spawn_mutexes();
     spawn_channels();
     spawn_std_channel();
-    #[cfg(feature = "demo-sql")]
+    #[cfg(feature = "demo")]
     spawn_sqlx_sql();
-    #[cfg(feature = "demo-sql")]
+    #[cfg(feature = "demo")]
     spawn_diesel_sql();
+    #[cfg(feature = "demo")]
+    spawn_http();
 }
 
 fn spawn_channels() {
@@ -140,7 +142,7 @@ fn spawn_rw_locks() {
     });
 }
 
-#[cfg(feature = "demo-sql")]
+#[cfg(feature = "demo")]
 fn spawn_sqlx_sql() {
     use sqlx::sqlite::SqlitePoolOptions;
     use tracing_subscriber::prelude::*;
@@ -197,7 +199,7 @@ fn spawn_sqlx_sql() {
     });
 }
 
-#[cfg(feature = "demo-sql")]
+#[cfg(feature = "demo")]
 fn spawn_diesel_sql() {
     use diesel::prelude::*;
     use diesel::sql_types::{Integer, Text};
@@ -236,6 +238,66 @@ fn spawn_diesel_sql() {
 
             thread::sleep(Duration::from_millis(150));
         }
+    });
+}
+
+#[cfg(feature = "demo")]
+fn spawn_http() {
+    // Local server so the demo generates real request latencies without
+    // network access. Per-route delays give the endpoints distinct profiles.
+    let server = tiny_http::Server::http("127.0.0.1:0").expect("Failed to bind demo http server");
+    let port = server.server_addr().to_ip().expect("ip listener").port();
+
+    thread::spawn(move || {
+        for request in server.incoming_requests() {
+            let (status, delay_ms) = match request.url() {
+                url if url.starts_with("/users/") => (200, 5),
+                url if url.starts_with("/search") => (200, 40),
+                url if url.starts_with("/slow") => (200, 250),
+                _ => (404, 2),
+            };
+            thread::sleep(Duration::from_millis(delay_ms));
+            let response =
+                tiny_http::Response::from_string("{\"ok\":true}").with_status_code(status);
+            let _ = request.respond(response);
+        }
+    });
+
+    thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime");
+
+        rt.block_on(async move {
+            let client = hotpath::http!(reqwest::Client::new());
+            let base = format!("http://127.0.0.1:{port}");
+            let mut i: u64 = 0;
+            loop {
+                i += 1;
+
+                // Varying ids and query strings collapse into one normalized bucket.
+                let _ = client
+                    .get(format!("{base}/users/{}", i % 100 + 1))
+                    .send()
+                    .await;
+
+                if i.is_multiple_of(3) {
+                    let _ = client.get(format!("{base}/search?q=term{i}")).send().await;
+                }
+
+                if i.is_multiple_of(7) {
+                    let _ = client.get(format!("{base}/slow")).send().await;
+                }
+
+                // 404s feed the Errors column.
+                if i.is_multiple_of(11) {
+                    let _ = client.get(format!("{base}/missing/{i}")).send().await;
+                }
+
+                sleep_ms(120).await;
+            }
+        });
     });
 }
 

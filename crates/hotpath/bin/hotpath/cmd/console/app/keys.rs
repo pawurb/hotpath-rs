@@ -256,45 +256,45 @@ impl App {
                 KeyCode::Char('g') if self.handle_g_key() => {
                     self.first_io();
                 }
-                KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_sql_logs(),
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => self.focus_sql_logs(),
+                KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_io_logs(),
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => self.focus_io_logs(),
                 _ => {}
             },
             IoFocus::Logs => match key_code {
-                KeyCode::Down | KeyCode::Char('j') => self.select_next_sql_log(),
-                KeyCode::Up | KeyCode::Char('k') => self.select_previous_sql_log(),
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_io_log(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_io_log(),
                 KeyCode::Char('G') => {
                     self.pending_g = None;
-                    self.last_sql_log();
+                    self.last_io_log();
                 }
                 KeyCode::Char('g') if self.handle_g_key() => {
-                    self.first_sql_log();
+                    self.first_io_log();
                 }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
-                    self.toggle_sql_inspect()
+                    self.toggle_io_inspect()
                 }
                 KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => self.focus_io_list(),
-                KeyCode::Esc | KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_sql_logs(),
+                KeyCode::Esc | KeyCode::Char('o') | KeyCode::Char('O') => self.toggle_io_logs(),
                 _ => {}
             },
             IoFocus::Inspect => match key_code {
                 KeyCode::Esc | KeyCode::Char('o') | KeyCode::Char('O') => {
-                    self.close_sql_inspect_and_refocus()
+                    self.close_io_inspect_and_refocus()
                 }
                 KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => {
-                    self.close_sql_inspect_only()
+                    self.close_io_inspect_only()
                 }
-                KeyCode::Down | KeyCode::Char('j') => self.select_next_sql_log(),
-                KeyCode::Up | KeyCode::Char('k') => self.select_previous_sql_log(),
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_io_log(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_io_log(),
                 KeyCode::Char('G') => {
                     self.pending_g = None;
-                    self.last_sql_log();
+                    self.last_io_log();
                 }
                 KeyCode::Char('g') if self.handle_g_key() => {
-                    self.first_sql_log();
+                    self.first_io_log();
                 }
                 KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => {
-                    self.toggle_sql_inspect()
+                    self.toggle_io_inspect()
                 }
                 _ => {}
             },

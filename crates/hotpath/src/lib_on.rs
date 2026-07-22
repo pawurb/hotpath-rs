@@ -28,6 +28,7 @@ pub mod channels;
 pub mod cpu_baseline;
 pub mod debug;
 pub mod futures;
+pub mod http;
 pub mod mutexes;
 pub mod rw_locks;
 pub mod sql;
@@ -44,6 +45,7 @@ pub use channels::{
     InstrumentChannelWrapLog,
 };
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
+pub use http::{InstrumentHttpClient, ReqwestHttpMiddleware};
 pub use mutexes::InstrumentMutex;
 pub use rw_locks::InstrumentRwLock;
 #[cfg(feature = "diesel")]

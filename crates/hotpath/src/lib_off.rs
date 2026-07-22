@@ -231,6 +231,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn http_limit(self, _limit: usize) -> Self {
+        self
+    }
+
     pub fn limit(self, _limit: usize) -> Self {
         self
     }
@@ -344,6 +348,16 @@ macro_rules! mutex {
     };
     ($expr:expr, label = $label:expr) => {
         $expr
+    };
+}
+
+#[macro_export]
+macro_rules! http {
+    ($client:expr) => {
+        $client
+    };
+    ($client:expr, label = $label:expr) => {
+        $client
     };
 }
 

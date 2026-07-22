@@ -21,7 +21,7 @@ pub use lib_on::threads;
 #[cfg(all(feature = "hotpath", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
 #[cfg(feature = "hotpath")]
-pub use lib_on::{channels, futures, mutexes, sql, streams};
+pub use lib_on::{channels, futures, http, mutexes, sql, streams};
 
 #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub(crate) mod output;
@@ -196,6 +196,40 @@ pub mod wrap {
         #[cfg(not(feature = "hotpath"))]
         pub use async_channel::{Receiver, Sender};
     }
+
+    /// Instrumented reqwest 0.12 client for `http!(...)`. With `hotpath`
+    /// enabled `Client` is reqwest-middleware's `ClientWithMiddleware`;
+    /// otherwise `http!` is a no-op and `Client` is the raw `reqwest::Client`,
+    /// so the alias resolves the same way regardless of feature configuration.
+    #[cfg(feature = "reqwest-0-12")]
+    pub mod reqwest_012 {
+        pub use reqwest_012::Response;
+        #[cfg(not(feature = "hotpath"))]
+        pub use reqwest_012::{Client, RequestBuilder};
+        #[cfg(feature = "hotpath")]
+        pub use reqwest_middleware_04::{ClientWithMiddleware as Client, RequestBuilder};
+    }
+
+    /// Instrumented reqwest 0.13 client for `http!(...)`. With `hotpath`
+    /// enabled `Client` is reqwest-middleware's `ClientWithMiddleware`;
+    /// otherwise `http!` is a no-op and `Client` is the raw `reqwest::Client`,
+    /// so the alias resolves the same way regardless of feature configuration.
+    #[cfg(feature = "reqwest-0-13")]
+    pub mod reqwest_013 {
+        pub use reqwest::Response;
+        #[cfg(not(feature = "hotpath"))]
+        pub use reqwest::{Client, RequestBuilder};
+        #[cfg(feature = "hotpath")]
+        pub use reqwest_middleware_05::{ClientWithMiddleware as Client, RequestBuilder};
+    }
+
+    #[cfg(all(feature = "reqwest-0-12", not(feature = "reqwest-0-13")))]
+    pub use self::reqwest_012 as reqwest;
+    /// Unversioned alias for the newest enabled reqwest generation, so apps
+    /// can write `hotpath::wrap::reqwest::Client` regardless of which
+    /// `reqwest-0.1x` feature they enable.
+    #[cfg(feature = "reqwest-0-13")]
+    pub use self::reqwest_013 as reqwest;
 }
 
 mod shared;

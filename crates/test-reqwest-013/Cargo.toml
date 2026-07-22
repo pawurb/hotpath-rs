@@ -1,0 +1,15 @@
+[package]
+name = "test-reqwest-013"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for reqwest 0.13 HTTP request instrumentation via reqwest-middleware."
+
+[dependencies]
+hotpath = { workspace = true, features = ["reqwest-0-13"] }
+reqwest = { version = "0.13", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tiny_http = "0.12"
+
+[features]
+hotpath = ["hotpath/hotpath"]
