@@ -65,6 +65,8 @@ hotpath::instrument_diesel_sql();
 
 // open connections AFTER this call so they pick up the instrumentation
 let mut conn = SqliteConnection::establish(":memory:")?;
+// or any other Diesel backend:
+let mut conn = PgConnection::establish(&database_url)?;
 ```
 
 `instrument_diesel_sql()` registers the instrumentation as the default for every newly-established connection. Connections established *before* the call are not instrumented.

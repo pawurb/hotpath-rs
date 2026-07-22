@@ -50,6 +50,8 @@ test_all:
     cargo test --features hotpath --test futures -- --nocapture --test-threads=1
     cargo test --features hotpath --test sql_sqlite -- --nocapture --test-threads=1
     cargo test --features hotpath --test sql_pg -- --nocapture --test-threads=1
+    cargo test --features hotpath --test diesel -- --nocapture --test-threads=1
+    cargo test --features hotpath --test diesel_pg -- --nocapture --test-threads=1
     cargo test --features hotpath --test debug -- --nocapture --test-threads=1
 
 # Serve the mdbook docs locally with live reload (http://localhost:3000).

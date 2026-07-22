@@ -205,6 +205,12 @@ jobs:
       - name: Run sql postgres tests
         run: |
           cargo test --features hotpath --test sql_pg -- --nocapture --test-threads=1
+      - name: Run diesel tests
+        run: |
+          cargo test --features hotpath --test diesel -- --nocapture --test-threads=1
+      - name: Run diesel postgres tests
+        run: |
+          cargo test --features hotpath --test diesel_pg -- --nocapture --test-threads=1
       - name: Run debug tests
         run: |
           cargo test --features hotpath --test debug -- --nocapture --test-threads=1
