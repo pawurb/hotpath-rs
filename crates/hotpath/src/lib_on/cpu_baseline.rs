@@ -17,10 +17,13 @@ static CPU_BASELINE_HANDLE: OnceLock<CpuBaselineHandle> = OnceLock::new();
 #[cfg(unix)]
 fn thread_cpu_time_ns() -> Option<u64> {
     let mut ts = std::mem::MaybeUninit::<libc::timespec>::uninit();
+    // SAFETY: `ts.as_mut_ptr()` points to valid (uninitialized) memory of the
+    // exact `timespec` layout clock_gettime writes into.
     let ret = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, ts.as_mut_ptr()) };
     if ret != 0 {
         return None;
     }
+    // SAFETY: clock_gettime returned 0, which guarantees it fully initialized `ts`.
     let ts = unsafe { ts.assume_init() };
     Some(ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64)
 }

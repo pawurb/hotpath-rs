@@ -54,12 +54,16 @@ fn current_tid_uncached() -> u64 {
 #[cfg(target_os = "linux")]
 #[inline]
 fn current_tid_linux() -> u64 {
+    // SAFETY: gettid takes no arguments, has no preconditions and cannot fail;
+    // this is a plain FFI syscall returning the calling thread's kernel TID.
     unsafe { libc::syscall(libc::SYS_gettid) as u64 }
 }
 
 #[cfg(target_os = "macos")]
 #[inline]
 fn current_tid_macos() -> u64 {
+    // SAFETY: pthread_self always returns a valid handle for the calling
+    // thread, and pthread_mach_thread_np only reads it.
     unsafe {
         let pthread = libc::pthread_self();
         libc::pthread_mach_thread_np(pthread) as u64

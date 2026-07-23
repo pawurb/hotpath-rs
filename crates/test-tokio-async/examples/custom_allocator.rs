@@ -8,13 +8,18 @@ mod alloc_demo {
     #[derive(Default)]
     pub struct TestAllocator;
 
+    // SAFETY: pure pass-through to `System` - pointers and layouts are
+    // forwarded unchanged, so `System`'s GlobalAlloc guarantees carry over.
     unsafe impl GlobalAlloc for TestAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             ALLOC_CALLS.fetch_add(1, Ordering::Relaxed);
+            // SAFETY: caller upholds GlobalAlloc's contract for `layout`.
             unsafe { System.alloc(layout) }
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            // SAFETY: caller guarantees `ptr` was allocated by this allocator
+            // with `layout`, i.e. by `System`.
             unsafe { System.dealloc(ptr, layout) }
         }
     }

@@ -35,6 +35,8 @@ mod mach_instant {
         static TIMEBASE: OnceLock<(u64, u64)> = OnceLock::new();
         *TIMEBASE.get_or_init(|| {
             let mut info = MachTimebaseInfo { numer: 0, denom: 0 };
+            // SAFETY: `info` is a valid, live `#[repr(C)]` struct matching the
+            // layout mach_timebase_info expects to write into.
             let ret = unsafe { mach_timebase_info(&mut info) };
             assert_eq!(ret, libc::KERN_SUCCESS, "mach_timebase_info failed");
             (u64::from(info.numer), u64::from(info.denom))
@@ -56,6 +58,8 @@ mod mach_instant {
     impl Instant {
         #[inline]
         pub fn now() -> Self {
+            // SAFETY: mach_absolute_time takes no arguments, has no
+            // preconditions and cannot fail; plain FFI read of the tick counter.
             Self(unsafe { mach_absolute_time() })
         }
 
