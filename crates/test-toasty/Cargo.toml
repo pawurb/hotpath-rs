@@ -1,0 +1,23 @@
+# Standalone crate, deliberately NOT a workspace member: toasty's sqlite
+# driver (rusqlite -> libsqlite3-sys 0.37) and the workspace's sqlx-sqlite
+# (libsqlite3-sys 0.30) both `links = "sqlite3"`, which cargo forbids in a
+# single resolution graph. Build with:
+#   cargo run --manifest-path crates/test-toasty/Cargo.toml --example basic --features hotpath
+[package]
+name = "test-toasty"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for Toasty ORM SQL query instrumentation via the tracing layer."
+
+[workspace]
+
+[dependencies]
+hotpath = { path = "../hotpath", features = ["toasty"] }
+toasty = { version = "0.8", features = ["sqlite", "postgresql"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tracing-subscriber = { version = "0.3", features = ["registry"] }
+uuid = "1"
+
+[features]
+hotpath = ["hotpath/hotpath"]

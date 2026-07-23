@@ -4,47 +4,39 @@
 //! Transformations, applied in order:
 //! - single-quoted string literals -> `?`
 //! - PostgreSQL positional placeholders (`$1`, `$2`, ...) -> `?`
+//! - SQLite numbered placeholders (`?1`, `?2`, ...) -> `?`
 //! - numeric literals -> `?`
 //! - runs of `?` inside an `IN (...)` list -> `IN (?)`
 //! - collapse all whitespace to single spaces
 
 use regex::Regex;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
-fn string_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    // Single-quoted literal, with '' as an escaped quote inside.
-    RE.get_or_init(|| Regex::new(r"'(?:[^']|'')*'").unwrap())
-}
+// Single-quoted literal, with '' as an escaped quote inside.
+static STRING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'(?:[^']|'')*'").unwrap());
 
-fn pg_placeholder_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\$\d+\b").unwrap())
-}
+static PG_PLACEHOLDER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\d+\b").unwrap());
 
-fn number_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    // Standalone numeric literals (int/float), not parts of identifiers.
-    RE.get_or_init(|| Regex::new(r"\b\d+(?:\.\d+)?\b").unwrap())
-}
+// Must run before NUMBER_RE, or the digit alone would be replaced and `?1`
+// would come out as `??`.
+static NUMBERED_PLACEHOLDER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\?\d+\b").unwrap());
 
-fn in_list_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)\bIN\s*\(\s*\?(?:\s*,\s*\?)*\s*\)").unwrap())
-}
+// Standalone numeric literals (int/float), not parts of identifiers.
+static NUMBER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b\d+(?:\.\d+)?\b").unwrap());
 
-fn whitespace_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\s+").unwrap())
-}
+static IN_LIST_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\bIN\s*\(\s*\?(?:\s*,\s*\?)*\s*\)").unwrap());
+
+static WHITESPACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
 /// Normalize a raw SQL string into a stable bucket key.
 pub(crate) fn normalize(sql: &str) -> String {
-    let s = string_re().replace_all(sql, "?");
-    let s = pg_placeholder_re().replace_all(&s, "?");
-    let s = number_re().replace_all(&s, "?");
-    let s = in_list_re().replace_all(&s, "IN (?)");
-    let s = whitespace_re().replace_all(&s, " ");
+    let s = STRING_RE.replace_all(sql, "?");
+    let s = PG_PLACEHOLDER_RE.replace_all(&s, "?");
+    let s = NUMBERED_PLACEHOLDER_RE.replace_all(&s, "?");
+    let s = NUMBER_RE.replace_all(&s, "?");
+    let s = IN_LIST_RE.replace_all(&s, "IN (?)");
+    let s = WHITESPACE_RE.replace_all(&s, " ");
     s.trim().to_string()
 }
 
@@ -69,6 +61,20 @@ mod tests {
         assert_eq!(
             normalize("SELECT * FROM t WHERE name = 'alice'"),
             normalize("SELECT * FROM t WHERE name = 'bob'"),
+        );
+    }
+
+    #[test]
+    fn merges_numbered_placeholders() {
+        // SQLite-style numbered placeholders collapse to plain `?`, matching
+        // the PostgreSQL `$N` handling.
+        assert_eq!(
+            normalize("INSERT INTO users (name, age) VALUES (?1, ?2)"),
+            "INSERT INTO users (name, age) VALUES (?, ?)",
+        );
+        assert_eq!(
+            normalize("SELECT * FROM users WHERE id = ?1"),
+            normalize("SELECT * FROM users WHERE id = $1"),
         );
     }
 

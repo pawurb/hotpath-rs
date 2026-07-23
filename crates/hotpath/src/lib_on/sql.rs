@@ -6,10 +6,14 @@
 //! runs on the background worker thread to keep the hot path light.
 //!
 //! The write path (worker, events, normalization) is driven by front-ends -
-//! the `sqlx` tracing layer (see [`tracing_layer`]) and the Diesel
-//! instrumentation (see [`diesel`]) - so it is dead when neither feature is on;
-//! the read path stays compiled so the report/metrics wiring is feature-uniform.
-#![cfg_attr(not(any(feature = "sqlx", feature = "diesel")), allow(dead_code))]
+//! the `sqlx` tracing layer (see [`tracing_layer`]), the Toasty tracing layer
+//! (see [`toasty`]), and the Diesel instrumentation (see [`diesel`]) - so it
+//! is dead when no front-end feature is on; the read path stays compiled so
+//! the report/metrics wiring is feature-uniform.
+#![cfg_attr(
+    not(any(feature = "sqlx", feature = "diesel", feature = "toasty")),
+    allow(dead_code)
+)]
 
 use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
@@ -28,11 +32,15 @@ use crate::output::MAX_LOG_LEN;
 #[cfg(feature = "diesel")]
 pub(crate) mod diesel;
 pub(crate) mod normalize;
+#[cfg(feature = "toasty")]
+pub(crate) mod toasty;
 #[cfg(feature = "sqlx")]
 pub(crate) mod tracing_layer;
 
 #[cfg(feature = "diesel")]
 pub use diesel::instrument_diesel_sql;
+#[cfg(feature = "toasty")]
+pub use toasty::toasty_tracing_layer;
 #[cfg(feature = "sqlx")]
 pub use tracing_layer::sqlx_tracing_layer;
 

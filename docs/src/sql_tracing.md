@@ -1,16 +1,17 @@
-# Rust SQL Performance Profiling for sqlx and Diesel
+# Rust SQL Performance Profiling for sqlx, Diesel and Toasty
 
 <img loading="lazy" src="{{#asset-hash images/sql-report.png}}" alt="hotpath-rs terminal SQL report table showing normalized queries with call counts, average, P95, total, and percent-of-total execution time">
 
 `hotpath` profiles SQL queries in Rust applications, helping you identify slow statements, repetitive query patterns, and unexpected database activity. Queries are grouped by their normalized SQL text, so parameterized executions of the same statement are reported together. For example, 1,000 executions of `SELECT * FROM users WHERE id = ?` appear as a single entry with call count, average latency, percentiles, and total execution time.
 
-The same profiling backend powers both sqlx and Diesel with more integrations coming soon. Instrumentation is inactive unless the `hotpath` feature is enabled.
+The same profiling backend powers sqlx, Diesel, and the Toasty ORM, with more integrations coming soon. Instrumentation is inactive unless the `hotpath` feature is enabled.
 
 ## Normalizing SQL queries 
 
 Queries are grouped by normalized text:
 
 - single-quoted string literals become `?`
+- positional placeholders (PostgreSQL `$1`, SQLite `?1`) become `?`
 - numeric literals become `?`
 - runs of `?` inside an `IN (...)` list collapse to `IN (?)`
 - whitespace is squashed to single spaces
@@ -74,6 +75,31 @@ let mut conn = PgConnection::establish(&database_url)?;
 - **Backend coverage is automatic** - the trait lives in Diesel core, so Postgres, MySQL, and SQLite are all covered. Enable the matching Diesel backend feature in your own crate.
 - **Transaction control statements** (`BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`) are filtered out - the report stays queries-only. Queries *inside* a transaction are captured.
 - **Synchronous connections only.** `instrument_diesel_sql()` registers Diesel's global default instrumentation, which covers `diesel::Connection` types. `diesel_async` support is coming soon.
+
+## Profiling Toasty ORM queries with a tracing layer
+
+Add `hotpath` with the `toasty` feature to your `Cargo.toml`:
+
+```toml
+[dependencies]
+hotpath = "{{HOTPATH_VERSION}}", features=["toasty"]
+```
+
+Every [Toasty](https://github.com/tokio-rs/toasty) driver emits one `tracing` event per physical database operation, and `hotpath` captures them the same way it does for sqlx - with a `tracing_subscriber::Layer`:
+
+```rust
+use tracing_subscriber::prelude::*;
+
+tracing_subscriber::registry()
+    .with(hotpath::toasty_tracing_layer())
+    .init();
+```
+
+That's it - every query executed through a Toasty `Db`, `Connection`, or `Transaction` is now profiled, whether it was generated from a model (`create!`, `filter_by_...`) or written as raw SQL (`toasty::sql::query`).
+
+- **SQL backend coverage is automatic** - the event is emitted by toasty-core, so SQLite, PostgreSQL, MySQL, and Turso are all covered. Key-value drivers (DynamoDB) execute no SQL and are skipped.
+- **Timing comes from Toasty itself** - the layer reads the `duration_ms` field Toasty measures at the driver level, so transaction-internal queries are captured too.
+- The same `EnvFilter` caveat as sqlx applies: don't globally filter out the `toasty::query` target.
 
 ## Adding the SQL section to your hotpath report
 

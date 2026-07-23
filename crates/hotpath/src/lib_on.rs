@@ -50,6 +50,8 @@ pub use rw_locks::InstrumentRwLock;
 pub use sql::instrument_diesel_sql;
 #[cfg(feature = "sqlx")]
 pub use sql::sqlx_tracing_layer;
+#[cfg(feature = "toasty")]
+pub use sql::toasty_tracing_layer;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 pub mod hotpath_guard;

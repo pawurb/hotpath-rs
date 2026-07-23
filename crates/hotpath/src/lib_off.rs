@@ -350,6 +350,18 @@ where
     tracing_subscriber::layer::Identity::new()
 }
 
+/// No-op Toasty SQL profiling layer used when the `hotpath` feature is
+/// disabled. Lets call sites keep `.with(hotpath::toasty_tracing_layer())` in
+/// their subscriber setup unconditionally - it observes nothing and forwards
+/// nothing.
+#[cfg(feature = "toasty")]
+pub fn toasty_tracing_layer<S>() -> impl tracing_subscriber::Layer<S>
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    tracing_subscriber::layer::Identity::new()
+}
+
 /// No-op Diesel SQL instrumentation install used when the `hotpath` feature is
 /// disabled. Lets call sites keep `hotpath::instrument_diesel_sql()`
 /// unconditionally - it registers nothing and forwards nothing.

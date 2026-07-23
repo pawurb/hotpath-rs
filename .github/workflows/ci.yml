@@ -9,7 +9,7 @@ jobs:
   build:
     name: test ${{ matrix.rust }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     services:
       postgres:
         image: postgres:17
@@ -211,6 +211,15 @@ jobs:
       - name: Run diesel postgres tests
         run: |
           cargo test --features hotpath --test diesel_pg -- --nocapture --test-threads=1
+      - name: Run toasty sqlite tests
+        # toasty has MSRV 1.95
+        if: matrix.rust != '1.89'
+        run: |
+          cargo test --features hotpath --test toasty_sqlite -- --nocapture --test-threads=1
+      - name: Run toasty postgres tests
+        if: matrix.rust != '1.89'
+        run: |
+          cargo test --features hotpath --test toasty_pg -- --nocapture --test-threads=1
       - name: Run debug tests
         run: |
           cargo test --features hotpath --test debug -- --nocapture --test-threads=1
