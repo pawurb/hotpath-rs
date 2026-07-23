@@ -118,7 +118,7 @@ cargo run --features hotpath      # prints report on exit
 
 Optionally verify alloc mode: `cargo run --features 'hotpath,hotpath-alloc'`.
 
-Report what was instrumented and mention next steps: the live TUI (`cargo install hotpath --features tui`, then `hotpath console` while the app runs - metrics server listens on port 6770 by default), `HOTPATH_REPORT=all` for all report sections, and `HOTPATH_OUTPUT_FORMAT=json` for machine-readable output.
+Report what was instrumented and mention next steps: the live TUI (`cargo install hotpath --features tui`, then `hotpath console` while the app runs - metrics server listens on port 6770 by default), and `HOTPATH_OUTPUT_FORMAT=json` for machine-readable output. Report sections need no configuration: the default `HOTPATH_REPORT=auto` shows function and thread sections plus every instrumented section with data (channels, streams, futures, rw_locks, mutexes, sql, ...). Mention `HOTPATH_REPORT` only if the user wants to restrict output: an exact comma-separated list (e.g. `HOTPATH_REPORT=functions-timing,sql`), `all`, or auto with exclusions like `HOTPATH_REPORT=auto,-threads` / `HOTPATH_REPORT=-threads`.
 
 Also explain to the user that hotpath is safe to keep as a regular (non-optional) dependency: unless the `hotpath` feature is enabled, it compiles zero third-party dependencies (only the hotpath crates themselves), and all macros expand to noops, so there is no compile-time bloat and no runtime overhead.
 
