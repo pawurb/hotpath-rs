@@ -49,7 +49,7 @@ impl Format {
 /// * `futures_limit` - Maximum number of futures shown in the report. Overrides `limit` for futures.
 /// * `threads_limit` - Maximum number of threads shown in the report. Overrides `limit` for threads.
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_OUTPUT_PATH` env var.
-/// * `report` - Comma-separated sections to include. Overridden by `HOTPATH_REPORT` env var.
+/// * `report` - Report sections spec: `"all"`, `"auto"`, an exact list like `"channels,sql"`, or auto with exclusions like `"auto,-threads"`. Default: auto (function and thread sections plus every instrumented section with data). Overridden by `HOTPATH_REPORT` env var.
 /// * `allocator` - Optional allocator type path used when `hotpath-alloc` is enabled.
 ///   Defaults to `std::alloc::System`.
 ///
@@ -304,34 +304,9 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         None => quote! {},
     };
 
-    let sections_call = if let Some(ref report_str) = report_sections {
-        let section_tokens: Vec<proc_macro2::TokenStream> = report_str
-            .split(',')
-            .filter_map(|s| {
-                let s = s.trim();
-                match s {
-                    "functions-timing" => Some(quote! { hotpath::Section::FunctionsTiming }),
-                    "functions-alloc" => Some(quote! { hotpath::Section::FunctionsAlloc }),
-                    "channels" => Some(quote! { hotpath::Section::Channels }),
-                    "streams" => Some(quote! { hotpath::Section::Streams }),
-                    "futures" => Some(quote! { hotpath::Section::Futures }),
-                    "threads" => Some(quote! { hotpath::Section::Threads }),
-                    "rw_locks" => Some(quote! { hotpath::Section::RwLocks }),
-                    "all" => None, // handled separately
-                    _ => None,
-                }
-            })
-            .collect();
-
-        if report_str.split(',').any(|s| s.trim() == "all") {
-            quote! { .sections(hotpath::Section::all()) }
-        } else if !section_tokens.is_empty() {
-            quote! { .sections(vec![#(#section_tokens),*]) }
-        } else {
-            quote! {}
-        }
-    } else {
-        quote! {}
+    let sections_call = match &report_sections {
+        Some(report_str) => quote! { .report(#report_str) },
+        None => quote! {},
     };
 
     let caller_name_init = quote! {

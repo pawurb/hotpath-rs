@@ -61,7 +61,7 @@ Attribute macro that initializes the background measurement processing when appl
 - `format = "json"` - Output format `"table"`, `"json"`, `"json-pretty"`, `"none"` (defaults to `table`)
 - `limit = 20` - Maximum number of functions to display (default: `15`, `0` = show all)
 - `output_path = "report.json"` - Filesystem path for profiling reports. If not set, the report is written to `stdout`. Can be overridden by `HOTPATH_OUTPUT_PATH`; on Unix, set that env var to `/dev/stdout` or `/dev/stderr` to redirect to the standard streams.
-- `report = "functions-timing,channels"` - Comma-separated sections to include: `functions-timing`, `functions-alloc`, `channels`, `streams`, `futures`, `threads`, `debug`, or `all` (overridden by `HOTPATH_REPORT` env var)
+- `report = "functions-timing,channels"` - Report sections spec: `all`, `auto`, an exact comma-separated list of section names, or auto with exclusions like `"auto,-threads"`. Defaults to auto - function and thread sections plus every instrumented section with data (overridden by `HOTPATH_REPORT` env var)
 
 ## `#[hotpath::measure]` macro
 

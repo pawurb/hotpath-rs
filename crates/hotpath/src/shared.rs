@@ -64,26 +64,106 @@ impl Section {
             _ => None,
         }
     }
+}
 
-    pub fn from_env() -> Option<Vec<Section>> {
-        std::env::var("HOTPATH_REPORT").ok().map(|val| {
-            let mut sections = Vec::new();
-            for part in val.split(',') {
-                match part.trim() {
-                    "all" => return Section::all(),
-                    other => {
-                        if let Some(s) = Section::from_name(other) {
-                            if !sections.contains(&s) {
-                                sections.push(s);
-                            }
-                        } else {
-                            eprintln!("[hotpath] Unknown report section: '{}'", other);
+/// How the set of report sections is determined.
+#[cfg(feature = "hotpath")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SectionsMode {
+    /// Base sections (functions, threads) plus every data-driven section
+    /// (channels, streams, futures, rw_locks, mutexes, sql, debug) that has
+    /// data at shutdown. `include` forces sections in, `exclude` hides them.
+    Auto {
+        include: Vec<Section>,
+        exclude: Vec<Section>,
+    },
+    /// Exactly these sections, nothing else.
+    Explicit(Vec<Section>),
+}
+
+#[cfg(feature = "hotpath")]
+impl Default for SectionsMode {
+    fn default() -> Self {
+        SectionsMode::Auto {
+            include: Vec::new(),
+            exclude: Vec::new(),
+        }
+    }
+}
+
+#[cfg(feature = "hotpath")]
+impl SectionsMode {
+    /// Parses a report spec: `all`, `auto`, section names, and `-section`
+    /// exclusions, comma-separated. A spec containing `auto` or any `-section`
+    /// token resolves to [`SectionsMode::Auto`]; a plain list of names is
+    /// [`SectionsMode::Explicit`]; `all` is every section minus exclusions.
+    pub fn parse(spec: &str) -> SectionsMode {
+        let mut auto = false;
+        let mut all = false;
+        let mut include = Vec::new();
+        let mut exclude = Vec::new();
+
+        for part in spec.split(',') {
+            let part = part.trim();
+            match part {
+                "all" => all = true,
+                "auto" => auto = true,
+                _ => {
+                    let (target, name) = match part.strip_prefix('-') {
+                        Some(rest) => (&mut exclude, rest.trim()),
+                        None => (&mut include, part),
+                    };
+                    if let Some(s) = Section::from_name(name) {
+                        if !target.contains(&s) {
+                            target.push(s);
                         }
+                    } else {
+                        eprintln!("[hotpath] Unknown report section: '{}'", part);
                     }
                 }
             }
-            sections
-        })
+        }
+
+        if all {
+            SectionsMode::Explicit(
+                Section::all()
+                    .into_iter()
+                    .filter(|s| !exclude.contains(s))
+                    .collect(),
+            )
+        } else if auto || !exclude.is_empty() {
+            SectionsMode::Auto { include, exclude }
+        } else {
+            SectionsMode::Explicit(include)
+        }
+    }
+
+    pub fn from_env() -> Option<SectionsMode> {
+        std::env::var("HOTPATH_REPORT")
+            .ok()
+            .map(|val| SectionsMode::parse(&val))
+    }
+
+    /// Whether the section is requested by name (explicit list or a forced
+    /// auto include). Auto mode does not imply it - used for build-time
+    /// side effects that should stay lazy under auto.
+    pub fn explicitly_contains(&self, section: Section) -> bool {
+        match self {
+            SectionsMode::Explicit(list) => list.contains(&section),
+            SectionsMode::Auto { include, .. } => include.contains(&section),
+        }
+    }
+
+    /// Whether the section is part of the report set decidable before any
+    /// data exists: listed explicitly, or in auto mode and not excluded.
+    #[cfg(feature = "hotpath-cpu")]
+    pub fn contains_or_auto(&self, section: Section) -> bool {
+        match self {
+            SectionsMode::Explicit(list) => list.contains(&section),
+            SectionsMode::Auto { include, exclude } => {
+                include.contains(&section) || !exclude.contains(&section)
+            }
+        }
     }
 }
 

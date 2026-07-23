@@ -939,6 +939,12 @@ pub(crate) fn collect_threads_json(limit: usize) -> crate::json::JsonThreadsList
     json
 }
 
+pub(crate) fn has_debug_entries() -> bool {
+    !get_sorted_debug_dbg_entries().is_empty()
+        || !get_sorted_debug_val_entries().is_empty()
+        || !get_sorted_debug_gauge_entries().is_empty()
+}
+
 pub(crate) fn report_debug_table(writer: &mut dyn Write) {
     let dbg_entries = get_sorted_debug_dbg_entries();
     let val_entries = get_sorted_debug_val_entries();
