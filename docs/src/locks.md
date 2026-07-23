@@ -98,16 +98,6 @@ Enable the `async-lock` feature.
 
 - [`async_lock::Mutex`](https://docs.rs/async-lock/latest/async_lock/struct.Mutex.html)
 
-### Locks in the report
-
-The `rw_locks` and `mutexes` sections appear automatically whenever instrumented locks recorded data - no extra configuration needed. To restrict the report to specific sections, list them via the `HOTPATH_REPORT` env var (e.g. `HOTPATH_REPORT=rw_locks,mutexes`) or programmatically through `HotpathGuardBuilder::sections`:
-
-```rust
-let _guard = hotpath::HotpathGuardBuilder::new("main")
-    .sections(vec![hotpath::Section::RwLocks, hotpath::Section::Mutexes])
-    .build();
-```
-
 ### Limits
 
 The number of locks shown per section is unlimited by default (`0`). Cap it with:

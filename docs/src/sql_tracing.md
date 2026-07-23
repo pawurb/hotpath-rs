@@ -101,16 +101,6 @@ That's it - every query executed through a Toasty `Db`, `Connection`, or `Transa
 - **Timing comes from Toasty itself** - the layer reads the `duration_ms` field Toasty measures at the driver level, so transaction-internal queries are captured too.
 - The same `EnvFilter` caveat as sqlx applies: don't globally filter out the `toasty::query` target.
 
-## The SQL section in your hotpath report
-
-The `sql` section appears automatically whenever queries were captured - no extra configuration needed. To restrict the report to specific sections, list them via the `HOTPATH_REPORT` env var (e.g. `HOTPATH_REPORT=sql`) or programmatically through `HotpathGuardBuilder::sections`:
-
-```rust
-let _guard = hotpath::HotpathGuardBuilder::new("main")
-    .sections(vec![hotpath::Section::Sql])
-    .build();
-```
-
 ## Limiting and capping query output
 
 The number of queries shown is unlimited by default (`0`). Cap it with:
