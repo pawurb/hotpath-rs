@@ -63,7 +63,13 @@ pub(crate) struct EventQueue<M> {
     closed: AtomicBool,
 }
 
+// SAFETY: the auto impls are lost to the raw chunk pointers. Sending or
+// sharing the queue only moves `M` values across threads (hence `M: Send`);
+// concurrent access is sound because producer and consumer touch disjoint
+// slot ranges, synchronized by the `Release`/`Acquire` handoff on `len`
+// (see module-level safety invariants).
 unsafe impl<M: Send> Send for EventQueue<M> {}
+// SAFETY: same reasoning as `Send` above.
 unsafe impl<M: Send> Sync for EventQueue<M> {}
 
 impl<M> EventQueue<M> {
@@ -77,9 +83,17 @@ impl<M> EventQueue<M> {
         let mut chunks_walked = 0;
         let mut reached_tail = true;
         loop {
+            // SAFETY: `chunk_ptr` is either `head` (never null, freed only by
+            // this single consumer after advancing past it) or a non-null
+            // `next` observed below; the chunk stays alive until this loop
+            // frees it.
             let chunk = unsafe { &*chunk_ptr };
             let len = chunk.len.load(Ordering::Acquire);
             for i in consumed..len {
+                // SAFETY: the `Acquire` load of `len` synchronizes with the
+                // producer's `Release` publish, so slots `..len` are
+                // initialized; slots below `consumed` were already read out
+                // and are never touched twice (consumer-only cursor).
                 out.push(unsafe { (*chunk.slots[i].get()).assume_init_read() });
             }
             consumed = len;
@@ -90,6 +104,12 @@ impl<M> EventQueue<M> {
                         reached_tail = false;
                         break;
                     }
+                    // SAFETY: `chunk_ptr` came from `Box::into_raw` in
+                    // `Chunk::new_raw`. The chunk is full (`len == CHUNK_SIZE`)
+                    // and fully consumed, and the producer moved on to `next`,
+                    // so neither side will touch it again; all `M` values were
+                    // moved out above, so dropping the box frees only
+                    // `MaybeUninit` storage.
                     unsafe { drop(Box::from_raw(chunk_ptr)) };
                     chunk_ptr = next;
                     consumed = 0;
@@ -112,13 +132,21 @@ impl<M> Drop for EventQueue<M> {
         let mut chunk_ptr = *self.head.get_mut();
         let mut consumed = *self.consumed.get_mut();
         while !chunk_ptr.is_null() {
+            // SAFETY: `&mut self` proves exclusive access; every chunk from
+            // `head` onward is live and owned by this queue.
             let chunk = unsafe { &mut *chunk_ptr };
             let len = *chunk.len.get_mut();
             for i in consumed..len {
+                // SAFETY: slots `consumed..len` were initialized by the
+                // producer and never read out, so each holds a live `M` that
+                // is dropped exactly once here.
                 unsafe { (*chunk.slots[i].get()).assume_init_drop() };
             }
             consumed = 0;
             let next = *chunk.next.get_mut();
+            // SAFETY: `chunk_ptr` came from `Box::into_raw` in
+            // `Chunk::new_raw` and nothing can reference it after this drop
+            // (exclusive access via `&mut self`).
             unsafe { drop(Box::from_raw(chunk_ptr)) };
             chunk_ptr = next;
         }
@@ -139,12 +167,19 @@ impl<M> EventProducer<M> {
     pub(crate) fn push(&self, m: M) {
         let tail = self.tail.get();
         let i = self.len.get();
+        // SAFETY: `tail` is the producer-owned live tail chunk (the consumer
+        // never frees a chunk whose `next` it has not observed, and `next` is
+        // set only after this chunk is full). Slot `i` is above the published
+        // `len`, so the consumer cannot be reading it; the `Release` store of
+        // `len` publishes the write.
         unsafe {
             (*tail).slots[i].get().write(MaybeUninit::new(m));
             (*tail).len.store(i + 1, Ordering::Release);
         }
         if i + 1 == CHUNK_SIZE {
             let new = Chunk::new_raw();
+            // SAFETY: `tail` is still live (see above); only the producer
+            // writes `next`, and only once, when the chunk is full.
             unsafe { (*tail).next.store(new, Ordering::Release) };
             self.tail.set(new);
             self.len.set(0);

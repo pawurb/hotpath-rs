@@ -46,7 +46,7 @@ use crate::output_on::{
 
 use crate::functions::{FunctionsQuery, Measurement, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
 use crate::lib_on::report;
-use crate::shared::Section;
+use crate::shared::{Section, SectionsMode};
 
 use crate::functions::FunctionStatsConfig;
 
@@ -81,7 +81,7 @@ pub struct HotpathGuardBuilder {
     sql_limit: usize,
     threads_limit: usize,
     output_path: Option<PathBuf>,
-    sections: Option<Vec<Section>>,
+    sections_mode: Option<SectionsMode>,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
     time_sampling: crate::lib_on::sampling::TimeSamplingConfig,
 }
@@ -101,7 +101,7 @@ impl HotpathGuardBuilder {
             sql_limit: 0,
             threads_limit: 5,
             output_path: None,
-            sections: None,
+            sections_mode: None,
             before_shutdown: None,
             time_sampling: crate::lib_on::sampling::TimeSamplingConfig::default(),
         }
@@ -224,8 +224,34 @@ impl HotpathGuardBuilder {
         self
     }
 
+    /// Chooses exactly which report sections to include; sections not listed
+    /// are never shown, even if they have data. Overridden by the
+    /// `HOTPATH_META_REPORT` env var. Without this call the report is in auto
+    /// mode: function and thread sections plus every instrumented section with
+    /// data.
     pub fn sections(mut self, sections: Vec<Section>) -> Self {
-        self.sections = Some(sections);
+        self.sections_mode = Some(SectionsMode::Explicit(sections));
+        self
+    }
+
+    /// Hides the given sections from the auto report while keeping every other
+    /// section auto-included. Mutually exclusive with
+    /// [`sections`](Self::sections) - the last call wins. Overridden by the
+    /// `HOTPATH_META_REPORT` env var.
+    pub fn sections_exclude(mut self, sections: Vec<Section>) -> Self {
+        self.sections_mode = Some(SectionsMode::Auto {
+            include: Vec::new(),
+            exclude: sections,
+        });
+        self
+    }
+
+    /// Configures report sections from a spec string using the same grammar as
+    /// the `HOTPATH_META_REPORT` env var (which still takes precedence):
+    /// `"all"`, `"auto"`, an exact list like `"channels,sql"`, or auto with
+    /// exclusions like `"auto,-threads"` / `"-threads"`.
+    pub fn report(mut self, spec: &str) -> Self {
+        self.sections_mode = Some(SectionsMode::parse(spec));
         self
     }
 
@@ -234,32 +260,18 @@ impl HotpathGuardBuilder {
         self
     }
 
-    fn resolve_sections(&self) -> Vec<Section> {
-        if let Some(env_sections) = Section::from_env() {
-            return env_sections;
+    fn resolve_sections_mode(&self) -> SectionsMode {
+        if let Some(env_mode) = SectionsMode::from_env() {
+            return env_mode;
         }
 
-        if let Some(ref sections) = self.sections {
-            return sections.clone();
-        }
-
-        cfg_if::cfg_if! {
-            if #[cfg(all(feature = "hotpath-alloc-meta", feature = "hotpath-cpu-meta"))] {
-                vec![Section::FunctionsTiming, Section::FunctionsAlloc, Section::FunctionsCpu, Section::Threads]
-            } else if #[cfg(feature = "hotpath-alloc-meta")] {
-                vec![Section::FunctionsTiming, Section::FunctionsAlloc, Section::Threads]
-            } else if #[cfg(feature = "hotpath-cpu-meta")] {
-                vec![Section::FunctionsTiming, Section::FunctionsCpu, Section::Threads]
-            } else {
-                vec![Section::FunctionsTiming, Section::Threads]
-            }
-        }
+        self.sections_mode.clone().unwrap_or_default()
     }
 
     pub fn build(self) -> HotpathGuard {
         crate::lib_on::sampling::init_time_sampling_rate(&self.time_sampling);
 
-        let sections = self.resolve_sections();
+        let sections_mode = self.resolve_sections_mode();
 
         HotpathGuard::new(
             self.caller_name,
@@ -267,7 +279,7 @@ impl HotpathGuardBuilder {
             self.functions_limit,
             self.format,
             self.output_path,
-            sections,
+            sections_mode,
             self.before_shutdown,
             self.channels_limit,
             self.streams_limit,
@@ -306,7 +318,7 @@ pub struct HotpathGuard {
     format: Format,
     wrapper_guard: Option<MeasurementGuardSync>,
     output_path: Option<PathBuf>,
-    sections: Vec<Section>,
+    sections_mode: SectionsMode,
     start_time: Instant,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
     channels_limit: usize,
@@ -326,7 +338,7 @@ impl HotpathGuard {
         limit: usize,
         format: Format,
         output_path: Option<PathBuf>,
-        sections: Vec<Section>,
+        sections_mode: SectionsMode,
         before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
         channels_limit: usize,
         streams_limit: usize,
@@ -536,7 +548,9 @@ impl HotpathGuard {
         #[cfg(feature = "hotpath-mcp-meta")]
         crate::mcp_server::start_mcp_server_once();
 
-        if sections.contains(&Section::Futures) {
+        // In auto mode the future!/future_fn macros init state lazily on first
+        // use; eager init is only needed when the section is requested by name.
+        if sections_mode.explicitly_contains(Section::Futures) {
             crate::futures::init_futures_state();
         }
 
@@ -555,7 +569,7 @@ impl HotpathGuard {
         crate::functions::alloc::core::init_thread_alloc_tracking();
 
         #[cfg(feature = "hotpath-cpu-meta")]
-        if sections.contains(&Section::FunctionsCpu) {
+        if sections_mode.contains_or_auto(Section::FunctionsCpu) {
             crate::functions::cpu::autospawn::start();
         }
 
@@ -564,7 +578,7 @@ impl HotpathGuard {
             format,
             wrapper_guard: Some(wrapper_guard),
             output_path,
-            sections,
+            sections_mode,
             start_time,
             before_shutdown,
             channels_limit,
@@ -626,7 +640,7 @@ impl Drop for HotpathGuard {
 
         #[cfg(feature = "hotpath-cpu-meta")]
         let cpu_report: Option<Result<crate::functions::cpu::CpuReport, String>> =
-            if self.sections.contains(&Section::FunctionsCpu) {
+            if self.sections_mode.contains_or_auto(Section::FunctionsCpu) {
                 let caller_name = self
                     .state
                     .read()
@@ -690,40 +704,47 @@ impl Drop for HotpathGuard {
         let functions_stats =
             completion_rx.and_then(|rx_mutex| rx_mutex.lock().ok().and_then(|rx| rx.recv().ok()));
 
-        let channels_data = if self.sections.contains(&Section::Channels) {
-            report::shutdown_channels()
-        } else {
-            Vec::new()
-        };
+        // Drain every subsystem regardless of the configured sections: each
+        // shutdown_* is a no-op when the subsystem was never instrumented, and
+        // in auto mode data presence decides which sections appear.
+        let channels_data = report::shutdown_channels();
+        let streams_data = report::shutdown_streams();
+        let futures_data = report::shutdown_futures();
+        let rw_locks_data = report::shutdown_rw_locks();
+        let mutexes_data = report::shutdown_mutexes();
+        let sql_data = report::shutdown_sql();
 
-        let streams_data = if self.sections.contains(&Section::Streams) {
-            report::shutdown_streams()
-        } else {
-            Vec::new()
-        };
+        let sections: Vec<Section> = match &self.sections_mode {
+            SectionsMode::Explicit(list) => list.clone(),
+            SectionsMode::Auto { include, exclude } => {
+                let mut base = vec![Section::FunctionsTiming];
+                #[cfg(feature = "hotpath-alloc-meta")]
+                base.push(Section::FunctionsAlloc);
+                #[cfg(feature = "hotpath-cpu-meta")]
+                base.push(Section::FunctionsCpu);
+                base.push(Section::Threads);
 
-        let futures_data = if self.sections.contains(&Section::Futures) {
-            report::shutdown_futures()
-        } else {
-            Vec::new()
-        };
-
-        let rw_locks_data = if self.sections.contains(&Section::RwLocks) {
-            report::shutdown_rw_locks()
-        } else {
-            Vec::new()
-        };
-
-        let mutexes_data = if self.sections.contains(&Section::Mutexes) {
-            report::shutdown_mutexes()
-        } else {
-            Vec::new()
-        };
-
-        let sql_data = if self.sections.contains(&Section::Sql) {
-            report::shutdown_sql()
-        } else {
-            Vec::new()
+                Section::all()
+                    .into_iter()
+                    .filter(|s| {
+                        if exclude.contains(s) {
+                            return false;
+                        }
+                        base.contains(s)
+                            || include.contains(s)
+                            || match s {
+                                Section::Channels => !channels_data.is_empty(),
+                                Section::Streams => !streams_data.is_empty(),
+                                Section::Futures => !futures_data.is_empty(),
+                                Section::RwLocks => !rw_locks_data.is_empty(),
+                                Section::Mutexes => !mutexes_data.is_empty(),
+                                Section::Sql => !sql_data.is_empty(),
+                                Section::Debug => report::has_debug_entries(),
+                                _ => false,
+                            }
+                    })
+                    .collect()
+            }
         };
 
         let output = OutputDestination::from_path(self.output_path.take());
@@ -785,7 +806,7 @@ impl Drop for HotpathGuard {
                 ..Default::default()
             };
 
-            for section in &self.sections {
+            for section in &sections {
                 match section {
                     Section::FunctionsTiming => {
                         if let Some(ref stats) = functions_stats {
@@ -952,7 +973,7 @@ impl Drop for HotpathGuard {
                 write_report_header(
                     &mut writer,
                     elapsed,
-                    &self.sections,
+                    &sections,
                     baseline_ns,
                     label.as_deref(),
                 );
@@ -961,7 +982,7 @@ impl Drop for HotpathGuard {
                 }
             }
 
-            for section in &self.sections {
+            for section in &sections {
                 match section {
                     Section::FunctionsTiming => {
                         if let Some(ref stats) = functions_stats {

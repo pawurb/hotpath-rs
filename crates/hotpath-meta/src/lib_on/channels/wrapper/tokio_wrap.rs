@@ -485,9 +485,10 @@ impl<T> Drop for Receiver<T> {
     }
 }
 
-// Restores tokio's `Receiver<T>: Sync` bound of `T: Send`, which the auto impl
-// loses to `poll_buf` (`Vec<T>` demands `T: Sync`). Sound because `poll_buf` is
-// only touched through `&mut self` - no `&self` method can reach a `T` in it.
+// SAFETY: restores tokio's `Receiver<T>: Sync` bound of `T: Send`, which the
+// auto impl loses to `poll_buf` (`Vec<T>` demands `T: Sync`). Sound because
+// `poll_buf` is only touched through `&mut self` - no `&self` method can reach
+// a `T` in it.
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
 /// Instrumented [`tokio::sync::mpsc::UnboundedSender`] wrapper.
@@ -761,10 +762,10 @@ impl<T> Drop for UnboundedReceiver<T> {
     }
 }
 
-// Restores tokio's `UnboundedReceiver<T>: Sync` bound of `T: Send`, which the
-// auto impl loses to `poll_buf` (`Vec<T>` demands `T: Sync`). Sound because
-// `poll_buf` is only touched through `&mut self` - no `&self` method can reach
-// a `T` in it.
+// SAFETY: restores tokio's `UnboundedReceiver<T>: Sync` bound of `T: Send`,
+// which the auto impl loses to `poll_buf` (`Vec<T>` demands `T: Sync`). Sound
+// because `poll_buf` is only touched through `&mut self` - no `&self` method
+// can reach a `T` in it.
 unsafe impl<T: Send> Sync for UnboundedReceiver<T> {}
 
 // Tokio's endpoints implement `Debug` for any `T`, so the wrappers delegate

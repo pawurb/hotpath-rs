@@ -28,6 +28,11 @@ impl<A> Default for CountingAllocator<A> {
     }
 }
 
+// SAFETY: pure pass-through to the inner allocator `A` - every pointer
+// returned by `alloc` comes from `A::alloc` and every `dealloc` forwards the
+// caller's `ptr`/`layout` unchanged, so `A`'s GlobalAlloc guarantees carry
+// over. The tracking hooks only update thread-local counters and never touch
+// the allocation itself.
 unsafe impl<A> GlobalAlloc for CountingAllocator<A>
 where
     A: Default + GlobalAlloc,
@@ -35,12 +40,17 @@ where
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         crate::lib_on::functions::alloc::core::track_alloc(layout.size());
 
+        // SAFETY: caller upholds GlobalAlloc's contract for `layout`; it is
+        // forwarded unchanged.
         unsafe { A::default().alloc(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         crate::lib_on::functions::alloc::core::track_dealloc(layout.size());
 
+        // SAFETY: caller guarantees `ptr` was allocated by this allocator
+        // with `layout`, which means it came from `A::alloc`; both are
+        // forwarded unchanged.
         unsafe {
             A::default().dealloc(ptr, layout);
         }

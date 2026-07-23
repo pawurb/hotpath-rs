@@ -30,6 +30,7 @@ fn state_to_status(state: &str) -> (String, String) {
 /// Get clock ticks per second for time conversion
 fn clock_ticks_per_sec() -> u64 {
     *CLOCK_TICKS.get_or_init(|| {
+        // SAFETY: sysconf takes a plain integer and has no preconditions.
         let v = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
         if v <= 0 {
             100 // fallback to 100 Hz
@@ -125,6 +126,7 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
     let fields: Vec<&str> = statm.split_whitespace().collect();
     if fields.len() >= 2 {
         let rss_pages: u64 = fields[1].parse().ok()?;
+        // SAFETY: sysconf takes a plain integer and has no preconditions.
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
         Some(rss_pages * page_size)
     } else {

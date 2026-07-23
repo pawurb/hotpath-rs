@@ -61,6 +61,8 @@ struct AutoHandle(HANDLE);
 impl Drop for AutoHandle {
     fn drop(&mut self) {
         if self.0 != INVALID_HANDLE_VALUE && !self.0.is_null() {
+            // SAFETY: the wrapped handle is valid (checked above) and owned by
+            // this guard, so it is closed exactly once.
             unsafe { CloseHandle(self.0) };
         }
     }
@@ -74,6 +76,10 @@ fn filetime_to_seconds(ft: &FILETIME) -> f64 {
 
 /// Collect per-thread CPU usage metrics for the current process on Windows
 pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
+    // SAFETY: plain Win32 FFI. The snapshot handle is validated against
+    // INVALID_HANDLE_VALUE before use and released by AutoHandle.
+    // Thread32First/Thread32Next receive a valid THREADENTRY32 with `dw_size`
+    // set as the API requires.
     unsafe {
         let current_pid = GetCurrentProcessId();
 
@@ -138,21 +144,31 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
 
 fn read_thread_description(h_thread: HANDLE) -> Option<String> {
     let mut desc_ptr: PWSTR = std::ptr::null_mut();
+    // SAFETY: `h_thread` is a valid open thread handle (caller holds it via
+    // AutoHandle) and `desc_ptr` is a valid out-pointer.
     let hr = unsafe { GetThreadDescription(h_thread, &mut desc_ptr) };
     if hr < 0 || desc_ptr.is_null() {
         return None;
     }
     let mut len = 0usize;
+    // SAFETY: on success `desc_ptr` points to a null-terminated UTF-16 string
+    // allocated by the API, so reads up to and including the terminator are in
+    // bounds.
     while unsafe { *desc_ptr.add(len) } != 0 {
         len += 1;
     }
+    // SAFETY: `len` u16s were just verified readable before the terminator.
     let slice = unsafe { std::slice::from_raw_parts(desc_ptr, len) };
     let name = String::from_utf16_lossy(slice);
+    // SAFETY: GetThreadDescription documents the string as LocalAlloc-owned;
+    // it is freed exactly once here, after the last read.
     unsafe { LocalFree(desc_ptr as HANDLE) };
     Some(name)
 }
 
 fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics, String> {
+    // SAFETY: OpenThread takes plain values; a stale/invalid `thread_id`
+    // yields a null handle, checked below.
     let h_thread = unsafe { OpenThread(THREAD_QUERY_LIMITED_INFORMATION, 0, thread_id) };
 
     if h_thread.is_null() {
@@ -166,6 +182,8 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     let _thread_guard = AutoHandle(h_thread);
 
     // Verify the thread still belongs to our process (guard against TID reuse)
+    // SAFETY: `h_thread` is a valid open handle (null-checked above, kept
+    // alive by AutoHandle).
     let process_id = unsafe { GetProcessIdOfThread(h_thread) };
     if process_id == 0 {
         return Err(format!(
@@ -195,6 +213,8 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
         dw_high_date_time: 0,
     };
 
+    // SAFETY: `h_thread` is a valid open handle and all four out-pointers
+    // reference live FILETIME structs.
     let result = unsafe {
         GetThreadTimes(
             h_thread,
@@ -265,6 +285,10 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
         fn GetCurrentProcess() -> HANDLE;
     }
 
+    // SAFETY: GetCurrentProcess returns a pseudo-handle that is always valid.
+    // `counters` is zeroed storage of the exact layout GetProcessMemoryInfo
+    // fills, with `cb` set to its size; `assume_init` runs only after the call
+    // reports success.
     unsafe {
         let mut counters: MaybeUninit<PROCESS_MEMORY_COUNTERS_EX> = MaybeUninit::zeroed();
         let counters_ptr = counters.as_mut_ptr();

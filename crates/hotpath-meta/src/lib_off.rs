@@ -272,6 +272,14 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn sections_exclude(self, _sections: Vec<Section>) -> Self {
+        self
+    }
+
+    pub fn report(self, _spec: &str) -> Self {
+        self
+    }
+
     pub fn before_shutdown(self, _f: impl FnOnce() + Send + 'static) -> Self {
         self
     }

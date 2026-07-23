@@ -27,7 +27,7 @@ mod lib_off;
 /// * `futures_limit` - Maximum number of futures shown in the report. Overrides `limit` for futures.
 /// * `threads_limit` - Maximum number of threads shown in the report. Overrides `limit` for threads.
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_META_OUTPUT_PATH` env var.
-/// * `report` - Comma-separated sections to include: `"functions-timing"`, `"functions-alloc"`, `"channels"`, `"streams"`, `"futures"`, `"threads"`, `"debug"`, or `"all"`. Overridden by `HOTPATH_META_REPORT` env var.
+/// * `report` - Report sections spec: `"all"`, `"auto"`, an exact list like `"functions-timing,channels"`, or auto with exclusions like `"auto,-threads"`. Default: auto (function and thread sections plus every instrumented section with data). Overridden by `HOTPATH_META_REPORT` env var.
 /// * `allocator` - Optional allocator type path used when `hotpath-alloc-meta` is enabled.
 ///   Defaults to `std::alloc::System`.
 ///
@@ -68,10 +68,17 @@ mod lib_off;
 /// }
 /// ```
 ///
-/// Select report sections:
+/// Select exact report sections, or hide a section from the auto report:
 ///
 /// ```rust,no_run
 /// #[hotpath_meta::main(report = "functions-timing,channels")]
+/// fn main() {
+///     // Your code here
+/// }
+/// ```
+///
+/// ```rust,no_run
+/// #[hotpath_meta::main(report = "auto,-threads")]
 /// fn main() {
 ///     // Your code here
 /// }

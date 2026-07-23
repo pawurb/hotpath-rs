@@ -82,6 +82,12 @@ extern "C" {
 
 /// Collect per-thread CPU usage metrics for the current process on macOS
 pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
+    // SAFETY: mach_task_self returns the caller's task port. task_threads is
+    // handed valid out-pointers and is checked for KERN_SUCCESS before
+    // `thread_list`/`thread_count` are used, so the list read stays in bounds.
+    // Each listed port satisfies get_thread_info/get_thread_name's contract.
+    // The kernel-allocated list is released with mach_vm_deallocate using the
+    // size the kernel reported, exactly once.
     unsafe {
         let task = mach_task_self();
         let mut thread_list: thread_act_array_t = std::ptr::null_mut();
@@ -113,6 +119,9 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
     }
 }
 
+// SAFETY: `thread` must be a thread port obtained from `task_threads` for the
+// current task. A stale port (thread already exited) is fine - thread_info
+// then fails and the error is returned.
 unsafe fn get_thread_info(thread: thread_act_t, index: u64) -> Result<ThreadMetrics, String> {
     let mut thread_info_data: thread_basic_info = mem::zeroed();
     let mut thread_info_count = (mem::size_of::<thread_basic_info>() / mem::size_of::<integer_t>())
@@ -147,6 +156,8 @@ unsafe fn get_thread_info(thread: thread_act_t, index: u64) -> Result<ThreadMetr
     ))
 }
 
+// SAFETY: `thread` must be a thread port obtained from `task_threads` for the
+// current task. A stale port yields a null pthread and returns `None`.
 unsafe fn get_thread_name(thread: thread_act_t) -> Option<String> {
     let pthread = pthread_from_mach_thread_np(thread);
 
@@ -175,6 +186,8 @@ unsafe fn get_thread_name(thread: thread_act_t) -> Option<String> {
 /// Get the RSS (Resident Set Size) of the current process in bytes
 pub(crate) fn get_rss_bytes() -> Option<u64> {
     // Use rusage to get RSS - this is the most reliable cross-platform approach
+    // SAFETY: `rusage` is zero-initialized with the layout getrusage expects,
+    // and its fields are read only after the call reports success.
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
         if libc::getrusage(libc::RUSAGE_SELF, &mut rusage) == 0 {
