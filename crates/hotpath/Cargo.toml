@@ -18,11 +18,6 @@ path = "bin/hotpath-utils/main.rs"
 required-features = ["utils"]
 
 [[bin]]
-name = "hotpath-crashtest"
-path = "bin/hotpath-crashtest/main.rs"
-required-features = ["tui", "hotpath", "hotpath-alloc"]
-
-[[bin]]
 name = "hotpath-samply"
 path = "bin/hotpath-samply/main.rs"
 
