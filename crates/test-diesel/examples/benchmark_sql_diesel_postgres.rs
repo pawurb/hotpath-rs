@@ -1,5 +1,5 @@
 //! Run with:
-//!   cargo run -p test-diesel --example benchmark_sql_diesel_postgres --features hotpath
+//!   cargo run -p test-diesel --example benchmark_sql_diesel_postgres --features hotpath,pg
 
 use diesel::prelude::*;
 use diesel::sql_types::Integer;
