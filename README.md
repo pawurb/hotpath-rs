@@ -53,7 +53,7 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 - [x] [`hotpath::mutex!/rw_lock!`](https://github.com/pawurb/hotpath-rs/issues/340)
 - [x] `hotpath::channel!(..., wrap = true)` 
 - [x] [`hotpath::channel!` timing histogram](https://github.com/pawurb/hotpath-rs/issues/299)
-- [ ] [Instrument AsyncRead/AsyncWrite and Read/Write wrappers](https://github.com/pawurb/hotpath-rs/issues/379)
+- [x] [Instrument AsyncRead/AsyncWrite and Read/Write wrappers](https://github.com/pawurb/hotpath-rs/issues/379)
 - [ ] `hotpath::sql!(...)` 
 - [ ] `hotpath::http!(...)` 
 

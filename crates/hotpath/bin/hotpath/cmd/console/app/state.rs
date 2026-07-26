@@ -111,6 +111,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.refresh_sql_logs_after_selection(),
             IoSubTab::Http => self.refresh_http_logs_after_selection(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -193,6 +194,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.sql_logs_table_state.select(None),
             IoSubTab::Http => self.http_logs_table_state.select(None),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -200,6 +202,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.toggle_sql_logs(),
             IoSubTab::Http => self.toggle_http_logs(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -207,6 +210,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.focus_sql_logs(),
             IoSubTab::Http => self.focus_http_logs(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -214,6 +218,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.select_previous_sql_log(),
             IoSubTab::Http => self.select_previous_http_log(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -221,6 +226,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.select_next_sql_log(),
             IoSubTab::Http => self.select_next_http_log(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -228,6 +234,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.first_sql_log(),
             IoSubTab::Http => self.first_http_log(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -235,6 +242,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.last_sql_log(),
             IoSubTab::Http => self.last_http_log(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -242,6 +250,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.toggle_sql_inspect(),
             IoSubTab::Http => self.toggle_http_inspect(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -249,6 +258,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.close_sql_inspect_and_refocus(),
             IoSubTab::Http => self.close_http_inspect_and_refocus(),
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -256,6 +266,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.close_sql_inspect_only(),
             IoSubTab::Http => self.close_http_inspect_only(),
+            IoSubTab::Bytes => {}
         }
     }
 

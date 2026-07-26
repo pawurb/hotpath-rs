@@ -7,6 +7,7 @@ pub fn init() {
     spawn_tokio_demo();
     spawn_rw_locks();
     spawn_mutexes();
+    spawn_io();
     spawn_channels();
     spawn_std_channel();
     #[cfg(feature = "demo")]
@@ -61,6 +62,30 @@ fn spawn_std_channel() {
         while let Ok(job) = rx.recv() {
             std::hint::black_box(job);
             thread::sleep(Duration::from_millis(30));
+        }
+    });
+}
+
+fn spawn_io() {
+    // In-memory Cursor exercised in a loop; shows read/write throughput on the
+    // Bytes sub-tab.
+    thread::spawn(|| {
+        use std::io::{Read, Write};
+
+        let mut io = hotpath::io!(std::io::Cursor::new(Vec::new()));
+        let payload = [7u8; 256];
+        let mut buf = [0u8; 64];
+        loop {
+            io.get_mut().set_position(0);
+            let _ = io.write_all(&payload);
+            let _ = io.flush();
+            io.get_mut().set_position(0);
+            while let Ok(n) = io.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(50));
         }
     });
 }

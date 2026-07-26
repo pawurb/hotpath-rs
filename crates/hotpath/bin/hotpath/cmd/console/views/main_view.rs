@@ -278,7 +278,7 @@ fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
 #[hotpath::measure]
 fn render_io_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
     let sub_tab = app.io_sub_tab;
-    let labels = [IoSubTab::Sql, IoSubTab::Http]
+    let labels = [IoSubTab::Sql, IoSubTab::Http, IoSubTab::Bytes]
         .into_iter()
         .map(|tab| {
             (
@@ -331,6 +331,15 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 Line::from(""),
                 Line::from("Wrap your reqwest client with hotpath::http!(...)").centered(),
             ],
+            IoSubTab::Bytes => vec![
+                Line::from(""),
+                Line::from("No I/O wrappers found").yellow().centered(),
+                Line::from(""),
+                Line::from(
+                    "Use the io! macro to instrument Read/Write/AsyncRead/AsyncWrite values",
+                )
+                .centered(),
+            ],
         };
 
         let block = Block::bordered().border_set(border::THICK);
@@ -341,6 +350,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let show_logs = match app.io_sub_tab {
         IoSubTab::Sql => app.show_sql_logs,
         IoSubTab::Http => app.show_http_logs,
+        IoSubTab::Bytes => false,
     };
     let (table_area, logs_area) = if show_logs {
         let chunks = Layout::default()
@@ -355,6 +365,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let selected_index = match app.io_sub_tab {
         IoSubTab::Sql => app.sql_table_state.selected().unwrap_or(0),
         IoSubTab::Http => app.http_table_state.selected().unwrap_or(0),
+        IoSubTab::Bytes => app.io_bytes_table_state.selected().unwrap_or(0),
     };
     let position = selected_index + 1;
 
@@ -380,6 +391,15 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
             &mut app.http_table_state,
             app.show_http_logs,
             app.io_focus == IoFocus::List,
+            position,
+            total,
+        ),
+        IoSubTab::Bytes => data_flow::render_io_bytes_panel(
+            &app.io_bytes.data,
+            &app.io_bytes.percentiles,
+            table_area,
+            frame,
+            &mut app.io_bytes_table_state,
             position,
             total,
         ),
@@ -443,6 +463,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                     data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
                 }
             }
+            IoSubTab::Bytes => {}
         }
     }
 
@@ -458,6 +479,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                     io_inspect::render_http_inspect_popup(inspected, area, frame);
                 }
             }
+            IoSubTab::Bytes => {}
         }
     }
 }

@@ -507,6 +507,41 @@ impl JsonHttpLogsList {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonIoList {
+    pub current_elapsed_ns: u64,
+    pub percentiles: Vec<f64>,
+    pub data: Vec<JsonIoEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonIoEntry {
+    pub id: u32,
+    pub source: String,
+    pub label: String,
+    pub has_custom_label: bool,
+    pub type_name: String,
+    pub read: JsonIoOpStats,
+    pub write: JsonIoOpStats,
+    pub flush: JsonIoOpStats,
+    pub shutdown: JsonIoOpStats,
+    pub iter: u32,
+}
+
+/// Per-operation-kind statistics for one instrumented I/O value. `total_ns`
+/// and `bytes` are raw values; `avg` and `percentiles` are formatted durations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonIoOpStats {
+    pub count: u64,
+    #[serde(default)]
+    pub sampled_count: u64,
+    pub bytes: u64,
+    pub errors: u64,
+    pub avg: String,
+    pub total_ns: u64,
+    pub percentiles: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelSentLog {
     pub index: u64,
     pub timestamp: String,
@@ -921,6 +956,8 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http: Option<JsonHttpList>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub io: Option<JsonIoList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<JsonThreadsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug: Option<JsonDebugList>,
@@ -944,6 +981,7 @@ impl Default for JsonReport {
             mutexes: None,
             sql: None,
             http: None,
+            io: None,
             threads: None,
             debug: None,
             cpu_baseline: None,

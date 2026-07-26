@@ -4,8 +4,8 @@ use hotpath::json::{
     JsonChannelLogsList, JsonChannelSentLog, JsonChannelsList, JsonDataFlowLog, JsonDebugEntry,
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
     JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonHttpList, JsonHttpLog,
-    JsonHttpLogsList, JsonMutexesList, JsonRuntimeSnapshot, JsonRwLocksList, JsonSqlList,
-    JsonSqlLog, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonHttpLogsList, JsonIoList, JsonMutexesList, JsonRuntimeSnapshot, JsonRwLocksList,
+    JsonSqlList, JsonSqlLog, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
 use ratatui::layout::Rect;
@@ -136,6 +136,7 @@ pub(crate) enum IoSubTab {
     #[default]
     Sql,
     Http,
+    Bytes,
 }
 
 impl IoSubTab {
@@ -143,13 +144,15 @@ impl IoSubTab {
         match self {
             IoSubTab::Sql => "SQL",
             IoSubTab::Http => "HTTP",
+            IoSubTab::Bytes => "Bytes",
         }
     }
 
     pub(crate) fn cycle(&self) -> Self {
         match self {
             IoSubTab::Sql => IoSubTab::Http,
-            IoSubTab::Http => IoSubTab::Sql,
+            IoSubTab::Http => IoSubTab::Bytes,
+            IoSubTab::Bytes => IoSubTab::Sql,
         }
     }
 }
@@ -278,6 +281,7 @@ pub(crate) struct App {
     pub(crate) mutexes: JsonMutexesList,
     pub(crate) sql: JsonSqlList,
     pub(crate) http: JsonHttpList,
+    pub(crate) io_bytes: JsonIoList,
     pub(crate) channels_table_state: TableState,
     pub(crate) streams_table_state: TableState,
     pub(crate) futures_table_state: TableState,
@@ -285,6 +289,7 @@ pub(crate) struct App {
     pub(crate) mutexes_table_state: TableState,
     pub(crate) sql_table_state: TableState,
     pub(crate) http_table_state: TableState,
+    pub(crate) io_bytes_table_state: TableState,
     pub(crate) io_focus: IoFocus,
     pub(crate) show_sql_logs: bool,
     pub(crate) sql_logs: Option<JsonSqlLogsList>,
@@ -444,6 +449,11 @@ impl App {
                 percentiles: vec![],
                 data: vec![],
             },
+            io_bytes: JsonIoList {
+                current_elapsed_ns: 0,
+                percentiles: vec![],
+                data: vec![],
+            },
             channels_table_state: TableState::default().with_selected(0),
             streams_table_state: TableState::default().with_selected(0),
             futures_table_state: TableState::default().with_selected(0),
@@ -451,6 +461,7 @@ impl App {
             mutexes_table_state: TableState::default().with_selected(0),
             sql_table_state: TableState::default().with_selected(0),
             http_table_state: TableState::default().with_selected(0),
+            io_bytes_table_state: TableState::default().with_selected(0),
             io_focus: IoFocus::List,
             show_sql_logs: false,
             sql_logs: None,
@@ -531,6 +542,7 @@ impl App {
             SelectedTab::Io => match self.io_sub_tab {
                 IoSubTab::Sql => &mut self.sql_table_state,
                 IoSubTab::Http => &mut self.http_table_state,
+                IoSubTab::Bytes => &mut self.io_bytes_table_state,
             },
             SelectedTab::Threads => &mut self.threads_table_state,
             SelectedTab::Debug => &mut self.debug_table_state,
@@ -552,6 +564,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.sql.data.len(),
             IoSubTab::Http => self.http.data.len(),
+            IoSubTab::Bytes => self.io_bytes.data.len(),
         }
     }
 

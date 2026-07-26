@@ -5,8 +5,8 @@ use crate::cmd::console::app::DataFlowFocus;
 use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::{truncate_left, truncate_right};
 use hotpath::json::{
-    JsonChannelEntry, JsonFutureEntry, JsonHttpEntry, JsonMutexEntry, JsonRwLockEntry,
-    JsonSqlEntry, JsonStreamEntry,
+    JsonChannelEntry, JsonFutureEntry, JsonHttpEntry, JsonIoEntry, JsonIoOpStats, JsonMutexEntry,
+    JsonRwLockEntry, JsonSqlEntry, JsonStreamEntry,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -753,6 +753,159 @@ pub(crate) fn render_http_panel(
             position,
             total,
         ))
+        .column_spacing(1)
+        .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
+        .highlight_symbol(">> ")
+        .highlight_spacing(HighlightSpacing::Always);
+
+    frame.render_stateful_widget(table, area, table_state);
+}
+
+#[hotpath::measure]
+pub(crate) fn render_io_bytes_panel(
+    entries: &[JsonIoEntry],
+    percentiles: &[f64],
+    area: Rect,
+    frame: &mut Frame,
+    table_state: &mut TableState,
+    position: usize,
+    total: usize,
+) {
+    // Stack a reads table over a writes table; both list every wrapper in the
+    // same order so the shared cursor highlights the same wrapper in both halves.
+    let halves = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+
+    render_io_bytes_subtable(
+        entries,
+        percentiles,
+        IoBytesKind::Read,
+        halves[0],
+        frame,
+        table_state,
+        position,
+        total,
+    );
+    render_io_bytes_subtable(
+        entries,
+        percentiles,
+        IoBytesKind::Write,
+        halves[1],
+        frame,
+        table_state,
+        position,
+        total,
+    );
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum IoBytesKind {
+    Read,
+    Write,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_io_bytes_subtable(
+    entries: &[JsonIoEntry],
+    percentiles: &[f64],
+    kind: IoBytesKind,
+    area: Rect,
+    frame: &mut Frame,
+    table_state: &mut TableState,
+    position: usize,
+    total: usize,
+) {
+    let available_width = area.width.saturating_sub(10);
+    let label_width = ((available_width as f32 * 0.30) as usize).max(16);
+
+    let percentile_keys: Vec<String> = percentiles
+        .iter()
+        .map(|p| hotpath::format_percentile_key(*p))
+        .collect();
+
+    let (count_label, title) = match kind {
+        IoBytesKind::Read => ("Reads", " I/O reads "),
+        IoBytesKind::Write => ("Writes", " I/O writes "),
+    };
+
+    let mut header_cells = vec![
+        Cell::from("Io"),
+        Cell::from(count_label),
+        Cell::from("Bytes"),
+        Cell::from("Avg"),
+    ];
+    for p in percentiles {
+        header_cells.push(Cell::from(hotpath::format_percentile_header(*p)));
+    }
+    header_cells.push(Cell::from("Total"));
+    if kind == IoBytesKind::Write {
+        header_cells.push(Cell::from("Flushes"));
+    }
+    header_cells.push(Cell::from("Errors"));
+    let header = Row::new(header_cells)
+        .style(common_styles::HEADER_STYLE_CYAN)
+        .height(1);
+
+    let rows: Vec<Row> = entries
+        .iter()
+        .map(|entry| {
+            let stats: &JsonIoOpStats = match kind {
+                IoBytesKind::Read => &entry.read,
+                IoBytesKind::Write => &entry.write,
+            };
+
+            let mut cells = vec![
+                Cell::from(truncate_left(&entry.label, label_width)),
+                Cell::from(stats.count.to_string()),
+                Cell::from(hotpath::format_bytes(stats.bytes)),
+                Cell::from(stats.avg.clone()),
+            ];
+            for key in &percentile_keys {
+                cells.push(Cell::from(
+                    stats.percentiles.get(key).cloned().unwrap_or_default(),
+                ));
+            }
+            // Count-only sampling reports no durations: mirror the `-` the
+            // formatted avg/percentile fields use instead of a raw `0 ns`.
+            let total = if stats.sampled_count == 0 && stats.count > 0 {
+                "-".to_string()
+            } else {
+                hotpath::format_duration(stats.total_ns)
+            };
+            cells.push(Cell::from(total));
+            // The write row aggregates write-side errors so flush/shutdown
+            // failures aren't hidden, matching the terminal report.
+            let errors = if kind == IoBytesKind::Write {
+                cells.push(Cell::from(entry.flush.count.to_string()));
+                stats.errors + entry.flush.errors + entry.shutdown.errors
+            } else {
+                stats.errors
+            };
+            cells.push(Cell::from(errors.to_string()));
+            Row::new(cells)
+        })
+        .collect();
+
+    let mut widths = vec![
+        Constraint::Percentage(30),
+        Constraint::Length(8),
+        Constraint::Length(10),
+        Constraint::Length(10),
+    ];
+    for _ in percentiles {
+        widths.push(Constraint::Length(10));
+    }
+    widths.push(Constraint::Length(10));
+    if kind == IoBytesKind::Write {
+        widths.push(Constraint::Length(8));
+    }
+    widths.push(Constraint::Length(7));
+
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(list_block(title, false, true, position, total))
         .column_spacing(1)
         .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
         .highlight_symbol(">> ")

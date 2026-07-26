@@ -24,6 +24,15 @@ jobs:
           --health-interval 2s
           --health-timeout 2s
           --health-retries 15
+      redis:
+        image: redis:7
+        ports:
+          - 6390:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
     strategy:
       fail-fast: false
       matrix:
@@ -161,6 +170,12 @@ jobs:
       - name: Run futures tests
         run: |
           cargo test --features hotpath --test futures -- --nocapture --test-threads=1
+      - name: Run io tests
+        run: |
+          cargo test --features hotpath --test io -- --nocapture --test-threads=1
+      - name: Run io redis tests
+        run: |
+          cargo test --features hotpath --test io_redis -- --nocapture --test-threads=1
       - name: Run http reqwest tests
         run: |
           cargo test --features hotpath --test http_reqwest -- --nocapture --test-threads=1

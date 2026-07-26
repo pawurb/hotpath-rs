@@ -6,8 +6,9 @@ use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugDbgLogs, JsonDebugGaugeLogs, JsonDebugList,
     JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
     JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonHttpList,
-    JsonHttpLogsList, JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot, JsonRwLocksList,
-    JsonSqlList, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonHttpLogsList, JsonIoList, JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot,
+    JsonRwLocksList, JsonSqlList, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList,
+    JsonThreadsList,
 };
 use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
 use reqwest::StatusCode;
@@ -32,6 +33,7 @@ enum RequestKey {
     Mutexes,
     Sql,
     Http,
+    Io,
     Threads,
     Debug,
     TokioRuntime,
@@ -62,6 +64,7 @@ impl DataRequest {
             DataRequest::RefreshMutexes => RequestKey::Mutexes,
             DataRequest::RefreshSql => RequestKey::Sql,
             DataRequest::RefreshHttp => RequestKey::Http,
+            DataRequest::RefreshIo => RequestKey::Io,
             DataRequest::RefreshThreads => RequestKey::Threads,
             DataRequest::RefreshDebug => RequestKey::Debug,
             DataRequest::RefreshTokioRuntime => RequestKey::TokioRuntime,
@@ -259,6 +262,7 @@ impl RouteExt for Route {
             Route::Mutexes => parse_json::<JsonMutexesList>(bytes).map(DataResponse::Mutexes),
             Route::Sql => parse_json::<JsonSqlList>(bytes).map(DataResponse::Sql),
             Route::Http => parse_json::<JsonHttpList>(bytes).map(DataResponse::Http),
+            Route::Io => parse_json::<JsonIoList>(bytes).map(DataResponse::Io),
             Route::Threads => parse_json::<JsonThreadsList>(bytes).map(DataResponse::Threads),
             Route::FunctionTimingLogs { function_id } => {
                 parse_json::<JsonFunctionTimingLogsList>(bytes).map(|logs| {
