@@ -2,19 +2,7 @@
 
 `hotpath` instruments byte-level I/O to surface slow reads and writes - files, sockets, TLS streams, TCP connections like Redis, compression streams, and any custom I/O type. For every wrapped value it tracks, per operation kind (read, write, flush, shutdown):
 
-```bash
-+-------+-------+----------+-----------+-----------+-----------+--------+--------+
-| Io    | Reads | Bytes    | Rate      | Avg       | P95       | Total  | Errors |
-+-------+-------+----------+-----------+-----------+-----------+--------+--------+
-| redis | 33000 | 322.3 KB | 75.2 KB/s | 129.85 µs | 157.57 µs | 4.28 s | 0      |
-+-------+-------+----------+-----------+-----------+-----------+--------+--------+
-
-+-------+--------+----------+-----------+---------+---------+----------+---------+--------+
-| Io    | Writes | Bytes    | Rate      | Avg     | P95     | Total    | Flushes | Errors |
-+-------+--------+----------+-----------+---------+---------+----------+---------+--------+
-| redis | 33000  | 945.3 KB | 15.7 MB/s | 1.78 µs | 3.21 µs | 58.76 ms | 0       | 0      |
-+-------+--------+----------+-----------+---------+---------+----------+---------+--------+
-```
+<img loading="lazy" src="{{#asset-hash images/io_metrics.png}}" alt="hotpath-rs I/O profiling report showing per-stream read counts, bytes, transfer rate, average and P95 latency">
 
 - **Operation count** - completed operations
 - **Bytes processed** - total bytes read or written
