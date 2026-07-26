@@ -112,6 +112,14 @@ pub fn format_rate(rate: Option<f64>) -> String {
     rate.map_or_else(|| "-".to_string(), |v| format!("{v:.1}"))
 }
 
+/// Formats an optional bytes-per-second rate (e.g. `12.4 MB/s`), or `-` when absent.
+pub fn format_throughput(rate: Option<f64>) -> String {
+    rate.map_or_else(
+        || "-".to_string(),
+        |v| format!("{}/s", format_bytes(v.round() as u64)),
+    )
+}
+
 /// Parses a human-readable byte string back to a byte count.
 /// Inverse of [`format_bytes`].
 pub fn parse_bytes(s: &str) -> Option<u64> {

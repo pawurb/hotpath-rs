@@ -21,6 +21,7 @@ use crate::json::{
 use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
     format_bytes, format_duration, format_percentile_header, format_percentile_key, format_rate,
+    format_throughput,
 };
 use crate::output_on::write_section_header;
 use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS_STATE};
@@ -885,6 +886,7 @@ fn report_io_subtable(
         styled_header("Io"),
         styled_header(count_label),
         styled_header("Bytes"),
+        styled_header("Rate"),
         styled_header("Avg"),
     ];
     for &p in percentiles {
@@ -907,6 +909,7 @@ fn report_io_subtable(
             Cell::new(&label),
             Cell::new(&stats.count.to_string()),
             Cell::new(&format_bytes(stats.bytes)),
+            Cell::new(&format_throughput(stats.throughput_bytes_per_sec())),
             Cell::new(&fmt(stats.avg_nanos())),
         ];
         for &p in percentiles {
@@ -938,8 +941,12 @@ fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64]) -> JsonIoOpStats 
         count: stats.count,
         sampled_count: stats.sampled_count,
         bytes: stats.bytes,
+        sampled_bytes: stats.sampled_bytes,
         errors: stats.errors,
         avg: fmt(stats.avg_nanos()),
+        throughput: stats
+            .throughput_bytes_per_sec()
+            .map(|rate| format_throughput(Some(rate))),
         total_ns: stats.total_nanos,
         percentiles: percentile_map,
     }

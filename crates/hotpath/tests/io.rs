@@ -68,7 +68,16 @@ pub mod tests {
         assert_eq!(reader.read.count, 10);
         assert_eq!(reader.read.bytes, 100);
         assert_eq!(reader.read.sampled_count, 10);
+        assert_eq!(reader.read.sampled_bytes, 100);
         assert!(reader.read.total_ns > 0, "Sync reads should be timed");
+        assert!(
+            reader
+                .read
+                .throughput
+                .as_deref()
+                .is_some_and(|t| t.ends_with("/s")),
+            "Timed reads should report throughput"
+        );
         assert_eq!(reader.read.errors, 0);
         assert_eq!(reader.write.count, 0);
         assert!(reader.type_name.contains("File"));

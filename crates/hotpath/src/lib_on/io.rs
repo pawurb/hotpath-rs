@@ -79,6 +79,9 @@ pub(crate) struct IoOpStats {
     pub(crate) count: u64,
     pub(crate) sampled_count: u64,
     pub(crate) bytes: u64,
+    /// Bytes from timed operations only; pairs with `total_nanos` so
+    /// throughput stays correct under time sampling.
+    pub(crate) sampled_bytes: u64,
     pub(crate) errors: u64,
     pub(crate) total_nanos: u64,
     hist: Option<Histogram<u64>>,
@@ -94,6 +97,7 @@ impl IoOpStats {
             count: 0,
             sampled_count: 0,
             bytes: 0,
+            sampled_bytes: 0,
             errors: 0,
             total_nanos: 0,
             hist: Some(
@@ -108,6 +112,7 @@ impl IoOpStats {
         self.bytes += bytes;
         if let Some(nanos) = duration_nanos {
             self.sampled_count += 1;
+            self.sampled_bytes += bytes;
             self.total_nanos += nanos;
             if let Some(ref mut hist) = self.hist {
                 hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
@@ -120,6 +125,15 @@ impl IoOpStats {
         self.total_nanos
             .checked_div(self.sampled_count)
             .unwrap_or(0)
+    }
+
+    /// Estimated transfer rate while operations were in flight, based on
+    /// timed operations only. `None` when nothing was timed.
+    pub(crate) fn throughput_bytes_per_sec(&self) -> Option<f64> {
+        if self.total_nanos == 0 {
+            return None;
+        }
+        Some(self.sampled_bytes as f64 * 1_000_000_000.0 / self.total_nanos as f64)
     }
 
     pub(crate) fn percentile_nanos(&self, p: f64) -> u64 {
