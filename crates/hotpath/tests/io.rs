@@ -246,6 +246,37 @@ pub mod tests {
         assert_eq!(compressed_read.read.bytes, compressed_write.write.bytes);
     }
 
+    // cargo run -p test-io --example basic_zstd_io --features hotpath (json)
+    #[test]
+    fn test_zstd_json_output() {
+        let stdout = run_example("basic_zstd_io", true);
+        let io = parse_io(&stdout);
+
+        // Same layer cross-checks as the gzip test, over the zstd codec.
+        let plain_write = entry(&io, "zstd-plaintext-write");
+        assert!(plain_write.type_name.contains("Encoder"));
+        assert!(plain_write.write.count >= 10);
+        assert!(plain_write.write.bytes > 10_000);
+        assert_eq!(plain_write.write.errors, 0);
+
+        let compressed_write = entry(&io, "zstd-compressed-write");
+        assert!(compressed_write.write.bytes > 0);
+        assert!(
+            compressed_write.write.bytes * 3 <= plain_write.write.bytes,
+            "JSON fixture should compress at least 3x, got {} -> {}",
+            plain_write.write.bytes,
+            compressed_write.write.bytes
+        );
+
+        let plain_read = entry(&io, "zstd-plaintext-read");
+        assert!(plain_read.type_name.contains("Decoder"));
+        assert_eq!(plain_read.read.bytes, plain_write.write.bytes);
+        assert_eq!(plain_read.read.errors, 0);
+
+        let compressed_read = entry(&io, "zstd-compressed-read");
+        assert_eq!(compressed_read.read.bytes, compressed_write.write.bytes);
+    }
+
     // cargo run -p test-io --example basic_io_sync --features hotpath
     #[test]
     fn test_table_output() {
