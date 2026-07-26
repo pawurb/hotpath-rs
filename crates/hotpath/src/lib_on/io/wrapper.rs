@@ -178,15 +178,16 @@ fn begin_async_op(op: &mut Option<Option<Instant>>) {
     }
 }
 
-/// Resolves a delegated poll: `Ready(Ok)` emits an operation event with the
-/// full first-poll-to-ready duration and `Ready(Err)` emits an error event;
-/// both clear the in-flight state so a later operation cannot inherit a stale
-/// start stamp. Retryable conditions (`WouldBlock`, `Interrupted`) emit
-/// nothing and keep the slot stamped, so a retry continues the same operation
-/// span - like the sync path, they count as neither ops nor errors. If the
-/// operation's future is cancelled mid-`Pending` the slot stays stamped and
-/// the next operation on the same direction resumes it, reporting the time
-/// since the abandoned operation began.
+/// Resolves a delegated poll. `Ready(Ok)` emits an operation event with the
+/// full first-poll-to-ready duration; `Ready(Err)` emits an error event
+/// unless the error is retryable (`WouldBlock`, `Interrupted`), which counts
+/// as neither op nor error. Every `Ready` clears the in-flight state and a
+/// failed one rolls back the sampling decision, matching the sync path: the
+/// future has completed, so a retry is a distinct operation with a fresh
+/// stamp and caller backoff never inflates a later duration. Only if the
+/// operation's future is cancelled mid-`Pending` (unobservable here) does the
+/// slot stay stamped, so the next operation on the same direction resumes it,
+/// reporting the time since the abandoned operation began.
 #[cfg(feature = "tokio")]
 fn finish_async_op<R>(
     op: &mut Option<Option<Instant>>,
@@ -206,20 +207,20 @@ fn finish_async_op<R>(
                 duration_nanos,
             });
         }
-        Poll::Ready(Err(e)) => match e.kind() {
-            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => {}
-            _ => {
-                *op = None;
-                // Parity with the sync path: roll back the sampling decision
-                // consumed at op start so the rate applies to completed
-                // operations. Best-effort under task migration - the decision
-                // may have been consumed on another thread's counter, in which
-                // case the rollback shifts this thread's phase by one, which
-                // is statistically neutral.
-                cancel_op_stamp();
-                send_io_event(IoEvent::Error { id, kind });
+        Poll::Ready(Err(e)) => {
+            *op = None;
+            // Parity with the sync path: roll back the sampling decision
+            // consumed at op start so the rate applies to completed
+            // operations. Best-effort under task migration - the decision
+            // may have been consumed on another thread's counter, in which
+            // case the rollback shifts this thread's phase by one, which
+            // is statistically neutral.
+            cancel_op_stamp();
+            match e.kind() {
+                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => {}
+                _ => send_io_event(IoEvent::Error { id, kind }),
             }
-        },
+        }
     }
     poll
 }

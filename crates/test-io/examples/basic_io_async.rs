@@ -105,7 +105,7 @@ async fn main() {
     assert!(err_reader.read_to_end(&mut sink).await.is_err());
 
     // Retryable Interrupted surfaces to the caller but is not recorded; the
-    // retried read continues the same operation span.
+    // retried read is a fresh operation with its own timing span.
     let mut flaky = hotpath::io!(FlakyReader { calls: 0 }, label = "flaky-reader");
     let mut fbuf = [0u8; 5];
     assert_eq!(
