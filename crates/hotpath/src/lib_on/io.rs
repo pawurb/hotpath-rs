@@ -60,13 +60,15 @@ pub(crate) enum IoEvent {
     },
     /// A completed operation. For async I/O the duration spans from the first
     /// poll of the operation to `Ready`, so it includes suspended time.
-    /// `duration_nanos` is `None` when timing was skipped under time sampling;
-    /// the event still counts the operation and its bytes.
+    /// `duration_nanos` and `started_at_ns` are `None` when timing was skipped
+    /// under time sampling; the event still counts the operation and its bytes.
     Op {
         id: u32,
         kind: IoOpKind,
         bytes: u64,
         duration_nanos: Option<u64>,
+        /// Operation start (ns since program start); anchors the rate window.
+        started_at_ns: Option<u64>,
     },
     /// An operation that failed. Retryable conditions (`WouldBlock`,
     /// `Interrupted`) are not reported as errors.
@@ -79,11 +81,18 @@ pub(crate) struct IoOpStats {
     pub(crate) count: u64,
     pub(crate) sampled_count: u64,
     pub(crate) bytes: u64,
-    /// Bytes from timed operations only; pairs with `total_nanos` so
-    /// throughput stays correct under time sampling.
+    /// Bytes from timed operations only; numerator of the byte rate, so the
+    /// rate stays unbiased under time sampling.
     pub(crate) sampled_bytes: u64,
     pub(crate) errors: u64,
     pub(crate) total_nanos: u64,
+    /// Time with at least one timed operation in flight: the union of op
+    /// intervals, so concurrent operations aggregated into one entry don't
+    /// double-count overlapped time. Denominator of the byte rate.
+    busy_nanos: u64,
+    /// Watermark for the busy-interval union: end (ns since program start) of
+    /// the latest counted interval.
+    busy_until_ns: u64,
     hist: Option<Histogram<u64>>,
 }
 
@@ -100,6 +109,8 @@ impl IoOpStats {
             sampled_bytes: 0,
             errors: 0,
             total_nanos: 0,
+            busy_nanos: 0,
+            busy_until_ns: 0,
             hist: Some(
                 Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
                     .expect("hdrhistogram init"),
@@ -107,13 +118,24 @@ impl IoOpStats {
         }
     }
 
-    fn record(&mut self, bytes: u64, duration_nanos: Option<u64>) {
+    fn record(&mut self, bytes: u64, duration_nanos: Option<u64>, started_at_ns: Option<u64>) {
         self.count += 1;
         self.bytes += bytes;
         if let Some(nanos) = duration_nanos {
             self.sampled_count += 1;
             self.sampled_bytes += bytes;
             self.total_nanos += nanos;
+            if let Some(start) = started_at_ns {
+                // Watermark union: an op inside the already-counted region adds
+                // nothing, a partially overlapping one adds only its extension.
+                // Exact for ops processed in start order; see `flush_io_buffer`.
+                let end = start.saturating_add(nanos);
+                let counted_from = start.max(self.busy_until_ns);
+                if end > counted_from {
+                    self.busy_nanos += end - counted_from;
+                    self.busy_until_ns = end;
+                }
+            }
             if let Some(ref mut hist) = self.hist {
                 hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
                     .unwrap();
@@ -127,13 +149,17 @@ impl IoOpStats {
             .unwrap_or(0)
     }
 
-    /// Estimated transfer rate while operations were in flight, based on
-    /// timed operations only. `None` when nothing was timed.
+    /// Bytes per second of active I/O time: `sampled_bytes` over the union of
+    /// in-flight operation intervals. Idle gaps between operations don't
+    /// dilute the rate, and overlapped time from concurrent operations
+    /// aggregated into one entry is counted once, so the value reads as the
+    /// entry's transfer speed while data was moving. `None` when nothing was
+    /// timed.
     pub(crate) fn throughput_bytes_per_sec(&self) -> Option<f64> {
-        if self.total_nanos == 0 {
+        if self.busy_nanos == 0 {
             return None;
         }
-        Some(self.sampled_bytes as f64 * 1_000_000_000.0 / self.total_nanos as f64)
+        Some(self.sampled_bytes as f64 * 1e9 / self.busy_nanos as f64)
     }
 
     pub(crate) fn percentile_nanos(&self, p: f64) -> u64 {
@@ -223,6 +249,11 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
+#[inline]
+pub(crate) fn started_at_nanos(start: Instant) -> u64 {
+    crate::lib_on::channels::timestamp_nanos(start)
+}
+
 /// One sampling decision per operation; `None` skips both clock reads. Each
 /// operation kind samples from its own counter so periodic workloads can't
 /// bias which kinds get timed.
@@ -299,12 +330,15 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
             kind,
             bytes,
             duration_nanos,
+            started_at_ns,
         } => {
             let entry = state
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_io_entry(id));
-            entry.op_mut(kind).record(bytes, duration_nanos);
+            entry
+                .op_mut(kind)
+                .record(bytes, duration_nanos, started_at_ns);
         }
         IoEvent::Error { id, kind } => {
             let entry = state
@@ -356,6 +390,18 @@ fn flush_io_buffer(buffer: &mut Vec<IoEvent>, inner: &Arc<StdRwLock<IoInternalSt
     if buffer.is_empty() {
         return;
     }
+    // Per-thread queues are swept sequentially, so a batch interleaves ops
+    // from different threads out of start order, which would undercount the
+    // busy-interval union. Sorting timed ops by start makes the union exact
+    // within a sweep (stable sort keeps the remaining events' relative order);
+    // residual error across sweep boundaries is bounded by the drain interval.
+    buffer.sort_by_key(|e| match e {
+        IoEvent::Op {
+            started_at_ns: Some(ns),
+            ..
+        } => *ns,
+        _ => u64::MAX,
+    });
     if let Ok(mut shared) = inner.write() {
         for e in buffer.drain(..) {
             process_io_event(&mut shared, e);
@@ -429,6 +475,37 @@ pub(crate) fn compare_io_entries(a: &IoEntry, b: &IoEntry) -> std::cmp::Ordering
             .cmp(b.label.as_ref().unwrap())
             .then_with(|| a.iter.cmp(&b.iter)),
         (false, false) => a.source.cmp(b.source).then_with(|| a.iter.cmp(&b.iter)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::lib_on::io::IoOpStats;
+
+    #[test]
+    fn busy_union_watermark() {
+        let mut stats = IoOpStats::new();
+        stats.record(100, Some(10), Some(0));
+        stats.record(100, Some(15), Some(5));
+        stats.record(100, Some(2), Some(6));
+        stats.record(100, Some(10), Some(30));
+        assert_eq!(stats.busy_nanos, 30);
+        assert_eq!(stats.sampled_bytes, 400);
+
+        stats.record(100, None, None);
+        assert_eq!(stats.bytes, 500);
+        assert_eq!(stats.busy_nanos, 30);
+
+        let rate = stats.throughput_bytes_per_sec().unwrap();
+        let expected = 400.0 * 1e9 / 30.0;
+        assert!((rate - expected).abs() < 1.0);
+    }
+
+    #[test]
+    fn throughput_none_when_untimed() {
+        let mut stats = IoOpStats::new();
+        stats.record(100, None, None);
+        assert_eq!(stats.throughput_bytes_per_sec(), None);
     }
 }
 
