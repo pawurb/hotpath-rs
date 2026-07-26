@@ -126,19 +126,19 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         let sep = path_sep();
-        let iter_24 = format!("examples{sep}iter_flume.rs:24");
-        let iter_24_2 = format!("examples{sep}iter_flume.rs:24-2");
-        let iter_24_3 = format!("examples{sep}iter_flume.rs:24-3");
-        let iter_37 = format!("examples{sep}iter_flume.rs:37");
-        let iter_37_2 = format!("examples{sep}iter_flume.rs:37-2");
-        let iter_37_3 = format!("examples{sep}iter_flume.rs:37-3");
+        let iter_27 = format!("examples{sep}iter_flume.rs:27");
+        let iter_27_2 = format!("examples{sep}iter_flume.rs:27-2");
+        let iter_27_3 = format!("examples{sep}iter_flume.rs:27-3");
+        let iter_40 = format!("examples{sep}iter_flume.rs:40");
+        let iter_40_2 = format!("examples{sep}iter_flume.rs:40-2");
+        let iter_40_3 = format!("examples{sep}iter_flume.rs:40-3");
         let all_expected = [
-            iter_24.as_str(),
-            iter_24_2.as_str(),
-            iter_24_3.as_str(),
-            iter_37.as_str(),
-            iter_37_2.as_str(),
-            iter_37_3.as_str(),
+            iter_27.as_str(),
+            iter_27_2.as_str(),
+            iter_27_3.as_str(),
+            iter_40.as_str(),
+            iter_40_2.as_str(),
+            iter_40_3.as_str(),
         ];
 
         for expected in all_expected {
