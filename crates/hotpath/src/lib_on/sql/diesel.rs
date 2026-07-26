@@ -12,6 +12,8 @@
 //! `StartQuery` to `FinishQuery` ourselves (includes row streaming). A connection
 //! executes queries serially, so a single `pending` slot is sufficient.
 
+use std::sync::Arc;
+
 use diesel::connection::{set_default_instrumentation, Instrumentation, InstrumentationEvent};
 
 use crate::instant::Instant;
@@ -19,7 +21,7 @@ use crate::lib_on::sql::{init_sql_state, send_sql_event, SqlEvent};
 
 #[derive(Default)]
 struct HotpathDieselInstrumentation {
-    pending: Option<(String, Instant)>,
+    pending: Option<(Arc<str>, Instant)>,
 }
 
 impl Instrumentation for HotpathDieselInstrumentation {
@@ -36,7 +38,7 @@ impl Instrumentation for HotpathDieselInstrumentation {
                 if let Some((sql, start)) = self.pending.take() {
                     let now = Instant::now();
                     send_sql_event(SqlEvent::Executed {
-                        sql: sql.into(),
+                        sql,
                         duration_nanos: now.duration_since(start).as_nanos() as u64,
                         timestamp_ns: crate::lib_on::current_elapsed_ns(),
                         source: crate::lib_on::caller_stack::current_caller(),
@@ -54,10 +56,10 @@ impl Instrumentation for HotpathDieselInstrumentation {
 /// Diesel always appends the bind list at the *end*, so split from the right -
 /// stripping from the left would truncate a query that itself contains the
 /// `-- binds:` marker (e.g. in a comment or string literal).
-fn clean_sql(rendered: &str) -> String {
+fn clean_sql(rendered: &str) -> Arc<str> {
     match rendered.rsplit_once(" -- binds:") {
-        Some((sql, _)) => sql.trim().to_string(),
-        None => rendered.trim().to_string(),
+        Some((sql, _)) => Arc::from(sql.trim()),
+        None => Arc::from(rendered.trim()),
     }
 }
 
@@ -107,17 +109,17 @@ mod tests {
     #[test]
     fn strips_binds_suffix() {
         assert_eq!(
-            clean_sql("INSERT INTO t (a) VALUES (?) -- binds: [\"x\"]"),
+            &*clean_sql("INSERT INTO t (a) VALUES (?) -- binds: [\"x\"]"),
             "INSERT INTO t (a) VALUES (?)",
         );
         assert_eq!(
-            clean_sql("SELECT COUNT(*) FROM t"),
+            &*clean_sql("SELECT COUNT(*) FROM t"),
             "SELECT COUNT(*) FROM t"
         );
         // Only Diesel's final appended suffix is stripped; a `-- binds:` marker
         // inside the query text is preserved (strip from the right, not the left).
         assert_eq!(
-            clean_sql("SELECT 1 -- binds: note -- binds: [42]"),
+            &*clean_sql("SELECT 1 -- binds: note -- binds: [42]"),
             "SELECT 1 -- binds: note",
         );
     }

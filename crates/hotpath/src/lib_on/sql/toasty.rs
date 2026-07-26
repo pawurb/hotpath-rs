@@ -25,6 +25,8 @@
 //! queries are recorded - the time was spent - and the `error` field is
 //! ignored.
 
+use std::sync::Arc;
+
 use tracing::field::{Field, Visit};
 use tracing::subscriber::Interest;
 use tracing::{Event, Metadata, Subscriber};
@@ -54,7 +56,7 @@ where
         };
 
         send_sql_event(SqlEvent::Executed {
-            sql: sql.into(),
+            sql,
             duration_nanos: visitor.duration_ns.unwrap_or(0),
             timestamp_ns: crate::lib_on::current_elapsed_ns(),
             source: crate::lib_on::caller_stack::current_caller(),
@@ -71,14 +73,14 @@ where
 /// handled in case the recording strategy changes.
 #[derive(Default)]
 struct QueryVisitor {
-    statement: Option<String>,
+    statement: Option<Arc<str>>,
     duration_ns: Option<u64>,
 }
 
 impl Visit for QueryVisitor {
     fn record_str(&mut self, field: &Field, value: &str) {
         if field.name() == "db.statement" {
-            self.statement = Some(value.trim().to_string());
+            self.statement = Some(Arc::from(value.trim()));
         }
     }
 
@@ -90,7 +92,8 @@ impl Visit for QueryVisitor {
 
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
         if field.name() == "db.statement" && self.statement.is_none() {
-            self.statement = Some(format!("{value:?}").trim().to_string());
+            let rendered = format!("{value:?}");
+            self.statement = Some(Arc::from(rendered.trim()));
         }
     }
 }
