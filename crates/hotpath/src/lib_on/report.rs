@@ -592,6 +592,7 @@ pub(crate) fn report_sql_table(
 
     let mut header = vec![
         styled_header("Query"),
+        styled_header("Source"),
         styled_header("Calls"),
         styled_header("Avg"),
     ];
@@ -607,6 +608,7 @@ pub(crate) fn report_sql_table(
     for entry in entries {
         let mut row = vec![
             Cell::new(&truncate_query(&entry.query)),
+            Cell::new(&format_source(entry.source)),
             Cell::new(&entry.count.to_string()),
             Cell::new(&format_duration(entry.avg_nanos())),
         ];
@@ -623,6 +625,10 @@ pub(crate) fn report_sql_table(
 
     print_table(&table, writer);
     let _ = writeln!(writer);
+}
+
+fn format_source(source: Option<&'static str>) -> String {
+    source.map_or_else(|| "-".to_string(), crate::output::shorten_function_name)
 }
 
 fn format_sql_percent(total_nanos: u64, reference_total: u64) -> String {
@@ -646,6 +652,7 @@ fn sql_to_json(entry: &SqlEntry, reference_total: u64, percentiles: &[f64]) -> J
     JsonSqlEntry {
         id: entry.id,
         query: entry.query.clone(),
+        source: entry.source.map(String::from),
         count: entry.count,
         avg: format_duration(entry.avg_nanos()),
         total: format_duration(entry.total_nanos),
@@ -719,6 +726,7 @@ pub(crate) fn report_http_table(
 
     let mut header = vec![
         styled_header("Endpoint"),
+        styled_header("Source"),
         styled_header("Calls"),
         styled_header("Errors"),
         styled_header("Avg"),
@@ -735,6 +743,7 @@ pub(crate) fn report_http_table(
     for entry in entries {
         let mut row = vec![
             Cell::new(&truncate_query(&entry.endpoint)),
+            Cell::new(&format_source(entry.source)),
             Cell::new(&entry.count.to_string()),
             Cell::new(&entry.error_count.to_string()),
             Cell::new(&format_duration(entry.avg_nanos())),
@@ -766,6 +775,7 @@ fn http_to_json(entry: &HttpEntry, reference_total: u64, percentiles: &[f64]) ->
     JsonHttpEntry {
         id: entry.id,
         endpoint: entry.endpoint.clone(),
+        source: entry.source.map(String::from),
         count: entry.count,
         errors: entry.error_count,
         avg: format_duration(entry.avg_nanos()),

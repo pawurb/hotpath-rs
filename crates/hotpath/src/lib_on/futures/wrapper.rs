@@ -54,6 +54,10 @@ pin_project! {
         visible: bool,
         timed: bool,
         alloc_bridge: Option<Arc<AsyncAllocBridge>>,
+        // Function name registered on the thread-local caller stack around
+        // every inner poll for SQL/HTTP source attribution. Set for measured
+        // async function bodies, None for `future!` expression wrappers.
+        caller_scope: Option<&'static str>,
     }
 
     impl<F: Future> PinnedDrop for InstrumentedFuture<F> {
@@ -76,6 +80,7 @@ impl<F: Future> InstrumentedFuture<F> {
         label: Option<String>,
         alloc_bridge: Option<Arc<AsyncAllocBridge>>,
         visible: bool,
+        caller_scope: Option<&'static str>,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
@@ -114,6 +119,28 @@ impl<F: Future> InstrumentedFuture<F> {
             visible,
             timed,
             alloc_bridge,
+            caller_scope,
+        }
+    }
+}
+
+struct CallerScopeGuard(bool);
+
+impl CallerScopeGuard {
+    #[inline]
+    fn enter(caller_scope: Option<&'static str>) -> Self {
+        if let Some(scope) = caller_scope {
+            crate::lib_on::caller_stack::push_caller(scope);
+        }
+        Self(caller_scope.is_some())
+    }
+}
+
+impl Drop for CallerScopeGuard {
+    #[inline]
+    fn drop(&mut self) {
+        if self.0 {
+            crate::lib_on::caller_stack::pop_caller();
         }
     }
 }
@@ -124,6 +151,7 @@ impl<F: Future> Future for InstrumentedFuture<F> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let visible = *this.visible;
+        let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
 
         // Don't instrument future unless visible, only collect alloc data
         if !visible {
@@ -209,6 +237,8 @@ pin_project! {
         visible: bool,
         timed: bool,
         alloc_bridge: Option<Arc<AsyncAllocBridge>>,
+        // See `InstrumentedFuture::caller_scope`.
+        caller_scope: Option<&'static str>,
     }
 
     impl<F: Future> PinnedDrop for InstrumentedFutureLog<F> {
@@ -232,6 +262,7 @@ impl<F: Future> InstrumentedFutureLog<F> {
         label: Option<String>,
         alloc_bridge: Option<Arc<AsyncAllocBridge>>,
         visible: bool,
+        caller_scope: Option<&'static str>,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
@@ -270,6 +301,7 @@ impl<F: Future> InstrumentedFutureLog<F> {
             visible,
             timed,
             alloc_bridge,
+            caller_scope,
         }
     }
 }
@@ -283,6 +315,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let visible = *this.visible;
+        let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
 
         if !visible {
             let (result, poll_alloc_bytes, poll_alloc_count) =

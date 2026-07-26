@@ -478,7 +478,7 @@ impl<F: std::future::Future> InstrumentFuture for F {
     type Output = InstrumentedFuture<F>;
 
     fn instrument_future(self, source: &'static str, label: Option<String>) -> Self::Output {
-        InstrumentedFuture::new(self, source, label, None, true)
+        InstrumentedFuture::new(self, source, label, None, true, None)
     }
 }
 
@@ -489,7 +489,7 @@ where
     type Output = InstrumentedFutureLog<F>;
 
     fn instrument_future_log(self, source: &'static str, label: Option<String>) -> Self::Output {
-        InstrumentedFutureLog::new(self, source, label, None, true)
+        InstrumentedFutureLog::new(self, source, label, None, true, None)
     }
 }
 

@@ -400,6 +400,10 @@ pub struct JsonSqlList {
 pub struct JsonSqlEntry {
     pub id: u32,
     pub query: String,
+    /// Instrumented function the query was executed from, `None` when it ran
+    /// outside any measured scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     pub count: u64,
     pub avg: String,
     pub total: String,
@@ -453,6 +457,10 @@ pub struct JsonHttpList {
 pub struct JsonHttpEntry {
     pub id: u32,
     pub endpoint: String,
+    /// Instrumented function the request was issued from, `None` when it was
+    /// sent outside any measured scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     pub count: u64,
     pub errors: u64,
     pub avg: String,

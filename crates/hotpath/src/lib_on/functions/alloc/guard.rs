@@ -155,13 +155,20 @@ pub struct MeasurementGuardSync {
     tid: u64,
     start: Option<Instant>,
     skipped: bool,
+    caller_scoped: bool,
 }
 
 impl MeasurementGuardSync {
+    /// Also registers `name` on the thread-local caller stack for SQL/HTTP
+    /// source attribution (skipped for wrapper guards).
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, skipped: bool) -> Self {
+    pub(crate) fn new_caller_scoped(name: &'static str, wrapper: bool, skipped: bool) -> Self {
+        let caller_scoped = !wrapper && !skipped;
         if !skipped {
             push_alloc_stack();
+        }
+        if caller_scoped {
+            crate::lib_on::caller_stack::push_caller(name);
         }
 
         Self {
@@ -170,6 +177,7 @@ impl MeasurementGuardSync {
             tid: crate::tid::current_tid(),
             start: sampled_start(wrapper, skipped),
             skipped,
+            caller_scoped,
         }
     }
 }
@@ -188,6 +196,9 @@ impl Drop for MeasurementGuardSync {
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
+        if self.caller_scoped && !cross_thread {
+            crate::lib_on::caller_stack::pop_caller();
+        }
         let (bytes_total, count_total) = if cross_thread {
             (None, None)
         } else {
@@ -273,13 +284,20 @@ pub(crate) struct MeasurementGuardSyncWithLog {
     start: Option<Instant>,
     finished: bool,
     skipped: bool,
+    caller_scoped: bool,
 }
 
 impl MeasurementGuardSyncWithLog {
+    /// Also registers `name` on the thread-local caller stack for SQL/HTTP
+    /// source attribution (skipped for wrapper guards).
     #[inline]
-    pub fn new(name: &'static str, wrapper: bool, skipped: bool) -> Self {
+    pub(crate) fn new_caller_scoped(name: &'static str, wrapper: bool, skipped: bool) -> Self {
+        let caller_scoped = !wrapper && !skipped;
         if !skipped {
             push_alloc_stack();
+        }
+        if caller_scoped {
+            crate::lib_on::caller_stack::push_caller(name);
         }
 
         Self {
@@ -289,6 +307,7 @@ impl MeasurementGuardSyncWithLog {
             start: sampled_start(wrapper, skipped),
             finished: false,
             skipped,
+            caller_scoped,
         }
     }
 
@@ -307,6 +326,9 @@ impl MeasurementGuardSyncWithLog {
         let result_str = crate::output::format_debug_truncated(result);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
+        if self.caller_scoped && !cross_thread {
+            crate::lib_on::caller_stack::pop_caller();
+        }
         let (bytes_total, count_total) = if cross_thread {
             (None, None)
         } else {
@@ -341,6 +363,9 @@ impl Drop for MeasurementGuardSyncWithLog {
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
+        if self.caller_scoped && !cross_thread {
+            crate::lib_on::caller_stack::pop_caller();
+        }
         let (bytes_total, count_total) = if cross_thread {
             (None, None)
         } else {

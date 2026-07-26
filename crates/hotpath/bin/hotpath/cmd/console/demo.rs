@@ -202,7 +202,6 @@ fn spawn_sqlx_sql() {
 #[cfg(feature = "demo")]
 fn spawn_diesel_sql() {
     use diesel::prelude::*;
-    use diesel::sql_types::{Integer, Text};
 
     // Capture Diesel queries via connection::Instrumentation into the same SQL
     // subsystem the sqlx layer feeds - both ORMs share one report.
@@ -221,16 +220,12 @@ fn spawn_diesel_sql() {
         loop {
             i += 1;
 
-            let _ = diesel::sql_query("INSERT INTO orders (sku, qty) VALUES (?, ?)")
-                .bind::<Text, _>(format!("sku{i}"))
-                .bind::<Integer, _>((i % 20) as i32)
-                .execute(&mut conn);
+            insert_order(&mut conn, i);
+            lookup_order(&mut conn, i);
 
-            let _ = diesel::sql_query("SELECT id, sku, qty FROM orders WHERE id = ?")
-                .bind::<Integer, _>((i % 100 + 1) as i32)
-                .execute(&mut conn);
-
-            // Varying inline literals collapse into one normalized bucket.
+            // Issued outside any measured scope, so these buckets keep an
+            // empty Source. Varying inline literals collapse into one
+            // normalized bucket.
             let q = format!("SELECT sku FROM orders WHERE qty = {}", i % 20);
             let _ = diesel::sql_query(q).execute(&mut conn);
 
@@ -239,6 +234,33 @@ fn spawn_diesel_sql() {
             thread::sleep(Duration::from_millis(150));
         }
     });
+}
+
+// Measured issuers so the SQL tab's Source column shows per-function
+// attribution. Diesel executes on the calling thread, so its queries
+// attribute correctly (the sqlx-sqlite demo can't - that driver runs
+// statements on a connection worker thread).
+#[cfg(feature = "demo")]
+#[hotpath::measure]
+fn insert_order(conn: &mut diesel::SqliteConnection, i: i64) {
+    use diesel::prelude::*;
+    use diesel::sql_types::{Integer, Text};
+
+    let _ = diesel::sql_query("INSERT INTO orders (sku, qty) VALUES (?, ?)")
+        .bind::<Text, _>(format!("sku{i}"))
+        .bind::<Integer, _>((i % 20) as i32)
+        .execute(conn);
+}
+
+#[cfg(feature = "demo")]
+#[hotpath::measure]
+fn lookup_order(conn: &mut diesel::SqliteConnection, i: i64) {
+    use diesel::prelude::*;
+    use diesel::sql_types::Integer;
+
+    let _ = diesel::sql_query("SELECT id, sku, qty FROM orders WHERE id = ?")
+        .bind::<Integer, _>((i % 100 + 1) as i32)
+        .execute(conn);
 }
 
 #[cfg(feature = "demo")]
@@ -276,29 +298,58 @@ fn spawn_http() {
             loop {
                 i += 1;
 
-                // Varying ids and query strings collapse into one normalized bucket.
-                let _ = client
-                    .get(format!("{base}/users/{}", i % 100 + 1))
-                    .send()
-                    .await;
+                fetch_user(&client, &base, i).await;
 
                 if i.is_multiple_of(3) {
-                    let _ = client.get(format!("{base}/search?q=term{i}")).send().await;
+                    run_search(&client, &base, i).await;
                 }
 
                 if i.is_multiple_of(7) {
-                    let _ = client.get(format!("{base}/slow")).send().await;
+                    fetch_slow(&client, &base).await;
                 }
 
                 // 404s feed the Errors column.
                 if i.is_multiple_of(11) {
-                    let _ = client.get(format!("{base}/missing/{i}")).send().await;
+                    fetch_missing(&client, &base, i).await;
                 }
 
                 sleep_ms(120).await;
             }
         });
     });
+}
+
+#[cfg(feature = "demo")]
+type DemoHttpClient = hotpath::wrap::reqwest::Client;
+
+// Measured issuers so the HTTP tab's Source column shows per-function
+// attribution for the shared endpoints.
+#[cfg(feature = "demo")]
+#[hotpath::measure]
+async fn fetch_user(client: &DemoHttpClient, base: &str, i: u64) {
+    // Varying ids and query strings collapse into one normalized bucket.
+    let _ = client
+        .get(format!("{base}/users/{}", i % 100 + 1))
+        .send()
+        .await;
+}
+
+#[cfg(feature = "demo")]
+#[hotpath::measure]
+async fn run_search(client: &DemoHttpClient, base: &str, i: u64) {
+    let _ = client.get(format!("{base}/search?q=term{i}")).send().await;
+}
+
+#[cfg(feature = "demo")]
+#[hotpath::measure]
+async fn fetch_slow(client: &DemoHttpClient, base: &str) {
+    let _ = client.get(format!("{base}/slow")).send().await;
+}
+
+#[cfg(feature = "demo")]
+#[hotpath::measure]
+async fn fetch_missing(client: &DemoHttpClient, base: &str, i: u64) {
+    let _ = client.get(format!("{base}/missing/{i}")).send().await;
 }
 
 async fn sleep_ms(ms: u64) {

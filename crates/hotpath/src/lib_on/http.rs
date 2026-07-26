@@ -81,21 +81,27 @@ pub(crate) enum HttpEvent {
     /// request failed). `endpoint` is the raw `METHOD host/path` pre-key; the
     /// worker normalizes it to derive the bucket key. `status` is `None` for
     /// transport errors. `timestamp_ns` is the completion time in ns since
-    /// profiler start.
+    /// profiler start. `source` is the innermost instrumented function on the
+    /// caller stack when the request was issued, `None` when it was sent
+    /// outside any measured scope.
     Executed {
         endpoint: Arc<str>,
         label: Option<Arc<str>>,
         duration_nanos: u64,
         status: Option<u16>,
         timestamp_ns: u64,
+        source: Option<&'static str>,
     },
 }
 
-/// Aggregated statistics for a single normalized endpoint.
+/// Aggregated statistics for a single normalized endpoint requested from a
+/// single source function. The same endpoint hit from two instrumented
+/// functions produces two entries.
 #[derive(Debug, Clone)]
 pub(crate) struct HttpEntry {
     pub(crate) id: u32,
     pub(crate) endpoint: String,
+    pub(crate) source: Option<&'static str>,
     pub(crate) count: u64,
     /// Transport errors plus responses with status >= 400.
     pub(crate) error_count: u64,
@@ -108,10 +114,11 @@ impl HttpEntry {
     const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
     const SIGFIGS: u8 = 3;
 
-    fn new(id: u32, endpoint: String) -> Self {
+    fn new(id: u32, endpoint: String, source: Option<&'static str>) -> Self {
         Self {
             id,
             endpoint,
+            source,
             count: 0,
             error_count: 0,
             total_nanos: 0,
@@ -141,7 +148,7 @@ impl HttpEntry {
 }
 
 pub(crate) struct HttpInternalState {
-    pub(crate) stats: HashMap<String, HttpEntry>,
+    pub(crate) stats: HashMap<(Option<&'static str>, String), HttpEntry>,
     /// Recent requests per entry id, capped at `LOGS_LIMIT`. Log entries keep
     /// only status and timing - raw URLs (which could carry query params or
     /// path ids) are never stored.
@@ -216,6 +223,7 @@ fn process_http_event(state: &mut HttpInternalState, event: HttpEvent) {
         duration_nanos,
         status,
         timestamp_ns,
+        source,
     } = event;
 
     let mut key = normalize::normalize_endpoint(&endpoint);
@@ -224,8 +232,10 @@ fn process_http_event(state: &mut HttpInternalState, event: HttpEvent) {
     }
     let entry = state
         .stats
-        .entry(key.clone())
-        .or_insert_with(|| HttpEntry::new(next_http_id(), key));
+        .entry((source, key))
+        .or_insert_with_key(|(source, endpoint)| {
+            HttpEntry::new(next_http_id(), endpoint.clone(), *source)
+        });
     entry.count += 1;
     entry.total_nanos += duration_nanos;
     if status.is_none() || status.is_some_and(|s| s >= 400) {

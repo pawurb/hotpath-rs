@@ -24,6 +24,7 @@ pub(crate) fn current_elapsed_ns() -> u64 {
 }
 
 pub(crate) mod batch;
+pub(crate) mod caller_stack;
 pub mod channels;
 pub mod cpu_baseline;
 pub mod debug;
