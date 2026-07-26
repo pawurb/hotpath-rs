@@ -90,7 +90,7 @@ Never use em dashes. Always use a regular hyphen (-) instead. This applies every
 
 NEVER use `mod.rs` files, so instead of `functions/mod.rs` use `functions.rs`.
 
-Every example in a test crate starts with a `//! Run with:` header comment containing its exact cargo command.
+Every example in a test crate contains its exact cargo command in the top comment, usually as a `//! Run with:` header (a descriptive module doc may precede it).
 
 ## Other
 
