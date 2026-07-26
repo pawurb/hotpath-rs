@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.22.0] - 2026-07-26
+
+### 🚀 Features
+
+- Add toasty SQL profiling
+
+- Improve report sections display logic
+
+- Add reqwest HTTP calls tracing
+
+- Add http and sql source tracking
+
+- Add IO bytes instrumentation
+
+- Display IO bytes per second metric
+
+- Optional iter per io! wrapper
+
+- Add io_unwrap helper method
+
+
+### 🐛 Bug Fixes
+
+- Pass reqwest feature flags
+
+
+### 🚜 Refactor
+
+- Simplify test feature guards
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Test Diesel PG integration
+
+- Add safety annotations
+
+- Remove crashtest CLI
+
+- Add SQL and HTTP overhead benchmarks
+
+- Improve meta instrumentation
+
+- Extract stable Rust CI checks
+
+- Add compression io example, test, and benchmark
+
+- Add CLAUDE.md and dev docs
+
+- Release 0.22.0
+
+
 ## [0.21.5] - 2026-07-18
 
 ### 🐛 Bug Fixes
