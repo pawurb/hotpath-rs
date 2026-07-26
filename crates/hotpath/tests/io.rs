@@ -1,7 +1,9 @@
 #[cfg(test)]
 pub mod tests {
-    use hotpath::json::{JsonIoEntry, JsonIoList, JsonReport};
     use std::process::Command;
+
+    #[cfg(feature = "hotpath")]
+    use hotpath::json::{JsonIoEntry, JsonIoList, JsonReport};
 
     fn run_example(example: &str, json: bool) -> String {
         let mut cmd = Command::new("cargo");
@@ -29,6 +31,7 @@ pub mod tests {
         String::from_utf8_lossy(&output.stdout).to_string()
     }
 
+    #[cfg(feature = "hotpath")]
     fn parse_io(stdout: &str) -> JsonIoList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -39,6 +42,7 @@ pub mod tests {
         report.io.expect("No io section in report")
     }
 
+    #[cfg(feature = "hotpath")]
     fn entry<'a>(io: &'a JsonIoList, label: &str) -> &'a JsonIoEntry {
         io.data
             .iter()
@@ -47,6 +51,7 @@ pub mod tests {
     }
 
     // cargo run -p test-io --example basic_io_sync --features hotpath (json)
+    #[cfg(feature = "hotpath")]
     #[test]
     fn test_sync_json_output() {
         let stdout = run_example("basic_io_sync", true);
@@ -91,6 +96,7 @@ pub mod tests {
     }
 
     // cargo run -p test-io --example basic_io_async --features hotpath (json)
+    #[cfg(feature = "hotpath")]
     #[test]
     fn test_async_json_output() {
         let stdout = run_example("basic_io_async", true);

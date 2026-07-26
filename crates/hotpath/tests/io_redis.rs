@@ -6,6 +6,7 @@
 //! missing server fails instead.
 #[cfg(test)]
 pub mod tests {
+    #[cfg(feature = "hotpath")]
     use hotpath::json::JsonReport;
     use std::process::Command;
 
@@ -15,6 +16,7 @@ pub mod tests {
         std::net::TcpStream::connect_timeout(&addr, timeout).is_ok()
     }
 
+    #[cfg(feature = "hotpath")]
     #[test]
     fn test_redis_json_output() {
         if !redis_available() {

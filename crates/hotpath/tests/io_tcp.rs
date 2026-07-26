@@ -4,9 +4,11 @@
 //! no external services required.
 #[cfg(test)]
 pub mod tests {
+    #[cfg(feature = "hotpath")]
     use hotpath::json::JsonReport;
     use std::process::Command;
 
+    #[cfg(feature = "hotpath")]
     #[test]
     fn test_tcp_json_output() {
         let output = Command::new("cargo")
