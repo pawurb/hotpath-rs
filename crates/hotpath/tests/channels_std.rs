@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
@@ -169,7 +169,6 @@ pub mod tests {
     }
 
     // HOTPATH_METRICS_PORT=6770 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-std --example basic_std --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::JsonChannelsList;

@@ -1,13 +1,11 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
-    #[cfg(feature = "hotpath")]
     use hotpath::json::{JsonChannelsList, JsonReport};
 
     // The report is followed by trailing log lines, so we locate the report's
     // opening brace and read just the first JSON value from that point.
-    #[cfg(feature = "hotpath")]
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -18,7 +16,6 @@ pub mod tests {
         report.channels.expect("No channels section in report")
     }
 
-    #[cfg(feature = "hotpath")]
     fn run_example(name: &str) -> String {
         let output = Command::new("cargo")
             .args([
@@ -46,7 +43,6 @@ pub mod tests {
     // position. Every order of `capacity`/`label`/`log` must compile and register a wrapped channel.
     //
     // cargo run -p test-channels-std --example wrap_arg_orders_std --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_capacity_arg_orders() {
         let stdout = run_example("wrap_arg_orders_std");
@@ -66,7 +62,6 @@ pub mod tests {
     // none received), where a forwarder proxy would drain immediately and report ~0.
     //
     // cargo run -p test-channels-std --example wrap_std --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_exact_queue_depth() {
         let stdout = run_example("wrap_std");
@@ -100,7 +95,6 @@ pub mod tests {
     // high-water mark preserved.
     //
     // cargo run -p test-channels-std --example wrap_unbounded_std --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_unbounded_sent_received() {
         let stdout = run_example("wrap_unbounded_std");
@@ -131,7 +125,6 @@ pub mod tests {
     // queue length, so `received <= sent` and a bounded `max_queue_size` confirm sanity.
     //
     // cargo run -p test-channels-std --example wrap_concurrent_std --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_concurrent_no_underflow() {
         let stdout = run_example("wrap_concurrent_std");
@@ -161,7 +154,6 @@ pub mod tests {
     // closed. std receivers are not Clone, so there is no clone-count path.
     //
     // cargo run -p test-channels-std --example wrap_closed_std --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_receiver_dropped_closes() {
         let stdout = run_example("wrap_closed_std");

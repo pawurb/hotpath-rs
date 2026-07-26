@@ -1,13 +1,11 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
-    #[cfg(feature = "hotpath")]
     use hotpath::json::{JsonChannelsList, JsonReport};
 
     // The report is followed by trailing log lines, so we locate the report's
     // opening brace and read just the first JSON value from that point.
-    #[cfg(feature = "hotpath")]
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -18,7 +16,6 @@ pub mod tests {
         report.channels.expect("No channels section in report")
     }
 
-    #[cfg(feature = "hotpath")]
     fn run_example(name: &str) -> String {
         let output = Command::new("cargo")
             .args([
@@ -47,7 +44,6 @@ pub mod tests {
     // and would report ~0 here.
     //
     // cargo run -p test-channels-flume --example wrap_flume --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_exact_queue_depth() {
         let stdout = run_example("wrap_flume");
@@ -80,7 +76,6 @@ pub mod tests {
     // Dropping the receiver while the sender is alive must mark the channel closed.
     //
     // cargo run -p test-channels-flume --example wrap_closed_flume --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_receiver_dropped_closes() {
         let stdout = run_example("wrap_closed_flume");
@@ -104,7 +99,6 @@ pub mod tests {
     // mark the channel closed.
     //
     // cargo run -p test-channels-flume --example wrap_recv_clone_closed_flume --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_receiver_clone_dropped_closes_with_sender_alive() {
         let stdout = run_example("wrap_recv_clone_closed_flume");
@@ -124,7 +118,6 @@ pub mod tests {
     }
 
     // cargo run -p test-channels-flume --example wrap_latency_flume --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_processing_histogram() {
         let stdout = run_example("wrap_latency_flume");

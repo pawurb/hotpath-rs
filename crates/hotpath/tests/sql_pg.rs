@@ -9,7 +9,7 @@
 //! The example uses `$1` positional placeholders, so this also pins their
 //! normalization to `?` - the asserted bucket texts are identical to the
 //! sqlite ones in `sql_sqlite.rs`.
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
@@ -86,7 +86,6 @@ pub mod tests {
     // and a nested measured call attributes to the innermost function. Only
     // covered on PostgreSQL: its driver executes queries on the calling task,
     // while sqlite runs them on a connection worker thread (no source there).
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_sql_sources_postgres() {
         use hotpath::json::JsonReport;

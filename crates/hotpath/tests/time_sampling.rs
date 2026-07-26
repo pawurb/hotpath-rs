@@ -1,6 +1,4 @@
-#![cfg(feature = "hotpath")]
-
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
