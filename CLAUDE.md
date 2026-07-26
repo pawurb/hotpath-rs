@@ -18,7 +18,7 @@ Workspace layout:
 
 Detailed API references live in separate files - read them only when a task needs the specifics:
 
-- `dev_docs/features.md` - Full feature-flag list, macro reference with all parameters, `HotpathGuardBuilder` API, channel/stream/future macro usage, complete environment variable reference, A/B benchmarks and CI commands
+- `dev_docs/features.md` - Full feature-flag list, macro reference with all parameters, `HotpathGuardBuilder` API, channel/stream/future macro usage, environment variable reference, A/B benchmarks and CI commands
 - `dev_docs/architecture.md` - Background worker threads, metrics server endpoints, MCP tool list, Tokio runtime monitoring, CPU sampling internals, global state
 - `dev_docs/tui.md` - TUI build/usage, keyboard controls, per-tab feature descriptions
 - `dev_docs/testing.md` - Integration-test patterns (`crates/hotpath/tests/`): polling the metrics endpoint vs parsing the guard-drop JSON report, example code, and test-file conventions. Read before writing or modifying an integration test.
@@ -100,7 +100,7 @@ Every example in a test crate starts with a `//! Run with:` header comment conta
 
 ## Other
 
-Never read hotpath-meta and hotpath-macros-meta crates when exploring and planning, only apply changes there when asked explicitly.
+Never read hotpath-meta and hotpath-macros-meta crates when exploring and planning. Changes to `crates/hotpath` / `crates/hotpath-macros` must eventually be mirrored into their `-meta` counterparts (see CONTRIBUTING.md; the `syncmeta` skill applies the diffs), but perform that mirroring only when explicitly asked - it is triggered as a separate step, not as part of every change.
 
 NEVER instrument hotpath-meta crates using hotpath_meta, it won't work.
 

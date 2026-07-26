@@ -84,7 +84,7 @@ cargo run --bin hotpath --features tui -- console \
   - No per-operation logs panel (aggregate tables only); metrics also at `GET /io`
 - **Threads monitoring** - View real-time thread CPU usage:
   - Per-thread CPU usage percentage (current and max)
-  - Platform-specific collectors (Linux/macOS)
+  - Platform-specific collectors (Linux/macOS/Windows)
 - **Tokio runtime monitoring** - View real-time Tokio runtime metrics:
   - Per-worker stats: park count, busy duration, poll count, steal count
   - Global stats: alive tasks, queue depths, blocking threads, IO driver metrics

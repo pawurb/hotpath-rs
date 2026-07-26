@@ -223,6 +223,7 @@ TUI:
 - `HOTPATH_TUI_TAB` - Initial top-level tab to display when launching the TUI, as a number `1`-`6` (`1` Functions, `2` Data Flow, `3` I/O, `4` Threads, `5` Debug, `6` Runtime); invalid values fall back to Functions
 - `HOTPATH_METRICS_HOST` - Host URL that the TUI console connects to (default: `http://localhost`)
 - `HOTPATH_DISABLE_SAMPLY_LOAD` - Set to "true" or "1" to disable the `samply load` shortcut on the CPU subtab; the `'f'` keybinding and its hint are hidden
+- `HOTPATH_TUI_AUTO_EXPAND_LOGS` - Auto-open the logs panel once initial data arrives and pin selection to the given table index (e.g. `0` for the first row; default: unset)
 
 CPU profiling (`hotpath-cpu` feature, macOS and Linux):
 - `HOTPATH_SAMPLY_WRAPPER_BIN` - Path to the `hotpath-samply` wrapper binary that autospawn launches (default: `hotpath-samply`, resolved via `PATH`)
@@ -242,6 +243,7 @@ Other:
 - `HOTPATH_LOGS_LIMIT` - Maximum number of log entries to keep per channel, stream, or function (default: 50)
 - `HOTPATH_MAX_LOG_LEN` - Maximum character length for logged return values (`log = true`). Values exceeding this limit are truncated with `...` (default: 1536)
 - `HOTPATH_SHUTDOWN_MS` - If set, program will shutdown after the specified ms timeout and print the performance report
+- `HOTPATH_SQL_RAW_LOGS` - Set to "true" or "1" to store raw statement text in per-query SQL logs instead of the normalized form. Off by default so bound literals (potentially sensitive) never reach the logs.
 
 ## A/B Benchmarks
 
