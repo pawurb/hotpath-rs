@@ -36,6 +36,12 @@ fn channel_capacity(channel_type: &str) -> String {
     }
 }
 
+fn display_source(source: &Option<String>) -> String {
+    source
+        .as_deref()
+        .map_or_else(|| "-".to_string(), hotpath::shorten_function_name)
+}
+
 fn state_style(state: &str) -> Style {
     match state {
         "active" | "Active" => Style::default().fg(Color::Green),
@@ -587,14 +593,20 @@ pub(crate) fn render_sql_panel(
     total: usize,
 ) {
     let available_width = area.width.saturating_sub(10);
-    let query_width = ((available_width as f32 * 0.45) as usize).max(20);
+    let query_width = ((available_width as f32 * 0.30) as usize).max(20);
+    let source_width = ((available_width as f32 * 0.15) as usize).max(10);
 
     let percentile_keys: Vec<String> = percentiles
         .iter()
         .map(|p| hotpath::format_percentile_key(*p))
         .collect();
 
-    let mut header_cells = vec![Cell::from("Query"), Cell::from("Calls"), Cell::from("Avg")];
+    let mut header_cells = vec![
+        Cell::from("Query"),
+        Cell::from("Source"),
+        Cell::from("Calls"),
+        Cell::from("Avg"),
+    ];
     for p in percentiles {
         header_cells.push(Cell::from(hotpath::format_percentile_header(*p)));
     }
@@ -609,6 +621,7 @@ pub(crate) fn render_sql_panel(
         .map(|entry| {
             let mut cells = vec![
                 Cell::from(truncate_right(&entry.query, query_width)),
+                Cell::from(truncate_right(&display_source(&entry.source), source_width)),
                 Cell::from(entry.count.to_string()),
                 Cell::from(entry.avg.clone()),
             ];
@@ -624,7 +637,8 @@ pub(crate) fn render_sql_panel(
         .collect();
 
     let mut widths = vec![
-        Constraint::Percentage(45),
+        Constraint::Percentage(30),
+        Constraint::Percentage(15),
         Constraint::Length(8),
         Constraint::Length(10),
     ];
@@ -669,7 +683,8 @@ pub(crate) fn render_http_panel(
     total: usize,
 ) {
     let available_width = area.width.saturating_sub(10);
-    let endpoint_width = ((available_width as f32 * 0.45) as usize).max(20);
+    let endpoint_width = ((available_width as f32 * 0.30) as usize).max(20);
+    let source_width = ((available_width as f32 * 0.15) as usize).max(10);
 
     let percentile_keys: Vec<String> = percentiles
         .iter()
@@ -678,6 +693,7 @@ pub(crate) fn render_http_panel(
 
     let mut header_cells = vec![
         Cell::from("Endpoint"),
+        Cell::from("Source"),
         Cell::from("Calls"),
         Cell::from("Errors"),
         Cell::from("Avg"),
@@ -696,6 +712,7 @@ pub(crate) fn render_http_panel(
         .map(|entry| {
             let mut cells = vec![
                 Cell::from(truncate_right(&entry.endpoint, endpoint_width)),
+                Cell::from(truncate_right(&display_source(&entry.source), source_width)),
                 Cell::from(entry.count.to_string()),
                 Cell::from(entry.errors.to_string()),
                 Cell::from(entry.avg.clone()),
@@ -712,7 +729,8 @@ pub(crate) fn render_http_panel(
         .collect();
 
     let mut widths = vec![
-        Constraint::Percentage(45),
+        Constraint::Percentage(30),
+        Constraint::Percentage(15),
         Constraint::Length(8),
         Constraint::Length(8),
         Constraint::Length(10),

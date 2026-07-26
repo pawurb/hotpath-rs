@@ -396,17 +396,20 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
         match app.io_sub_tab {
             IoSubTab::Sql => {
-                let label = app
+                let selected = app
                     .sql_table_state
                     .selected()
-                    .and_then(|i| app.sql.data.get(i))
+                    .and_then(|i| app.sql.data.get(i));
+                let label = selected
                     .map(|e| truncate_message(&e.query, 48))
                     .unwrap_or_else(|| "Unknown".to_string());
+                let source = selected.and_then(|e| e.source.as_deref());
 
                 if let Some(ref logs) = app.sql_logs {
                     io_logs::render_sql_logs_panel(
                         logs,
                         &label,
+                        source,
                         logs_area,
                         frame,
                         &mut app.sql_logs_table_state,
@@ -417,17 +420,20 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 }
             }
             IoSubTab::Http => {
-                let label = app
+                let selected = app
                     .http_table_state
                     .selected()
-                    .and_then(|i| app.http.data.get(i))
+                    .and_then(|i| app.http.data.get(i));
+                let label = selected
                     .map(|e| truncate_message(&e.endpoint, 48))
                     .unwrap_or_else(|| "Unknown".to_string());
+                let source = selected.and_then(|e| e.source.as_deref());
 
                 if let Some(ref logs) = app.http_logs {
                     io_logs::render_http_logs_panel(
                         logs,
                         &label,
+                        source,
                         logs_area,
                         frame,
                         &mut app.http_logs_table_state,

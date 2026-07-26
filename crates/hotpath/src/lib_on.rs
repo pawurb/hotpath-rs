@@ -24,6 +24,7 @@ pub(crate) fn current_elapsed_ns() -> u64 {
 }
 
 pub(crate) mod batch;
+pub(crate) mod caller_stack;
 pub mod channels;
 pub mod cpu_baseline;
 pub mod debug;
@@ -134,7 +135,7 @@ impl Drop for SuspendAllocTracking {
 #[macro_export]
 macro_rules! measure_block {
     ($label:expr, $expr:expr) => {{
-        let _guard = $crate::functions::build_measurement_guard_sync($label, false);
+        let _guard = $crate::functions::build_measurement_guard_block($label, false);
 
         $expr
     }};

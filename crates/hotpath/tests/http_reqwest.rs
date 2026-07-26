@@ -110,6 +110,50 @@ pub mod tests {
         );
     }
 
+    // The same endpoint requested from two instrumented functions splits into
+    // per-source entries; a request outside any measured scope has no source,
+    // and a nested measured call attributes to the innermost function.
+    #[cfg(feature = "hotpath")]
+    fn assert_sources_report(package: &str) {
+        use hotpath::json::JsonReport;
+
+        let stdout = run_example(package, "sources", Some("json"));
+        let json_start = stdout.find('{').expect("No JSON report in output");
+        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
+            .into_iter::<JsonReport>()
+            .next()
+            .expect("No JSON value in output")
+            .expect("Failed to parse JSON report");
+        let http = report.http.expect("No http section in report");
+
+        let users: Vec<_> = http
+            .data
+            .iter()
+            .filter(|e| e.endpoint.ends_with("/users/{id}"))
+            .collect();
+        assert_eq!(users.len(), 3, "expected one entry per source: {users:?}");
+
+        // `fetch_from_a` runs once directly and once inside `outer` - both
+        // executions attribute to the innermost function.
+        let from_a = users
+            .iter()
+            .find(|e| e.source.as_deref() == Some("sources::fetch_from_a"))
+            .expect("fetch_from_a entry missing");
+        assert_eq!(from_a.count, 2);
+
+        let from_b = users
+            .iter()
+            .find(|e| e.source.as_deref() == Some("sources::fetch_from_b"))
+            .expect("fetch_from_b entry missing");
+        assert_eq!(from_b.count, 2);
+
+        let unattributed = users
+            .iter()
+            .find(|e| e.source.is_none())
+            .expect("source-less entry missing");
+        assert_eq!(unattributed.count, 1);
+    }
+
     #[test]
     fn test_http_table_reqwest_012() {
         assert_table_output("test-reqwest-012");
@@ -140,5 +184,17 @@ pub mod tests {
     #[test]
     fn test_http_gated_methods_reqwest_013() {
         assert_gated_methods("test-reqwest-013");
+    }
+
+    #[cfg(feature = "hotpath")]
+    #[test]
+    fn test_http_sources_reqwest_012() {
+        assert_sources_report("test-reqwest-012");
+    }
+
+    #[cfg(feature = "hotpath")]
+    #[test]
+    fn test_http_sources_reqwest_013() {
+        assert_sources_report("test-reqwest-013");
     }
 }

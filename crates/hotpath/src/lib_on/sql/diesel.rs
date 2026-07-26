@@ -39,6 +39,7 @@ impl Instrumentation for HotpathDieselInstrumentation {
                         sql: sql.into(),
                         duration_nanos: now.duration_since(start).as_nanos() as u64,
                         timestamp_ns: crate::lib_on::current_elapsed_ns(),
+                        source: crate::lib_on::caller_stack::current_caller(),
                     });
                 }
             }

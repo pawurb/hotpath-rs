@@ -57,6 +57,7 @@ where
             sql: sql.into(),
             duration_nanos: visitor.duration_ns.unwrap_or(0),
             timestamp_ns: crate::lib_on::current_elapsed_ns(),
+            source: crate::lib_on::caller_stack::current_caller(),
         });
     }
 }

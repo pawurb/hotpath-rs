@@ -10,9 +10,26 @@ use ratatui::{
     Frame,
 };
 
+/// Shows the selected bucket's source function on the panel's bottom border,
+/// where it can't crop the query/endpoint title.
+fn with_source_title<'a>(block: Block<'a>, source: Option<&str>) -> Block<'a> {
+    let Some(source) = source else {
+        return block;
+    };
+    let source_style = Style::default().fg(Color::Green);
+    block.title_bottom(
+        Line::from(Span::styled(
+            format!(" source: {} ", hotpath::shorten_function_name(source)),
+            source_style,
+        ))
+        .right_aligned(),
+    )
+}
+
 pub(crate) fn render_sql_logs_panel(
     logs: &JsonSqlLogsList,
     label: &str,
+    source: Option<&str>,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -29,7 +46,7 @@ pub(crate) fn render_sql_logs_panel(
         border::PLAIN
     };
 
-    let block = Block::bordered()
+    let mut block = Block::bordered()
         .title(title)
         .border_set(border_set)
         .border_style(if is_focused {
@@ -37,6 +54,7 @@ pub(crate) fn render_sql_logs_panel(
         } else {
             common_styles::UNFOCUSED_BORDER_STYLE
         });
+    block = with_source_title(block, source);
 
     let inner_area = block.inner(area);
     frame.render_widget(block, area);
@@ -80,6 +98,7 @@ pub(crate) fn render_sql_logs_panel(
 pub(crate) fn render_http_logs_panel(
     logs: &JsonHttpLogsList,
     label: &str,
+    source: Option<&str>,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -96,7 +115,7 @@ pub(crate) fn render_http_logs_panel(
         border::PLAIN
     };
 
-    let block = Block::bordered()
+    let mut block = Block::bordered()
         .title(title)
         .border_set(border_set)
         .border_style(if is_focused {
@@ -104,6 +123,7 @@ pub(crate) fn render_http_logs_panel(
         } else {
             common_styles::UNFOCUSED_BORDER_STYLE
         });
+    block = with_source_title(block, source);
 
     let inner_area = block.inner(area);
     frame.render_widget(block, area);

@@ -62,18 +62,24 @@ pub(crate) enum SqlEvent {
     /// Emitted when an executed query (or query stream) completes. `sql` is the
     /// raw statement text; the worker normalizes it to derive the bucket key.
     /// `timestamp_ns` is the completion time in ns since profiler start.
+    /// `source` is the innermost instrumented function on the emitting thread's
+    /// caller stack, `None` when the query completed outside any measured scope.
     Executed {
         sql: Arc<str>,
         duration_nanos: u64,
         timestamp_ns: u64,
+        source: Option<&'static str>,
     },
 }
 
-/// Aggregated statistics for a single normalized query.
+/// Aggregated statistics for a single normalized query executed from a single
+/// source function. The same statement called from two instrumented functions
+/// produces two entries.
 #[derive(Debug, Clone)]
 pub(crate) struct SqlEntry {
     pub(crate) id: u32,
     pub(crate) query: String,
+    pub(crate) source: Option<&'static str>,
     pub(crate) count: u64,
     pub(crate) total_nanos: u64,
     hist: Option<Histogram<u64>>,
@@ -84,10 +90,11 @@ impl SqlEntry {
     const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
     const SIGFIGS: u8 = 3;
 
-    fn new(id: u32, query: String) -> Self {
+    fn new(id: u32, query: String, source: Option<&'static str>) -> Self {
         Self {
             id,
             query,
+            source,
             count: 0,
             total_nanos: 0,
             hist: Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
@@ -116,7 +123,7 @@ impl SqlEntry {
 }
 
 pub(crate) struct SqlInternalState {
-    pub(crate) stats: HashMap<String, SqlEntry>,
+    pub(crate) stats: HashMap<(Option<&'static str>, String), SqlEntry>,
     /// Recent executions per entry id, capped at `LOGS_LIMIT`. Log entries keep
     /// the *normalized* statement text - raw text would leak inline literals
     /// (query params), which must never reach the report or metrics server
@@ -190,13 +197,14 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
         sql,
         duration_nanos,
         timestamp_ns,
+        source,
     } = event;
 
-    let key = normalize::normalize(&sql);
+    let normalized = normalize::normalize(&sql);
     let entry = state
         .stats
-        .entry(key.clone())
-        .or_insert_with(|| SqlEntry::new(next_sql_id(), key));
+        .entry((source, normalized))
+        .or_insert_with_key(|(source, query)| SqlEntry::new(next_sql_id(), query.clone(), *source));
     entry.count += 1;
     entry.total_nanos += duration_nanos;
     entry.record(duration_nanos);
