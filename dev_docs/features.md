@@ -9,7 +9,7 @@ The library supports different profiling modes via feature flags:
 - `hotpath-alloc` - Track both bytes and allocation count per function simultaneously
 - `hotpath-cpu` - Enable CPU sampling profiling via `samply` (macOS and Linux). Spawns the `hotpath-samply` wrapper binary on guard build; collects samples as gzipped Firefox Profiler JSON from the running process and attributes them to instrumented functions on shutdown or on-demand snapshot.
 - `hotpath-mcp` - Enable MCP (Model Context Protocol) server for AI tool integration
-- `tokio` - Enable tokio runtime support for async function profiling
+- `tokio` - Enable tokio-specific integrations: `channel!` on tokio channels, tokio `Mutex`/`RwLock` wrappers, async `io!` traits, and `tokio_runtime!()` metrics. Not required for async function profiling itself, which works on any runtime.
 - `futures` - Enable futures-channel support
 - `crossbeam` - Enable crossbeam channel support
 - `sqlx` - Enable SQL query profiling via `hotpath::sqlx_tracing_layer()`, a `tracing_subscriber::Layer` that observes sqlx's per-query `sqlx::query` events. No sqlx dependency is pulled in - the layer is generic over `tracing` and reads query telemetry from the event fields, a schema shared by sqlx 0.8 and 0.9, so one layer covers both. Captures transaction-internal queries; queries are keyed by *normalized* statement text.
@@ -39,17 +39,17 @@ cargo run -p test-smol-async --features=hotpath --example basic_smol
 cargo run -p test-tokio-async --features='hotpath,tokio' --example async_multithread
 
 # Channel monitoring examples
-cargo run -p test-channels-tokio --example basic --features hotpath
-cargo run -p test-channels-crossbeam --example basic --features hotpath
+cargo run -p test-channels-tokio --example basic_tokio --features hotpath
+cargo run -p test-channels-crossbeam --example basic_crossbeam --features hotpath
 ```
 
 ## Macro System
 
-- `#[hotpath::main]` - Initializes background profiling system and generates final report. Parameters: `percentiles = [50, 95, 99.9]`, `format = "json"`, `limit = 20`, `timeout = 5000`
-- `#[hotpath::measure]` - Instruments functions with appropriate guard (time or allocation). Parameters: `log = true` (logs return value), `timeout = 1000` (ms), `label = "name"` (replaces full reported identifier; duplicates panic at runtime), `impl_type = "Type"` (inserts the enclosing type segment so the registered name is `module::Type::fn_name`; required for correct `hotpath-cpu` attribution when applying bare `#[measure]` to a method inside an `impl` not covered by `measure_all`)
+- `#[hotpath::main]` - Initializes background profiling system and generates final report. Parameters: `percentiles = [50, 95, 99.9]`, `format = "json"`, `limit = 20` (plus per-resource variants like `functions_limit`, `channels_limit`, ...), `output_path = "report.json"`, `report = "..."`, `allocator = ...`. For a timed shutdown use `HOTPATH_SHUTDOWN_MS` or `build_with_shutdown`.
+- `#[hotpath::measure]` - Instruments functions with appropriate guard (time or allocation). Parameters: `log = true` (logs return value), `future = true` (also emits future lifecycle events for async fns), `label = "name"` (replaces full reported identifier; duplicates panic at runtime), `impl_type = "Type"` (inserts the enclosing type segment so the registered name is `module::Type::fn_name`; required for correct `hotpath-cpu` attribution when applying bare `#[measure]` to a method inside an `impl` not covered by `measure_all`)
 - `#[hotpath::measure_all]` - Instruments all functions in a module or impl block. On inherent impl blocks the type segment is auto-injected (`module::Type::method`) so CPU sampling attribution matches the demangled symbol. Trait impls (`impl Trait for Type`) are instrumented but their demangled symbols use `<Type as Trait>::method`, so CPU attribution won't match for trait methods.
 - `#[hotpath::skip]` - Excludes a function from profiling when using measure_all
-- `#[hotpath::future_fn]` - Instruments async functions for future lifecycle tracking. Parameters: `log = true`, `label = "name"`
+- `#[hotpath::future_fn]` - Instruments async functions for future lifecycle tracking. Parameter: `log = true`
 - `hotpath::measure_block!("label", { ... })` - Instruments code blocks
 - `hotpath::rw_lock!(expr)` - Wraps a `RwLock` (std/parking_lot/tokio/async-lock) to track read/write wait & acquire time. Parameter: `label = "name"`
 - `hotpath::mutex!(expr)` - Wraps a `std::sync::Mutex` to track lock wait & acquire time (single lock kind, no read/write split). Parameter: `label = "name"`
@@ -81,7 +81,7 @@ HotpathGuardBuilder::new("main")
     .sql_limit(5)            // max SQL queries in report (default: 0)
     .http_limit(5)           // max HTTP endpoints in report (default: 0)
     .io_limit(5)             // max io entries in report (default: 0)
-    .threads_limit(5)        // max threads in report (default: 0)
+    .threads_limit(5)        // max threads in report (default: 5)
     .format(Format::Json)
     .output_path("report.json")
     .sections(vec![Section::FunctionsTiming, Section::Channels])
@@ -165,11 +165,6 @@ Future metrics tracked:
 - Poll counts
 - Future state (active, completed, cancelled)
 - Optional output logs
-
-*Guards*: Alternative builder API for more control
-- `ChannelsGuard` - Manual channel monitoring with custom configuration
-- `StreamsGuard` - Manual stream monitoring with custom configuration
-- `FuturesGuard` - Manual future monitoring with custom configuration
 
 ## Async Support
 
