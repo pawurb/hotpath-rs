@@ -45,11 +45,10 @@ fn main() {
     for chunk in data.chunks(CHUNK) {
         encoder.write_all(chunk).unwrap();
     }
-    // Finish the zstd frame through the wrapper's Deref (do_finish takes
-    // &mut self); the epilogue still flows through the inner file wrapper, so
-    // its byte count covers the whole .zst file.
-    encoder.do_finish().unwrap();
-    drop(encoder);
+    // finish(self) consumes the encoder, so peel the outer wrapper off with
+    // io_unwrap first; the epilogue still flows through the inner file
+    // wrapper, so its byte count covers the whole .zst file.
+    hotpath::io_unwrap(encoder).finish().unwrap();
 
     // Ground truth to compare against the report: the plaintext size should
     // match the zstd-plaintext-write row, the file size the
