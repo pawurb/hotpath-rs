@@ -209,12 +209,6 @@ jobs:
       - name: Run io tests
         run: |
           cargo test --features hotpath --test io -- --nocapture --test-threads=1
-      - name: Run io tcp tests
-        run: |
-          cargo test --features hotpath --test io_tcp -- --nocapture --test-threads=1
-      - name: Run io tokio tcp tests
-        run: |
-          cargo test --features hotpath --test io_tokio_tcp -- --nocapture --test-threads=1
       - name: Run io redis tests
         run: |
           cargo test --features hotpath --test io_redis -- --nocapture --test-threads=1

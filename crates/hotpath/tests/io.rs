@@ -1,8 +1,11 @@
-#[cfg(test)]
+//! Integration tests for `io!` instrumentation. Covers the self-contained
+//! cases: sync file I/O (Cursor/BufReader/error readers), async tokio file and
+//! duplex I/O, and std/tokio TCP against in-process echo servers. The
+//! service-dependent Redis test lives in `io_redis.rs`.
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
-    #[cfg(feature = "hotpath")]
     use hotpath::json::{JsonIoEntry, JsonIoList, JsonReport};
 
     fn run_example(example: &str, json: bool) -> String {
@@ -31,7 +34,6 @@ pub mod tests {
         String::from_utf8_lossy(&output.stdout).to_string()
     }
 
-    #[cfg(feature = "hotpath")]
     fn parse_io(stdout: &str) -> JsonIoList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -42,7 +44,6 @@ pub mod tests {
         report.io.expect("No io section in report")
     }
 
-    #[cfg(feature = "hotpath")]
     fn entry<'a>(io: &'a JsonIoList, label: &str) -> &'a JsonIoEntry {
         io.data
             .iter()
@@ -51,7 +52,6 @@ pub mod tests {
     }
 
     // cargo run -p test-io --example basic_io_sync --features hotpath (json)
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_sync_json_output() {
         let stdout = run_example("basic_io_sync", true);
@@ -96,7 +96,6 @@ pub mod tests {
     }
 
     // cargo run -p test-io --example basic_io_async --features hotpath (json)
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_async_json_output() {
         let stdout = run_example("basic_io_async", true);
@@ -138,11 +137,52 @@ pub mod tests {
         assert_eq!(err_reader.read.count, 0);
 
         // Retryable Interrupted counts as neither an op nor an error; the
-        // retried read completes as a single operation.
+        // retried read is recorded as its own single operation.
         let flaky = entry(&io, "flaky-reader");
         assert_eq!(flaky.read.errors, 0);
         assert_eq!(flaky.read.count, 1);
         assert_eq!(flaky.read.bytes, 5);
+    }
+
+    // cargo run -p test-io --example basic_tcp_io --features hotpath (json)
+    #[test]
+    fn test_tcp_json_output() {
+        let stdout = run_example("basic_tcp_io", true);
+        let io = parse_io(&stdout);
+        let client = entry(&io, "tcp-client");
+
+        assert!(client.type_name.contains("TcpStream"));
+        // 8 rounds x 1024 bytes echoed each way; byte totals are exact while
+        // the kernel may split individual reads or writes.
+        assert!(client.write.count >= 8);
+        assert_eq!(client.write.bytes, 8192);
+        assert_eq!(client.write.errors, 0);
+        assert!(client.read.count >= 8);
+        assert_eq!(client.read.bytes, 8192);
+        assert_eq!(client.read.errors, 0);
+        assert!(client.read.total_ns > 0, "Reads should be timed");
+    }
+
+    // cargo run -p test-io --example basic_tokio_tcp_io --features hotpath (json)
+    #[test]
+    fn test_tokio_tcp_json_output() {
+        let stdout = run_example("basic_tokio_tcp_io", true);
+        let io = parse_io(&stdout);
+        let client = entry(&io, "tokio-tcp-client");
+
+        assert!(client.type_name.contains("TcpStream"));
+        // 8 rounds x 1024 bytes echoed each way; byte totals are exact while
+        // the kernel may split individual reads or writes.
+        assert!(client.write.count >= 8);
+        assert_eq!(client.write.bytes, 8192);
+        assert_eq!(client.write.errors, 0);
+        assert!(client.read.count >= 8);
+        assert_eq!(client.read.bytes, 8192);
+        assert_eq!(client.read.errors, 0);
+        assert!(client.read.total_ns > 0, "Reads should be timed");
+        // Explicit AsyncWriteExt::shutdown call at the end of the example.
+        assert_eq!(client.shutdown.count, 1);
+        assert_eq!(client.shutdown.errors, 0);
     }
 
     // cargo run -p test-io --example basic_io_sync --features hotpath

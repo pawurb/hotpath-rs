@@ -49,8 +49,6 @@ test_all:
     cargo test --features hotpath --test tokio_runtime -- --nocapture --test-threads=1
     cargo test --features hotpath --test futures -- --nocapture --test-threads=1
     cargo test --features hotpath --test io -- --nocapture --test-threads=1
-    cargo test --features hotpath --test io_tcp -- --nocapture --test-threads=1
-    cargo test --features hotpath --test io_tokio_tcp -- --nocapture --test-threads=1
     cargo test --features hotpath --test io_redis -- --nocapture --test-threads=1
     cargo test --features hotpath --test http_reqwest -- --nocapture --test-threads=1
     cargo test --features hotpath --test sql_sqlite -- --nocapture --test-threads=1

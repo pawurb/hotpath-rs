@@ -4,9 +4,8 @@
 //! compose file (`docker compose up -d redis`, host port 6390). Skips locally
 //! when nothing listens there; on CI the redis service is mandatory, so a
 //! missing server fails instead.
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    #[cfg(feature = "hotpath")]
     use hotpath::json::JsonReport;
     use std::process::Command;
 
@@ -16,7 +15,6 @@ pub mod tests {
         std::net::TcpStream::connect_timeout(&addr, timeout).is_ok()
     }
 
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_redis_json_output() {
         if !redis_available() {
