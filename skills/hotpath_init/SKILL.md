@@ -1,6 +1,6 @@
 ---
 name: hotpath_init
-description: Configure hotpath profiling in a Rust project. Adds the hotpath dependency with feature-gated setup, instruments main with hotpath::main, functions with measure/measure_all, and wraps channels, mutexes, rw_locks, streams, futures and reqwest clients with hotpath macros. Use when the user wants to add or set up hotpath profiling in a crate.
+description: Configure hotpath profiling in a Rust project. Adds the hotpath dependency with feature-gated setup, instruments main with hotpath::main, functions with measure/measure_all, and wraps channels, mutexes, rw_locks, streams, futures, reqwest clients and byte-level I/O with hotpath macros. Use when the user wants to add or set up hotpath profiling in a crate.
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
@@ -13,7 +13,7 @@ Set up [hotpath](https://hotpath.rs) profiling in the current Rust project. The 
 ### 1. Inspect the project
 
 - Find the binary crate(s) and the `main` function. If there is no `main` you control (e.g. a library or a test harness), use the `HotpathGuardBuilder` API instead of `#[hotpath::main]` (see step 3).
-- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `flume`, `async-channel`, `futures_channel`), `Mutex` and `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx, diesel, reqwest clients (async only; note which reqwest major - 0.12 or 0.13).
+- Detect the async runtime (`tokio`, `smol`, none) and which instrumentable primitives the code uses: channels (`tokio::sync::mpsc`/`oneshot`, `std::sync::mpsc`, `crossbeam_channel`, `flume`, `async-channel`, `futures_channel`), `Mutex` and `RwLock` (std/parking_lot/tokio/async-lock), futures streams, sqlx, diesel, reqwest clients (async only; note which reqwest major - 0.12 or 0.13), byte-level I/O values implementing `std::io::Read`/`Write` or `tokio::io::AsyncRead`/`AsyncWrite` (files, sockets, compression codecs).
 
 ### 2. Add the dependency and feature passthrough
 
@@ -30,7 +30,7 @@ hotpath-alloc = ["hotpath/hotpath-alloc"]
 
 Enable extra hotpath cargo features on the dependency based on what the project uses:
 
-- `tokio` - for `tokio::sync` channel instrumentation and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.22", features = ["tokio"] }`
+- `tokio` - for `tokio::sync` channel instrumentation, async `io!` traits (`AsyncRead`/`AsyncWrite`), and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.22", features = ["tokio"] }`
 - `crossbeam` - for `crossbeam_channel` instrumentation
 - `futures` - for `futures_channel` instrumentation
 - `flume` - for `flume` channel instrumentation
@@ -95,7 +95,19 @@ let lock = hotpath::rw_lock!(tokio::sync::RwLock::new(config), label = "config")
 // Streams and futures
 let s = hotpath::stream!(stream::iter(1..=10), label = "events");
 let result = hotpath::future!(some_async_operation(), label = "fetch").await;
+
+// Byte-level I/O (std Read/Write; AsyncRead/AsyncWrite require the `tokio` feature) -
+// per-operation counts, bytes, transfer rate, durations, and errors
+let mut file = hotpath::io!(std::fs::File::open("data.bin")?, label = "data-file");
+let stream = hotpath::io!(tokio::net::TcpStream::connect(addr).await?, label = "conn");
 ```
+
+`io!` notes:
+
+- Wrapping the underlying resource (file, socket) measures actual resource I/O; wrapping a `BufReader`/`BufWriter` measures application-facing buffered operations.
+- The wrapper derefs to the wrapped value, so call sites don't change. For consuming methods (e.g. a codec's `finish(self)`), unwrap first with `hotpath::io_unwrap(x)` - identity when profiling is off, so call sites compile identically in both modes.
+- Wrap the side where the work happens, or the reported rate is meaningless. Deferring writers (e.g. `brotli::CompressorWriter`) accept cheap buffered `write` calls and compress at finalization, outside any measured op; prefer read-side codec adapters (`flate2::read::GzEncoder`, `brotli::CompressorReader`, `zstd::stream::read::Encoder`), which compress inside instrumented `read` calls and report compressed bytes out.
+- One report entry per `io!` call site by default (safe for unbounded instance churn, e.g. per accepted connection); `iter = true` gives every wrapper instance its own row instead.
 
 Wrapped locks/channels are drop-in: the wrappers expose the same API, so call sites don't change. If passing them across function boundaries requires type-signature changes, note that to the user rather than rewriting half the codebase silently.
 
