@@ -4,8 +4,7 @@ use std::io::{IoSlice, IoSliceMut, Read, Write};
 
 use crate::instant::Instant;
 use crate::io::{
-    cancel_op_stamp, elapsed_nanos, op_stamp, register_io, send_io_event, started_at_nanos,
-    IoEvent, IoOpKind,
+    cancel_op_stamp, elapsed_nanos, op_stamp, register_io, send_io_event, IoEvent, IoOpKind,
 };
 
 cfg_if::cfg_if! {
@@ -95,7 +94,6 @@ fn record_sync_op(
             kind,
             bytes,
             duration_nanos: start.map(elapsed_nanos),
-            started_at_ns: start.map(started_at_nanos),
         }),
         Err(std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {
             cancel_op_stamp(kind)
@@ -203,13 +201,12 @@ fn finish_async_op<R>(
     match &poll {
         Poll::Pending => {}
         Poll::Ready(Ok(value)) => {
-            let start = op.take().flatten();
+            let duration_nanos = op.take().flatten().map(elapsed_nanos);
             send_io_event(IoEvent::Op {
                 id,
                 kind,
                 bytes: bytes(value),
-                duration_nanos: start.map(elapsed_nanos),
-                started_at_ns: start.map(started_at_nanos),
+                duration_nanos,
             });
         }
         Poll::Ready(Err(e)) => {

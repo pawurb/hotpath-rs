@@ -529,10 +529,8 @@ pub struct JsonIoEntry {
 
 /// Per-operation-kind statistics for one instrumented I/O value. `total_ns`,
 /// `bytes`, and `sampled_bytes` are raw values; `avg`, `throughput`, and
-/// `percentiles` are formatted. `throughput` is bytes per second of active
-/// I/O time - `sampled_bytes` over the union of in-flight operation
-/// intervals, so idle gaps don't dilute it and concurrent operations don't
-/// double-count overlapped time. `None` when nothing was timed.
+/// `percentiles` are formatted. `throughput` is the transfer rate over timed
+/// operations (`sampled_bytes / total_ns`), `None` when nothing was timed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonIoOpStats {
     pub count: u64,
