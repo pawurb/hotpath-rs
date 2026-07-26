@@ -54,9 +54,10 @@ pin_project! {
         visible: bool,
         timed: bool,
         alloc_bridge: Option<Arc<AsyncAllocBridge>>,
-        // Function name registered on the thread-local caller stack around
-        // every inner poll for SQL/HTTP source attribution. Set for measured
-        // async function bodies, None for `future!` expression wrappers.
+        // Function name registered on the thread-local caller stack for
+        // exactly the duration of each inner poll (SQL/HTTP source
+        // attribution). Set for measured async function bodies, None for
+        // `future!` expression wrappers.
         caller_scope: Option<&'static str>,
     }
 
@@ -151,12 +152,13 @@ impl<F: Future> Future for InstrumentedFuture<F> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let visible = *this.visible;
-        let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
 
         // Don't instrument future unless visible, only collect alloc data
         if !visible {
-            let (result, poll_alloc_bytes, poll_alloc_count) =
-                measure_poll_alloc(|| this.inner.poll(cx));
+            let (result, poll_alloc_bytes, poll_alloc_count) = measure_poll_alloc(|| {
+                let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
+                this.inner.poll(cx)
+            });
             if let (Some(bytes), Some(count), Some(bridge)) = (
                 poll_alloc_bytes,
                 poll_alloc_count,
@@ -174,8 +176,10 @@ impl<F: Future> Future for InstrumentedFuture<F> {
         let call_id = *this.call_id;
 
         let start = (*this.timed).then(Instant::now);
-        let (result, poll_alloc_bytes, poll_alloc_count) =
-            measure_poll_alloc(|| this.inner.poll(cx));
+        let (result, poll_alloc_bytes, poll_alloc_count) = measure_poll_alloc(|| {
+            let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
+            this.inner.poll(cx)
+        });
         let poll_duration_ns =
             start.map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         if let (Some(bytes), Some(count), Some(bridge)) = (
@@ -315,11 +319,12 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let visible = *this.visible;
-        let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
 
         if !visible {
-            let (result, poll_alloc_bytes, poll_alloc_count) =
-                measure_poll_alloc(|| this.inner.poll(cx));
+            let (result, poll_alloc_bytes, poll_alloc_count) = measure_poll_alloc(|| {
+                let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
+                this.inner.poll(cx)
+            });
             if let (Some(bytes), Some(count), Some(bridge)) = (
                 poll_alloc_bytes,
                 poll_alloc_count,
@@ -337,8 +342,10 @@ where
         let call_id = *this.call_id;
 
         let start = (*this.timed).then(Instant::now);
-        let (result, poll_alloc_bytes, poll_alloc_count) =
-            measure_poll_alloc(|| this.inner.poll(cx));
+        let (result, poll_alloc_bytes, poll_alloc_count) = measure_poll_alloc(|| {
+            let _caller_scope = CallerScopeGuard::enter(*this.caller_scope);
+            this.inner.poll(cx)
+        });
         let poll_duration_ns =
             start.map(|start| Instant::now().duration_since(start).as_nanos() as u64);
         if let (Some(bytes), Some(count), Some(bridge)) = (
