@@ -1,5 +1,8 @@
 //! Measures `io!` overhead on loopback TCP echo round trips against an
 //! in-process server - no external services required.
+//!
+//! Run with:
+//!   cargo run -p test-io --example benchmark_tcp_io --features hotpath
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};

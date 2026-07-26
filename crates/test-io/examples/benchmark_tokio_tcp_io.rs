@@ -1,5 +1,8 @@
 //! Measures `io!` overhead on tokio async TCP echo round trips against an
 //! in-process server - no external services required.
+//!
+//! Run with:
+//!   cargo run -p test-io --example benchmark_tokio_tcp_io --features hotpath
 
 use std::time::Instant;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};

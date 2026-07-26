@@ -5,6 +5,9 @@
 //! two rows shows how overlapped operation time is attributed. The
 //! `per-reader` site uses `iter = true`, giving each of its four readers a
 //! separate row with individual rate and byte counts.
+//!
+//! Run with:
+//!   cargo run -p test-io --example concurrent_io --features hotpath
 
 use std::io::Read;
 use std::thread;

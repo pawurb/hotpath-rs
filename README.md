@@ -3,7 +3,7 @@
 
 hotpath-rs is an easy-to-configure Rust performance profiler that shows exactly where your code spends time, burns CPU, and allocates memory. 
 
-It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, and streams to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
+It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, and SQL queries to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
 
 Try the TUI demo via SSH - no installation required:
 
@@ -40,22 +40,14 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 - **Time, CPU & memory profiling** - identify expensive functions, allocation hotspots, and investigate memory leaks.
 - **Async observability** - futures, channels and streams.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
+- **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest.
+- **I/O streams monitoring** - bytes, throughput and duration of reads and writes for TCP, Redis, files etc.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
 - **CI regression detection** - benchmark every PR automatically.
 - **MCP server for AI agents** - query profiling data in real time.
 - **Zero cost when disabled** - fully feature-gated.
-
-## Current roadmap
-
-- [x] [`hotpath::channel!/stream!/future!` events batching](https://github.com/pawurb/hotpath-rs/issues/345)
-- [x] [`hotpath::mutex!/rw_lock!`](https://github.com/pawurb/hotpath-rs/issues/340)
-- [x] `hotpath::channel!(..., wrap = true)` 
-- [x] [`hotpath::channel!` timing histogram](https://github.com/pawurb/hotpath-rs/issues/299)
-- [x] [Instrument AsyncRead/AsyncWrite and Read/Write wrappers](https://github.com/pawurb/hotpath-rs/issues/379)
-- [ ] `hotpath::sql!(...)` 
-- [ ] `hotpath::http!(...)` 
 
 ## Getting Started
 
@@ -186,9 +178,10 @@ See the full docs and advanced config tutorials at [hotpath.rs](https://hotpath.
 - [Async Data Flow](https://hotpath.rs/data_flow) - monitor channels, streams, and futures
 - [Locks](https://hotpath.rs/locks) - track Mutex and RwLock wait and hold times
 - [SQL queries](https://hotpath.rs/sql_tracing) - profile query execution time for sqlx and Diesel
+- [HTTP requests](https://hotpath.rs/http_tracing) - profile reqwest client calls per endpoint
+- [I/O streams](https://hotpath.rs/io_streams) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](https://hotpath.rs/tokio_runtime) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](https://hotpath.rs/debug) - track custom values with `dbg!`, `val!`, and `gauge!` macros
-- [A/B Benchmarks](https://hotpath.rs/benchmarks) - compare performance between app versions
 - [GitHub CI](https://hotpath.rs/github_ci) - automated benchmarking and regression detection in CI
 - [MCP Server](https://hotpath.rs/mcp) - LLM integration via Model Context Protocol
 - [Configuration](https://hotpath.rs/configuration) - explore all config options

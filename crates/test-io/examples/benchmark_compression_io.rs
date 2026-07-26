@@ -3,6 +3,9 @@
 //! write op, so the relative overhead depends on how much compression work
 //! each chunk carries - gzip on large chunks buries it, a fast codec on small
 //! chunks is the worst case.
+//!
+//! Run with:
+//!   cargo run -p test-io --example benchmark_compression_io --features hotpath
 
 use flate2::write::GzEncoder;
 use flate2::Compression;

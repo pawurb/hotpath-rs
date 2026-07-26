@@ -1,6 +1,6 @@
 # A simple Rust profiler that shows exactly why your code is slow
 
-<h2 class="hero-subtitle">Profile CPU, memory, async execution, SQL queries, lock contention and channels from a single tool.</h2>
+<h2 class="hero-subtitle">Profile CPU, memory, async execution, SQL and HTTP calls, I/O streams, lock contention and channels from a single tool.</h2>
 
 <div class="hero-badges">
   <a href="https://github.com/pawurb/hotpath-rs" target="_blank"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a>
@@ -101,6 +101,8 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 - **Time, CPU & memory profiling** - identify expensive functions, allocation hotspots, and investigate memory leaks.
 - **Async observability** - futures, channels and streams.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
+- **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest.
+- **I/O streams monitoring** - bytes, throughput and duration of reads and writes for TCP, Redis, files etc.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
@@ -275,9 +277,10 @@ Explore the docs for customization options and advanced profiling features.
 - [Async Data Flow](./data_flow.html) - monitor channels, streams, and futures
 - [Locks](./locks.html) - track Mutex and RwLock wait and hold times
 - [SQL queries](./sql_tracing.html) - profile query execution time for sqlx and Diesel
+- [HTTP requests](./http_tracing.html) - profile reqwest client calls per endpoint
+- [I/O streams](./io_streams.html) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](./tokio_runtime.html) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
-- [A/B Benchmarks](./benchmarks.html) - compare performance between app versions
 - [GitHub CI](./github_ci.html) - automated benchmarking and regression detection in CI
 - [MCP Server](./mcp.html) - LLM integration via Model Context Protocol
 - [Cargo flamegraph alternatives](/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply

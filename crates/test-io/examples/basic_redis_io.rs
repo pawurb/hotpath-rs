@@ -3,6 +3,9 @@
 //! RESP so no client dependency is needed. Requires the Redis container from
 //! the repo-root compose file (`docker compose up -d redis`, host port 6390);
 //! skips when nothing listens there.
+//!
+//! Run with:
+//!   cargo run -p test-io --example basic_redis_io --features hotpath
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
