@@ -62,6 +62,9 @@ async fn phase_baseline(
     for _ in 0..runs {
         let resp = client.get(url).send().await?;
         assert_eq!(resp.status().as_u16(), 200);
+        // Consume the body so the connection returns to the pool and stays
+        // kept-alive across iterations.
+        resp.bytes().await?;
     }
     Ok(())
 }
@@ -77,6 +80,7 @@ async fn phase_instrumented(
     for _ in 0..runs {
         let resp = client.get(url).send().await?;
         assert_eq!(resp.status().as_u16(), 200);
+        resp.bytes().await?;
     }
     Ok(())
 }
