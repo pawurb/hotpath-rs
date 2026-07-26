@@ -1,4 +1,4 @@
-# Monitor File, Socket and Async I/O in Rust
+# Monitor File, Socket and Async I/O Streams in Rust
 
 `hotpath` instruments byte-level I/O to surface slow reads and writes - files, sockets, TLS streams, TCP connections like Redis, compression streams, and any custom I/O type. For every wrapped value it tracks, per operation kind (read, write, flush, shutdown):
 

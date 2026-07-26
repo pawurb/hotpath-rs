@@ -183,7 +183,7 @@ See the full docs and advanced config tutorials at [hotpath.rs](https://hotpath.
 - [Locks](https://hotpath.rs/locks) - track Mutex and RwLock wait and hold times
 - [SQL queries](https://hotpath.rs/sql_tracing) - profile query execution time for sqlx and Diesel
 - [HTTP requests](https://hotpath.rs/http_tracing) - profile reqwest client calls per endpoint
-- [I/O streams](https://hotpath.rs/io_streams) - monitor bytes, throughput and duration of TCP, Redis, and file operations
+- [I/O tracing](https://hotpath.rs/io_tracing) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](https://hotpath.rs/tokio_runtime) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](https://hotpath.rs/debug) - track custom values with `dbg!`, `val!`, and `gauge!` macros
 - [GitHub CI](https://hotpath.rs/github_ci) - automated benchmarking and regression detection in CI
