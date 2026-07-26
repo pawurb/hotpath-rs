@@ -1,9 +1,9 @@
+//! Run with:
+//!   cargo run -p test-channels-std --example wrap_concurrent_std --features hotpath
 // Races a producer against a consumer on an unbounded std::sync::mpsc wrap channel.
 // The depth counter is incremented before each publish, so a fast consumer can never
 // decrement it below zero (which would panic in debug builds). Asserts every message
 // is accounted for and the queue drains back to zero.
-//
-// cargo run -p test-channels-std --example wrap_concurrent_std --features hotpath
 use std::sync::mpsc;
 use std::thread;
 

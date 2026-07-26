@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-flume --example iter_flume --features hotpath
+
 use smol::Timer;
 use std::time::Duration;
 

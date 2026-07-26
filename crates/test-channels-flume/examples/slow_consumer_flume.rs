@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-flume --example slow_consumer_flume --features hotpath
+
 use smol::Timer;
 use std::time::Duration;
 

@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example recv_many_tokio --features hotpath
 // Demonstrates batch receiving via recv_many on wrapped tokio channels: every
 // message gets its own receive event, so counts, delay histograms, and queue depth
 // stay exact even when messages are drained in batches.
-//
-// cargo run -p test-channels-tokio --example recv_many_tokio --features hotpath
 #[tokio::main]
 async fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")

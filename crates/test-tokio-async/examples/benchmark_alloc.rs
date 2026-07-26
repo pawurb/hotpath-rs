@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example benchmark_alloc --features hotpath,hotpath-alloc
+
 use std::thread;
 use std::time::{Duration, Instant};
 

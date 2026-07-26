@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run --manifest-path crates/test-toasty/Cargo.toml --example benchmark_sql_toasty_postgres --features hotpath
+
 use hotpath::{HotpathGuardBuilder, Section};
 use std::time::{Duration, Instant};
 use tracing_subscriber::prelude::*;

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-debug --example basic_gauge --features hotpath
+
 fn main() {
     hotpath::gauge!("queue_size").set(10.0);
     hotpath::gauge!("queue_size").inc(5.0);

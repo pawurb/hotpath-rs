@@ -1,9 +1,9 @@
+//! Run with:
+//!   cargo run -p test-channels-asc --example wrap_recv_clone_closed_asc --features hotpath
 // A Sender clone is kept alive, every Receiver clone is dropped, and the report is
 // taken *before* the senders are dropped. async-channel disconnects the channel on the
 // last receiver drop, so the endpoint wrapper must emit `Closed` even though no `Sender`
 // has been dropped yet.
-//
-// cargo run -p test-channels-asc --example wrap_recv_clone_closed_asc --features hotpath
 fn main() {
     smol::block_on(async {
         let guard = hotpath::HotpathGuardBuilder::new("main")

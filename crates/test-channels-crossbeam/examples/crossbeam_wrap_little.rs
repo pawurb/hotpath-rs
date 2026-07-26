@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-crossbeam --example crossbeam_wrap_little --features hotpath
+
 // Demonstrates Little's Law (L = lambda * W) on top of the crossbeam wrap-channel
 // send->receive (dwell time) histogram.
 //

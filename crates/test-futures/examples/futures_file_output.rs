@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-futures --example futures_file_output --features hotpath
+
 use hotpath::future;
 use std::time::Duration;
 

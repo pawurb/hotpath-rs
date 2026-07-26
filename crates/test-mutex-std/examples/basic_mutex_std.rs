@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-mutex-std --example basic_mutex_std --features hotpath
+
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;

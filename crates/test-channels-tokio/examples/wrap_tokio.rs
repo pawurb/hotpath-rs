@@ -1,3 +1,5 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example wrap_tokio --features hotpath
 // Demonstrates tokio::sync::mpsc channel instrumentation: the report shows the
 // exact queue depth (50 messages parked in the channel) because the instrumented
 // endpoints track queue length with a self-maintained counter instead of routing
@@ -5,8 +7,6 @@
 //
 // Tokio bounded channels recover their capacity from `Sender::max_capacity()`, so no
 // `capacity = N` argument is needed.
-//
-// cargo run -p test-channels-tokio --example wrap_tokio --features hotpath
 #[tokio::main]
 async fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")

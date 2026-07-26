@@ -1,7 +1,7 @@
+//! Run with:
+//!   cargo run -p test-channels-asc --example wrap_closed_asc --features hotpath
 // Dropping all receivers while a sender is still alive disconnects the channel.
 // The endpoint wrapper must report the channel as `closed`, mirroring the proxy mode.
-//
-// cargo run -p test-channels-asc --example wrap_closed_asc --features hotpath
 fn main() {
     smol::block_on(async {
         let guard = hotpath::HotpathGuardBuilder::new("main")

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-futures --example guard_timeout_futures --features hotpath
+
 use std::time::Duration;
 
 #[hotpath::future_fn]

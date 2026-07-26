@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example oneshot_closed_tokio --features hotpath
+
 #[tokio::main]
 async fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")

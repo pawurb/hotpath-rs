@@ -1,10 +1,10 @@
+//! Run with:
+//!   cargo run -p test-channels-std --example wrap_unbounded_std --features hotpath
 // Demonstrates std::sync::mpsc channel instrumentation on an unbounded channel.
 // Sends N messages, drains them all, and the report reflects exact sent/received
 // counts with the self-tracked queue draining back to zero.
 //
 // Unbounded std wrap needs no `capacity`.
-//
-// cargo run -p test-channels-std --example wrap_unbounded_std --features hotpath
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;

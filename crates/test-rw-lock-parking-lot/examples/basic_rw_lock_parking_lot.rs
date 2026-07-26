@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-rw-lock-parking-lot --example basic_rw_lock_parking_lot --features hotpath
+
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;

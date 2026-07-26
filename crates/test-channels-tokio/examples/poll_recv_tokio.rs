@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example poll_recv_tokio --features hotpath
 // Demonstrates poll_recv/poll_recv_many on wrapped tokio channels, driven manually
 // via poll_fn including a Pending-then-Ready sequence that exercises the reusable
 // internal scratch buffer.
-//
-// cargo run -p test-channels-tokio --example poll_recv_tokio --features hotpath
 use std::future::poll_fn;
 use std::task::Poll;
 

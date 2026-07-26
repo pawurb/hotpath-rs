@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example channels_file_output --features hotpath
+
 #[tokio::main]
 async fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")

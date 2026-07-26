@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-asc --example benchmark_channel_asc --features hotpath
+
 use std::time::{Duration, Instant};
 
 // Single-threaded stress test comparing channel instrumentation overhead in one run: an

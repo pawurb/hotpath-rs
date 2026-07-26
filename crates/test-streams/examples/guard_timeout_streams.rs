@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-streams --example guard_timeout_streams --features hotpath
+
 use futures_util::stream::{self, StreamExt};
 use smol::Timer;
 use std::time::Duration;

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-mutex-parking-lot --example benchmark_mutex_parking_lot --features hotpath
+
 use std::time::{Duration, Instant};
 
 // Single-threaded stress test comparing mutex instrumentation overhead in one run: an

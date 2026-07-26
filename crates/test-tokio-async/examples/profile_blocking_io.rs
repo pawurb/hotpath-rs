@@ -4,12 +4,12 @@
 //!
 //! Profile with hotpath:
 //! ```bash
-//! cargo run --example profile_blocking_io --features hotpath --profile profiling
+//! cargo run -p test-tokio-async --example profile_blocking_io --features hotpath --profile profiling
 //! ```
 //!
 //! Profile with samply:
 //! ```bash
-//! cargo build --example profile_blocking_io --profile profiling
+//! cargo build -p test-tokio-async --example profile_blocking_io --profile profiling
 //! samply record ./target/profiling/examples/profile_blocking_io
 //! ```
 

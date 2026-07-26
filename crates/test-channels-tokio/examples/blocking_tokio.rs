@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example blocking_tokio --features hotpath
 // Demonstrates blocking_send/blocking_recv/blocking_recv_many on wrapped tokio
 // channels, driven from plain std threads with no async runtime: event emission is
 // a sync crossbeam send, so stats are recorded off-runtime without panics.
-//
-// cargo run -p test-channels-tokio --example blocking_tokio --features hotpath
 fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")
         .format(hotpath::Format::JsonPretty)

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-streams --example benchmark_stream --features hotpath
+
 use futures_util::stream::{self, StreamExt};
 use std::time::Instant;
 

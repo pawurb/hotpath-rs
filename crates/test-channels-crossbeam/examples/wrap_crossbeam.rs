@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-crossbeam --example wrap_crossbeam --features hotpath
 // Demonstrates crossbeam channel instrumentation: the report shows the
 // exact queue depth (50 messages parked in the channel) because the instrumented
 // endpoints sample the real channel length instead of routing through a forwarder.
-//
-// cargo run -p test-channels-crossbeam --example wrap_crossbeam --features hotpath
 use std::thread;
 use std::time::Duration;
 

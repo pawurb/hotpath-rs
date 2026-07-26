@@ -1,3 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-asc --example console_feed_asc --features hotpath
+//! Then watch live in the TUI:
+//!   cargo run --bin hotpath --features tui -- console
+
 use smol::Timer;
 use std::time::Duration;
 
@@ -9,7 +14,7 @@ fn main() {
             .build();
 
         println!("Open the TUI console to watch live updates!");
-        println!("   Run: cargo run -p channels-console --features tui -- console\n");
+        println!("   Run: cargo run --bin hotpath --features tui -- console\n");
         Timer::after(Duration::from_secs(2)).await;
 
         // Channel 1: Fast data stream - unbounded, rapid messages

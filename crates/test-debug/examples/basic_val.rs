@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-debug --example basic_val --features hotpath
+
 fn main() {
     let counter = 42;
     hotpath::val!("counter").set(&counter);

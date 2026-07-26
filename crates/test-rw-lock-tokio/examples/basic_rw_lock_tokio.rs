@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-rw-lock-tokio --example basic_rw_lock_tokio --features hotpath
+
 use std::sync::Arc;
 use std::time::Duration;
 

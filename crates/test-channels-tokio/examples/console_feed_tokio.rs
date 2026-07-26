@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example console_feed_tokio --features hotpath
+
 use tokio::time::{sleep, Duration};
 
 #[allow(unused)]
@@ -132,7 +135,7 @@ async fn main() {
         .build();
 
     println!("Open the TUI console to watch live updates!");
-    println!("   Run: cargo run -p channels-console --features tui -- console\n");
+    println!("   Run: cargo run --bin hotpath --features tui -- console\n");
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Channel 1: Fast data stream - unbounded, rapid messages

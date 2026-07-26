@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-flume --example benchmark_channel_flume --features hotpath
+
 use std::time::{Duration, Instant};
 
 // Single-threaded stress test comparing channel instrumentation overhead in one run: an

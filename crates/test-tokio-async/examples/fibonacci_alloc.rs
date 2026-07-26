@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example fibonacci_alloc --features hotpath,hotpath-alloc
+
 #[hotpath::measure]
 fn fibonacci(n: u64) -> u64 {
     let buffer = vec![0u8; 1024];

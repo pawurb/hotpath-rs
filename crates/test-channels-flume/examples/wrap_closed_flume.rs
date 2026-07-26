@@ -1,7 +1,7 @@
+//! Run with:
+//!   cargo run -p test-channels-flume --example wrap_closed_flume --features hotpath
 // Dropping all receivers while a sender is still alive disconnects the channel.
 // The endpoint wrapper must report the channel as `closed`, mirroring the proxy mode.
-//
-// cargo run -p test-channels-flume --example wrap_closed_flume --features hotpath
 fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")
         .format(hotpath::Format::JsonPretty)

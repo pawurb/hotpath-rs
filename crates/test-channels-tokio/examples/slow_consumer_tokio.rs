@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example slow_consumer_tokio --features hotpath
+
 use tokio::time::{sleep, Duration};
 
 #[allow(unused_mut)]

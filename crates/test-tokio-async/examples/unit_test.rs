@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo test -p test-tokio-async --example unit_test --features hotpath -- --nocapture --test-threads=1
+
 use std::time::Duration;
 
 /// Run with:

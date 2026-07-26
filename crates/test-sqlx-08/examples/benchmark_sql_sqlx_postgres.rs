@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-sqlx-08 --example benchmark_sql_sqlx_postgres --features hotpath
+
 use hotpath::{HotpathGuardBuilder, Section};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;

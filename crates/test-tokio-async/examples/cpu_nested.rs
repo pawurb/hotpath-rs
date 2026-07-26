@@ -8,12 +8,12 @@
 //!
 //! Profile with hotpath:
 //! ```bash
-//! cargo run --example cpu_nested --features hotpath --profile profiling
+//! cargo run -p test-tokio-async --example cpu_nested --features hotpath --profile profiling
 //! ```
 //!
 //! Profile with samply:
 //! ```bash
-//! cargo build --example cpu_nested --profile profiling
+//! cargo build -p test-tokio-async --example cpu_nested --profile profiling
 //! samply record ./target/profiling/examples/cpu_nested
 //! ```
 

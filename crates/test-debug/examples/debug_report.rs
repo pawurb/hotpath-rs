@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-debug --example debug_report --features hotpath
+
 #[hotpath::main]
 fn main() {
     // gauge! macros

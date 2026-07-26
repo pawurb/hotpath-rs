@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example benchmark_load --features hotpath
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-smol-async --example all_guards --features hotpath
+
 use std::time::Duration;
 
 async fn warm_up_async_runtime() {

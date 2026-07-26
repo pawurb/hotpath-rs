@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example limit --features hotpath
+
 #[hotpath::measure_all]
 mod measured_module {
     pub fn function_one() {

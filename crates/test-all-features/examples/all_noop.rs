@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-all-features --example all_noop
+
 use std::time::Duration;
 use tokio::sync::mpsc;
 
