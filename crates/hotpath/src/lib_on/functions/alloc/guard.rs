@@ -159,11 +159,20 @@ pub struct MeasurementGuardSync {
 }
 
 impl MeasurementGuardSync {
+    #[inline]
+    pub fn new(name: &'static str, wrapper: bool, skipped: bool) -> Self {
+        Self::build(name, wrapper, skipped, false)
+    }
+
     /// Also registers `name` on the thread-local caller stack for SQL/HTTP
     /// source attribution (skipped for wrapper guards).
     #[inline]
     pub(crate) fn new_caller_scoped(name: &'static str, wrapper: bool, skipped: bool) -> Self {
-        let caller_scoped = !wrapper && !skipped;
+        Self::build(name, wrapper, skipped, !wrapper && !skipped)
+    }
+
+    #[inline]
+    fn build(name: &'static str, wrapper: bool, skipped: bool, caller_scoped: bool) -> Self {
         if !skipped {
             push_alloc_stack();
         }
