@@ -66,7 +66,7 @@ Used by TUI console for real-time monitoring.
 
 The library includes an MCP (Model Context Protocol) server for AI tool integration (`crates/hotpath/src/mcp_server.rs`). Requires `hotpath-mcp` feature:
 - Runs on port 6771 by default (configurable via `HOTPATH_MCP_PORT`)
-- Optional authentication via `HOTPATH_MCP_AUTH_TOKEN` header
+- Optional authentication via `HOTPATH_MCP_AUTH_TOKEN`: the env var sets the expected value on the server; clients must send that exact value as the standard `Authorization` header (compared verbatim, no `Bearer` prefix handling)
 - Endpoint: `POST /mcp` (Streamable HTTP transport)
 
 MCP Tools:

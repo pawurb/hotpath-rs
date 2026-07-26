@@ -81,7 +81,7 @@ cargo run --bin hotpath --features tui -- console \
   - Per-endpoint request logs panel with `source` attribution; metrics also at `GET /http`
 - **I/O bytes monitoring** - View real-time byte-level I/O metrics (`io!` wrappers), on the **I/O** top-level tab, Bytes sub-tab:
   - Reads and writes as stacked sub-tables: operation count, bytes, per-operation transfer rate, average and configured-percentile durations, flush count (writes), errors
-  - Per-entry operation logs panel; metrics also at `GET /io`
+  - No per-operation logs panel (aggregate tables only); metrics also at `GET /io`
 - **Threads monitoring** - View real-time thread CPU usage:
   - Per-thread CPU usage percentage (current and max)
   - Platform-specific collectors (Linux/macOS)
