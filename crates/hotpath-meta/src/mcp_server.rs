@@ -25,7 +25,7 @@ use crate::functions::{
 use crate::futures::{get_future_logs_list, get_futures_json};
 use crate::json::{
     JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFutureLogsList,
-    JsonProfilerStatus, JsonSqlLogsList, JsonStreamLogsList,
+    JsonHttpLogsList, JsonProfilerStatus, JsonSqlLogsList, JsonStreamLogsList,
 };
 use crate::output::format_duration;
 use crate::streams::{get_stream_logs, get_streams_json};
@@ -95,6 +95,13 @@ struct SqlIdParam {
     #[schemars(description = "SQL query id from the sql list")]
     #[serde(deserialize_with = "id_from_number_or_string")]
     sql_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct HttpIdParam {
+    #[schemars(description = "HTTP endpoint id from the http list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    http_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -360,6 +367,50 @@ Returns JSON array of recent executions with timestamps and durations. Use sql f
             }
             None => Ok(CallToolResult::error(vec![Content::text(
                 "SQL query not found",
+            )])),
+        }
+    }
+
+    #[tool(
+        description = r#"Get execution-time metrics for captured HTTP requests.
+
+Returns JSON array with one entry per normalized endpoint (parameter-varied requests to the same route merge into one bucket, e.g. GET api.example.com/users/{id}):
+- id: endpoint identifier
+- endpoint: normalized METHOD host/path key
+- count: number of requests
+- errors: transport errors plus responses with status >= 400
+- avg, configured percentiles, and total duration
+
+Use http_logs with an endpoint id to get recent individual requests."#
+    )]
+    async fn http(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: http");
+
+        let http = crate::http::get_http_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &http,
+        )?)]))
+    }
+
+    #[tool(
+        description = r#"Get detailed request logs for a specific HTTP endpoint.
+
+Returns JSON array of recent requests with timestamps, durations, and status codes ("error" for transport failures). Use http first to get endpoint IDs, then use this tool to get detailed logs."#
+    )]
+    async fn http_logs(&self, params: Parameters<HttpIdParam>) -> Result<CallToolResult, McpError> {
+        let http_id = params.0.http_id;
+        log_debug(&format!("Tool called: http_logs({})", http_id));
+
+        match crate::http::get_http_logs(http_id) {
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = JsonHttpLogsList::from_logs(&logs, current_elapsed_ns);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &formatted,
+                )?)]))
+            }
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "HTTP endpoint not found",
             )])),
         }
     }

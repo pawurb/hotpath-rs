@@ -86,6 +86,20 @@ pub fn build_measurement_guard_sync(
     wrapper: bool,
 ) -> MeasurementGuardSync {
     let skipped = !wrapper && !is_focused(measurement_name);
+    MeasurementGuardSync::new_caller_scoped(measurement_name, wrapper, skipped)
+}
+
+/// Guard for `measure_block!`. Never caller-scoped: a block expression can
+/// contain `.await` inside an async function, so its guard may live across
+/// suspension points and threads where a thread-local caller scope would
+/// leak to interleaved tasks. Only sync function bodies (which the compiler
+/// guarantees are await-free) get caller scoping.
+#[doc(hidden)]
+pub fn build_measurement_guard_block(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> MeasurementGuardSync {
+    let skipped = !wrapper && !is_focused(measurement_name);
     MeasurementGuardSync::new(measurement_name, wrapper, skipped)
 }
 
@@ -148,7 +162,7 @@ fn build_measurement_guard_sync_with_log(
     wrapper: bool,
 ) -> MeasurementGuardSyncWithLog {
     let skipped = !wrapper && !is_focused(measurement_name);
-    MeasurementGuardSyncWithLog::new(measurement_name, wrapper, skipped)
+    MeasurementGuardSyncWithLog::new_caller_scoped(measurement_name, wrapper, skipped)
 }
 
 #[cfg(not(feature = "hotpath-alloc-meta"))]
@@ -223,17 +237,36 @@ where
                 None,
                 alloc_bridge,
                 false,
+                async_caller_scope(measurement_loc),
             )
             .await;
             guard.finish_with_result(&result);
             result
         } else {
             let guard = build_measurement_guard_async_with_log(measurement_loc, false);
-            let result = fut.await;
+            let result = await_with_caller_scope(measurement_loc, fut).await;
             guard.finish_with_result(&result);
             result
         }
     }
+}
+
+/// Caller scope for a measured async body: `None` when `HOTPATH_META_FOCUS`
+/// excludes the function, matching the sync guards' skipped behavior.
+fn async_caller_scope(measurement_loc: &'static str) -> Option<&'static str> {
+    is_focused(measurement_loc).then_some(measurement_loc)
+}
+
+/// Runs a measured async body with its function name registered on the
+/// thread-local caller stack around every poll (SQL/HTTP source attribution).
+/// The meta crate has no SQL/HTTP front-end, so the future is awaited unwrapped.
+#[cfg(not(feature = "hotpath-alloc-meta"))]
+async fn await_with_caller_scope<T, Fut>(measurement_loc: &'static str, fut: Fut) -> T
+where
+    Fut: Future<Output = T>,
+{
+    let _ = measurement_loc;
+    fut.await
 }
 
 #[doc(hidden)]
@@ -251,11 +284,12 @@ where
                 None,
                 alloc_bridge,
                 false,
+                async_caller_scope(measurement_loc),
             )
             .await
         } else {
             let _guard = build_measurement_guard_async(measurement_loc, false);
-            fut.await
+            await_with_caller_scope(measurement_loc, fut).await
         }
     }
 }
@@ -268,8 +302,15 @@ where
     crate::futures::init_futures_state();
 
     let (_guard, alloc_bridge) = build_measurement_guard_async_with_bridge(measurement_loc, false);
-    crate::futures::wrapper::InstrumentedFuture::new(fut, measurement_loc, None, alloc_bridge, true)
-        .await
+    crate::futures::wrapper::InstrumentedFuture::new(
+        fut,
+        measurement_loc,
+        None,
+        alloc_bridge,
+        true,
+        async_caller_scope(measurement_loc),
+    )
+    .await
 }
 
 #[doc(hidden)]
@@ -288,6 +329,7 @@ where
         None,
         alloc_bridge,
         true,
+        async_caller_scope(measurement_loc),
     )
     .await;
     guard.finish_with_result(&result);

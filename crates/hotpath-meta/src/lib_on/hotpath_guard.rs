@@ -79,6 +79,7 @@ pub struct HotpathGuardBuilder {
     rw_locks_limit: usize,
     mutexes_limit: usize,
     sql_limit: usize,
+    http_limit: usize,
     threads_limit: usize,
     output_path: Option<PathBuf>,
     sections_mode: Option<SectionsMode>,
@@ -99,6 +100,7 @@ impl HotpathGuardBuilder {
             rw_locks_limit: 0,
             mutexes_limit: 0,
             sql_limit: 0,
+            http_limit: 0,
             threads_limit: 5,
             output_path: None,
             sections_mode: None,
@@ -123,6 +125,7 @@ impl HotpathGuardBuilder {
         self.rw_locks_limit = limit;
         self.mutexes_limit = limit;
         self.sql_limit = limit;
+        self.http_limit = limit;
         self.threads_limit = limit;
         self
     }
@@ -162,6 +165,12 @@ impl HotpathGuardBuilder {
     /// Maximum number of SQL queries shown in the report. Set to `0` for unlimited.
     pub fn sql_limit(mut self, limit: usize) -> Self {
         self.sql_limit = limit;
+        self
+    }
+
+    /// Maximum number of HTTP endpoints shown in the report. Set to `0` for unlimited.
+    pub fn http_limit(mut self, limit: usize) -> Self {
+        self.http_limit = limit;
         self
     }
 
@@ -287,6 +296,7 @@ impl HotpathGuardBuilder {
             self.rw_locks_limit,
             self.mutexes_limit,
             self.sql_limit,
+            self.http_limit,
             self.threads_limit,
         )
     }
@@ -327,6 +337,7 @@ pub struct HotpathGuard {
     rw_locks_limit: usize,
     mutexes_limit: usize,
     sql_limit: usize,
+    http_limit: usize,
     threads_limit: usize,
 }
 
@@ -346,6 +357,7 @@ impl HotpathGuard {
         rw_locks_limit: usize,
         mutexes_limit: usize,
         sql_limit: usize,
+        http_limit: usize,
         threads_limit: usize,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
@@ -587,6 +599,7 @@ impl HotpathGuard {
             rw_locks_limit,
             mutexes_limit,
             sql_limit,
+            http_limit,
             threads_limit,
         }
     }
@@ -713,6 +726,7 @@ impl Drop for HotpathGuard {
         let rw_locks_data = report::shutdown_rw_locks();
         let mutexes_data = report::shutdown_mutexes();
         let sql_data = report::shutdown_sql();
+        let http_data = report::shutdown_http();
 
         let sections: Vec<Section> = match &self.sections_mode {
             SectionsMode::Explicit(list) => list.clone(),
@@ -739,6 +753,7 @@ impl Drop for HotpathGuard {
                                 Section::RwLocks => !rw_locks_data.is_empty(),
                                 Section::Mutexes => !mutexes_data.is_empty(),
                                 Section::Sql => !sql_data.is_empty(),
+                                Section::Http => !http_data.is_empty(),
                                 Section::Debug => report::has_debug_entries(),
                                 _ => false,
                             }
@@ -764,6 +779,7 @@ impl Drop for HotpathGuard {
             self.rw_locks_limit = global;
             self.mutexes_limit = global;
             self.sql_limit = global;
+            self.http_limit = global;
             self.threads_limit = global;
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_CHANNELS_LIMIT") {
@@ -783,6 +799,9 @@ impl Drop for HotpathGuard {
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_SQL_LIMIT") {
             self.sql_limit = v;
+        }
+        if let Some(v) = parse_usize_env("HOTPATH_META_HTTP_LIMIT") {
+            self.http_limit = v;
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_THREADS_LIMIT") {
             self.threads_limit = v;
@@ -917,6 +936,19 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(sql_data.len(), self.sql_limit);
                             report.sql = Some(report::collect_sql_json(
                                 &sql_data[..limit],
+                                elapsed,
+                                reference_total,
+                                &percentiles,
+                            ));
+                        }
+                    }
+                    Section::Http => {
+                        if !http_data.is_empty() {
+                            let reference_total: u64 =
+                                http_data.iter().map(|e| e.total_nanos).sum();
+                            let limit = apply_limit(http_data.len(), self.http_limit);
+                            report.http = Some(report::collect_http_json(
+                                &http_data[..limit],
                                 elapsed,
                                 reference_total,
                                 &percentiles,
@@ -1143,6 +1175,21 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(total, self.sql_limit);
                             report::report_sql_table(
                                 &sql_data[..limit],
+                                total,
+                                reference_total,
+                                &percentiles,
+                                &mut writer,
+                            );
+                        }
+                    }
+                    Section::Http => {
+                        if matches!(format, Format::Table) {
+                            let total = http_data.len();
+                            let reference_total: u64 =
+                                http_data.iter().map(|e| e.total_nanos).sum();
+                            let limit = apply_limit(total, self.http_limit);
+                            report::report_http_table(
+                                &http_data[..limit],
                                 total,
                                 reference_total,
                                 &percentiles,

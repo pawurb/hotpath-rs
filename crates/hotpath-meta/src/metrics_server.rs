@@ -8,7 +8,7 @@ use crate::functions::{
 use crate::json::Route;
 use crate::json::{
     JsonChannelLogsList, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFutureLogsList,
-    JsonProfilerStatus, JsonSqlLogsList, JsonStreamLogsList,
+    JsonHttpLogsList, JsonProfilerStatus, JsonSqlLogsList, JsonStreamLogsList,
 };
 use crate::lib_on::START_TIME;
 use crate::output::format_duration;
@@ -163,6 +163,17 @@ fn handle_request(request: Request) {
                 respond_json(request, &formatted);
             }
             None => respond_error(request, 404, "SQL query not found"),
+        },
+        Ok(Route::Http) => {
+            let http = crate::http::get_http_json();
+            respond_json(request, &http);
+        }
+        Ok(Route::HttpLogs { http_id }) => match crate::http::get_http_logs(http_id) {
+            Some(logs) => {
+                let formatted = JsonHttpLogsList::from_logs(&logs, get_current_elapsed_ns());
+                respond_json(request, &formatted);
+            }
+            None => respond_error(request, 404, "HTTP endpoint not found"),
         },
         Ok(Route::ChannelLogs { channel_id }) => match get_channel_logs(channel_id) {
             Some(logs) => {
