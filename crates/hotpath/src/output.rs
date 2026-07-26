@@ -113,10 +113,18 @@ pub fn format_rate(rate: Option<f64>) -> String {
 }
 
 /// Formats an optional bytes-per-second rate (e.g. `12.4 MB/s`), or `-` when absent.
+/// Sub-KB rates keep one decimal place so slow but nonzero traffic doesn't
+/// round down to `0 B/s`.
 pub fn format_throughput(rate: Option<f64>) -> String {
     rate.map_or_else(
         || "-".to_string(),
-        |v| format!("{}/s", format_bytes(v.round() as u64)),
+        |v| {
+            if v < 1024.0 {
+                format!("{v:.1} B/s")
+            } else {
+                format!("{}/s", format_bytes(v.round() as u64))
+            }
+        },
     )
 }
 
@@ -503,6 +511,16 @@ mod parse_tests {
                 "round-trip failed for {val}: formatted as '{formatted}'"
             );
         }
+    }
+
+    #[test]
+    fn test_format_throughput() {
+        assert_eq!(format_throughput(None), "-");
+        assert_eq!(format_throughput(Some(0.33)), "0.3 B/s");
+        assert_eq!(format_throughput(Some(512.0)), "512.0 B/s");
+        assert_eq!(format_throughput(Some(1023.9)), "1023.9 B/s");
+        assert_eq!(format_throughput(Some(1536.0)), "1.5 KB/s");
+        assert_eq!(format_throughput(Some(26_004_684.8)), "24.8 MB/s");
     }
 
     #[test]
