@@ -524,6 +524,9 @@ pub struct JsonIoEntry {
     pub write: JsonIoOpStats,
     pub flush: JsonIoOpStats,
     pub shutdown: JsonIoOpStats,
+    /// Number of wrapper instances aggregated into this call-site entry.
+    #[serde(default)]
+    pub instances: u32,
     pub iter: u32,
 }
 

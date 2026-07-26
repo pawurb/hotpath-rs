@@ -884,6 +884,7 @@ fn report_io_subtable(
 
     let mut header = vec![
         styled_header("Io"),
+        styled_header("Inst"),
         styled_header(count_label),
         styled_header("Bytes"),
         styled_header("Rate"),
@@ -907,6 +908,7 @@ fn report_io_subtable(
         let fmt = |nanos: u64| format_sampled_duration(nanos, stats.sampled_count, stats.count);
         let mut row = vec![
             Cell::new(&label),
+            Cell::new(&entry.instances.to_string()),
             Cell::new(&stats.count.to_string()),
             Cell::new(&format_bytes(stats.bytes)),
             Cell::new(&format_throughput(stats.throughput_bytes_per_sec())),
@@ -965,6 +967,7 @@ fn io_to_json(entry: &IoEntry, percentiles: &[f64]) -> JsonIoEntry {
         write: io_op_stats_to_json(&entry.write, percentiles),
         flush: io_op_stats_to_json(&entry.flush, percentiles),
         shutdown: io_op_stats_to_json(&entry.shutdown, percentiles),
+        instances: entry.instances,
         iter: entry.iter,
     }
 }

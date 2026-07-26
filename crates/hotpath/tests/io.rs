@@ -65,6 +65,7 @@ pub mod tests {
         assert!(writer.type_name.contains("File"));
 
         let reader = entry(&io, "fixture-read");
+        assert_eq!(reader.instances, 1);
         assert_eq!(reader.read.count, 10);
         assert_eq!(reader.read.bytes, 100);
         assert_eq!(reader.read.sampled_count, 10);
@@ -106,6 +107,7 @@ pub mod tests {
         // Two wrappers created at the same call site aggregate into a single
         // entry keyed by source + type.
         let looped = entry(&io, "looped");
+        assert_eq!(looped.instances, 2);
         assert_eq!(looped.read.count, 2);
         assert_eq!(looped.read.bytes, 6);
         assert_eq!(
