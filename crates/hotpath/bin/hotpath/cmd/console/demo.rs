@@ -76,10 +76,10 @@ fn spawn_io() {
         let payload = [7u8; 256];
         let mut buf = [0u8; 64];
         loop {
-            io.get_mut().set_position(0);
+            io.set_position(0);
             let _ = io.write_all(&payload);
             let _ = io.flush();
-            io.get_mut().set_position(0);
+            io.set_position(0);
             while let Ok(n) = io.read(&mut buf) {
                 if n == 0 {
                     break;

@@ -33,6 +33,8 @@ stream.write_all(b"ping").await?;
 
 The `label` parameter is optional; without it the wrapper is identified by `file:line`.
 
+The wrapper derefs to the wrapped value, so its inherent methods stay callable and code reads identically whether profiling is enabled or not - e.g. `cursor.set_position(0)` or `encoder.try_finish()` work directly on the wrapper. Instrumented trait impls on the wrapper always win over the wrapped value's, so I/O stays counted; `into_inner()` remains as the escape hatch for consuming methods like a codec's `finish(self)` (with profiling disabled `io!` returns the bare value, so only that consuming pattern differs between modes).
+
 Report entries are keyed by creation site and concrete type: wrappers created repeatedly at one `io!` call - for example per accepted connection in a server loop - accumulate into a single entry, so profiler memory stays bounded by the number of `io!` call sites rather than the number of values ever wrapped.
 
 ## What you measure depends on what you wrap

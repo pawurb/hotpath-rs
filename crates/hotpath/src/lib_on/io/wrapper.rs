@@ -65,16 +65,33 @@ impl<T> InstrumentedIo<T> {
         }
     }
 
-    pub fn get_ref(&self) -> &T {
-        &self.inner
-    }
-
-    pub fn get_mut(&mut self) -> &mut T {
-        &mut self.inner
-    }
-
+    /// Consumes the wrapper, returning the wrapped value. The escape hatch
+    /// for calling consuming methods of the wrapped type (e.g. a codec's
+    /// `finish(self)`); borrowing methods are reachable directly through
+    /// `Deref`/`DerefMut` instead.
     pub fn into_inner(self) -> T {
         self.inner
+    }
+}
+
+/// The wrapper derefs to the wrapped value, so its inherent `&self`/`&mut
+/// self` methods (e.g. `Cursor::set_position`, `GzEncoder::try_finish`) are
+/// callable directly and code reads the same whether profiling is enabled or
+/// not. The instrumented `Read`/`Write`/`AsyncRead`/`AsyncWrite` impls on the
+/// wrapper itself always take precedence over the wrapped value's trait
+/// impls, so I/O through the wrapper stays counted; going through an explicit
+/// `&mut *wrapper` reborrow bypasses instrumentation deliberately.
+impl<T> std::ops::Deref for InstrumentedIo<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.inner
+    }
+}
+
+impl<T> std::ops::DerefMut for InstrumentedIo<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.inner
     }
 }
 
