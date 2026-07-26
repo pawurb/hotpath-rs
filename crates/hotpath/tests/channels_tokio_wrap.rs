@@ -1,13 +1,11 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
-    #[cfg(feature = "hotpath")]
     use hotpath::json::{JsonChannelsList, JsonReport};
 
     // The report is followed by trailing log lines, so we locate the report's
     // opening brace and read just the first JSON value from that point.
-    #[cfg(feature = "hotpath")]
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -18,7 +16,6 @@ pub mod tests {
         report.channels.expect("No channels section in report")
     }
 
-    #[cfg(feature = "hotpath")]
     fn run_example(name: &str) -> String {
         let output = Command::new("cargo")
             .args([
@@ -47,7 +44,6 @@ pub mod tests {
     // Tokio recovers bounded capacity from `max_capacity()`, so no `capacity` arg.
     //
     // cargo run -p test-channels-tokio --example wrap_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_exact_queue_depth() {
         let stdout = run_example("wrap_tokio");
@@ -81,7 +77,6 @@ pub mod tests {
     // high-water mark preserved.
     //
     // cargo run -p test-channels-tokio --example wrap_unbounded_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_unbounded_sent_received() {
         let stdout = run_example("wrap_unbounded_tokio");
@@ -112,7 +107,6 @@ pub mod tests {
     // queue length, so `received <= sent` and a bounded `max_queue_size` confirm sanity.
     //
     // cargo run -p test-channels-tokio --example wrap_concurrent_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_concurrent_no_underflow() {
         let stdout = run_example("wrap_concurrent_tokio");
@@ -142,7 +136,6 @@ pub mod tests {
     // closed. tokio receivers are not Clone, so there is no clone-count path.
     //
     // cargo run -p test-channels-tokio --example wrap_closed_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_receiver_dropped_closes() {
         let stdout = run_example("wrap_closed_tokio");
@@ -168,7 +161,6 @@ pub mod tests {
     // intact).
     //
     // cargo run -p test-channels-tokio --example weak_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_weak_senders() {
         let stdout = run_example("weak_tokio");
@@ -196,7 +188,6 @@ pub mod tests {
     // histogram is populated.
     //
     // cargo run -p test-channels-tokio --example recv_many_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_recv_many() {
         let stdout = run_example("recv_many_tokio");
@@ -231,7 +222,6 @@ pub mod tests {
     // no panic (the example itself asserts message ordering).
     //
     // cargo run -p test-channels-tokio --example blocking_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_blocking_off_runtime() {
         let stdout = run_example("blocking_tokio");
@@ -253,7 +243,6 @@ pub mod tests {
     // the failed send is not counted and the queue never exceeds capacity.
     //
     // cargo run -p test-channels-tokio --example send_timeout_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_send_timeout_rollback() {
         let stdout = run_example("send_timeout_tokio");
@@ -283,7 +272,6 @@ pub mod tests {
     // example exercises a Pending-then-Ready sequence on the reusable scratch buffer.
     //
     // cargo run -p test-channels-tokio --example poll_recv_tokio --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_poll_recv() {
         let stdout = run_example("poll_recv_tokio");

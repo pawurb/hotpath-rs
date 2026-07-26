@@ -8,7 +8,7 @@
 //! or drops those fields would empty the SQL report and fail here.
 //!
 //! PostgreSQL coverage lives in `sql_pg.rs`.
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
@@ -77,7 +77,6 @@ pub mod tests {
 
     // With HOTPATH_SQL_RAW_LOGS=1, log entries keep the raw statement text -
     // inline literals included - while the bucket stays normalized.
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_sql_raw_logs_opt_in() {
         use hotpath::json::{JsonSqlList, JsonSqlLogsList};
@@ -180,7 +179,6 @@ pub mod tests {
 
     // Polls the live /sql endpoint, then fetches per-query execution logs from
     // /sql/{id}/logs and asserts they hold the normalized statement text.
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_sql_logs_endpoint() {
         use hotpath::json::{JsonSqlList, JsonSqlLogsList};

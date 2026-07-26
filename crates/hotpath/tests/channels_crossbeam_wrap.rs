@@ -1,13 +1,11 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
-    #[cfg(feature = "hotpath")]
     use hotpath::json::{JsonChannelsList, JsonReport};
 
     // The report is followed by trailing log lines, so we locate the report's
     // opening brace and read just the first JSON value from that point.
-    #[cfg(feature = "hotpath")]
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -19,7 +17,6 @@ pub mod tests {
     }
 
     // cargo run -p test-channels-crossbeam --example wrap_crossbeam --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_exact_queue_depth() {
         let output = Command::new("cargo")
@@ -73,7 +70,6 @@ pub mod tests {
     }
 
     // cargo run -p test-channels-crossbeam --example wrap_closed_crossbeam --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_receiver_dropped_closes() {
         let output = Command::new("cargo")
@@ -118,7 +114,6 @@ pub mod tests {
     // still mark the channel closed.
     //
     // cargo run -p test-channels-crossbeam --example wrap_recv_clone_closed_crossbeam --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_receiver_clone_dropped_closes_with_sender_alive() {
         let output = Command::new("cargo")
@@ -158,7 +153,6 @@ pub mod tests {
     }
 
     // cargo run -p test-channels-crossbeam --example wrap_latency_crossbeam --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_wrap_processing_histogram() {
         let output = Command::new("cargo")

@@ -4,7 +4,7 @@
 //! subprocesses and assert on their reports. Both generations feed the same
 //! `hp-http` worker through generation-specific `Middleware` impls, so the
 //! assertions are identical; only the wrapped reqwest version differs.
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
@@ -53,7 +53,6 @@ pub mod tests {
         }
     }
 
-    #[cfg(feature = "hotpath")]
     fn assert_json_report(package: &str) {
         use hotpath::json::JsonReport;
 
@@ -113,7 +112,6 @@ pub mod tests {
     // The same endpoint requested from two instrumented functions splits into
     // per-source entries; a request outside any measured scope has no source,
     // and a nested measured call attributes to the innermost function.
-    #[cfg(feature = "hotpath")]
     fn assert_sources_report(package: &str) {
         use hotpath::json::JsonReport;
 
@@ -164,13 +162,11 @@ pub mod tests {
         assert_table_output("test-reqwest-013");
     }
 
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_http_json_reqwest_012() {
         assert_json_report("test-reqwest-012");
     }
 
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_http_json_reqwest_013() {
         assert_json_report("test-reqwest-013");
@@ -186,13 +182,11 @@ pub mod tests {
         assert_gated_methods("test-reqwest-013");
     }
 
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_http_sources_reqwest_012() {
         assert_sources_report("test-reqwest-012");
     }
 
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_http_sources_reqwest_013() {
         assert_sources_report("test-reqwest-013");

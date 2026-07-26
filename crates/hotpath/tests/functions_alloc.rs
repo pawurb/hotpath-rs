@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
@@ -210,7 +210,6 @@ pub mod tests {
     }
 
     // HOTPATH_METRICS_PORT=6775 TEST_SLEEP_SECONDS=10 cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::JsonFunctionsList;
@@ -339,7 +338,6 @@ pub mod tests {
     }
 
     // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_alloc_total_bytes_not_inflated() {
         use hotpath::json::JsonReport;
@@ -391,7 +389,6 @@ pub mod tests {
     }
 
     // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_async_alloc_is_reported() {
         use hotpath::json::JsonReport;
@@ -438,7 +435,6 @@ pub mod tests {
     }
 
     // cargo run -p test-tokio-async --example alloc_measure --features hotpath,hotpath-alloc
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_alloc_uninstrumented_children_tracked() {
         use hotpath::json::JsonReport;
@@ -502,7 +498,6 @@ pub mod tests {
     }
 
     // cargo run -p test-tokio-async --example custom_allocator --features hotpath,hotpath-alloc
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_custom_allocator_via_main_macro() {
         use hotpath::json::JsonReport;

@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
@@ -205,7 +205,6 @@ pub mod tests {
     }
 
     // HOTPATH_METRICS_PORT=6771 TEST_SLEEP_SECONDS=10 cargo run -p test-channels-crossbeam --example basic_crossbeam --features hotpath
-    #[cfg(feature = "hotpath")]
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::JsonChannelsList;
