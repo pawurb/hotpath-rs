@@ -10,7 +10,15 @@ use std::io::{Read, Write};
 
 const CHUNK: usize = 1024;
 const DATA: &[u8] = include_bytes!("../fixtures/records.json");
-const LEVEL: i32 = 3;
+const DEFAULT_LEVEL: i32 = 3;
+
+/// Compression level, overridable via `COMPRESSION_RATE` (zstd: 1-22).
+fn level() -> i32 {
+    std::env::var("COMPRESSION_RATE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_LEVEL)
+}
 
 fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
@@ -19,6 +27,7 @@ fn main() {
 
     let path = std::env::temp_dir().join("hotpath_basic_zstd_io.zst");
     let data = DATA;
+    let level = level();
 
     // Inner wrapper measures compressed bytes hitting the file; outer wrapper
     // measures plaintext application writes.
@@ -27,7 +36,7 @@ fn main() {
         label = "zstd-compressed-write"
     );
     let mut encoder = hotpath::io!(
-        zstd::stream::write::Encoder::new(file, LEVEL).unwrap(),
+        zstd::stream::write::Encoder::new(file, level).unwrap(),
         label = "zstd-plaintext-write"
     );
     for chunk in data.chunks(CHUNK) {
@@ -44,7 +53,7 @@ fn main() {
     // zstd-compressed-write row.
     let compressed_len = std::fs::metadata(&path).unwrap().len();
     println!(
-        "json fixture: {} B plaintext -> {} B zstd ({:.2}x compression)",
+        "json fixture: {} B plaintext -> {} B zstd level {level} ({:.2}x compression)",
         data.len(),
         compressed_len,
         data.len() as f64 / compressed_len as f64

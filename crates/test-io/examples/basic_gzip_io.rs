@@ -15,6 +15,15 @@ use std::io::{Read, Write};
 const CHUNK: usize = 1024;
 const DATA: &[u8] = include_bytes!("../fixtures/records.json");
 
+/// Compression level, overridable via `COMPRESSION_RATE` (gzip: 0-9).
+fn level() -> Compression {
+    std::env::var("COMPRESSION_RATE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map(Compression::new)
+        .unwrap_or_default()
+}
+
 fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
         .sections(vec![hotpath::Section::Io])
@@ -22,6 +31,7 @@ fn main() {
 
     let path = std::env::temp_dir().join("hotpath_basic_gzip_io.gz");
     let data = DATA;
+    let level = level();
 
     // Inner wrapper measures compressed bytes hitting the file; outer wrapper
     // measures plaintext application writes.
@@ -29,10 +39,7 @@ fn main() {
         File::create(&path).unwrap(),
         label = "gzip-compressed-write"
     );
-    let mut encoder = hotpath::io!(
-        GzEncoder::new(file, Compression::default()),
-        label = "gzip-plaintext-write"
-    );
+    let mut encoder = hotpath::io!(GzEncoder::new(file, level), label = "gzip-plaintext-write");
     for chunk in data.chunks(CHUNK) {
         encoder.write_all(chunk).unwrap();
     }
@@ -47,9 +54,10 @@ fn main() {
     // gzip-compressed-write row.
     let compressed_len = std::fs::metadata(&path).unwrap().len();
     println!(
-        "json fixture: {} B plaintext -> {} B gzip ({:.2}x compression)",
+        "json fixture: {} B plaintext -> {} B gzip level {} ({:.2}x compression)",
         data.len(),
         compressed_len,
+        level.level(),
         data.len() as f64 / compressed_len as f64
     );
 
