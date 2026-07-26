@@ -33,6 +33,8 @@ stream.write_all(b"ping").await?;
 
 The `label` parameter is optional; without it the wrapper is identified by `file:line`.
 
+Report entries are keyed by creation site and concrete type: wrappers created repeatedly at one `io!` call - for example per accepted connection in a server loop - accumulate into a single entry, so profiler memory stays bounded by the number of `io!` call sites rather than the number of values ever wrapped.
+
 ## What you measure depends on what you wrap
 
 Wrapping the underlying resource (a `File`, `TcpStream`, or TLS stream) measures actual resource I/O: every syscall-level read and write, with buffering layers above it invisible.

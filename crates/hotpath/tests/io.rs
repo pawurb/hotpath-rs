@@ -93,6 +93,20 @@ pub mod tests {
         assert_eq!(flush_fail.write.errors, 0);
         assert_eq!(flush_fail.flush.count, 0);
         assert_eq!(flush_fail.flush.errors, 1);
+
+        // Two wrappers created at the same call site aggregate into a single
+        // entry keyed by source + type.
+        let looped = entry(&io, "looped");
+        assert_eq!(looped.read.count, 2);
+        assert_eq!(looped.read.bytes, 6);
+        assert_eq!(
+            io.data
+                .iter()
+                .filter(|e| e.label.contains("looped"))
+                .count(),
+            1,
+            "Same-site wrappers must not create separate entries"
+        );
     }
 
     // cargo run -p test-io --example basic_io_async --features hotpath (json)

@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Cursor, Read, Write};
 
 /// Reader that always fails with a non-retryable error.
 struct FailingReader;
@@ -81,6 +81,15 @@ fn main() {
     let mut flush_fail = hotpath::io!(FlushFailWriter, label = "flush-fail");
     flush_fail.write_all(&data[..10]).unwrap();
     assert!(flush_fail.flush().is_err());
+
+    // Wrappers created repeatedly at one call site share a single entry, so
+    // per-connection style instrumentation stays bounded by call sites.
+    for _ in 0..2 {
+        let mut looped = hotpath::io!(Cursor::new(vec![1u8, 2, 3]), label = "looped");
+        let mut lbuf = [0u8; 3];
+        looped.read_exact(&mut lbuf).unwrap();
+        assert_eq!(lbuf, [1, 2, 3]);
+    }
 
     std::fs::remove_file(&path).ok();
     println!("Sync io example completed!");

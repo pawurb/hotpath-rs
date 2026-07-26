@@ -95,9 +95,11 @@ fn record_sync_op(
             bytes,
             duration_nanos: start.map(elapsed_nanos),
         }),
-        Err(std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => cancel_op_stamp(),
+        Err(std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {
+            cancel_op_stamp(kind)
+        }
         Err(_) => {
-            cancel_op_stamp();
+            cancel_op_stamp(kind);
             send_io_event(IoEvent::Error { id, kind });
         }
     }
@@ -105,7 +107,7 @@ fn record_sync_op(
 
 impl<T: Read> Read for InstrumentedIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let start = op_stamp();
+        let start = op_stamp(IoOpKind::Read);
         let result = self.inner.read(buf);
         record_sync_op(
             self.id,
@@ -117,7 +119,7 @@ impl<T: Read> Read for InstrumentedIo<T> {
     }
 
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> std::io::Result<usize> {
-        let start = op_stamp();
+        let start = op_stamp(IoOpKind::Read);
         let result = self.inner.read_vectored(bufs);
         record_sync_op(
             self.id,
@@ -131,7 +133,7 @@ impl<T: Read> Read for InstrumentedIo<T> {
 
 impl<T: Write> Write for InstrumentedIo<T> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let start = op_stamp();
+        let start = op_stamp(IoOpKind::Write);
         let result = self.inner.write(buf);
         record_sync_op(
             self.id,
@@ -143,7 +145,7 @@ impl<T: Write> Write for InstrumentedIo<T> {
     }
 
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> std::io::Result<usize> {
-        let start = op_stamp();
+        let start = op_stamp(IoOpKind::Write);
         let result = self.inner.write_vectored(bufs);
         record_sync_op(
             self.id,
@@ -155,7 +157,7 @@ impl<T: Write> Write for InstrumentedIo<T> {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let start = op_stamp();
+        let start = op_stamp(IoOpKind::Flush);
         let result = self.inner.flush();
         record_sync_op(
             self.id,
@@ -172,9 +174,9 @@ impl<T: Write> Write for InstrumentedIo<T> {
 /// `Ready` spans the whole operation including suspended time.
 #[cfg(feature = "tokio")]
 #[inline]
-fn begin_async_op(op: &mut Option<Option<Instant>>) {
+fn begin_async_op(op: &mut Option<Option<Instant>>, kind: IoOpKind) {
     if op.is_none() {
-        *op = Some(op_stamp());
+        *op = Some(op_stamp(kind));
     }
 }
 
@@ -215,7 +217,7 @@ fn finish_async_op<R>(
             // may have been consumed on another thread's counter, in which
             // case the rollback shifts this thread's phase by one, which
             // is statistically neutral.
-            cancel_op_stamp();
+            cancel_op_stamp(kind);
             match e.kind() {
                 std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => {}
                 _ => send_io_event(IoEvent::Error { id, kind }),
@@ -233,7 +235,7 @@ impl<T: AsyncRead> AsyncRead for InstrumentedIo<T> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        begin_async_op(this.read_op);
+        begin_async_op(this.read_op, IoOpKind::Read);
         let before = buf.filled().len();
         let poll = this.inner.poll_read(cx, buf);
         finish_async_op(this.read_op, *this.id, IoOpKind::Read, poll, |_| {
@@ -250,7 +252,7 @@ impl<T: AsyncWrite> AsyncWrite for InstrumentedIo<T> {
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
         let this = self.project();
-        begin_async_op(this.write_op);
+        begin_async_op(this.write_op, IoOpKind::Write);
         let poll = this.inner.poll_write(cx, buf);
         finish_async_op(this.write_op, *this.id, IoOpKind::Write, poll, |n| {
             *n as u64
@@ -263,7 +265,7 @@ impl<T: AsyncWrite> AsyncWrite for InstrumentedIo<T> {
         bufs: &[IoSlice<'_>],
     ) -> Poll<std::io::Result<usize>> {
         let this = self.project();
-        begin_async_op(this.write_op);
+        begin_async_op(this.write_op, IoOpKind::Write);
         let poll = this.inner.poll_write_vectored(cx, bufs);
         finish_async_op(this.write_op, *this.id, IoOpKind::Write, poll, |n| {
             *n as u64
@@ -276,14 +278,14 @@ impl<T: AsyncWrite> AsyncWrite for InstrumentedIo<T> {
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        begin_async_op(this.flush_op);
+        begin_async_op(this.flush_op, IoOpKind::Flush);
         let poll = this.inner.poll_flush(cx);
         finish_async_op(this.flush_op, *this.id, IoOpKind::Flush, poll, |_| 0)
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        begin_async_op(this.shutdown_op);
+        begin_async_op(this.shutdown_op, IoOpKind::Shutdown);
         let poll = this.inner.poll_shutdown(cx);
         finish_async_op(this.shutdown_op, *this.id, IoOpKind::Shutdown, poll, |_| 0)
     }
