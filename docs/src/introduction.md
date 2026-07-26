@@ -104,7 +104,7 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 
 - **Time, CPU & memory profiling** - identify expensive functions, allocation hotspots, and investigate memory leaks.
 - **Async observability** - futures, channels and streams.
-- **I/O monitoring** - bytes, throughput, latency and errors for files, sockets, TLS, Redis, compression streams - any `Read`/`Write` or `AsyncRead`/`AsyncWrite` type.
+- **I/O monitoring** - bytes, throughput, latency of any sync or async IO stream like files, TCP, or compression.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
 - **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
