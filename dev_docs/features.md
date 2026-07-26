@@ -116,7 +116,7 @@ let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), label = "my_chann
 
 Supported channel types: `tokio::sync::mpsc` (bounded/unbounded), `tokio::sync::oneshot`, `futures_channel::mpsc` (bounded/unbounded), `futures_channel::oneshot`, `crossbeam_channel` (bounded/unbounded), `std::sync::mpsc`
 
-For `futures_channel::mpsc` bounded channels, the `capacity` parameter must be specified: `hotpath::channel!(mpsc::channel::<String>(10), capacity = 10)`
+`futures_channel::mpsc` has no wrap implementation and is supported only through the forwarder path, and bounded channels need the `capacity` parameter: `hotpath::channel!(mpsc::channel::<String>(10), proxy = true, capacity = 10)`
 
 Channel metrics tracked:
 - Messages sent/received counts
@@ -193,7 +193,7 @@ Limits:
 - `HOTPATH_HTTP_LIMIT` - Maximum HTTP endpoints in report (default: 0, unlimited)
 - `HOTPATH_IO_LIMIT` - Maximum io entries in report (default: 0, unlimited)
 - `HOTPATH_THREADS_LIMIT` - Maximum threads in report (default: 5)
-- `HOTPATH_CPU_LIMIT` - Maximum functions in CPU sampling report (default: 15). Wrapper `caller_name` is always shown and exempt from the limit.
+- The CPU sampling report has no dedicated limit variable - it uses the functions limit (`HOTPATH_FUNCTIONS_LIMIT`, falling back to `HOTPATH_LIMIT`). Wrapper `caller_name` is always shown and exempt from the limit.
 
 Functions:
 - `HOTPATH_FOCUS` - Filter profiled functions by name. Plain text does substring matching; wrap in `/pattern/` for regex (e.g. `HOTPATH_FOCUS="/^(compute|process)/"`).
@@ -217,7 +217,7 @@ MCP Server:
 
 TUI:
 - `HOTPATH_TUI_REFRESH_INTERVAL_MS` - TUI dashboard refresh interval in milliseconds (default: 500)
-- `HOTPATH_TUI_TAB` - Initial tab to display when launching the TUI (e.g. `functions`, `channels`, `streams`)
+- `HOTPATH_TUI_TAB` - Initial top-level tab to display when launching the TUI, as a number `1`-`6` (`1` Functions, `2` Data Flow, `3` I/O, `4` Threads, `5` Debug, `6` Runtime); invalid values fall back to Functions
 - `HOTPATH_METRICS_HOST` - Host URL that the TUI console connects to (default: `http://localhost`)
 - `HOTPATH_DISABLE_SAMPLY_LOAD` - Set to "true" or "1" to disable the `samply load` shortcut on the CPU subtab; the `'f'` keybinding and its hint are hidden
 
@@ -226,7 +226,6 @@ CPU profiling (`hotpath-cpu` feature, macOS and Linux):
 - `HOTPATH_SAMPLY_BIN` - Path to the external `samply` binary used by the `hotpath-samply` worker (default: `samply`, resolved via `PATH`)
 - `HOTPATH_CPU_INCLUSIVE` - Set to "true" or "1" to attribute CPU samples inclusively (parent functions credited for callee time)
 - `HOTPATH_CPU_BASELINE_OFF` - Set to "true" or "1" to disable CPU baseline collection
-- `HOTPATH_CPU_LIMIT` - Maximum functions in CPU sampling report (default: 15)
 - `HOTPATH_KEEP_INLINE` - Set to "true" or "1" to disable the macro's inline-attribute rewrite (`#[hotpath::measure]`/`#[hotpath::future_fn]` strip user-provided `#[inline(...)]` and inject `#[inline(never)]` under `hotpath-cpu` so symbols match for CPU attribution). Read at proc-macro expansion time - touch source or `cargo clean` after toggling.
 
 Dev logging (`dev` feature):
