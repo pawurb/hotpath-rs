@@ -123,7 +123,7 @@ Bounded `std::sync::mpsc::sync_channel` also requires `capacity = N` in the defa
 Channel metrics tracked:
 - Messages sent/received counts
 - Current queue size, queued bytes, and max queue size
-- Channel state (active, closed, full, notified)
+- Channel state (active, closed, notified); fullness is derived from queue depth vs capacity, not a state
 - Message type and size
 - Optional message logs (recent send/receive history)
 
@@ -244,23 +244,6 @@ Other:
 - `HOTPATH_MAX_LOG_LEN` - Maximum character length for logged return values (`log = true`). Values exceeding this limit are truncated with `...` (default: 1536)
 - `HOTPATH_SHUTDOWN_MS` - If set, program will shutdown after the specified ms timeout and print the performance report
 - `HOTPATH_SQL_RAW_LOGS` - Set to "true" or "1" to store raw statement text in per-query SQL logs instead of the normalized form. Off by default so bound literals (potentially sensitive) never reach the logs.
-
-## A/B Benchmarks
-
-The `hotpath-utils` CLI compares performance metrics between app versions:
-
-```bash
-# Install
-cargo install hotpath --bin hotpath-utils --version '^0.13' --features utils
-
-# Generate JSON reports for two versions
-HOTPATH_OUTPUT_PATH=tmp/before.json HOTPATH_OUTPUT_FORMAT=json cargo run --features='hotpath,hotpath-alloc'
-# checkout different commit...
-HOTPATH_OUTPUT_PATH=tmp/after.json HOTPATH_OUTPUT_FORMAT=json cargo run --features='hotpath,hotpath-alloc'
-
-# Compare
-hotpath-utils compare --before-json-path tmp/before.json --after-json-path tmp/after.json
-```
 
 ## GitHub CI Integration
 

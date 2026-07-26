@@ -49,7 +49,7 @@ cargo run --bin hotpath --features tui -- console \
 - **Channels monitoring** - View real-time channel statistics:
   - Messages sent/received counts
   - Current queue size, queued bytes, and max queue size
-  - Channel state (active, closed, full, notified)
+  - Channel state (active, closed, notified); fullness is derived from queue depth vs capacity, not a state
   - Channel type (bounded, unbounded, oneshot)
   - Message send/receive logs (when `log = true`)
 - **Streams monitoring** - View real-time stream statistics:
