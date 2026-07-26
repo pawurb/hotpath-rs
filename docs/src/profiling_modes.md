@@ -105,7 +105,7 @@ cargo run --features=hotpath
 
 ### Timed shutdown
 
-`HOTPATH_SHUTDOWN_MS` forces the program to exit and print the report after a fixed duration. This is useful for profiling long-running processes (HTTP servers, workers) where you want to collect metrics for a predefined period without manual intervention. It also enables deterministic benchmarks - run the same workload for a fixed window across different git commits and compare the reports. Find more info on this technique in [A/B benchmarks](/benchmarks.md).
+`HOTPATH_SHUTDOWN_MS` forces the program to exit and print the report after a fixed duration. This is useful for profiling long-running processes (HTTP servers, workers) where you want to collect metrics for a predefined period without manual intervention. It also enables deterministic benchmarks - run the same workload for a fixed window across different git commits and compare the reports.
 
 ```bash
 HOTPATH_SHUTDOWN_MS=10000 \

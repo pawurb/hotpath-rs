@@ -1,6 +1,9 @@
 //! Exercises `io!` over a real TCP connection: an in-process echo server on a
 //! loopback listener, with the client stream instrumented. Self-contained -
 //! no external services required.
+//!
+//! Run with:
+//!   cargo run -p test-io --example basic_tcp_io --features hotpath
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};

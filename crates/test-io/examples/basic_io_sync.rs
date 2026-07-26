@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-io --example basic_io_sync --features hotpath
+
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Write};
 

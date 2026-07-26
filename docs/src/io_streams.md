@@ -1,9 +1,24 @@
-# Byte-level I/O monitoring
+# Monitor File, Socket and Async I/O in Rust
 
-`hotpath` instruments byte-level I/O to surface slow reads and writes - files, sockets, TLS streams, compression streams, and any custom I/O type. For every wrapped value it tracks, per operation kind (read, write, flush, shutdown):
+`hotpath` instruments byte-level I/O to surface slow reads and writes - files, sockets, TLS streams, TCP connections like Redis, compression streams, and any custom I/O type. For every wrapped value it tracks, per operation kind (read, write, flush, shutdown):
+
+```bash
++-------+-------+----------+-----------+-----------+-----------+--------+--------+
+| Io    | Reads | Bytes    | Rate      | Avg       | P95       | Total  | Errors |
++-------+-------+----------+-----------+-----------+-----------+--------+--------+
+| redis | 33000 | 322.3 KB | 75.2 KB/s | 129.85 µs | 157.57 µs | 4.28 s | 0      |
++-------+-------+----------+-----------+-----------+-----------+--------+--------+
+
++-------+--------+----------+-----------+---------+---------+----------+---------+--------+
+| Io    | Writes | Bytes    | Rate      | Avg     | P95     | Total    | Flushes | Errors |
++-------+--------+----------+-----------+---------+---------+----------+---------+--------+
+| redis | 33000  | 945.3 KB | 15.7 MB/s | 1.78 µs | 3.21 µs | 58.76 ms | 0       | 0      |
++-------+--------+----------+-----------+---------+---------+----------+---------+--------+
+```
 
 - **Operation count** - completed operations
 - **Bytes processed** - total bytes read or written
+- **Rate** - per-operation transfer speed: bytes divided by summed in-flight operation time, waiting included
 - **Duration** - average and configured percentiles. Synchronous operations measure the full method call; async operations measure from the first poll to `Ready`, so reported durations include async waiting time (e.g. waiting for a socket to become readable), not only the final poll execution.
 - **Errors** - failed operations. Retryable conditions (`WouldBlock`, `Interrupted`) are not counted as errors and produce no operation.
 
@@ -11,8 +26,9 @@ The `io!` macro is noop unless the `hotpath` feature is activated.
 
 ## io! macro
 
-Wrap any value implementing `std::io::Read`, `std::io::Write`, `tokio::io::AsyncRead`, or `tokio::io::AsyncWrite` (async traits require the `tokio` feature). The wrapper delegates every operation to the wrapped value, so it is a drop-in replacement:
+Wrap any value implementing `std::io::Read`, `std::io::Write`, `tokio::io::AsyncRead`, or `tokio::io::AsyncWrite` (async traits require the `tokio` feature). The wrapper delegates every operation to the wrapped value, so it is a drop-in replacement.
 
+Profiling file read operation:
 ```rust
 use std::io::Read;
 
@@ -21,19 +37,25 @@ let mut buf = Vec::new();
 file.read_to_end(&mut buf)?;
 ```
 
-Async I/O works the same way:
+See the runnable [basic_io_sync](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_sync.rs) and [basic_io_async](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_async.rs) examples.
 
+Async I/O works the same way.
+
+Profiling Redis TCP connection:
 ```rust
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-let stream = tokio::net::TcpStream::connect("127.0.0.1:8080").await?;
-let mut stream = hotpath::io!(stream, label = "backend");
-stream.write_all(b"ping").await?;
+let stream = tokio::net::TcpStream::connect("127.0.0.1:6379").await?;
+let mut stream = hotpath::io!(stream, label = "redis");
+stream.write_all(b"PING\r\n").await?;
+
+let mut buf = [0u8; 7];
+stream.read_exact(&mut buf).await?; // +PONG\r\n
 ```
 
-The `label` parameter is optional; without it the wrapper is identified by `file:line`.
+See the runnable [basic_redis_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_redis_io.rs) example.
 
-The wrapper derefs to the wrapped value, so its inherent methods stay callable and code reads identically whether profiling is enabled or not - e.g. `cursor.set_position(0)` or `encoder.try_finish()` work directly on the wrapper. Instrumented trait impls on the wrapper always win over the wrapped value's, so I/O stays counted; `into_inner()` remains as the escape hatch for consuming methods like a codec's `finish(self)` (with profiling disabled `io!` returns the bare value, so only that consuming pattern differs between modes).
+The `label` parameter is optional; without it the wrapper is identified by `file:line`.
 
 Report entries are keyed by creation site and concrete type: wrappers created repeatedly at one `io!` call - for example per accepted connection in a server loop - accumulate into a single entry, so profiler memory stays bounded by the number of `io!` call sites rather than the number of values ever wrapped.
 

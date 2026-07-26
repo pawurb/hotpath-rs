@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-io --example benchmark_file_io --features hotpath
+
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Instant;

@@ -5,6 +5,9 @@
 //! is a JSON array of varied records (`fixtures/records.json`), so the ratio
 //! is realistic rather than a degenerate repeating pattern. Round-trips
 //! through wrapped decoders to verify delegation.
+//!
+//! Run with:
+//!   cargo run -p test-io --example basic_gzip_io --features hotpath
 
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;

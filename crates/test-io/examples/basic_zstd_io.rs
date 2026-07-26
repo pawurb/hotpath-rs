@@ -4,6 +4,9 @@
 //! ops. Uses the same JSON fixture as the gzip example, so the two codecs'
 //! ratios are directly comparable. Round-trips through wrapped decoders to
 //! verify delegation.
+//!
+//! Run with:
+//!   cargo run -p test-io --example basic_zstd_io --features hotpath
 
 use std::fs::File;
 use std::io::{Read, Write};

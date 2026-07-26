@@ -1,8 +1,16 @@
 # Rust HTTP Client Performance Profiling for reqwest
 
-`hotpath` profiles outgoing HTTP requests made with [reqwest](https://crates.io/crates/reqwest), helping you identify slow endpoints, frequent request patterns, and failing calls. Requests are grouped by normalized endpoint, so parameter-varied requests to the same route are reported together: 1,000 calls to `GET api.example.com/users/{id}` appear as a single entry with call count, error count, average latency, percentiles, and total execution time.
+`hotpath` profiles outgoing HTTP requests made with [reqwest](https://crates.io/crates/reqwest), helping you identify slow endpoints, frequent request patterns, and failing calls. Requests are grouped by normalized endpoint, so parameter-varied requests to the same route are reported together: 1,000 calls to `GET example.com/users/{id}` appear as a single entry with call count, error count, average latency, percentiles, and total execution time.
 
-Instrumentation is inactive unless the `hotpath` feature is enabled.
+```bash
+http - HTTP request execution time statistics.
++----------------------------+-------+--------+-----------+-----------+-----------+---------+
+| Endpoint                   | Calls | Errors | Avg       | P95       | Total     | % Total |
++----------------------------+-------+--------+-----------+-----------+-----------+---------+
+| GET example.com/users/{id} | 120   | 0      | 781.35 µs | 1.21 ms   | 93.76 ms  | 88.59%  |
+| GET example.com/search     | 40    | 2      | 301.79 µs | 350.12 µs | 12.07 ms  | 11.41%  |
++----------------------------+-------+--------+-----------+-----------+-----------+---------+
+```
 
 ## Wrapping the client
 
@@ -13,18 +21,18 @@ Add `hotpath` with the feature matching your `reqwest` crate version to your `Ca
 hotpath = "{{HOTPATH_VERSION}}", features=["reqwest-0-13"] # or "reqwest-0-12"
 ```
 
-Wrap the client once at creation with the `http!` macro - every request sent through it is then profiled, with no changes at the call sites:
+Wrap the client once at creation with the `http!` macro - every request sent through it is then profiled, with no other code changes required:
 
 ```rust
 let client = hotpath::http!(reqwest::Client::new());
 
 // Normal reqwest usage from here on:
-let resp = client.get("https://api.example.com/users/1").send().await?;
+let resp = client.get("https://example.com/users/1").send().await?;
 ```
 
-Under the hood the macro wraps the client with [reqwest-middleware](https://crates.io/crates/reqwest-middleware)'s `ClientWithMiddleware` and attaches hotpath's timing middleware. The wrapped client mirrors the full reqwest API (`get`, `post`, `json`, `header`, ...), so existing request-building code compiles unchanged.
+Under the hood the macro wraps the client with [reqwest-middleware](https://github.com/TrueLayer/reqwest-middleware)'s `ClientWithMiddleware` and attaches hotpath's timing middleware. The wrapped client mirrors the full reqwest API (`get`, `post`, `json`, `header`, ...), so existing request-building code compiles unchanged.
 
-To store the client in a struct with a type that stays the same whether profiling is on or off, use the wrap alias:
+To store the client in a struct with a type that stays the same whether profiling is on or off, use the `hotpath::wrap` prefix:
 
 ```rust
 struct App {
@@ -32,11 +40,11 @@ struct App {
 }
 ```
 
-With `hotpath` enabled this is `ClientWithMiddleware`; disabled, `http!` is a no-op and the alias is the raw `reqwest::Client`. Both reqwest generations can even be enabled at once (e.g. mid-migration); the unversioned `wrap::reqwest` alias then points at 0.13, and `wrap::reqwest_012` / `wrap::reqwest_013` name each generation explicitly.
+With `hotpath` enabled the type is `ClientWithMiddleware`; disabled the alias is the raw `reqwest::Client`. 
 
 ### Labels
 
-An optional `label` prefixes every endpoint key produced by the client - useful for telling apart clients talking to different services:
+An optional `label` prefixes every endpoint key produced by the client:
 
 ```rust
 let github = hotpath::http!(reqwest::Client::new(), label = "github");
@@ -45,7 +53,7 @@ let github = hotpath::http!(reqwest::Client::new(), label = "github");
 
 ### Existing reqwest-middleware stacks
 
-If your app already uses `reqwest-middleware` (e.g. for retries), skip the macro and attach the middleware directly:
+If your app already uses `reqwest-middleware` (e.g. for retries), skip the macro and attach the `hotpath::ReqwestHttpMiddleware` middleware directly:
 
 ```rust
 let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
@@ -64,31 +72,12 @@ Requests are grouped by `METHOD host/path`. The query string, fragment, and cred
 - UUIDs (`/jobs/550e8400-e29b-41d4-a716-446655440000`)
 - hex strings of 16+ characters (`/blobs/deadbeefdeadbeef`)
 
-So `GET /users/1?verbose=true` and `GET /users/42` merge into one `GET api.example.com/users/{id}` bucket. Raw URLs never reach the report - only the normalized shape does.
+So `GET /users/1?verbose=true` and `GET /users/42` merge into one `GET example.com/users/{id}` bucket. Raw URLs never reach the report - only the normalized shape does.
 
 ## Error tracking
 
 Each bucket has an `Errors` column counting transport errors (DNS failures, connection refused, timeouts) plus responses with status >= 400.
 
-## Adding the HTTP section to your hotpath report
-
-The `http` section is opt-in. Add it via the `HOTPATH_REPORT` env var (comma-separated `http`, or `all`), or programmatically through `HotpathGuardBuilder::sections`:
-
-```rust
-let _guard = hotpath::HotpathGuardBuilder::new("main")
-    .sections(vec![hotpath::Section::Http])
-    .build();
-```
-
-```bash
-http - HTTP request execution time statistics.
-+-------------------------------------+-------+--------+-----------+-----------+-----------+---------+
-| Endpoint                            | Calls | Errors | Avg       | P95       | Total     | % Total |
-+-------------------------------------+-------+--------+-----------+-----------+-----------+---------+
-| GET api.example.com/users/{id}      | 120   | 0      | 781.35 µs | 1.21 ms   | 93.76 ms  | 58.99%  |
-| GET api.example.com/search          | 40    | 2      | 301.79 µs | 350.12 µs | 12.07 ms  | 11.39%  |
-+-------------------------------------+-------+--------+-----------+-----------+-----------+---------+
-```
 
 ## Limiting and capping endpoint output
 
@@ -96,10 +85,6 @@ The number of endpoints shown is unlimited by default (`0`). Cap it with:
 
 - Builder: `.http_limit(n)`
 - Env var: `HOTPATH_HTTP_LIMIT`
-
-## Live HTTP metrics
-
-Live HTTP request metrics display in the `I/O -> HTTP` TUI tab, and are exposed as JSON at `GET /http` on the metrics server (per-endpoint request logs at `GET /http/{id}/logs`).
 
 ## What is measured
 

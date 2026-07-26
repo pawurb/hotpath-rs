@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-io --example basic_io_async --features hotpath
+
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;

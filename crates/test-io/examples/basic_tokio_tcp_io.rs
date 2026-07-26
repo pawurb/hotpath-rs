@@ -3,6 +3,9 @@
 //! suspend on the reactor until the echo arrives, so this covers the
 //! Pending-to-Ready path on a real socket. Self-contained - no external
 //! services required.
+//!
+//! Run with:
+//!   cargo run -p test-io --example basic_tokio_tcp_io --features hotpath
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
