@@ -25,7 +25,7 @@ pub use lib_on::threads;
 #[cfg(all(feature = "hotpath-meta", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
 #[cfg(feature = "hotpath-meta")]
-pub use lib_on::{channels, futures, http, mutexes, sql, streams};
+pub use lib_on::{channels, futures, http, io, mutexes, sql, streams};
 
 #[cfg(any(feature = "hotpath-meta", feature = "tui"))]
 pub(crate) mod output;
@@ -34,8 +34,9 @@ pub use output::format_debug_truncated;
 #[cfg(any(feature = "hotpath-meta", feature = "tui"))]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_count, format_duration,
-    format_percentile_header, format_percentile_key, format_rate, parse_bytes, parse_count,
-    parse_duration, shorten_function_name, OutputDestination, ProfilingMode, MAX_LOG_LEN,
+    format_percentile_header, format_percentile_key, format_rate, format_throughput, parse_bytes,
+    parse_count, parse_duration, shorten_function_name, OutputDestination, ProfilingMode,
+    MAX_LOG_LEN,
 };
 
 #[cfg(feature = "hotpath-meta")]

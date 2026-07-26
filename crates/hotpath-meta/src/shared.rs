@@ -12,6 +12,7 @@ pub enum Section {
     Mutexes,
     Sql,
     Http,
+    Io,
     Threads,
     Debug,
 }
@@ -29,6 +30,7 @@ impl Section {
             Section::Mutexes,
             Section::Sql,
             Section::Http,
+            Section::Io,
             Section::Threads,
             Section::Debug,
         ]
@@ -46,6 +48,7 @@ impl Section {
             Section::Mutexes => "mutexes",
             Section::Sql => "sql",
             Section::Http => "http",
+            Section::Io => "io",
             Section::Threads => "threads",
             Section::Debug => "debug",
         }
@@ -63,6 +66,7 @@ impl Section {
             "mutexes" => Some(Section::Mutexes),
             "sql" => Some(Section::Sql),
             "http" => Some(Section::Http),
+            "io" => Some(Section::Io),
             "threads" => Some(Section::Threads),
             "debug" => Some(Section::Debug),
             _ => None,
@@ -75,8 +79,9 @@ impl Section {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SectionsMode {
     /// Base sections (functions, threads) plus every data-driven section
-    /// (channels, streams, futures, rw_locks, mutexes, sql, debug) that has
-    /// data at shutdown. `include` forces sections in, `exclude` hides them.
+    /// (channels, streams, futures, rw_locks, mutexes, sql, http, io, debug)
+    /// that has data at shutdown. `include` forces sections in, `exclude`
+    /// hides them.
     Auto {
         include: Vec<Section>,
         exclude: Vec<Section>,

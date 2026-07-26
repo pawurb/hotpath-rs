@@ -91,12 +91,19 @@ pub(crate) static MUTEXES_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static RW_LOCKS_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static FUTURES_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static CHANNELS_SAMPLING: ResourceSampling = ResourceSampling::new();
+pub(crate) static IO_SAMPLING: ResourceSampling = ResourceSampling::new();
 
 thread_local! {
     static FUNCTIONS_COUNTER: Cell<u64> = const { Cell::new(0) };
     static MUTEXES_COUNTER: Cell<u64> = const { Cell::new(0) };
     static RW_LOCKS_COUNTER: Cell<u64> = const { Cell::new(0) };
     static FUTURES_COUNTER: Cell<u64> = const { Cell::new(0) };
+    // One counter per I/O operation kind (read/write/flush/shutdown): a shared
+    // counter would let deterministic 1-in-k sampling lock onto periodic
+    // workloads (e.g. an alternating write/read loop at rate 0.5 timing only
+    // writes) and bias per-kind stats.
+    static IO_COUNTERS: [Cell<u64>; 4] =
+        const { [Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0)] };
 }
 
 /// Thread-local counter decision: deterministic per thread, first call on a
@@ -157,6 +164,28 @@ pub(crate) fn futures_should_time() -> bool {
     should_time(&FUTURES_SAMPLING, &FUTURES_COUNTER)
 }
 
+#[inline]
+pub(crate) fn io_should_time(kind_idx: usize) -> bool {
+    match IO_SAMPLING.sampler() {
+        None => true,
+        // Count-only mode never times; skip the counter access entirely.
+        Some(Sampler::Never) => false,
+        Some(sampler) => IO_COUNTERS
+            .try_with(|counters| sampler.sample_counter(&counters[kind_idx]))
+            .unwrap_or(false),
+    }
+}
+
+#[inline]
+pub(crate) fn io_untime(kind_idx: usize) {
+    if matches!(IO_SAMPLING.sampler(), Some(Sampler::OneIn(_))) {
+        let _ = IO_COUNTERS.try_with(|counters| {
+            let counter = &counters[kind_idx];
+            counter.set(counter.get().wrapping_sub(1));
+        });
+    }
+}
+
 /// Wrap-channel decision, keyed on the per-channel monotonic `msg_id` so both
 /// endpoints agree without extra state and tests are deterministic across
 /// sender threads.
@@ -177,6 +206,7 @@ pub(crate) struct TimeSamplingConfig {
     pub(crate) rw_locks: Option<f64>,
     pub(crate) futures: Option<f64>,
     pub(crate) channels: Option<f64>,
+    pub(crate) io: Option<f64>,
 }
 
 /// Invalid values (negative, > 1.0, NaN, unparseable) are ignored, falling
@@ -217,6 +247,7 @@ pub(crate) fn init_time_sampling_rate(config: &TimeSamplingConfig) {
         "HOTPATH_META_CHANNELS_TIME_SAMPLING_RATE",
         config.channels,
     ));
+    IO_SAMPLING.set(resolve("HOTPATH_META_IO_TIME_SAMPLING_RATE", config.io));
 }
 
 /// Effective per-resource rates for the report header / JSON, `None` when no
@@ -229,6 +260,7 @@ pub(crate) fn active_rates() -> Option<HashMap<String, f64>> {
         ("rw_locks", &RW_LOCKS_SAMPLING),
         ("futures", &FUTURES_SAMPLING),
         ("channels", &CHANNELS_SAMPLING),
+        ("io", &IO_SAMPLING),
     ] {
         if let Some(sampler) = sampling.sampler() {
             rates.insert(name.to_string(), sampler.effective_rate());

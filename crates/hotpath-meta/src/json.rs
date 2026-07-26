@@ -362,6 +362,8 @@ pub enum Route {
     Http,
     /// GET /http/{id}/logs - Returns recent requests for an HTTP endpoint
     HttpLogs { http_id: u32 },
+    /// GET /io - Returns byte-level I/O statistics
+    Io,
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
     TokioRuntime,
     /// GET /profiler_status - Returns profiler uptime
@@ -399,6 +401,7 @@ impl Route {
             Route::SqlLogs { sql_id } => format!("/sql/{}/logs", sql_id),
             Route::Http => "/http".to_string(),
             Route::HttpLogs { http_id } => format!("/http/{}/logs", http_id),
+            Route::Io => "/io".to_string(),
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
         }
@@ -436,6 +439,7 @@ impl FromStr for Route {
             "/mutexes" => return Ok(Route::Mutexes),
             "/sql" => return Ok(Route::Sql),
             "/http" => return Ok(Route::Http),
+            "/io" => return Ok(Route::Io),
             "/tokio_runtime" => return Ok(Route::TokioRuntime),
             "/profiler_status" => return Ok(Route::ProfilerStatus),
             _ => {}

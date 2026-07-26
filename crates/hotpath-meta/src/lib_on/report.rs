@@ -11,15 +11,17 @@ use crate::debug::{
 };
 use crate::futures::{compare_future_stats, FutureEntry, FUTURES_STATE};
 use crate::http::{compare_http_entries, HttpEntry, HTTP_STATE};
+use crate::io::{compare_io_entries, IoEntry, IoOpKind, IoOpStats, IO_STATE};
 use crate::json::JsonDebugEntry;
 use crate::json::{
-    JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonHttpEntry, JsonHttpList,
-    JsonMutexEntry, JsonMutexesList, JsonRwLockEntry, JsonRwLocksList, JsonSqlEntry, JsonSqlList,
-    JsonStreamEntry, JsonStreamsList,
+    JsonChannelsList, JsonFutureEntry, JsonFuturesList, JsonHttpEntry, JsonHttpList, JsonIoEntry,
+    JsonIoList, JsonIoOpStats, JsonMutexEntry, JsonMutexesList, JsonRwLockEntry, JsonRwLocksList,
+    JsonSqlEntry, JsonSqlList, JsonStreamEntry, JsonStreamsList,
 };
 use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
     format_bytes, format_duration, format_percentile_header, format_percentile_key, format_rate,
+    format_throughput,
 };
 use crate::output_on::write_section_header;
 use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS_STATE};
@@ -797,6 +799,189 @@ pub(crate) fn collect_http_json(
         data: entries
             .iter()
             .map(|entry| http_to_json(entry, reference_total, percentiles))
+            .collect(),
+    }
+}
+
+pub(crate) fn shutdown_io() -> Vec<IoEntry> {
+    crate::lib_on::io::stop_io_events();
+    IO_STATE
+        .get()
+        .and_then(|state| {
+            if let Ok(mut guard) = state.shutdown_tx.lock() {
+                if let Some(tx) = guard.take() {
+                    let _ = tx.send(());
+                }
+            }
+            state
+                .completion_rx
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take())
+                .and_then(|rx| rx.recv().ok());
+            state
+                .inner
+                .read()
+                .ok()
+                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+        })
+        .map(|mut entries| {
+            entries.sort_by(compare_io_entries);
+            entries
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn report_io_table(
+    entries: &[IoEntry],
+    total_count: usize,
+    percentiles: &[f64],
+    writer: &mut dyn Write,
+) {
+    if entries.is_empty() {
+        return;
+    }
+
+    write_section_header(writer, "io", "Byte-level I/O statistics.");
+    if entries.len() < total_count {
+        let _ = write!(writer, " ({}/{})", entries.len(), total_count);
+    }
+    let _ = writeln!(writer);
+
+    report_io_subtable(entries, IoOpKind::Read, percentiles, writer);
+    report_io_subtable(entries, IoOpKind::Write, percentiles, writer);
+}
+
+/// Reads and writes render as stacked sub-tables. The write sub-table carries
+/// the flush count; shutdown operations appear only in JSON.
+fn report_io_subtable(
+    entries: &[IoEntry],
+    kind: IoOpKind,
+    percentiles: &[f64],
+    writer: &mut dyn Write,
+) {
+    let rows: Vec<&IoEntry> = entries
+        .iter()
+        .filter(|e| match kind {
+            IoOpKind::Read => e.read.count > 0 || e.read.errors > 0,
+            _ => {
+                e.write.count > 0
+                    || e.flush.count > 0
+                    || e.shutdown.count > 0
+                    || e.write_side_errors() > 0
+            }
+        })
+        .collect();
+    if rows.is_empty() {
+        return;
+    }
+
+    let count_label = match kind {
+        IoOpKind::Read => "Reads",
+        _ => "Writes",
+    };
+
+    let mut header = vec![
+        styled_header("Io"),
+        styled_header("Inst"),
+        styled_header(count_label),
+        styled_header("Bytes"),
+        styled_header("Rate"),
+        styled_header("Avg"),
+    ];
+    for &p in percentiles {
+        header.push(styled_header(&format_percentile_header(p)));
+    }
+    header.push(styled_header("Total"));
+    if kind == IoOpKind::Write {
+        header.push(styled_header("Flushes"));
+    }
+    header.push(styled_header("Errors"));
+
+    let mut table = Table::new();
+    table.add_row(Row::new(header));
+
+    for entry in rows {
+        let label = resolve_label(entry.source, entry.label.as_deref(), Some(entry.iter));
+        let stats = entry.op(kind);
+        let fmt = |nanos: u64| format_sampled_duration(nanos, stats.sampled_count, stats.count);
+        let mut row = vec![
+            Cell::new(&label),
+            Cell::new(&entry.instances.to_string()),
+            Cell::new(&stats.count.to_string()),
+            Cell::new(&format_bytes(stats.bytes)),
+            Cell::new(&format_throughput(stats.throughput_bytes_per_sec())),
+            Cell::new(&fmt(stats.avg_nanos())),
+        ];
+        for &p in percentiles {
+            row.push(Cell::new(&fmt(stats.percentile_nanos(p))));
+        }
+        row.push(Cell::new(&fmt(stats.total_nanos)));
+        let errors = if kind == IoOpKind::Write {
+            row.push(Cell::new(&entry.flush.count.to_string()));
+            entry.write_side_errors()
+        } else {
+            stats.errors
+        };
+        row.push(Cell::new(&errors.to_string()));
+        table.add_row(Row::new(row));
+    }
+
+    print_table(&table, writer);
+    let _ = writeln!(writer);
+}
+
+fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64]) -> JsonIoOpStats {
+    let fmt = |nanos: u64| format_sampled_duration(nanos, stats.sampled_count, stats.count);
+    let mut percentile_map = HashMap::new();
+    for &p in percentiles {
+        percentile_map.insert(format_percentile_key(p), fmt(stats.percentile_nanos(p)));
+    }
+
+    JsonIoOpStats {
+        count: stats.count,
+        sampled_count: stats.sampled_count,
+        bytes: stats.bytes,
+        sampled_bytes: stats.sampled_bytes,
+        errors: stats.errors,
+        avg: fmt(stats.avg_nanos()),
+        throughput: stats
+            .throughput_bytes_per_sec()
+            .map(|rate| format_throughput(Some(rate))),
+        total_ns: stats.total_nanos,
+        percentiles: percentile_map,
+    }
+}
+
+fn io_to_json(entry: &IoEntry, percentiles: &[f64]) -> JsonIoEntry {
+    let label = resolve_label(entry.source, entry.label.as_deref(), Some(entry.iter));
+
+    JsonIoEntry {
+        id: entry.id,
+        source: entry.source.to_string(),
+        label,
+        has_custom_label: entry.label.is_some(),
+        type_name: entry.type_name.to_string(),
+        read: io_op_stats_to_json(&entry.read, percentiles),
+        write: io_op_stats_to_json(&entry.write, percentiles),
+        flush: io_op_stats_to_json(&entry.flush, percentiles),
+        shutdown: io_op_stats_to_json(&entry.shutdown, percentiles),
+        instances: entry.instances,
+        iter: entry.iter,
+    }
+}
+
+pub(crate) fn collect_io_json(
+    entries: &[IoEntry],
+    elapsed: std::time::Duration,
+    percentiles: &[f64],
+) -> JsonIoList {
+    JsonIoList {
+        current_elapsed_ns: elapsed.as_nanos() as u64,
+        percentiles: percentiles.to_vec(),
+        data: entries
+            .iter()
+            .map(|entry| io_to_json(entry, percentiles))
             .collect(),
     }
 }

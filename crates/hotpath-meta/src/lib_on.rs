@@ -31,6 +31,7 @@ pub mod cpu_baseline;
 pub mod debug;
 pub mod futures;
 pub mod http;
+pub mod io;
 pub mod mutexes;
 pub mod rw_locks;
 pub mod sql;
@@ -47,6 +48,7 @@ pub use channels::{
     InstrumentChannelWrapLog,
 };
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
+pub use io::io_unwrap;
 pub use mutexes::InstrumentMutex;
 pub use rw_locks::InstrumentRwLock;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
