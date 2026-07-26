@@ -8,14 +8,14 @@
 pub mod tests {
     use std::process::Command;
 
-    fn run_basic(package: &str, format: Option<&str>) -> String {
+    fn run_example(package: &str, example: &str, format: Option<&str>) -> String {
         let mut cmd = Command::new("cargo");
         cmd.args([
             "run",
             "-p",
             package,
             "--example",
-            "basic",
+            example,
             "--features",
             "hotpath",
         ]);
@@ -33,7 +33,7 @@ pub mod tests {
     }
 
     fn assert_table_output(package: &str) {
-        let stdout = run_basic(package, None);
+        let stdout = run_example(package, "basic", None);
 
         let all_expected = [
             "HTTP example completed",
@@ -57,7 +57,7 @@ pub mod tests {
     fn assert_json_report(package: &str) {
         use hotpath::json::JsonReport;
 
-        let stdout = run_basic(package, Some("json"));
+        let stdout = run_example(package, "basic", Some("json"));
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
             .into_iter::<JsonReport>()
@@ -99,6 +99,17 @@ pub mod tests {
         assert!(labeled.endpoint.ends_with("/users/{id}"));
     }
 
+    // Compiles and runs the feature-gated RequestBuilder methods (json on 0.12;
+    // json/query/form on 0.13) against the wrapped client. Fails to compile if
+    // the hotpath crate stops forwarding the reqwest-middleware feature flags.
+    fn assert_gated_methods(package: &str) {
+        let stdout = run_example(package, "gated_methods", None);
+        assert!(
+            stdout.contains("Gated methods example completed"),
+            "[{package}] Expected completion marker, got:\n{stdout}",
+        );
+    }
+
     #[test]
     fn test_http_table_reqwest_012() {
         assert_table_output("test-reqwest-012");
@@ -119,5 +130,15 @@ pub mod tests {
     #[test]
     fn test_http_json_reqwest_013() {
         assert_json_report("test-reqwest-013");
+    }
+
+    #[test]
+    fn test_http_gated_methods_reqwest_012() {
+        assert_gated_methods("test-reqwest-012");
+    }
+
+    #[test]
+    fn test_http_gated_methods_reqwest_013() {
+        assert_gated_methods("test-reqwest-013");
     }
 }
