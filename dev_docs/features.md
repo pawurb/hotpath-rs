@@ -52,7 +52,7 @@ cargo run -p test-channels-crossbeam --example basic_crossbeam --features hotpat
 - `#[hotpath::future_fn]` - Instruments async functions for future lifecycle tracking. Parameter: `log = true`
 - `hotpath::measure_block!("label", { ... })` - Instruments code blocks
 - `hotpath::rw_lock!(expr)` - Wraps a `RwLock` (std/parking_lot/tokio/async-lock) to track read/write wait & acquire time. Parameter: `label = "name"`
-- `hotpath::mutex!(expr)` - Wraps a `std::sync::Mutex` to track lock wait & acquire time (single lock kind, no read/write split). Parameter: `label = "name"`
+- `hotpath::mutex!(expr)` - Wraps a `Mutex` (std/parking_lot/tokio/async-lock) to track lock wait & acquire time (single lock kind, no read/write split). Parameter: `label = "name"`
 - `hotpath::future!(expr)` - Wraps a future for lifecycle tracking
 - `hotpath::sqlx_tracing_layer()` - A `tracing_subscriber::Layer` that captures sqlx query telemetry (requires `sqlx` feature). Add once to your `tracing` subscriber: `tracing_subscriber::registry().with(hotpath::sqlx_tracing_layer()).init();`. Works with sqlx 0.8 and 0.9. Don't globally filter out the `sqlx::query` target.
 - `hotpath::toasty_tracing_layer()` - Same pattern for the Toasty ORM (requires `toasty` feature): a `tracing_subscriber::Layer` that captures toasty-core's `toasty::query` events. Don't globally filter out the `toasty::query` target.
@@ -114,9 +114,11 @@ let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), log = true);
 let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), label = "my_channel", log = true);
 ```
 
-Supported channel types: `tokio::sync::mpsc` (bounded/unbounded), `tokio::sync::oneshot`, `futures_channel::mpsc` (bounded/unbounded), `futures_channel::oneshot`, `crossbeam_channel` (bounded/unbounded), `std::sync::mpsc`
+Supported channel types: `tokio::sync::mpsc` (bounded/unbounded), `tokio::sync::oneshot`, `futures_channel::mpsc` (bounded/unbounded), `futures_channel::oneshot`, `crossbeam_channel` (bounded/unbounded), `flume` (bounded/unbounded), `async_channel` (bounded/unbounded), `std::sync::mpsc`
 
 `futures_channel::mpsc` has no wrap implementation and is supported only through the forwarder path, and bounded channels need the `capacity` parameter: `hotpath::channel!(mpsc::channel::<String>(10), proxy = true, capacity = 10)`
+
+Bounded `std::sync::mpsc::sync_channel` also requires `capacity = N` in the default wrap mode (std exposes no capacity accessor, so the wrapper rebuilds the channel with it; it must match the `sync_channel(N)` argument) - omitting it panics at runtime: `hotpath::channel!(mpsc::sync_channel::<String>(100), capacity = 100)`
 
 Channel metrics tracked:
 - Messages sent/received counts
@@ -199,6 +201,7 @@ Functions:
 - `HOTPATH_FOCUS` - Filter profiled functions by name. Plain text does substring matching; wrap in `/pattern/` for regex (e.g. `HOTPATH_FOCUS="/^(compute|process)/"`).
 - `HOTPATH_EXCLUDE_WRAPPER` - Set to "true" or "1" to calculate ratios using sum of measured functions instead of wrapper total (percentages will sum to ~100%)
 - `HOTPATH_ALLOC_CUMULATIVE` - Set to "true" or "1" to track cumulative memory allocations per function (including nested calls) instead of the default exclusive mode. Produces invalid results for recursive functions.
+- `HOTPATH_ALLOC_METRIC` - Primary allocation metric: `bytes` (default) or `count`. Controls which metric drives sorting and percentages in allocation reports; any other value panics.
 - `HOTPATH_CPU_INCLUSIVE` - Set to "true" or "1" to attribute each CPU sample to every instrumented function in its stack (parent functions get credit for time spent in callees) instead of the default exclusive mode. Recursive frames are deduped per sample.
 - `HOTPATH_CPU_BASELINE_OFF` - Set to "true" or "1" to disable CPU baseline collection
 - `HOTPATH_FUNCTIONS_NAME_DEPTH` - Number of trailing module segments to keep when displaying function names (`1` = function name only, `2` = current default with one module, `0` = unlimited full path)
