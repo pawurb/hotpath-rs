@@ -135,7 +135,7 @@ impl Drop for SuspendAllocTracking {
 #[macro_export]
 macro_rules! measure_block {
     ($label:expr, $expr:expr) => {{
-        let _guard = $crate::functions::build_measurement_guard_sync($label, false);
+        let _guard = $crate::functions::build_measurement_guard_block($label, false);
 
         $expr
     }};

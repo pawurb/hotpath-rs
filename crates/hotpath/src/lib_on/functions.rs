@@ -91,6 +91,21 @@ pub fn build_measurement_guard_sync(
     MeasurementGuardSync::new_caller_scoped(measurement_name, wrapper, skipped)
 }
 
+/// Guard for `measure_block!`. Never caller-scoped: a block expression can
+/// contain `.await` inside an async function, so its guard may live across
+/// suspension points and threads where a thread-local caller scope would
+/// leak to interleaved tasks. Only sync function bodies (which the compiler
+/// guarantees are await-free) get caller scoping.
+#[doc(hidden)]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
+pub fn build_measurement_guard_block(
+    measurement_name: &'static str,
+    wrapper: bool,
+) -> MeasurementGuardSync {
+    let skipped = !wrapper && !is_focused(measurement_name);
+    MeasurementGuardSync::new(measurement_name, wrapper, skipped)
+}
+
 #[doc(hidden)]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 pub fn build_measurement_guard_async(
