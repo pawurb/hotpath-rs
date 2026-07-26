@@ -21,7 +21,7 @@ In the target crate's `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "0.21"
+hotpath = "0.22"
 
 [features]
 hotpath = ["hotpath/hotpath"]
@@ -30,7 +30,7 @@ hotpath-alloc = ["hotpath/hotpath-alloc"]
 
 Enable extra hotpath cargo features on the dependency based on what the project uses:
 
-- `tokio` - for `tokio::sync` channel instrumentation and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.21", features = ["tokio"] }`
+- `tokio` - for `tokio::sync` channel instrumentation and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.22", features = ["tokio"] }`
 - `crossbeam` - for `crossbeam_channel` instrumentation
 - `futures` - for `futures_channel` instrumentation
 - `flume` - for `flume` channel instrumentation
