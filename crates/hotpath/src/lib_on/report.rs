@@ -862,7 +862,15 @@ fn report_io_subtable(
 ) {
     let rows: Vec<&IoEntry> = entries
         .iter()
-        .filter(|e| e.op(kind).count > 0 || e.op(kind).errors > 0)
+        .filter(|e| match kind {
+            IoOpKind::Read => e.read.count > 0 || e.read.errors > 0,
+            _ => {
+                e.write.count > 0
+                    || e.flush.count > 0
+                    || e.shutdown.count > 0
+                    || e.write_side_errors() > 0
+            }
+        })
         .collect();
     if rows.is_empty() {
         return;
@@ -905,10 +913,13 @@ fn report_io_subtable(
             row.push(Cell::new(&fmt(stats.percentile_nanos(p))));
         }
         row.push(Cell::new(&fmt(stats.total_nanos)));
-        if kind == IoOpKind::Write {
+        let errors = if kind == IoOpKind::Write {
             row.push(Cell::new(&entry.flush.count.to_string()));
-        }
-        row.push(Cell::new(&stats.errors.to_string()));
+            entry.write_side_errors()
+        } else {
+            stats.errors
+        };
+        row.push(Cell::new(&errors.to_string()));
         table.add_row(Row::new(row));
     }
 

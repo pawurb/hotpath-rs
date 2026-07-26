@@ -20,6 +20,20 @@ impl Read for WouldBlockReader {
     }
 }
 
+/// Writer that accepts writes but fails on flush, like a buffered writer
+/// surfacing a deferred error.
+struct FlushFailWriter;
+
+impl Write for FlushFailWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::other("deferred failure"))
+    }
+}
+
 fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
         .sections(vec![hotpath::Section::Io])
@@ -62,6 +76,11 @@ fn main() {
     assert!(failing.read(&mut buf).is_err());
     let mut busy = hotpath::io!(WouldBlockReader, label = "busy");
     assert!(busy.read(&mut buf).is_err());
+
+    // Flush failures count as flush errors and surface on the write row.
+    let mut flush_fail = hotpath::io!(FlushFailWriter, label = "flush-fail");
+    flush_fail.write_all(&data[..10]).unwrap();
+    assert!(flush_fail.flush().is_err());
 
     std::fs::remove_file(&path).ok();
     println!("Sync io example completed!");

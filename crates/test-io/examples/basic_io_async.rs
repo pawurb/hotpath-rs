@@ -16,6 +16,30 @@ impl tokio::io::AsyncRead for ErrReader {
     }
 }
 
+/// Async reader that fails with retryable `Interrupted` on its first call,
+/// then yields data; retryable errors must count as neither ops nor errors.
+struct FlakyReader {
+    calls: u32,
+}
+
+impl tokio::io::AsyncRead for FlakyReader {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        self.calls += 1;
+        match self.calls {
+            1 => Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::Interrupted))),
+            2 => {
+                buf.put_slice(b"flaky");
+                Poll::Ready(Ok(()))
+            }
+            _ => Poll::Ready(Ok(())),
+        }
+    }
+}
+
 const SERVER_DELAY_MS: u64 = 200;
 
 #[tokio::main]
@@ -79,6 +103,17 @@ async fn main() {
     let mut err_reader = hotpath::io!(ErrReader, label = "err-reader");
     let mut sink = Vec::new();
     assert!(err_reader.read_to_end(&mut sink).await.is_err());
+
+    // Retryable Interrupted surfaces to the caller but is not recorded; the
+    // retried read continues the same operation span.
+    let mut flaky = hotpath::io!(FlakyReader { calls: 0 }, label = "flaky-reader");
+    let mut fbuf = [0u8; 5];
+    assert_eq!(
+        flaky.read(&mut fbuf).await.unwrap_err().kind(),
+        std::io::ErrorKind::Interrupted
+    );
+    flaky.read_exact(&mut fbuf).await.unwrap();
+    assert_eq!(&fbuf, b"flaky");
 
     tokio::fs::remove_file(&path).await.ok();
     println!("Async io example completed!");

@@ -81,6 +81,13 @@ pub mod tests {
         let busy = entry(&io, "busy");
         assert_eq!(busy.read.count, 0);
         assert_eq!(busy.read.errors, 0);
+
+        // Flush failures are recorded as flush errors, not write errors.
+        let flush_fail = entry(&io, "flush-fail");
+        assert_eq!(flush_fail.write.count, 1);
+        assert_eq!(flush_fail.write.errors, 0);
+        assert_eq!(flush_fail.flush.count, 0);
+        assert_eq!(flush_fail.flush.errors, 1);
     }
 
     // cargo run -p test-io --example basic_io_async --features hotpath (json)
@@ -123,6 +130,13 @@ pub mod tests {
         let err_reader = entry(&io, "err-reader");
         assert_eq!(err_reader.read.errors, 1);
         assert_eq!(err_reader.read.count, 0);
+
+        // Retryable Interrupted counts as neither an op nor an error; the
+        // retried read completes as a single operation.
+        let flaky = entry(&io, "flaky-reader");
+        assert_eq!(flaky.read.errors, 0);
+        assert_eq!(flaky.read.count, 1);
+        assert_eq!(flaky.read.bytes, 5);
     }
 
     // cargo run -p test-io --example basic_io_sync --features hotpath

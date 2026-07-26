@@ -150,6 +150,13 @@ impl IoEntry {
             IoOpKind::Shutdown => &mut self.shutdown,
         }
     }
+
+    /// Errors across all write-side kinds, shown on the write sub-table row so
+    /// flush failures (where buffered writers surface deferred errors) aren't
+    /// hidden from the table.
+    pub(crate) fn write_side_errors(&self) -> u64 {
+        self.write.errors + self.flush.errors + self.shutdown.errors
+    }
 }
 
 pub(crate) struct IoInternalState {

@@ -57,6 +57,6 @@ Async operation durations span from the first poll to `Ready`. If an operation's
 
 ## Report
 
-The terminal report renders reads and writes as stacked sub-tables (a sub-table is skipped if there were no operations of that kind). The write sub-table carries the flush count; shutdown operations appear only in the JSON report. Metrics are also exposed at `GET /io` and in the TUI on the I/O tab, Bytes sub-tab.
+The terminal report renders reads and writes as stacked sub-tables (a sub-table is skipped if there were no operations of that kind). The write sub-table carries the flush count, and its Errors column aggregates write, flush, and shutdown errors so failures surfaced during flush aren't hidden; per-kind error counts appear in the JSON report, where shutdown operations are also broken out. Metrics are also exposed at `GET /io` and in the TUI on the I/O tab, Bytes sub-tab.
 
 `Seek`, `AsyncSeek`, `BufRead`, and `AsyncBufRead` delegation is not yet instrumented.

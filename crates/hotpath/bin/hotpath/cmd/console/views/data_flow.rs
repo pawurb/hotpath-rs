@@ -867,11 +867,23 @@ fn render_io_bytes_subtable(
                     stats.percentiles.get(key).cloned().unwrap_or_default(),
                 ));
             }
-            cells.push(Cell::from(hotpath::format_duration(stats.total_ns)));
-            if kind == IoBytesKind::Write {
+            // Count-only sampling reports no durations: mirror the `-` the
+            // formatted avg/percentile fields use instead of a raw `0 ns`.
+            let total = if stats.sampled_count == 0 && stats.count > 0 {
+                "-".to_string()
+            } else {
+                hotpath::format_duration(stats.total_ns)
+            };
+            cells.push(Cell::from(total));
+            // The write row aggregates write-side errors so flush/shutdown
+            // failures aren't hidden, matching the terminal report.
+            let errors = if kind == IoBytesKind::Write {
                 cells.push(Cell::from(entry.flush.count.to_string()));
-            }
-            cells.push(Cell::from(stats.errors.to_string()));
+                stats.errors + entry.flush.errors + entry.shutdown.errors
+            } else {
+                stats.errors
+            };
+            cells.push(Cell::from(errors.to_string()));
             Row::new(cells)
         })
         .collect();
