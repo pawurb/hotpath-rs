@@ -210,6 +210,13 @@ fn finish_async_op<R>(
             std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => {}
             _ => {
                 *op = None;
+                // Parity with the sync path: roll back the sampling decision
+                // consumed at op start so the rate applies to completed
+                // operations. Best-effort under task migration - the decision
+                // may have been consumed on another thread's counter, in which
+                // case the rollback shifts this thread's phase by one, which
+                // is statistically neutral.
+                cancel_op_stamp();
                 send_io_event(IoEvent::Error { id, kind });
             }
         },
