@@ -13,6 +13,7 @@
 - [Locks](./locks.md)
 - [SQL queries](./sql_tracing.md)
 - [HTTP requests](./http_tracing.md)
+- [Byte-level I/O](./io_tracing.md)
 - [Tokio Runtime](./tokio_runtime.md)
 - [Debug & Metrics](./debug.md)
 

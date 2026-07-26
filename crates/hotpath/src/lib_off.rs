@@ -235,6 +235,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn io_limit(self, _limit: usize) -> Self {
+        self
+    }
+
     pub fn limit(self, _limit: usize) -> Self {
         self
     }
@@ -260,6 +264,10 @@ impl HotpathGuardBuilder {
     }
 
     pub fn channels_time_sampling_rate(self, _rate: f64) -> Self {
+        self
+    }
+
+    pub fn io_time_sampling_rate(self, _rate: f64) -> Self {
         self
     }
 
@@ -343,6 +351,16 @@ macro_rules! rw_lock {
 
 #[macro_export]
 macro_rules! mutex {
+    ($expr:expr) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr) => {
+        $expr
+    };
+}
+
+#[macro_export]
+macro_rules! io {
     ($expr:expr) => {
         $expr
     };

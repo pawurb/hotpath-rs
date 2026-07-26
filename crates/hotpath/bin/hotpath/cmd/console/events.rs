@@ -5,9 +5,9 @@ use hotpath::json::Route;
 use hotpath::json::{
     JsonChannelLogsList, JsonChannelsList, JsonDebugList, JsonDebugLog, JsonFunctionAllocLogsList,
     JsonFunctionTimingLogsList, JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList,
-    JsonFuturesList, JsonHttpList, JsonHttpLogsList, JsonMutexesList, JsonProfilerStatus,
-    JsonRuntimeSnapshot, JsonRwLocksList, JsonSqlList, JsonSqlLogsList, JsonStreamLogsList,
-    JsonStreamsList, JsonThreadsList,
+    JsonFuturesList, JsonHttpList, JsonHttpLogsList, JsonIoList, JsonMutexesList,
+    JsonProfilerStatus, JsonRuntimeSnapshot, JsonRwLocksList, JsonSqlList, JsonSqlLogsList,
+    JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
 };
 
 #[derive(Debug)]
@@ -23,6 +23,7 @@ pub(crate) enum DataRequest {
     RefreshMutexes,
     RefreshSql,
     RefreshHttp,
+    RefreshIo,
     RefreshThreads,
     RefreshDebug,
     RefreshTokioRuntime,
@@ -53,6 +54,7 @@ impl DataRequest {
             DataRequest::RefreshMutexes => Route::Mutexes,
             DataRequest::RefreshSql => Route::Sql,
             DataRequest::RefreshHttp => Route::Http,
+            DataRequest::RefreshIo => Route::Io,
             DataRequest::RefreshThreads => Route::Threads,
             DataRequest::RefreshDebug => Route::Debug,
             DataRequest::RefreshTokioRuntime => Route::TokioRuntime,
@@ -102,6 +104,7 @@ pub(crate) enum DataResponse {
     Mutexes(JsonMutexesList),
     Sql(JsonSqlList),
     Http(JsonHttpList),
+    Io(JsonIoList),
     ChannelLogs {
         id: u32,
         logs: JsonChannelLogsList,

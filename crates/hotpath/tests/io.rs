@@ -1,0 +1,151 @@
+#[cfg(test)]
+pub mod tests {
+    use hotpath::json::{JsonIoEntry, JsonIoList, JsonReport};
+    use std::process::Command;
+
+    fn run_example(example: &str, json: bool) -> String {
+        let mut cmd = Command::new("cargo");
+        cmd.args([
+            "run",
+            "-p",
+            "test-io",
+            "--example",
+            example,
+            "--features",
+            "hotpath",
+        ]);
+        if json {
+            cmd.env("HOTPATH_OUTPUT_FORMAT", "json");
+        }
+        let output = cmd.output().expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Command failed with status: {}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        String::from_utf8_lossy(&output.stdout).to_string()
+    }
+
+    fn parse_io(stdout: &str) -> JsonIoList {
+        let json_start = stdout.find('{').expect("No JSON report in output");
+        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
+            .into_iter::<JsonReport>()
+            .next()
+            .expect("No JSON value in output")
+            .expect("Failed to parse JSON report");
+        report.io.expect("No io section in report")
+    }
+
+    fn entry<'a>(io: &'a JsonIoList, label: &str) -> &'a JsonIoEntry {
+        io.data
+            .iter()
+            .find(|e| e.label == label)
+            .unwrap_or_else(|| panic!("No '{label}' entry in io section"))
+    }
+
+    // cargo run -p test-io --example basic_io_sync --features hotpath (json)
+    #[test]
+    fn test_sync_json_output() {
+        let stdout = run_example("basic_io_sync", true);
+        let io = parse_io(&stdout);
+
+        let writer = entry(&io, "fixture-write");
+        assert_eq!(writer.write.count, 10);
+        assert_eq!(writer.write.bytes, 100);
+        assert_eq!(writer.flush.count, 1);
+        assert_eq!(writer.write.errors, 0);
+        assert!(writer.type_name.contains("File"));
+
+        let reader = entry(&io, "fixture-read");
+        assert_eq!(reader.read.count, 10);
+        assert_eq!(reader.read.bytes, 100);
+        assert_eq!(reader.read.sampled_count, 10);
+        assert!(reader.read.total_ns > 0, "Sync reads should be timed");
+        assert_eq!(reader.read.errors, 0);
+        assert_eq!(reader.write.count, 0);
+        assert!(reader.type_name.contains("File"));
+
+        // Delegation through BufReader: all bytes arrive, EOF read included.
+        let buffered = entry(&io, "buffered");
+        assert_eq!(buffered.read.bytes, 100);
+        assert!(buffered.read.count >= 2);
+
+        let failing = entry(&io, "failing");
+        assert_eq!(failing.read.errors, 1);
+        assert_eq!(failing.read.count, 0);
+
+        // Retryable WouldBlock produces neither an operation nor an error.
+        let busy = entry(&io, "busy");
+        assert_eq!(busy.read.count, 0);
+        assert_eq!(busy.read.errors, 0);
+    }
+
+    // cargo run -p test-io --example basic_io_async --features hotpath (json)
+    #[test]
+    fn test_async_json_output() {
+        let stdout = run_example("basic_io_async", true);
+        let io = parse_io(&stdout);
+
+        let writer = entry(&io, "fixture-write");
+        assert_eq!(writer.write.count, 10);
+        assert_eq!(writer.write.bytes, 100);
+        assert_eq!(writer.flush.count, 1);
+        assert_eq!(writer.shutdown.count, 1);
+        assert_eq!(writer.write.errors, 0);
+
+        // read_exact may split an operation on a partial fill, so the count is
+        // a lower bound while the byte total stays exact.
+        let reader = entry(&io, "fixture-read");
+        assert!(reader.read.count >= 10);
+        assert_eq!(reader.read.bytes, 100);
+        assert_eq!(reader.read.errors, 0);
+
+        let client = entry(&io, "duplex-client");
+        assert_eq!(client.write.count, 1);
+        assert_eq!(client.write.bytes, 5);
+        assert_eq!(client.write.errors, 0);
+        assert_eq!(client.flush.count, 1);
+        assert_eq!(client.shutdown.count, 1);
+
+        // The server delays its response by 200ms; the read spans Pending
+        // polls, so its Pending-to-Ready duration must include that wait.
+        assert!(client.read.count >= 1);
+        assert_eq!(client.read.bytes, 10);
+        assert!(
+            client.read.total_ns >= 150_000_000,
+            "Read duration should include async waiting time, got {}ns",
+            client.read.total_ns
+        );
+
+        let err_reader = entry(&io, "err-reader");
+        assert_eq!(err_reader.read.errors, 1);
+        assert_eq!(err_reader.read.count, 0);
+    }
+
+    // cargo run -p test-io --example basic_io_sync --features hotpath
+    #[test]
+    fn test_table_output() {
+        let stdout = run_example("basic_io_sync", false);
+
+        let all_expected = [
+            "Sync io example completed!",
+            "Byte-level I/O statistics",
+            "fixture-write",
+            "fixture-read",
+            "Reads",
+            "Writes",
+            "Bytes",
+            "Flushes",
+            "Errors",
+        ];
+        for expected in all_expected {
+            assert!(
+                stdout.contains(expected),
+                "Expected:\n{expected}\n\nGot:\n{stdout}",
+            );
+        }
+    }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "test-io"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for byte-level I/O instrumentation."
+
+[dependencies]
+hotpath = { workspace = true, features = ["tokio"] }
+tokio = { version = "1", features = ["full"] }
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-cpu = ["hotpath/hotpath-cpu"]
+hotpath-meta = ["hotpath/hotpath-meta"]
+hotpath-alloc-meta = ["hotpath/hotpath-alloc-meta"]

@@ -336,6 +336,24 @@ High wait times indicate lock contention; high acquire times indicate long criti
     }
 
     #[tool(
+        description = r#"Get byte-level I/O metrics for all instrumented Read/Write/AsyncRead/AsyncWrite values.
+
+Returns JSON with per-wrapper entries, each containing read/write/flush/shutdown operation stats:
+- count: number of completed operations
+- bytes: total bytes processed
+- errors: failed operations (retryable WouldBlock/Interrupted conditions are not counted)
+- avg, configured percentiles, and total duration; async durations span first poll to Ready, so they include async waiting time
+
+I/O values are instrumented via hotpath::io!(expr). Wrapping the underlying resource (file, socket) measures actual resource I/O; wrapping a BufReader/BufWriter measures application-facing buffered operations."#
+    )]
+    async fn io(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: io");
+
+        let io = crate::io::get_io_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(&io)?)]))
+    }
+
+    #[tool(
         description = r#"Get execution-time metrics for SQL queries captured via the sqlx tracing layer.
 
 Returns JSON array with one entry per normalized query (parameter-varied executions merge into one bucket):

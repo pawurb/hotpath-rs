@@ -30,6 +30,7 @@ pub mod cpu_baseline;
 pub mod debug;
 pub mod futures;
 pub mod http;
+pub mod io;
 pub mod mutexes;
 pub mod rw_locks;
 pub mod sql;

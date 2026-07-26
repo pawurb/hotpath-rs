@@ -8,7 +8,7 @@
 |----------|-------------|
 | `HOTPATH_OUTPUT_FORMAT` | Output format: `table`, `json`, `json-pretty`, or `none`. Using `none` silences output while keeping the metrics server and MCP server active. (default: `table`) |
 | `HOTPATH_OUTPUT_PATH` | Filesystem path for profiling reports. If unset, reports are written to `stdout`. When set, this env var takes precedence over programmatic `output_path` config. On Unix, use `/dev/stdout` or `/dev/stderr` to redirect to the standard streams. |
-| `HOTPATH_REPORT` | Report sections spec: `all`, `auto`, an exact comma-separated list (`functions-timing`, `functions-alloc`, `functions-cpu`, `channels`, `streams`, `futures`, `rw_locks`, `mutexes`, `sql`, `threads`, `debug`), or auto with exclusions like `auto,-threads` / `-threads`. (default: `auto` - function and thread sections plus every instrumented section with data) |
+| `HOTPATH_REPORT` | Report sections spec: `all`, `auto`, an exact comma-separated list (`functions-timing`, `functions-alloc`, `functions-cpu`, `channels`, `streams`, `futures`, `rw_locks`, `mutexes`, `sql`, `http`, `io`, `threads`, `debug`), or auto with exclusions like `auto,-threads` / `-threads`. (default: `auto` - function and thread sections plus every instrumented section with data) |
 
 ## Limits
 
@@ -19,6 +19,7 @@
 | `HOTPATH_CHANNELS_LIMIT` | Maximum number of channels shown in the report. Set to `0` for unlimited. (default: `0`) |
 | `HOTPATH_STREAMS_LIMIT` | Maximum number of streams shown in the report. Set to `0` for unlimited. (default: `0`) |
 | `HOTPATH_FUTURES_LIMIT` | Maximum number of futures shown in the report. Set to `0` for unlimited. (default: `0`) |
+| `HOTPATH_IO_LIMIT` | Maximum number of I/O wrappers shown in the report. Set to `0` for unlimited. (default: `0`) |
 | `HOTPATH_THREADS_LIMIT` | Maximum number of threads shown in the report. Set to `0` for unlimited. (default: `5`) |
 
 ## Functions
@@ -45,6 +46,7 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 | `HOTPATH_RW_LOCKS_TIME_SAMPLING_RATE` | Sampling rate for RwLock wait & acquire timings. (default: unset) |
 | `HOTPATH_FUTURES_TIME_SAMPLING_RATE` | Sampling rate for future poll timings. (default: unset) |
 | `HOTPATH_CHANNELS_TIME_SAMPLING_RATE` | Sampling rate for channel send/receive latency timings. (default: unset) |
+| `HOTPATH_IO_TIME_SAMPLING_RATE` | Sampling rate for byte-level I/O operation timings. (default: unset) |
 
 ## CPU Sampling
 

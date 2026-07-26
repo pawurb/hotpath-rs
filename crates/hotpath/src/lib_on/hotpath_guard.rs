@@ -103,6 +103,7 @@ pub struct HotpathGuardBuilder {
     mutexes_limit: usize,
     sql_limit: usize,
     http_limit: usize,
+    io_limit: usize,
     threads_limit: usize,
     output_path: Option<PathBuf>,
     sections_mode: Option<SectionsMode>,
@@ -141,6 +142,7 @@ impl HotpathGuardBuilder {
             mutexes_limit: 0,
             sql_limit: 0,
             http_limit: 0,
+            io_limit: 0,
             threads_limit: 5,
             output_path: None,
             sections_mode: None,
@@ -167,6 +169,7 @@ impl HotpathGuardBuilder {
         self.mutexes_limit = limit;
         self.sql_limit = limit;
         self.http_limit = limit;
+        self.io_limit = limit;
         self.threads_limit = limit;
         self
     }
@@ -219,6 +222,12 @@ impl HotpathGuardBuilder {
         self
     }
 
+    /// Maximum number of I/O wrappers shown in the report. Set to `0` for unlimited.
+    pub fn io_limit(mut self, limit: usize) -> Self {
+        self.io_limit = limit;
+        self
+    }
+
     /// Maximum number of threads shown in the report. Set to `0` for unlimited.
     pub fn threads_limit(mut self, limit: usize) -> Self {
         self.threads_limit = limit;
@@ -266,6 +275,12 @@ impl HotpathGuardBuilder {
     /// Fraction of wrap-channel messages whose send->receive latency is measured.
     pub fn channels_time_sampling_rate(mut self, rate: f64) -> Self {
         self.time_sampling.channels = Some(rate);
+        self
+    }
+
+    /// Fraction of I/O operations whose duration is measured.
+    pub fn io_time_sampling_rate(mut self, rate: f64) -> Self {
+        self.time_sampling.io = Some(rate);
         self
     }
 
@@ -353,6 +368,7 @@ impl HotpathGuardBuilder {
             self.mutexes_limit,
             self.sql_limit,
             self.http_limit,
+            self.io_limit,
             self.threads_limit,
         )
     }
@@ -403,6 +419,7 @@ pub struct HotpathGuard {
     mutexes_limit: usize,
     sql_limit: usize,
     http_limit: usize,
+    io_limit: usize,
     threads_limit: usize,
     #[cfg(feature = "hotpath-meta")]
     _meta_guard: Option<hotpath_meta::HotpathGuard>,
@@ -425,6 +442,7 @@ impl HotpathGuard {
         mutexes_limit: usize,
         sql_limit: usize,
         http_limit: usize,
+        io_limit: usize,
         threads_limit: usize,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
@@ -683,6 +701,7 @@ impl HotpathGuard {
             mutexes_limit,
             sql_limit,
             http_limit,
+            io_limit,
             threads_limit,
             #[cfg(feature = "hotpath-meta")]
             _meta_guard,
@@ -829,6 +848,7 @@ impl Drop for HotpathGuard {
         let mutexes_data = report::shutdown_mutexes();
         let sql_data = report::shutdown_sql();
         let http_data = report::shutdown_http();
+        let io_data = report::shutdown_io();
 
         let sections: Vec<Section> = match &self.sections_mode {
             SectionsMode::Explicit(list) => list.clone(),
@@ -856,6 +876,7 @@ impl Drop for HotpathGuard {
                                 Section::Mutexes => !mutexes_data.is_empty(),
                                 Section::Sql => !sql_data.is_empty(),
                                 Section::Http => !http_data.is_empty(),
+                                Section::Io => !io_data.is_empty(),
                                 Section::Debug => report::has_debug_entries(),
                                 _ => false,
                             }
@@ -882,6 +903,7 @@ impl Drop for HotpathGuard {
             self.mutexes_limit = global;
             self.sql_limit = global;
             self.http_limit = global;
+            self.io_limit = global;
             self.threads_limit = global;
         }
         if let Some(v) = parse_usize_env("HOTPATH_CHANNELS_LIMIT") {
@@ -904,6 +926,9 @@ impl Drop for HotpathGuard {
         }
         if let Some(v) = parse_usize_env("HOTPATH_HTTP_LIMIT") {
             self.http_limit = v;
+        }
+        if let Some(v) = parse_usize_env("HOTPATH_IO_LIMIT") {
+            self.io_limit = v;
         }
         if let Some(v) = parse_usize_env("HOTPATH_THREADS_LIMIT") {
             self.threads_limit = v;
@@ -1053,6 +1078,16 @@ impl Drop for HotpathGuard {
                                 &http_data[..limit],
                                 elapsed,
                                 reference_total,
+                                &percentiles,
+                            ));
+                        }
+                    }
+                    Section::Io => {
+                        if !io_data.is_empty() {
+                            let limit = apply_limit(io_data.len(), self.io_limit);
+                            report.io = Some(report::collect_io_json(
+                                &io_data[..limit],
+                                elapsed,
                                 &percentiles,
                             ));
                         }
@@ -1294,6 +1329,18 @@ impl Drop for HotpathGuard {
                                 &http_data[..limit],
                                 total,
                                 reference_total,
+                                &percentiles,
+                                &mut writer,
+                            );
+                        }
+                    }
+                    Section::Io => {
+                        if matches!(format, Format::Table) {
+                            let total = io_data.len();
+                            let limit = apply_limit(total, self.io_limit);
+                            report::report_io_table(
+                                &io_data[..limit],
+                                total,
                                 &percentiles,
                                 &mut writer,
                             );
