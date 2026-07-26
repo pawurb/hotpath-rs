@@ -13,4 +13,4 @@ log/
 tmp/
 docs/book/
 *.json.gz
-
+CLAUDE.local.md
