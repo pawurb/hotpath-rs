@@ -8,6 +8,8 @@ description = "Tests for byte-level I/O instrumentation."
 [dependencies]
 hotpath = { workspace = true, features = ["tokio"] }
 tokio = { version = "1", features = ["full"] }
+flate2 = "1"
+zstd = "0.13"
 
 [features]
 hotpath = ["hotpath/hotpath"]
