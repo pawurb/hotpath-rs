@@ -236,6 +236,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn http_limit(self, _limit: usize) -> Self {
+        self
+    }
+
     pub fn limit(self, _limit: usize) -> Self {
         self
     }

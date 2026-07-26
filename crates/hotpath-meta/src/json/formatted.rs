@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::json::{
-    ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, SqlLogs, StreamLogs, ThreadMetrics,
+    ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, HttpLogs, SqlLogs, StreamLogs,
+    ThreadMetrics,
 };
 
 use crate::output::{format_bytes, format_duration, FunctionLog, FunctionLogsList, ProfilingMode};
@@ -399,6 +400,10 @@ pub struct JsonSqlList {
 pub struct JsonSqlEntry {
     pub id: u32,
     pub query: String,
+    /// Instrumented function the query was executed from, `None` when it ran
+    /// outside any measured scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     pub count: u64,
     pub avg: String,
     pub total: String,
@@ -434,6 +439,67 @@ impl JsonSqlLogsList {
                     ago: format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp)),
                     duration: format_duration(entry.duration_nanos),
                     query: entry.query.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonHttpList {
+    pub current_elapsed_ns: u64,
+    pub total_ns: u64,
+    pub percentiles: Vec<f64>,
+    pub data: Vec<JsonHttpEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonHttpEntry {
+    pub id: u32,
+    pub endpoint: String,
+    /// Instrumented function the request was issued from, `None` when it was
+    /// sent outside any measured scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub count: u64,
+    pub errors: u64,
+    pub avg: String,
+    pub total: String,
+    pub percent_total: String,
+    pub percentiles: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonHttpLog {
+    pub index: u64,
+    pub timestamp: String,
+    pub ago: String,
+    pub duration: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonHttpLogsList {
+    pub id: String,
+    pub logs: Vec<JsonHttpLog>,
+}
+
+impl JsonHttpLogsList {
+    pub(crate) fn from_logs(logs: &HttpLogs, current_elapsed_ns: u64) -> Self {
+        JsonHttpLogsList {
+            id: logs.id.to_string(),
+            logs: logs
+                .logs
+                .iter()
+                .map(|entry| JsonHttpLog {
+                    index: entry.index,
+                    timestamp: format_duration(entry.timestamp),
+                    ago: format_time_ago(current_elapsed_ns.saturating_sub(entry.timestamp)),
+                    duration: format_duration(entry.duration_nanos),
+                    status: entry
+                        .status
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "error".to_string()),
                 })
                 .collect(),
         }
@@ -853,6 +919,8 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sql: Option<JsonSqlList>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub http: Option<JsonHttpList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<JsonThreadsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug: Option<JsonDebugList>,
@@ -875,6 +943,7 @@ impl Default for JsonReport {
             rw_locks: None,
             mutexes: None,
             sql: None,
+            http: None,
             threads: None,
             debug: None,
             cpu_baseline: None,

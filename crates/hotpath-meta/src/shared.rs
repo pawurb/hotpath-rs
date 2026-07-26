@@ -11,6 +11,7 @@ pub enum Section {
     RwLocks,
     Mutexes,
     Sql,
+    Http,
     Threads,
     Debug,
 }
@@ -27,6 +28,7 @@ impl Section {
             Section::RwLocks,
             Section::Mutexes,
             Section::Sql,
+            Section::Http,
             Section::Threads,
             Section::Debug,
         ]
@@ -43,6 +45,7 @@ impl Section {
             Section::RwLocks => "rw_locks",
             Section::Mutexes => "mutexes",
             Section::Sql => "sql",
+            Section::Http => "http",
             Section::Threads => "threads",
             Section::Debug => "debug",
         }
@@ -59,6 +62,7 @@ impl Section {
             "rw_locks" => Some(Section::RwLocks),
             "mutexes" => Some(Section::Mutexes),
             "sql" => Some(Section::Sql),
+            "http" => Some(Section::Http),
             "threads" => Some(Section::Threads),
             "debug" => Some(Section::Debug),
             _ => None,
