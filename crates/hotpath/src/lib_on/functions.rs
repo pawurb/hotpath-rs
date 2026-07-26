@@ -231,7 +231,7 @@ where
                 None,
                 alloc_bridge,
                 false,
-                Some(measurement_loc),
+                async_caller_scope(measurement_loc),
             )
             .await;
             guard.finish_with_result(&result);
@@ -243,6 +243,12 @@ where
             result
         }
     }
+}
+
+/// Caller scope for a measured async body: `None` when `HOTPATH_FOCUS`
+/// excludes the function, matching the sync guards' skipped behavior.
+fn async_caller_scope(measurement_loc: &'static str) -> Option<&'static str> {
+    is_focused(measurement_loc).then_some(measurement_loc)
 }
 
 /// Runs a measured async body with its function name registered on the
@@ -267,7 +273,7 @@ where
                 None,
                 None,
                 false,
-                Some(measurement_loc),
+                async_caller_scope(measurement_loc),
             )
             .await
         } else {
@@ -296,7 +302,7 @@ where
                 None,
                 alloc_bridge,
                 false,
-                Some(measurement_loc),
+                async_caller_scope(measurement_loc),
             )
             .await
         } else {
@@ -325,7 +331,7 @@ where
         None,
         alloc_bridge,
         true,
-        Some(measurement_loc),
+        async_caller_scope(measurement_loc),
     )
     .await
 }
@@ -351,7 +357,7 @@ where
         None,
         alloc_bridge,
         true,
-        Some(measurement_loc),
+        async_caller_scope(measurement_loc),
     )
     .await;
     guard.finish_with_result(&result);
