@@ -64,6 +64,7 @@ drop = (
     "crates/test-mutex-async-lock",
     "crates/test-streams",
     "crates/test-futures",
+    "crates/test-io",
     "crates/test-debug",
     "crates/test-sqlx-08",
     "crates/test-sqlx-09",
