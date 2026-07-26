@@ -102,10 +102,11 @@ fn snapshot_from_metrics(m: &tokio::runtime::RuntimeMetrics) -> JsonRuntimeSnaps
     snapshot
 }
 
-static LATEST_SNAPSHOT: OnceLock<std::sync::RwLock<Option<JsonRuntimeSnapshot>>> = OnceLock::new();
+static LATEST_SNAPSHOT: OnceLock<crate::lib_on::MetaRwLock<Option<JsonRuntimeSnapshot>>> =
+    OnceLock::new();
 
-fn get_snapshot_lock() -> &'static std::sync::RwLock<Option<JsonRuntimeSnapshot>> {
-    LATEST_SNAPSHOT.get_or_init(|| std::sync::RwLock::new(None))
+fn get_snapshot_lock() -> &'static crate::lib_on::MetaRwLock<Option<JsonRuntimeSnapshot>> {
+    LATEST_SNAPSHOT.get_or_init(|| crate::lib_on::meta_rw_lock!("tokio_runtime_snapshot", None))
 }
 
 pub(crate) fn get_runtime_json() -> Option<JsonRuntimeSnapshot> {

@@ -2,7 +2,9 @@
 //! CPU usage statistics for all threads in the current process.
 
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, OnceLock, RwLock};
+use std::sync::{Arc, LazyLock, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 use std::time::Duration;
 
 use crate::instant::Instant;
@@ -58,7 +60,7 @@ struct ThreadsState {
     baseline_cpu: HashMap<u64, (f64, Instant)>,
 }
 
-type ThreadsStateRef = Arc<RwLock<ThreadsState>>;
+type ThreadsStateRef = Arc<MetaRwLock<ThreadsState>>;
 
 static THREADS_STATE: OnceLock<ThreadsStateRef> = OnceLock::new();
 
@@ -79,15 +81,18 @@ pub(crate) fn init_threads_monitoring() {
         let sample_interval = Duration::from_millis(sample_interval_ms);
         let start_time = Instant::now();
 
-        let state = Arc::new(RwLock::new(ThreadsState {
-            previous_metrics: HashMap::new(),
-            current_metrics: Vec::new(),
-            last_sample_time: start_time,
-            sample_interval,
-            start_time,
-            max_cpu_percent: HashMap::new(),
-            baseline_cpu: HashMap::new(),
-        }));
+        let state = Arc::new(meta_rw_lock!(
+            "threads_state",
+            ThreadsState {
+                previous_metrics: HashMap::new(),
+                current_metrics: Vec::new(),
+                last_sample_time: start_time,
+                sample_interval,
+                start_time,
+                max_cpu_percent: HashMap::new(),
+                baseline_cpu: HashMap::new(),
+            },
+        ));
 
         let state_clone = Arc::clone(&state);
 

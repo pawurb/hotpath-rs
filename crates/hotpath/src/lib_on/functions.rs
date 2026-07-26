@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
+use std::{sync::LazyLock, sync::OnceLock, time::Duration};
 
 use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
@@ -379,17 +379,20 @@ where
     result
 }
 
-pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<FunctionsState>>> =
-    OnceLock::new();
+pub(crate) static FUNCTIONS_STATE: OnceLock<
+    ArcSwapOption<crate::lib_on::MetaRwLock<FunctionsState>>,
+> = OnceLock::new();
 
 pub(crate) static FUNCTIONS_QUERY_TX: OnceLock<crossbeam_channel::Sender<FunctionsQuery>> =
     OnceLock::new();
 
-static CPU_LABEL_ALIASES: OnceLock<RwLock<HashMap<&'static str, &'static str>>> = OnceLock::new();
+static CPU_LABEL_ALIASES: OnceLock<crate::lib_on::MetaRwLock<HashMap<&'static str, &'static str>>> =
+    OnceLock::new();
 
 #[doc(hidden)]
 pub fn register_cpu_label_alias(label: &'static str, symbol: &'static str) {
-    let map = CPU_LABEL_ALIASES.get_or_init(|| RwLock::new(HashMap::new()));
+    let map = CPU_LABEL_ALIASES
+        .get_or_init(|| crate::lib_on::meta_rw_lock!("cpu_label_aliases", HashMap::new()));
     if let Ok(mut w) = map.write() {
         w.entry(label).or_insert(symbol);
     }

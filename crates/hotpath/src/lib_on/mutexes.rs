@@ -7,7 +7,9 @@ use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sende
 use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
@@ -113,7 +115,7 @@ pub(crate) struct MutexesInternalState {
 }
 
 pub(crate) struct MutexesState {
-    pub(crate) inner: Arc<StdRwLock<MutexesInternalState>>,
+    pub(crate) inner: Arc<MetaRwLock<MutexesInternalState>>,
     pub(crate) shutdown_tx: StdMutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: StdMutex<Option<CbReceiver<()>>>,
 }
@@ -252,7 +254,7 @@ pub(crate) fn register_mutex<T>(source: &'static str, label: Option<String>) -> 
     id
 }
 
-fn flush_mutex_buffer(buffer: &mut Vec<MutexEvent>, inner: &Arc<StdRwLock<MutexesInternalState>>) {
+fn flush_mutex_buffer(buffer: &mut Vec<MutexEvent>, inner: &Arc<MetaRwLock<MutexesInternalState>>) {
     if buffer.is_empty() {
         return;
     }
@@ -271,9 +273,12 @@ pub(crate) fn init_mutexes_state() -> &'static MutexesState {
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
-        let inner = Arc::new(StdRwLock::new(MutexesInternalState {
-            stats: HashMap::new(),
-        }));
+        let inner = Arc::new(meta_rw_lock!(
+            "mutexes_state",
+            MutexesInternalState {
+                stats: HashMap::new(),
+            },
+        ));
         let inner_clone = Arc::clone(&inner);
 
         EVENT_QUEUES.set_active(true);

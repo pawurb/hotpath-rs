@@ -3,7 +3,7 @@ use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, unbounded, Select};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 
 pub(crate) static CONFIGURED_PERCENTILES: std::sync::OnceLock<Vec<f64>> =
@@ -389,7 +389,7 @@ impl HotpathGuardBuilder {
 /// and writes the profiling report. Create one via [`HotpathGuardBuilder`].
 #[must_use = "guard is dropped immediately without generating a report"]
 pub struct HotpathGuard {
-    state: Arc<RwLock<FunctionsState>>,
+    state: Arc<crate::lib_on::MetaRwLock<FunctionsState>>,
     format: Format,
     wrapper_guard: Option<MeasurementGuardSync>,
     output_path: Option<PathBuf>,
@@ -444,14 +444,17 @@ impl HotpathGuard {
         let _ = FUNCTIONS_QUERY_TX.set(query_tx);
         let start_time = Instant::now();
 
-        let state_arc = Arc::new(RwLock::new(FunctionsState {
-            shutdown_tx: Some(shutdown_tx),
-            completion_rx: Some(Mutex::new(completion_rx)),
-            start_time,
-            caller_name,
-            percentiles: percentiles.clone(),
-            limit,
-        }));
+        let state_arc = Arc::new(crate::lib_on::meta_rw_lock!(
+            "functions_state",
+            FunctionsState {
+                shutdown_tx: Some(shutdown_tx),
+                completion_rx: Some(Mutex::new(completion_rx)),
+                start_time,
+                caller_name,
+                percentiles: percentiles.clone(),
+                limit,
+            },
+        ));
 
         let worker_start_time = start_time;
         let worker_percentiles = percentiles.clone();
@@ -793,7 +796,7 @@ impl Drop for HotpathGuard {
 
         let cpu_baseline = crate::cpu_baseline::shutdown_cpu_baseline();
 
-        let state: Arc<RwLock<FunctionsState>> = Arc::clone(&self.state);
+        let state: Arc<crate::lib_on::MetaRwLock<FunctionsState>> = Arc::clone(&self.state);
         let elapsed = self.start_time.elapsed();
         let percentiles = state
             .read()

@@ -18,7 +18,9 @@ use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sende
 use hdrhistogram::Histogram;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
@@ -156,7 +158,7 @@ pub(crate) struct HttpInternalState {
 }
 
 pub(crate) struct HttpState {
-    pub(crate) inner: Arc<StdRwLock<HttpInternalState>>,
+    pub(crate) inner: Arc<MetaRwLock<HttpInternalState>>,
     pub(crate) shutdown_tx: StdMutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: StdMutex<Option<CbReceiver<()>>>,
 }
@@ -255,7 +257,7 @@ fn process_http_event(state: &mut HttpInternalState, event: HttpEvent) {
     });
 }
 
-fn flush_http_buffer(buffer: &mut Vec<HttpEvent>, inner: &Arc<StdRwLock<HttpInternalState>>) {
+fn flush_http_buffer(buffer: &mut Vec<HttpEvent>, inner: &Arc<MetaRwLock<HttpInternalState>>) {
     if buffer.is_empty() {
         return;
     }
@@ -275,10 +277,13 @@ pub fn init_http_state() {
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
-        let inner = Arc::new(StdRwLock::new(HttpInternalState {
-            stats: HashMap::new(),
-            logs: HashMap::new(),
-        }));
+        let inner = Arc::new(meta_rw_lock!(
+            "http_state",
+            HttpInternalState {
+                stats: HashMap::new(),
+                logs: HashMap::new(),
+            },
+        ));
         let inner_clone = Arc::clone(&inner);
 
         EVENT_QUEUES.set_active(true);

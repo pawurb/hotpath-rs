@@ -61,6 +61,35 @@ pub mod hotpath_guard;
 pub(crate) mod report;
 pub(crate) mod sampling;
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "hotpath-meta")] {
+        /// Profiler-internal shared-state lock: the meta-instrumented
+        /// `std::sync::RwLock` wrapper when self-profiling is enabled, the
+        /// plain std lock otherwise. Construct via [`meta_rw_lock!`].
+        pub(crate) type MetaRwLock<T> = hotpath_meta::wrap::std::sync::RwLock<T>;
+
+        /// A macro rather than a function so each lock registers its own
+        /// call-site source; a shared source would make meta's label
+        /// resolution append dedup suffixes (`sql_state-2`).
+        macro_rules! meta_rw_lock {
+            ($label:expr, $value:expr $(,)?) => {
+                hotpath_meta::rw_lock!(std::sync::RwLock::new($value), label = $label)
+            };
+        }
+    } else {
+        pub(crate) type MetaRwLock<T> = std::sync::RwLock<T>;
+
+        macro_rules! meta_rw_lock {
+            ($label:expr, $value:expr $(,)?) => {{
+                let _ = $label;
+                std::sync::RwLock::new($value)
+            }};
+        }
+    }
+}
+
+pub(crate) use meta_rw_lock;
+
 #[cfg(feature = "hotpath-alloc")]
 pub use functions::alloc::allocator::CountingAllocator;
 pub use functions::{

@@ -4,7 +4,9 @@ use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sende
 use hdrhistogram::Histogram;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 use crate::instant::Instant;
 
@@ -398,7 +400,7 @@ pub(crate) enum ChannelEvent {
 }
 
 pub(crate) struct ChannelsState {
-    pub(crate) inner: Arc<RwLock<ChannelsInternalState>>,
+    pub(crate) inner: Arc<MetaRwLock<ChannelsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -586,7 +588,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
 
 fn flush_channel_buffer(
     buffer: &mut Vec<ChannelEvent>,
-    inner: &Arc<RwLock<ChannelsInternalState>>,
+    inner: &Arc<MetaRwLock<ChannelsInternalState>>,
 ) {
     if buffer.is_empty() {
         return;
@@ -606,10 +608,13 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
 
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
-        let inner = Arc::new(RwLock::new(ChannelsInternalState {
-            stats: HashMap::new(),
-            logs: HashMap::new(),
-        }));
+        let inner = Arc::new(meta_rw_lock!(
+            "channels_state",
+            ChannelsInternalState {
+                stats: HashMap::new(),
+                logs: HashMap::new(),
+            },
+        ));
         let inner_clone = Arc::clone(&inner);
 
         EVENT_QUEUES.set_active(true);

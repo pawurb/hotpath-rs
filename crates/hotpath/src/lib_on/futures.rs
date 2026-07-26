@@ -6,11 +6,12 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::instant::Instant;
 
 use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 pub(crate) mod wrapper;
 
@@ -31,8 +32,8 @@ pub(crate) fn next_future_id() -> u32 {
 use std::sync::LazyLock;
 
 /// Thread-safe map from source location to future_id
-static SOURCE_TO_FUTURE_ID: LazyLock<RwLock<HashMap<&'static str, u32>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+static SOURCE_TO_FUTURE_ID: LazyLock<MetaRwLock<HashMap<&'static str, u32>>> =
+    LazyLock::new(|| meta_rw_lock!("futures_source_ids", HashMap::new()));
 
 /// Get or create a future_id for a source location.
 /// Returns (future_id, is_new) where is_new indicates if this is a newly created future.
@@ -211,7 +212,7 @@ pub(crate) enum FutureEvent {
 }
 
 pub(crate) struct FuturesState {
-    pub(crate) inner: Arc<RwLock<FuturesInternalState>>,
+    pub(crate) inner: Arc<MetaRwLock<FuturesInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -245,7 +246,10 @@ pub fn init_futures_state() {
     let _ = get_futures_state();
 }
 
-fn flush_future_buffer(buffer: &mut Vec<FutureEvent>, inner: &Arc<RwLock<FuturesInternalState>>) {
+fn flush_future_buffer(
+    buffer: &mut Vec<FutureEvent>,
+    inner: &Arc<MetaRwLock<FuturesInternalState>>,
+) {
     if buffer.is_empty() {
         return;
     }
@@ -265,10 +269,13 @@ fn get_futures_state() -> &'static FuturesState {
 
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
-        let inner = Arc::new(RwLock::new(FuturesInternalState {
-            stats: HashMap::new(),
-            logs: HashMap::new(),
-        }));
+        let inner = Arc::new(meta_rw_lock!(
+            "futures_state",
+            FuturesInternalState {
+                stats: HashMap::new(),
+                logs: HashMap::new(),
+            },
+        ));
         let inner_clone = Arc::clone(&inner);
 
         EVENT_QUEUES.set_active(true);

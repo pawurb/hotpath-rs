@@ -4,7 +4,9 @@ use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sende
 use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
@@ -150,7 +152,7 @@ pub(crate) struct RwLocksInternalState {
 }
 
 pub(crate) struct RwLocksState {
-    pub(crate) inner: Arc<StdRwLock<RwLocksInternalState>>,
+    pub(crate) inner: Arc<MetaRwLock<RwLocksInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -316,7 +318,7 @@ pub(crate) fn register_rw_lock<T>(source: &'static str, label: Option<String>) -
 
 fn flush_rw_lock_buffer(
     buffer: &mut Vec<RwLockEvent>,
-    inner: &Arc<StdRwLock<RwLocksInternalState>>,
+    inner: &Arc<MetaRwLock<RwLocksInternalState>>,
 ) {
     if buffer.is_empty() {
         return;
@@ -336,9 +338,12 @@ pub(crate) fn init_rw_locks_state() -> &'static RwLocksState {
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
-        let inner = Arc::new(StdRwLock::new(RwLocksInternalState {
-            stats: HashMap::new(),
-        }));
+        let inner = Arc::new(meta_rw_lock!(
+            "rw_locks_state",
+            RwLocksInternalState {
+                stats: HashMap::new(),
+            },
+        ));
         let inner_clone = Arc::clone(&inner);
 
         EVENT_QUEUES.set_active(true);

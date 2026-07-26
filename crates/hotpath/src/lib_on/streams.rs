@@ -3,7 +3,9 @@
 use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 use crate::instant::Instant;
 
@@ -117,7 +119,7 @@ pub(crate) enum StreamEvent {
 }
 
 pub(crate) struct StreamsState {
-    pub(crate) inner: Arc<RwLock<StreamsInternalState>>,
+    pub(crate) inner: Arc<MetaRwLock<StreamsInternalState>>,
     pub(crate) shutdown_tx: Mutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: Mutex<Option<CbReceiver<()>>>,
 }
@@ -205,7 +207,10 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
     }
 }
 
-fn flush_stream_buffer(buffer: &mut Vec<StreamEvent>, inner: &Arc<RwLock<StreamsInternalState>>) {
+fn flush_stream_buffer(
+    buffer: &mut Vec<StreamEvent>,
+    inner: &Arc<MetaRwLock<StreamsInternalState>>,
+) {
     if buffer.is_empty() {
         return;
     }
@@ -225,10 +230,13 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
 
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
-        let inner = Arc::new(RwLock::new(StreamsInternalState {
-            stats: HashMap::new(),
-            logs: HashMap::new(),
-        }));
+        let inner = Arc::new(meta_rw_lock!(
+            "streams_state",
+            StreamsInternalState {
+                stats: HashMap::new(),
+                logs: HashMap::new(),
+            },
+        ));
         let inner_clone = Arc::clone(&inner);
 
         EVENT_QUEUES.set_active(true);

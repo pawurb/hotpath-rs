@@ -19,7 +19,9 @@ use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sende
 use hdrhistogram::Histogram;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, LazyLock, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
+use std::sync::{Arc, LazyLock, Mutex as StdMutex, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
@@ -132,7 +134,7 @@ pub(crate) struct SqlInternalState {
 }
 
 pub(crate) struct SqlState {
-    pub(crate) inner: Arc<StdRwLock<SqlInternalState>>,
+    pub(crate) inner: Arc<MetaRwLock<SqlInternalState>>,
     pub(crate) shutdown_tx: StdMutex<Option<CbSender<()>>>,
     pub(crate) completion_rx: StdMutex<Option<CbReceiver<()>>>,
 }
@@ -236,7 +238,7 @@ fn truncate_query(sql: &str) -> String {
     format!("{}...", &sql[..end])
 }
 
-fn flush_sql_buffer(buffer: &mut Vec<SqlEvent>, inner: &Arc<StdRwLock<SqlInternalState>>) {
+fn flush_sql_buffer(buffer: &mut Vec<SqlEvent>, inner: &Arc<MetaRwLock<SqlInternalState>>) {
     if buffer.is_empty() {
         return;
     }
@@ -255,10 +257,13 @@ pub(crate) fn init_sql_state() -> &'static SqlState {
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
         let (completion_tx, completion_rx) = bounded::<()>(1);
 
-        let inner = Arc::new(StdRwLock::new(SqlInternalState {
-            stats: HashMap::new(),
-            logs: HashMap::new(),
-        }));
+        let inner = Arc::new(meta_rw_lock!(
+            "sql_state",
+            SqlInternalState {
+                stats: HashMap::new(),
+                logs: HashMap::new(),
+            },
+        ));
         let inner_clone = Arc::clone(&inner);
 
         EVENT_QUEUES.set_active(true);

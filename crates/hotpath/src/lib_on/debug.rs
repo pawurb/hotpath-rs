@@ -7,16 +7,18 @@ use crossbeam_channel::unbounded;
 use crossbeam_channel::Sender as CbSender;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
+
+use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
 pub static DEBUG_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-static VAL_ID_REGISTRY: OnceLock<RwLock<HashMap<String, u32>>> = OnceLock::new();
-static GAUGE_ID_REGISTRY: OnceLock<RwLock<HashMap<String, u32>>> = OnceLock::new();
+static VAL_ID_REGISTRY: OnceLock<MetaRwLock<HashMap<String, u32>>> = OnceLock::new();
+static GAUGE_ID_REGISTRY: OnceLock<MetaRwLock<HashMap<String, u32>>> = OnceLock::new();
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_or_create_val_id(key: &str) -> u32 {
-    let registry = VAL_ID_REGISTRY.get_or_init(|| RwLock::new(HashMap::new()));
+    let registry = VAL_ID_REGISTRY.get_or_init(|| meta_rw_lock!("debug_val_ids", HashMap::new()));
     if let Some(&id) = registry.read().unwrap().get(key) {
         return id;
     }
@@ -28,7 +30,8 @@ pub(crate) fn get_or_create_val_id(key: &str) -> u32 {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_or_create_gauge_id(key: &str) -> u32 {
-    let registry = GAUGE_ID_REGISTRY.get_or_init(|| RwLock::new(HashMap::new()));
+    let registry =
+        GAUGE_ID_REGISTRY.get_or_init(|| meta_rw_lock!("debug_gauge_ids", HashMap::new()));
     if let Some(&id) = registry.read().unwrap().get(key) {
         return id;
     }
@@ -159,9 +162,9 @@ type DebugEventTx = CbSender<DebugEvent>;
 
 struct DebugState {
     event_tx: DebugEventTx,
-    dbg: Arc<RwLock<HashMap<u32, DbgEntry>>>,
-    val: Arc<RwLock<HashMap<u32, ValEntry>>>,
-    gauge: Arc<RwLock<HashMap<u32, GaugeEntry>>>,
+    dbg: Arc<MetaRwLock<HashMap<u32, DbgEntry>>>,
+    val: Arc<MetaRwLock<HashMap<u32, ValEntry>>>,
+    gauge: Arc<MetaRwLock<HashMap<u32, GaugeEntry>>>,
 }
 
 static DEBUG_STATE: OnceLock<DebugState> = OnceLock::new();
@@ -177,9 +180,18 @@ pub(crate) fn init_debug_state() {
         #[cfg(feature = "hotpath-meta")]
         let (event_tx, event_rx) =
             hotpath_meta::channel!((event_tx, event_rx), label = "hp-dbg-events", log = true);
-        let dbg = Arc::new(RwLock::new(HashMap::<u32, DbgEntry>::new()));
-        let val = Arc::new(RwLock::new(HashMap::<u32, ValEntry>::new()));
-        let gauge = Arc::new(RwLock::new(HashMap::<u32, GaugeEntry>::new()));
+        let dbg = Arc::new(meta_rw_lock!(
+            "debug_dbg_state",
+            HashMap::<u32, DbgEntry>::new(),
+        ));
+        let val = Arc::new(meta_rw_lock!(
+            "debug_val_state",
+            HashMap::<u32, ValEntry>::new(),
+        ));
+        let gauge = Arc::new(meta_rw_lock!(
+            "debug_gauge_state",
+            HashMap::<u32, GaugeEntry>::new(),
+        ));
         let dbg_clone = Arc::clone(&dbg);
         let val_clone = Arc::clone(&val);
         let gauge_clone = Arc::clone(&gauge);
