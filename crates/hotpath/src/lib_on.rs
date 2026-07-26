@@ -48,6 +48,7 @@ pub use channels::{
 };
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
 pub use http::{InstrumentHttpClient, ReqwestHttpMiddleware};
+pub use io::io_unwrap;
 pub use mutexes::InstrumentMutex;
 pub use rw_locks::InstrumentRwLock;
 #[cfg(feature = "diesel")]

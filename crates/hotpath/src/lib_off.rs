@@ -359,6 +359,13 @@ macro_rules! mutex {
     };
 }
 
+/// No-op counterpart of the enabled-mode `io_unwrap`. `io!` returns its
+/// argument unchanged when profiling is disabled, so unwrapping is the
+/// identity and call sites compile identically in both modes.
+pub fn io_unwrap<T>(io: T) -> T {
+    io
+}
+
 #[macro_export]
 macro_rules! io {
     ($expr:expr) => {

@@ -57,6 +57,21 @@ See the runnable [basic_redis_io](https://github.com/pawurb/hotpath-rs/blob/main
 
 The `label` parameter is optional; without it the wrapper is identified by `file:line`.
 
+The wrapper derefs to the wrapped value, so its `&self`/`&mut self` methods are callable directly. For consuming methods (e.g. a codec's `finish(self)`), unwrap first with `hotpath::io_unwrap`:
+
+```rust
+use std::io::Write;
+
+let mut encoder = hotpath::io!(
+    flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default()),
+    label = "gzip"
+);
+encoder.write_all(data)?;
+let compressed = hotpath::io_unwrap(encoder).finish()?;
+```
+
+With profiling disabled `io!` returns its argument unchanged and `io_unwrap` is the identity, so call sites compile identically in both modes.
+
 Report entries are keyed by creation site and concrete type: wrappers created repeatedly at one `io!` call - for example per accepted connection in a server loop - accumulate into a single entry, so profiler memory stays bounded by the number of `io!` call sites rather than the number of values ever wrapped.
 
 ## What you measure depends on what you wrap

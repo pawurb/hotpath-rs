@@ -19,7 +19,7 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 
 pub(crate) mod wrapper;
 
-pub use wrapper::InstrumentedIo;
+pub use wrapper::{io_unwrap, InstrumentedIo};
 
 static IO_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -490,6 +490,10 @@ pub(crate) fn compare_io_entries(a: &IoEntry, b: &IoEntry) -> std::cmp::Ordering
 /// Wrapping the underlying resource (file, socket) measures actual resource
 /// I/O; wrapping a `BufReader`/`BufWriter` measures application-facing
 /// buffered operations.
+///
+/// The wrapper derefs to the wrapped value; for consuming methods of the
+/// wrapped type (e.g. a codec's `finish(self)`) unwrap first with
+/// [`io_unwrap`](crate::io_unwrap).
 ///
 /// # Examples
 ///

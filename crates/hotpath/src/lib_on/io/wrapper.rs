@@ -69,14 +69,19 @@ impl<T> InstrumentedIo<T> {
             shutdown_op: None,
         }
     }
+}
 
-    /// Consumes the wrapper, returning the wrapped value. The escape hatch
-    /// for calling consuming methods of the wrapped type (e.g. a codec's
-    /// `finish(self)`); borrowing methods are reachable directly through
-    /// `Deref`/`DerefMut` instead.
-    pub fn into_inner(self) -> T {
-        self.inner
-    }
+/// Consumes an [`io!`](crate::io!) wrapper, returning the wrapped value. The
+/// escape hatch for calling consuming methods of the wrapped type (e.g. a
+/// codec's `finish(self)`); borrowing methods are reachable directly through
+/// `Deref`/`DerefMut` instead.
+///
+/// A free function rather than a method so it can never shadow the wrapped
+/// type's own `into_inner`, and so call sites compile identically with
+/// profiling disabled, where `io!` returns its argument unchanged and
+/// `io_unwrap` is the identity.
+pub fn io_unwrap<T>(io: InstrumentedIo<T>) -> T {
+    io.inner
 }
 
 /// The wrapper derefs to the wrapped value, so its inherent `&self`/`&mut
