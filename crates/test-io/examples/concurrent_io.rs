@@ -2,7 +2,9 @@
 //! `io!` call site. Each read delivers 1 MiB after a fixed 10ms delay, i.e.
 //! ~100 MiB/s per reader; the `sequential` entry is a single reader while
 //! `concurrent` aggregates four fully-overlapped readers, so comparing the
-//! two rows shows how overlapped operation time is attributed.
+//! two rows shows how overlapped operation time is attributed. The
+//! `per-reader` site uses `iter = true`, giving each of its four readers a
+//! separate row with individual rate and byte counts.
 
 use std::io::Read;
 use std::thread;
@@ -39,6 +41,19 @@ fn main() {
             s.spawn(|| {
                 let mut buf = vec![0u8; CHUNK];
                 let mut reader = hotpath::io!(SlowReader, label = "concurrent");
+                for _ in 0..OPS_PER_READER {
+                    let n = reader.read(&mut buf).unwrap();
+                    assert_eq!(n, CHUNK);
+                }
+            });
+        }
+    });
+
+    thread::scope(|s| {
+        for _ in 0..READERS {
+            s.spawn(|| {
+                let mut buf = vec![0u8; CHUNK];
+                let mut reader = hotpath::io!(SlowReader, label = "per-reader", iter = true);
                 for _ in 0..OPS_PER_READER {
                     let n = reader.read(&mut buf).unwrap();
                     assert_eq!(n, CHUNK);

@@ -118,6 +118,14 @@ pub mod tests {
             1,
             "Same-site wrappers must not create separate entries"
         );
+
+        // `iter = true` gives every instance its own entry.
+        for label in ["itered", "itered-2"] {
+            let itered = entry(&io, label);
+            assert_eq!(itered.instances, 1);
+            assert_eq!(itered.read.count, 1);
+            assert_eq!(itered.read.bytes, 2);
+        }
     }
 
     // cargo run -p test-io --example basic_io_async --features hotpath (json)

@@ -91,6 +91,14 @@ fn main() {
         assert_eq!(lbuf, [1, 2, 3]);
     }
 
+    // With `iter = true` every wrapper instance gets its own entry instead.
+    for _ in 0..2 {
+        let mut itered = hotpath::io!(Cursor::new(vec![4u8, 5]), label = "itered", iter = true);
+        let mut ibuf = [0u8; 2];
+        itered.read_exact(&mut ibuf).unwrap();
+        assert_eq!(ibuf, [4, 5]);
+    }
+
     std::fs::remove_file(&path).ok();
     println!("Sync io example completed!");
 }

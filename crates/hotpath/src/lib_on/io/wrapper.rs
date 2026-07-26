@@ -49,8 +49,13 @@ cfg_if::cfg_if! {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl<T> InstrumentedIo<T> {
     #[doc(hidden)]
-    pub fn __new_instrumented(inner: T, source: &'static str, label: Option<String>) -> Self {
-        let id = register_io::<T>(source, label);
+    pub fn __new_instrumented(
+        inner: T,
+        source: &'static str,
+        label: Option<String>,
+        iter: bool,
+    ) -> Self {
+        let id = register_io::<T>(source, label, iter);
         Self {
             inner,
             id,

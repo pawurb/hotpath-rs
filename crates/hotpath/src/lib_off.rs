@@ -367,6 +367,15 @@ macro_rules! io {
     ($expr:expr, label = $label:expr) => {
         $expr
     };
+    ($expr:expr, iter = true) => {
+        $expr
+    };
+    ($expr:expr, label = $label:expr, iter = true) => {
+        $expr
+    };
+    ($expr:expr, iter = true, label = $label:expr) => {
+        $expr
+    };
 }
 
 #[macro_export]
