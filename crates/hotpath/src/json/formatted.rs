@@ -524,19 +524,28 @@ pub struct JsonIoEntry {
     pub write: JsonIoOpStats,
     pub flush: JsonIoOpStats,
     pub shutdown: JsonIoOpStats,
+    /// Number of wrapper instances aggregated into this call-site entry.
+    #[serde(default)]
+    pub instances: u32,
     pub iter: u32,
 }
 
-/// Per-operation-kind statistics for one instrumented I/O value. `total_ns`
-/// and `bytes` are raw values; `avg` and `percentiles` are formatted durations.
+/// Per-operation-kind statistics for one instrumented I/O value. `total_ns`,
+/// `bytes`, and `sampled_bytes` are raw values; `avg`, `throughput`, and
+/// `percentiles` are formatted. `throughput` is the transfer rate over timed
+/// operations (`sampled_bytes / total_ns`), `None` when nothing was timed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonIoOpStats {
     pub count: u64,
     #[serde(default)]
     pub sampled_count: u64,
     pub bytes: u64,
+    #[serde(default)]
+    pub sampled_bytes: u64,
     pub errors: u64,
     pub avg: String,
+    #[serde(default)]
+    pub throughput: Option<String>,
     pub total_ns: u64,
     pub percentiles: HashMap<String, String>,
 }

@@ -30,8 +30,9 @@ pub use output::format_debug_truncated;
 #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_count, format_duration,
-    format_percentile_header, format_percentile_key, format_rate, parse_bytes, parse_count,
-    parse_duration, shorten_function_name, OutputDestination, ProfilingMode, MAX_LOG_LEN,
+    format_percentile_header, format_percentile_key, format_rate, format_throughput, parse_bytes,
+    parse_count, parse_duration, shorten_function_name, OutputDestination, ProfilingMode,
+    MAX_LOG_LEN,
 };
 
 #[cfg(feature = "hotpath")]

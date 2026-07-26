@@ -832,8 +832,10 @@ fn render_io_bytes_subtable(
 
     let mut header_cells = vec![
         Cell::from("Io"),
+        Cell::from("Inst"),
         Cell::from(count_label),
         Cell::from("Bytes"),
+        Cell::from("Rate"),
         Cell::from("Avg"),
     ];
     for p in percentiles {
@@ -858,8 +860,10 @@ fn render_io_bytes_subtable(
 
             let mut cells = vec![
                 Cell::from(truncate_left(&entry.label, label_width)),
+                Cell::from(entry.instances.to_string()),
                 Cell::from(stats.count.to_string()),
                 Cell::from(hotpath::format_bytes(stats.bytes)),
+                Cell::from(stats.throughput.clone().unwrap_or_else(|| "-".to_string())),
                 Cell::from(stats.avg.clone()),
             ];
             for key in &percentile_keys {
@@ -890,7 +894,9 @@ fn render_io_bytes_subtable(
 
     let mut widths = vec![
         Constraint::Percentage(30),
+        Constraint::Length(5),
         Constraint::Length(8),
+        Constraint::Length(10),
         Constraint::Length(10),
         Constraint::Length(10),
     ];

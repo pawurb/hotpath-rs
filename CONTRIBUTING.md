@@ -124,6 +124,24 @@ Runs both an uninstrumented **baseline** (raw reqwest client) and the `hotpath::
 cargo run -p test-reqwest-013 --example benchmark_http_reqwest --features hotpath --release
 ```
 
+#### Byte-level I/O
+
+Each benchmark runs both an uninstrumented **baseline** (raw `Read`/`Write` value) and the `hotpath::io!` wrapped version in a single command, printing their per-op cost side by side so the delta isolates the per-operation instrumentation overhead. Iteration counts are fixed per example (200,000 file ops, 10,000 network round trips after a 1,000-op warmup).
+
+The file benchmark hammers 64-byte reads and writes against temp files; the TCP benchmarks echo 64-byte chunks against an in-process loopback server (sync `TcpStream` and tokio `AsyncRead`/`AsyncWrite` variants), so no external services are required:
+
+```bash
+cargo run -p test-io --example benchmark_file_io --features hotpath --release
+cargo run -p test-io --example benchmark_tcp_io --features hotpath --release
+cargo run -p test-io --example benchmark_tokio_tcp_io --features hotpath --release
+```
+
+The Redis variant sends raw RESP PING/SET/GET round trips over a plain vs instrumented `TcpStream` to a real server, so every op includes a TCP round trip. Start the database first with `docker compose up -d redis` (host port 6390); the benchmark skips when nothing listens there:
+
+```bash
+cargo run -p test-io --example benchmark_redis_io --features hotpath --release
+```
+
 #### Futures and Streams
 
 ```bash

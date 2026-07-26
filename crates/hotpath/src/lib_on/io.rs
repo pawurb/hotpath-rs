@@ -71,6 +71,9 @@ pub(crate) enum IoEvent {
     /// An operation that failed. Retryable conditions (`WouldBlock`,
     /// `Interrupted`) are not reported as errors.
     Error { id: u32, kind: IoOpKind },
+    /// A repeat wrapper registration at an already-known call site. The first
+    /// instance is counted by `Created`; each later one sends this instead.
+    Instance { id: u32 },
 }
 
 /// Per-operation-kind statistics for a single instrumented I/O value.
@@ -79,6 +82,9 @@ pub(crate) struct IoOpStats {
     pub(crate) count: u64,
     pub(crate) sampled_count: u64,
     pub(crate) bytes: u64,
+    /// Bytes from timed operations only; pairs with `total_nanos` so
+    /// throughput stays correct under time sampling.
+    pub(crate) sampled_bytes: u64,
     pub(crate) errors: u64,
     pub(crate) total_nanos: u64,
     hist: Option<Histogram<u64>>,
@@ -94,6 +100,7 @@ impl IoOpStats {
             count: 0,
             sampled_count: 0,
             bytes: 0,
+            sampled_bytes: 0,
             errors: 0,
             total_nanos: 0,
             hist: Some(
@@ -108,6 +115,7 @@ impl IoOpStats {
         self.bytes += bytes;
         if let Some(nanos) = duration_nanos {
             self.sampled_count += 1;
+            self.sampled_bytes += bytes;
             self.total_nanos += nanos;
             if let Some(ref mut hist) = self.hist {
                 hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
@@ -120,6 +128,15 @@ impl IoOpStats {
         self.total_nanos
             .checked_div(self.sampled_count)
             .unwrap_or(0)
+    }
+
+    /// Estimated transfer rate while operations were in flight, based on
+    /// timed operations only. `None` when nothing was timed.
+    pub(crate) fn throughput_bytes_per_sec(&self) -> Option<f64> {
+        if self.total_nanos == 0 {
+            return None;
+        }
+        Some(self.sampled_bytes as f64 * 1_000_000_000.0 / self.total_nanos as f64)
     }
 
     pub(crate) fn percentile_nanos(&self, p: f64) -> u64 {
@@ -142,6 +159,8 @@ pub(crate) struct IoEntry {
     pub(crate) write: IoOpStats,
     pub(crate) flush: IoOpStats,
     pub(crate) shutdown: IoOpStats,
+    /// Number of wrapper instances aggregated into this entry.
+    pub(crate) instances: u32,
     pub(crate) iter: u32,
 }
 
@@ -258,6 +277,7 @@ fn placeholder_io_entry(id: u32) -> IoEntry {
         write: IoOpStats::new(),
         flush: IoOpStats::new(),
         shutdown: IoOpStats::new(),
+        instances: 0,
         iter: 0,
     }
 }
@@ -278,6 +298,7 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
             entry.source = source;
             entry.label = label;
             entry.type_name = type_name;
+            entry.instances += 1;
             entry.iter = iter;
         }
         IoEvent::Op {
@@ -299,6 +320,13 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
                 .or_insert_with(|| placeholder_io_entry(id));
             entry.op_mut(kind).errors += 1;
         }
+        IoEvent::Instance { id } => {
+            let entry = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_io_entry(id));
+            entry.instances += 1;
+        }
     }
 }
 
@@ -319,10 +347,12 @@ pub(crate) fn register_io<T>(source: &'static str, label: Option<String>) -> u32
 
     let map = IO_SOURCE_IDS.get_or_init(|| StdRwLock::new(HashMap::new()));
     if let Some(&id) = map.read().unwrap().get(&(source, type_name)) {
+        send_io_event(IoEvent::Instance { id });
         return id;
     }
     let mut writer = map.write().unwrap();
     if let Some(&id) = writer.get(&(source, type_name)) {
+        send_io_event(IoEvent::Instance { id });
         return id;
     }
     let id = next_io_id();
@@ -427,6 +457,16 @@ pub(crate) fn compare_io_entries(a: &IoEntry, b: &IoEntry) -> std::cmp::Ordering
 /// errors. Synchronous reads and writes measure the full method call; async
 /// operations measure from the first poll to `Ready`, so reported durations
 /// include async waiting time.
+///
+/// The reported `Rate` is per-operation transfer speed: bytes divided by
+/// summed in-flight operation time. When one call site is shared by wrappers
+/// operating concurrently (e.g. per accepted connection), the entry
+/// aggregates their operations and the rate stays duration-weighted per
+/// operation - it is not the call site's aggregate bandwidth. The `Inst`
+/// column reports how many wrapper instances the entry aggregates, so
+/// `Rate * Inst` bounds the call site's aggregate bandwidth from above when
+/// all instances operate concurrently. See
+/// `test-io/examples/concurrent_io.rs`.
 ///
 /// Wrapping the underlying resource (file, socket) measures actual resource
 /// I/O; wrapping a `BufReader`/`BufWriter` measures application-facing
