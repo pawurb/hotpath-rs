@@ -72,7 +72,7 @@ fn spawn_io() {
     thread::spawn(|| {
         use std::io::{Read, Write};
 
-        let mut io = hotpath::io!(std::io::Cursor::new(Vec::new()), label = "demo-io");
+        let mut io = hotpath::io!(std::io::Cursor::new(Vec::new()));
         let payload = [7u8; 256];
         let mut buf = [0u8; 64];
         loop {

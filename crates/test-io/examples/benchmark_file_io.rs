@@ -8,7 +8,6 @@ const CHUNK: usize = 64;
 fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
         .sections(vec![hotpath::Section::Io])
-        .format(hotpath::Format::None)
         .build();
 
     let dir = std::env::temp_dir();
