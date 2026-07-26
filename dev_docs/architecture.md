@@ -4,7 +4,7 @@ Runtime internals: background workers, servers, and CPU sampling. See `CLAUDE.md
 
 ## Background workers
 
-Each subsystem spawns a dedicated worker thread named `hp-<subsystem>` from its `crates/hotpath/src/lib_on/<subsystem>.rs` (grep `"hp-` for the full list). Workers sweep the per-thread SPSC queues on the drain interval, maintain running statistics (HDR histograms for percentiles), drain once more at shutdown, and hand aggregated state to report generation. `hp-threads` and `hp-runtime` are samplers instead of queue consumers (configurable intervals).
+Each subsystem spawns a dedicated worker thread named `hp-<subsystem>` from its `crates/hotpath/src/lib_on/<subsystem>.rs` (grep `"hp-` for the full list). Exception: `hp-functions` is spawned from `lib_on/hotpath_guard.rs`, where its worker loop also lives. Workers sweep the per-thread SPSC queues on the drain interval, maintain running statistics (HDR histograms for percentiles), drain once more at shutdown, and hand aggregated state to report generation. `hp-threads` and `hp-runtime` are samplers instead of queue consumers (configurable intervals).
 
 ## HTTP Metrics Server
 

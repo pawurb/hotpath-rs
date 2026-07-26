@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-crossbeam --example closed_crossbeam --features hotpath
+
 #[allow(unused_mut)]
 fn main() {
     let _channels_guard = hotpath::HotpathGuardBuilder::new("main")

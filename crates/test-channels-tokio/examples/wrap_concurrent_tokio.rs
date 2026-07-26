@@ -1,9 +1,9 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example wrap_concurrent_tokio --features hotpath
 // Races a producer against a consumer on an unbounded tokio::sync::mpsc wrap channel.
 // The depth counter is incremented before each publish, so a fast consumer can never
 // decrement it below zero (which would panic in debug builds). Asserts every message is
 // accounted for and the queue drains back to zero.
-//
-// cargo run -p test-channels-tokio --example wrap_concurrent_tokio --features hotpath
 const N: u64 = 50_000;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]

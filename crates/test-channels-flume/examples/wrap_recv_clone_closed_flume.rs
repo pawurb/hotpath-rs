@@ -1,10 +1,10 @@
+//! Run with:
+//!   cargo run -p test-channels-flume --example wrap_recv_clone_closed_flume --features hotpath
 // Replicates the precise-channel receiver-closure scenario: a Sender clone is
 // kept alive, every Receiver clone is dropped, and the report is taken *before*
 // the senders are dropped. flume disconnects the channel on the last receiver
 // drop, so the endpoint wrapper must emit `Closed` even though no `Sender` has
 // been dropped yet.
-//
-// cargo run -p test-channels-flume --example wrap_recv_clone_closed_flume --features hotpath
 fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")
         .format(hotpath::Format::JsonPretty)

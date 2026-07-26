@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-rw-lock-tokio --example benchmark_rw_lock_tokio --features hotpath
+
 use std::time::{Duration, Instant};
 
 // Single-threaded stress test comparing RwLock instrumentation overhead in one run: an

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example measure_label --features hotpath
+
 use std::time::Duration;
 
 #[hotpath::measure(label = "sync_labeled")]

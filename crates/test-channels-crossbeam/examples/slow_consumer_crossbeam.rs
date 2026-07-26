@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-crossbeam --example slow_consumer_crossbeam --features hotpath
+
 use std::thread;
 use std::time::Duration;
 

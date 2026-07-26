@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-ftc --example oneshot_closed_ftc --features hotpath
+
 use smol::Timer;
 use std::time::Duration;
 

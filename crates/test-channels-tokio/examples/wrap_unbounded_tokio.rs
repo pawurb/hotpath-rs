@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example wrap_unbounded_tokio --features hotpath
 // Demonstrates tokio::sync::mpsc channel instrumentation on an unbounded channel.
 // Sends N messages, drains them all, and the report reflects exact sent/received counts
 // with the self-tracked queue draining back to zero.
-//
-// cargo run -p test-channels-tokio --example wrap_unbounded_tokio --features hotpath
 #[tokio::main]
 async fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")

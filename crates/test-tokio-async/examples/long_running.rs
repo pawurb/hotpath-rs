@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example long_running --features hotpath
+
 use futures_util::stream::{self, StreamExt};
 use rand::Rng;
 use std::sync::{Arc, Condvar, Mutex};

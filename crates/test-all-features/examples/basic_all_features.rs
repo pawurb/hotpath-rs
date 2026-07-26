@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-all-features --example basic_all_features --all-features
+
 use std::time::Duration;
 
 #[hotpath::measure]

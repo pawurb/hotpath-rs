@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-asc --example wrap_asc --features hotpath
 // Demonstrates async-channel instrumentation: the report shows the exact
 // queue depth (50 messages parked in the channel) because the instrumented endpoints
 // sample the real channel length instead of routing through a forwarder task.
-//
-// cargo run -p test-channels-asc --example wrap_asc --features hotpath
 use std::thread;
 use std::time::Duration;
 

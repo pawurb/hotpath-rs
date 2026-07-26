@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-std --example wrap_arg_orders_std --features hotpath
 // Exercises bounded-std channels with `capacity` in every argument
 // position, combined with `label` and `log` in every order. Each channel gets a distinct
 // label so the report lists them all.
-//
-// cargo run -p test-channels-std --example wrap_arg_orders_std --features hotpath
 use std::sync::mpsc;
 
 fn main() {

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-asc --example closed_asc --features hotpath
+
 use smol::Timer;
 use std::time::Duration;
 

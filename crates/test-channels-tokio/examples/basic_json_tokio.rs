@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example basic_json_tokio --features hotpath
+
 #[allow(unused_mut)]
 #[tokio::main]
 async fn main() {

@@ -4,12 +4,12 @@ Where to find the authoritative definitions, plus behavior gotchas that the code
 
 ## Sources of truth
 
-- **Feature flags**: `[features]` in `crates/hotpath/Cargo.toml`. User-facing descriptions in `docs/src/profiling_modes.md`.
+- **Feature flags**: `[features]` in `crates/hotpath/Cargo.toml`. User-facing descriptions are spread across the per-subsystem pages in `docs/src/` (see `SUMMARY.md` for the index); `profiling_modes.md` covers only the profiling-mode flags (`hotpath`, `hotpath-alloc`, ...).
 - **Attribute macros** (`#[main]`, `#[measure]`, `#[measure_all]`, `#[skip]`, `#[future_fn]`) and their parameters: `crates/hotpath-macros/src/lib.rs` (doc comments on each `#[proc_macro_attribute]`).
 - **Declarative macros** (`measure_block!`, `dbg!`, `val!`, `gauge!`, `tokio_runtime!`): `crates/hotpath/src/lib_on.rs`. Wrapper macros (`channel!`, `stream!`, `future!`, `rw_lock!`, `mutex!`, `http!`, `io!`): `#[macro_export]` in the matching `crates/hotpath/src/lib_on/<subsystem>.rs`. Every macro has a no-op twin in `lib_off.rs`.
 - **Builder API**: `HotpathGuardBuilder` in `crates/hotpath/src/lib_on/hotpath_guard.rs` (defaults live in its field initializers).
 - **Environment variables**: user-facing reference in `docs/src/configuration.md`; discover parse sites with `grep -rn 'HOTPATH_' crates/hotpath/src crates/hotpath/bin` (main site: `lib_on/hotpath_guard.rs`; TUI vars in `bin/hotpath/cmd/console*`; CPU vars in `lib_on/functions/cpu/`).
-- **Usage examples**: each `crates/test-*` example is runnable and starts with a `//! Run with:` header containing its exact cargo command.
+- **Usage examples**: every `crates/test-*` example's top comment contains its exact cargo command (usually a `//! Run with:` header).
 
 ## Running examples
 

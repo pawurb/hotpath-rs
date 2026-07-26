@@ -8,7 +8,7 @@
 //!
 //! Profile with hotpath:
 //! ```bash
-//! cargo run --example cpu_multithread --features hotpath --profile profiling
+//! cargo run -p test-tokio-async --example cpu_multithread --features hotpath --profile profiling
 //! ```
 
 use std::hint::black_box;

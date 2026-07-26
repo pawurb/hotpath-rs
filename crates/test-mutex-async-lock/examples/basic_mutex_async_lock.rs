@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-mutex-async-lock --example basic_mutex_async_lock --features hotpath
+
 use futures_lite::future;
 use std::sync::Arc;
 use std::time::Duration;

@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example basic_tokio --features hotpath
+
 #[allow(dead_code)]
 struct Actor {
     name: String,

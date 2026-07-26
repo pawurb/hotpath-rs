@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example benchmark_noop --features hotpath
+
 use std::time::{Duration, Instant};
 
 // Single-threaded stress test comparing function instrumentation overhead in one run: an

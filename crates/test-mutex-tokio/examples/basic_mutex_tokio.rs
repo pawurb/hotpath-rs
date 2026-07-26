@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-mutex-tokio --example basic_mutex_tokio --features hotpath
+
 use std::sync::Arc;
 use std::time::Duration;
 

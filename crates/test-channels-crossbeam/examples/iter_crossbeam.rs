@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-crossbeam --example iter_crossbeam --features hotpath
+
 use std::thread;
 use std::time::Duration;
 

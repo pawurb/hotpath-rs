@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example send_timeout_tokio --features hotpath
 // Demonstrates send_timeout on a full wrapped bounded channel: the timed-out send
 // rolls the depth counter back, so the report never shows a queue deeper than the
 // channel capacity and the failed send is not counted.
-//
-// cargo run -p test-channels-tokio --example send_timeout_tokio --features hotpath
 use std::time::Duration;
 
 use tokio::sync::mpsc::error::SendTimeoutError;

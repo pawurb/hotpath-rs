@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example benchmark_instant --features hotpath
+
 use std::time::Instant as StdInstant;
 
 use hotpath::instant::Instant;

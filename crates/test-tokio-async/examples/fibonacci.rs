@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example fibonacci --features hotpath
+
 use num_bigint::BigUint;
 
 /// Iterative fibonacci using BigUint - no overflow

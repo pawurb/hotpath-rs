@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-rw-lock-async-lock --example basic_rw_lock_async_lock --features hotpath
+
 use futures_lite::future;
 use std::sync::Arc;
 use std::time::Duration;

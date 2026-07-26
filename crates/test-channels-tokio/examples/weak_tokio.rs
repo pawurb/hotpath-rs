@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example weak_tokio --features hotpath
 // Demonstrates WeakSender/WeakUnboundedSender on wrapped tokio channels:
 // downgrade/upgrade lifecycle, strong/weak counts matching the receiver-side view,
 // and the channel closing once all strong senders are gone.
-//
-// cargo run -p test-channels-tokio --example weak_tokio --features hotpath
 #[tokio::main]
 async fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")

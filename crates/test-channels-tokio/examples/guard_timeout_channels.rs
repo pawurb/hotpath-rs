@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example guard_timeout_channels --features hotpath
+
 use std::time::Duration;
 
 #[tokio::main(flavor = "current_thread")]

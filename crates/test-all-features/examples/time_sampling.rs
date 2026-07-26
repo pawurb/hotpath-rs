@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-all-features --example time_sampling --features hotpath
+//!
 //! Deterministic single-threaded workload for time-sampling integration tests.
 //!
 //! Counts are chosen so 1-in-k sampling yields exact sampled counts: the

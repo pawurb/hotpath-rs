@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-futures --example benchmark_future --features hotpath
+
 use hotpath::future;
 use std::time::Instant;
 

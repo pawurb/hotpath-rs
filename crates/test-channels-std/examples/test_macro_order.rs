@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-std --example test_macro_order --features hotpath
+
 use std::thread;
 use std::time::Duration;
 

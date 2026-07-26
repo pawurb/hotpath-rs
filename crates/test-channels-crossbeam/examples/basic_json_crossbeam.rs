@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-crossbeam --example basic_json_crossbeam --features hotpath
+
 use std::thread;
 use std::time::Duration;
 

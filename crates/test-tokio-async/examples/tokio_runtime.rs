@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example tokio_runtime --features hotpath
+
 #[hotpath::measure]
 fn do_work() {
     let data: Vec<u64> = (0..1000).map(|x| x * 2).collect();

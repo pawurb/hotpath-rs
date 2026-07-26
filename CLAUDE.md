@@ -33,7 +33,7 @@ cargo build                                # build
 cargo build --features hotpath             # build with profiling enabled
 cargo check --bin hotpath --features tui   # check the TUI binary compiles
 
-# Run an example from a test crate (each example lists its own run command in the header comment)
+# Run an example from a test crate (each example lists its exact run command in its top comment)
 cargo run -p test-tokio-async --example basic --features hotpath
 cargo run -p test-channels-tokio --example basic_tokio --features hotpath
 

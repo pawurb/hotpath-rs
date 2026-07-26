@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-futures --example measure_future --features hotpath
+
 use std::time::Duration;
 
 #[hotpath::measure(future = true)]

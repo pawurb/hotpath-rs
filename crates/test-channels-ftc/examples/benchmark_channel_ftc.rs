@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-ftc --example benchmark_channel_ftc --features hotpath
+
 use futures_util::stream::StreamExt;
 use std::time::{Duration, Instant};
 

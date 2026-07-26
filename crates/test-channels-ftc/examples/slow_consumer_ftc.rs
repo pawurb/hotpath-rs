@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-ftc --example slow_consumer_ftc --features hotpath
+
 use futures_util::stream::StreamExt;
 use smol::Timer;
 use std::time::Duration;

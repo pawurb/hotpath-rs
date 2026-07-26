@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-mutex-std --example created_ordering --features hotpath
+
 use std::sync::mpsc;
 use std::thread;
 

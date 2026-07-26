@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-channels-std --example iter_std --features hotpath
+
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;

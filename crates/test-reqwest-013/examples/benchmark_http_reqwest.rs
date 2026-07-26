@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-reqwest-013 --example benchmark_http_reqwest --features hotpath
+
 use hotpath::{HotpathGuardBuilder, Section};
 use std::time::{Duration, Instant};
 

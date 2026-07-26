@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example benchmark_truncate --features hotpath
+
 use std::time::Instant;
 
 use hotpath::{format_debug_truncated, MAX_LOG_LEN};

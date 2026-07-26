@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example early_returns --features hotpath
+
 use std::time::Duration;
 
 #[hotpath::measure]

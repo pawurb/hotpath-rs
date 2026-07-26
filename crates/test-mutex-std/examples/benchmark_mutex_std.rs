@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-mutex-std --example benchmark_mutex_std --features hotpath
+
 use std::time::{Duration, Instant};
 
 // Single-threaded stress test comparing mutex instrumentation overhead in one run: an

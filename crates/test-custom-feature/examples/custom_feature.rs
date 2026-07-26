@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-custom-feature --example custom_feature --features hotpath-profile
+
 use std::time::Duration;
 
 #[hotpath::measure]

@@ -1,3 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-crossbeam --example console_feed_crossbeam --features hotpath
+//! Then watch live in the TUI:
+//!   cargo run --bin hotpath --features tui -- console
+
 use std::thread;
 use std::time::Duration;
 
@@ -8,7 +13,7 @@ fn main() {
         .build();
 
     println!("Open the TUI console to watch live updates!");
-    println!("   Run: cargo run -p channels-console --features tui -- console\n");
+    println!("   Run: cargo run --bin hotpath --features tui -- console\n");
     thread::sleep(Duration::from_secs(2));
 
     // Channel 1: Fast data stream - unbounded, rapid messages

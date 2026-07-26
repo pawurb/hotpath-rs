@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example measure_all_impl_return_closure --features hotpath
+
 struct Worktree(String);
 
 #[hotpath::measure_all]

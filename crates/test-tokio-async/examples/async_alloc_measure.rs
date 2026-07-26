@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example async_alloc_measure --features hotpath,hotpath-alloc
+
 use std::hint::black_box;
 
 async fn uninstrumented_1kb() -> Vec<u8> {

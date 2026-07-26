@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-rw-lock-std --example basic_rw_lock_std --features hotpath
+
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;

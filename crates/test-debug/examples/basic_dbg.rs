@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-debug --example basic_dbg --features hotpath
+
 fn main() {
     let x = 42;
     let y = hotpath::dbg!(x * 2);

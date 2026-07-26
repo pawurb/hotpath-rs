@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-streams --example streams_file_output --features hotpath
+
 use futures_util::stream::{self, StreamExt};
 
 fn main() {

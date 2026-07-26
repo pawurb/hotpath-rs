@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-smol-async --example basic_smol --features hotpath
+
 use std::time::Duration;
 
 #[hotpath::measure]

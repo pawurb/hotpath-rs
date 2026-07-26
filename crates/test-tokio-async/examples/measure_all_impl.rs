@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example measure_all_impl --features hotpath
+
 use std::time::Duration;
 
 struct Calculator {

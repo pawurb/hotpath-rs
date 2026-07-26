@@ -1,3 +1,5 @@
+//! Run with:
+//!   cargo run -p test-channels-std --example wrap_std --features hotpath
 // Demonstrates std::sync::mpsc channel instrumentation: the report shows the
 // exact queue depth (50 messages parked in the channel) because the instrumented
 // endpoints track queue length with a self-maintained counter instead of routing
@@ -6,8 +8,6 @@
 // Bounded std channels (`sync_channel`) cannot recover their capacity from the
 // endpoint, so `capacity = N` must be passed to the macro - and it must match the
 // `sync_channel(N)` argument, since wrap mode rebuilds the channel from `capacity`.
-//
-// cargo run -p test-channels-std --example wrap_std --features hotpath
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;

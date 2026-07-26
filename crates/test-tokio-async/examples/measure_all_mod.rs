@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example measure_all_mod --features hotpath
+
 #[hotpath::measure_all]
 mod measured_module {
     use std::time::Duration;

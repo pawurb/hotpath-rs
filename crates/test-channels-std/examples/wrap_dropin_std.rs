@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-std --example wrap_dropin_std
 // Drop-in parity check: binding the wrapped endpoints to their
 // `hotpath::wrap::std::sync::mpsc` types must compile identically whether the
 // `hotpath` feature is on (instrumented wrappers) or off (raw std aliases).
-//
-// cargo run -p test-channels-std --example wrap_dropin_std
 // cargo run -p test-channels-std --example wrap_dropin_std --features hotpath
 use hotpath::wrap::std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::mpsc;

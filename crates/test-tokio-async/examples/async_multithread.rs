@@ -1,3 +1,6 @@
+//! Run with:
+//!   cargo run -p test-tokio-async --example async_multithread --features hotpath
+
 use std::time::Duration;
 
 #[hotpath::measure]

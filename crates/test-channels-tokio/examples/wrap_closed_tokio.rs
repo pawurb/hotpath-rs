@@ -1,8 +1,8 @@
+//! Run with:
+//!   cargo run -p test-channels-tokio --example wrap_closed_tokio --features hotpath
 // Dropping the (single) receiver while a sender is still alive disconnects the channel.
 // The endpoint wrapper must report the channel as `closed`. tokio::sync::mpsc receivers
 // are not Clone, so this is the only consumer.
-//
-// cargo run -p test-channels-tokio --example wrap_closed_tokio --features hotpath
 #[tokio::main]
 async fn main() {
     let guard = hotpath::HotpathGuardBuilder::new("main")
