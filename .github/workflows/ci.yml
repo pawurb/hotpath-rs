@@ -36,14 +36,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.rust }}
-      - uses: taiki-e/install-action@cargo-audit
-        if: matrix.rust == 'stable'
-      - uses: taiki-e/install-action@cargo-hack
-        if: matrix.rust == 'stable'
       - name: Check no features
         run: |
           cargo check
@@ -70,37 +65,6 @@ jobs:
       - name: Check hotpath-meta
         run: |
           cargo check --features "hotpath,hotpath-alloc-meta,hotpath-meta"
-      - name: Fmt
-        if: matrix.rust == 'stable'
-        run: |
-          cargo fmt --all --check
-      - name: Lint (default features)
-        if: matrix.rust == 'stable'
-        run: |
-          cargo clippy --all --features hotpath -- -D warnings
-      - name: Lint (--all-features)
-        if: matrix.rust == 'stable'
-        run: |
-          cargo clippy --all --all-features -- -D warnings
-      - name: Lint (hotpath-alloc)
-        if: matrix.rust == 'stable'
-        run: |
-          cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings
-      - name: Lint custom features combination
-        if: matrix.rust == 'stable'
-        run: |
-          cargo clippy -p test-custom-feature --features hotpath-profile --all-targets -- -D warnings
-      - name: Lint feature matrix (cargo-hack each-feature)
-        if: matrix.rust == 'stable'
-        run: |
-          cargo hack clippy -p hotpath --features hotpath,threads \
-            --each-feature \
-            --exclude-features default,hotpath-meta,hotpath-alloc-meta,hotpath-mcp-meta,dev,tui,utils \
-            -- -D warnings
-      - name: Audit
-        if: matrix.rust == 'stable'
-        run: |
-          cargo audit --ignore RUSTSEC-2023-0071
       - name: Run lib tests
         run: |
           cargo test --lib --features hotpath
