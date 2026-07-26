@@ -184,6 +184,16 @@ fn render_functions_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
+/// Logs panel title for a SQL/HTTP entry: the bucket text plus its source
+/// function when attributed.
+fn io_entry_label(text: &str, source: Option<&str>) -> String {
+    let text = truncate_message(text, 48);
+    match source {
+        Some(source) => format!("{text} [{}]", hotpath::shorten_function_name(source)),
+        None => text,
+    }
+}
+
 fn sub_tab_label(name: &str, active: bool) -> Span<'static> {
     if active {
         Span::styled(
@@ -400,7 +410,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                     .sql_table_state
                     .selected()
                     .and_then(|i| app.sql.data.get(i))
-                    .map(|e| truncate_message(&e.query, 48))
+                    .map(|e| io_entry_label(&e.query, e.source.as_deref()))
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 if let Some(ref logs) = app.sql_logs {
@@ -421,7 +431,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                     .http_table_state
                     .selected()
                     .and_then(|i| app.http.data.get(i))
-                    .map(|e| truncate_message(&e.endpoint, 48))
+                    .map(|e| io_entry_label(&e.endpoint, e.source.as_deref()))
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 if let Some(ref logs) = app.http_logs {
