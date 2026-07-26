@@ -37,7 +37,7 @@ let mut buf = Vec::new();
 file.read_to_end(&mut buf)?;
 ```
 
-See the runnable [basic_io_sync](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_sync.rs) and [basic_io_async](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_async.rs) examples.
+See the [basic_io_sync](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_sync.rs) and [basic_io_async](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_async.rs) examples.
 
 Async I/O works the same way.
 
@@ -53,7 +53,7 @@ let mut buf = [0u8; 7];
 stream.read_exact(&mut buf).await?; // +PONG\r\n
 ```
 
-See the runnable [basic_redis_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_redis_io.rs) example.
+See the [basic_redis_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_redis_io.rs) example.
 
 The `label` parameter is optional; without it the wrapper is identified by `file:line`.
 
@@ -71,6 +71,8 @@ let compressed = hotpath::io_unwrap(encoder).finish()?;
 ```
 
 With profiling disabled `io!` returns its argument unchanged and `io_unwrap` is the identity, so call sites compile identically in both modes.
+
+See the [basic_zstd_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_zstd_io.rs) example, which unwraps a zstd encoder with `io_unwrap` before `finish()`.
 
 Report entries are keyed by creation site and concrete type: wrappers created repeatedly at one `io!` call - for example per accepted connection in a server loop - accumulate into a single entry, so profiler memory stays bounded by the number of `io!` call sites rather than the number of values ever wrapped.
 

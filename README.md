@@ -3,7 +3,7 @@
 
 hotpath-rs is an easy-to-configure Rust performance profiler that shows exactly where your code spends time, burns CPU, and allocates memory. 
 
-It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, and SQL queries to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
+It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
 
 Try the TUI demo via SSH - no installation required:
 
@@ -23,6 +23,10 @@ You can use it to produce one-off performance (timing, memory or CPU) reports:
 
 ![hotpath alloc report](media/hotpath-alloc-report2.png)
 
+inspect throughput and latency of network, file or compression I/O streams:
+
+![hotpath-rs I/O profiling report showing per-stream read counts, bytes, transfer rate, average and P95 latency](media/io_metrics.png)
+
 monitor throughput, performance and max queue depth of instrumented channels:
 
 ![hotpath-rs channel profiling report showing throughput, send-to-receive latency and max queue depth per channel](media/channel_metrics.png)
@@ -39,9 +43,9 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
 - **Time, CPU & memory profiling** - identify expensive functions, allocation hotspots, and investigate memory leaks.
 - **Async observability** - futures, channels and streams.
+- **I/O monitoring** - bytes, throughput, latency and errors for files, sockets, TLS, Redis, compression streams - any `Read`/`Write` or `AsyncRead`/`AsyncWrite` type.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
 - **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest.
-- **I/O streams monitoring** - bytes, throughput and duration of reads and writes for TCP, Redis, files etc.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
