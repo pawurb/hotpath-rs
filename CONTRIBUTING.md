@@ -98,6 +98,32 @@ cargo run -p test-channels-asc --example benchmark_channel_asc --features hotpat
 cargo run -p test-channels-ftc --example benchmark_channel_ftc --features hotpath --release
 ```
 
+#### SQL
+
+Each benchmark runs both an uninstrumented **baseline** and the instrumented version in a single command, hammering the same point lookup against an in-memory SQLite database and printing their per-op cost side by side, so the delta isolates the per-query instrumentation overhead (tracing dispatch / instrumentation callback, normalization keying, and event enqueue). The sqlx and Toasty baselines run before the hotpath `tracing` layer is installed; the Diesel baseline uses a connection established before `instrument_diesel_sql()` is called. Iteration count defaults to 50,000 (`HOTPATH_BENCH_RUNS`).
+
+```bash
+cargo run -p test-sqlx-08 --example benchmark_sql_sqlx --features hotpath --release
+cargo run -p test-diesel --example benchmark_sql_diesel --features hotpath --release
+cargo run --manifest-path crates/test-toasty/Cargo.toml --example benchmark_sql_toasty --features hotpath --release
+```
+
+Each library also has a PostgreSQL variant that runs the same point lookup against a real server, so every op includes a TCP round trip - closer to production numbers, but the round trip dominates and deltas below ~1µs are within run-to-run noise. Iteration count defaults to 10,000. Start the database first with `docker compose up -d postgres`:
+
+```bash
+cargo run -p test-sqlx-08 --example benchmark_sql_sqlx_postgres --features hotpath --release
+cargo run -p test-diesel --example benchmark_sql_diesel_postgres --features hotpath,pg --release
+cargo run --manifest-path crates/test-toasty/Cargo.toml --example benchmark_sql_toasty_postgres --features hotpath --release
+```
+
+#### HTTP
+
+Runs both an uninstrumented **baseline** (raw reqwest client) and the `hotpath::http!` wrapped version in a single command, hammering a local `tiny_http` server over a kept-alive loopback connection, so the delta isolates the per-request overhead of the middleware hop, endpoint normalization, and event enqueue. Note that the full loopback round trip (~40 µs/request) dominates each op, so deltas below ~1 µs are within run-to-run noise. Iteration count defaults to 10,000 (`HOTPATH_BENCH_RUNS`).
+
+```bash
+cargo run -p test-reqwest-013 --example benchmark_http_reqwest --features hotpath --release
+```
+
 #### Futures and Streams
 
 ```bash

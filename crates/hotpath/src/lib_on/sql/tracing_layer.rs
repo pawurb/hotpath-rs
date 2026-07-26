@@ -22,6 +22,8 @@
 //! acquired-connection queries too (logging is at the statement level) and
 //! requires zero application type changes - the pool stays a `sqlx::SqlitePool`.
 
+use std::sync::Arc;
+
 use tracing::field::{Field, Visit};
 use tracing::subscriber::Interest;
 use tracing::{Event, Metadata, Subscriber};
@@ -47,14 +49,20 @@ where
 
         // sqlx puts the full SQL in `db.statement` only when it differs from the
         // 4-word `summary` (longer queries); for short queries `db.statement` is
-        // empty and `summary` holds the whole text. Prefer the full statement,
-        // fall back to the summary.
-        let Some(sql) = visitor.statement.or(visitor.summary) else {
+        // empty and `summary` holds the whole text. `summary` is visited before
+        // `db.statement`, so the fallback needs a second pass - taken only when
+        // something was actually missing, keeping the common full-statement path
+        // at a single allocation.
+        if visitor.statement.is_none() || visitor.elapsed_ns.is_none() {
+            event.record(&mut FallbackVisitor(&mut visitor));
+        }
+
+        let Some(sql) = visitor.statement else {
             return;
         };
 
         send_sql_event(SqlEvent::Executed {
-            sql: sql.into(),
+            sql,
             duration_nanos: visitor.elapsed_ns.unwrap_or(0),
             timestamp_ns: crate::lib_on::current_elapsed_ns(),
             source: crate::lib_on::caller_stack::current_caller(),
@@ -62,29 +70,22 @@ where
     }
 }
 
-/// Extracts the statement text and execution time from a `sqlx::query` event.
-///
-/// Prefers the `elapsed_secs` f64 field (exact) and falls back to parsing the
-/// `Debug`-formatted `elapsed` `Duration` if only that is present.
+/// Extracts the statement text and execution time from a `sqlx::query` event:
+/// the full `db.statement` SQL and the exact `elapsed_secs` f64 field.
 #[derive(Default)]
 struct QueryVisitor {
-    statement: Option<String>,
-    summary: Option<String>,
+    statement: Option<Arc<str>>,
     elapsed_ns: Option<u64>,
 }
 
 impl Visit for QueryVisitor {
     fn record_str(&mut self, field: &Field, value: &str) {
-        match field.name() {
-            // Newline-wrapped full SQL; empty for queries that fit their summary.
-            "db.statement" => {
-                let trimmed = value.trim();
-                if !trimmed.is_empty() {
-                    self.statement = Some(trimmed.to_string());
-                }
+        // Newline-wrapped full SQL; empty for queries that fit their summary.
+        if field.name() == "db.statement" {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                self.statement = Some(Arc::from(trimmed));
             }
-            "summary" => self.summary = Some(value.trim().to_string()),
-            _ => {}
         }
     }
 
@@ -94,10 +95,27 @@ impl Visit for QueryVisitor {
         }
     }
 
+    fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
+}
+
+/// Second pass for the fields the fast path skips: `summary` as the statement
+/// when `db.statement` was empty, and the `Debug`-formatted `elapsed`
+/// `Duration` when the exact `elapsed_secs` f64 was absent.
+struct FallbackVisitor<'a>(&'a mut QueryVisitor);
+
+impl Visit for FallbackVisitor<'_> {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "summary" && self.0.statement.is_none() {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                self.0.statement = Some(Arc::from(trimmed));
+            }
+        }
+    }
+
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        // Only used if `elapsed_secs` was absent.
-        if field.name() == "elapsed" && self.elapsed_ns.is_none() {
-            self.elapsed_ns = parse_duration_debug(&format!("{value:?}"));
+        if field.name() == "elapsed" && self.0.elapsed_ns.is_none() {
+            self.0.elapsed_ns = parse_duration_debug(&format!("{value:?}"));
         }
     }
 }
