@@ -49,7 +49,7 @@ It helps you distinguish between functions that are slow because they wait on I/
 <div style="clear: both;"></div>
 
 <div class="trusted-by">
-  <p class="trusted-by-tagline">Used by <a href="/adoption">{{#adoption_count}} open-source projects</a>, including:</p>
+  <p class="trusted-by-tagline">Used by <a href="/adoption">{{#adoption_count}} open-source projects</a> (+{{#adoption_count_recent}} new in the last 30 days), including:</p>
   <div class="trusted-by-grid">
     <a href="https://github.com/rustfs/rustfs" target="_blank" class="trusted-by-project">
       <span class="trusted-by-name">rustfs/rustfs</span>
