@@ -440,12 +440,14 @@ impl App {
             sql: JsonSqlList {
                 current_elapsed_ns: 0,
                 total_ns: 0,
+                total_calls: 0,
                 percentiles: vec![],
                 data: vec![],
             },
             http: JsonHttpList {
                 current_elapsed_ns: 0,
                 total_ns: 0,
+                total_calls: 0,
                 percentiles: vec![],
                 data: vec![],
             },

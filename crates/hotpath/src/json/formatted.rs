@@ -392,6 +392,10 @@ pub struct JsonMutexEntry {
 pub struct JsonSqlList {
     pub current_elapsed_ns: u64,
     pub total_ns: u64,
+    /// Total number of detected calls across all entries, including ones
+    /// truncated from `data` by the display limit.
+    #[serde(default)]
+    pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonSqlEntry>,
 }
@@ -449,6 +453,10 @@ impl JsonSqlLogsList {
 pub struct JsonHttpList {
     pub current_elapsed_ns: u64,
     pub total_ns: u64,
+    /// Total number of detected calls across all entries, including ones
+    /// truncated from `data` by the display limit.
+    #[serde(default)]
+    pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonHttpEntry>,
 }

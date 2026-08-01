@@ -38,6 +38,8 @@ pub mod tests {
         let all_expected = [
             "HTTP example completed",
             "http - HTTP request execution time statistics.",
+            // 2 user fetches + missing + unreachable + labeled client = 5.
+            "Total calls: 5",
             // Two ids and a query string merge into one normalized bucket.
             "/users/{id}",
             "/missing",
@@ -64,6 +66,12 @@ pub mod tests {
             .expect("No JSON value in output")
             .expect("Failed to parse JSON report");
         let http = report.http.expect("No http section in report");
+
+        assert_eq!(http.total_calls, 5);
+        assert_eq!(
+            http.total_calls,
+            http.data.iter().map(|e| e.count).sum::<u64>()
+        );
 
         let users = http
             .data
