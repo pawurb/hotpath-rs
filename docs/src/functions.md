@@ -179,10 +179,10 @@ To switch to **cumulative** mode (where a function's allocation count includes a
 The tracking allocator forwards every allocation to an inner allocator, `std::alloc::System` by default. To profile a program that uses a different allocator, pass it via the `allocator` parameter of `#[hotpath::main]`:
 
 ```rust
-#[hotpath::main(allocator = mimalloc::MiMalloc)]
+#[hotpath::main(allocator = tikv_jemallocator::Jemalloc)]
 fn main() {
     // ...
 }
 ```
 
-The path must name a unit struct implementing `GlobalAlloc` (like `mimalloc::MiMalloc` or `tikv_jemallocator::Jemalloc`). When the `hotpath-alloc` feature is disabled, the parameter is ignored and no allocator is installed, so combine it with your own `#[global_allocator]` behind a feature gate if the program should also use the allocator in normal builds.
+The path must name a unit struct implementing `GlobalAlloc` (like `MiMalloc` from [mimalloc](https://github.com/purpleprotocol/mimalloc_rust) or `Jemalloc` from [tikv-jemallocator](https://github.com/tikv/jemallocator)). When the `hotpath-alloc` feature is disabled, the parameter is ignored and no allocator is installed, so combine it with your own `#[global_allocator]` behind a feature gate if the program should also use the allocator in normal builds.
