@@ -41,8 +41,9 @@ impl Format {
 /// * `threads_limit` - Maximum number of threads shown in the report. Overrides `limit` for threads.
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_META_OUTPUT_PATH` env var.
 /// * `report` - Report sections spec: `"all"`, `"auto"`, an exact list like `"channels,sql"`, or auto with exclusions like `"auto,-threads"`. Default: auto (function and thread sections plus every instrumented section with data). Overridden by `HOTPATH_META_REPORT` env var.
-/// * `allocator` - Optional allocator type path used when `hotpath-alloc-meta` is enabled.
-///   Defaults to `std::alloc::System`.
+/// * `allocator` - Optional allocator used when `hotpath-alloc-meta` is enabled. The path must
+///   name a unit struct implementing `GlobalAlloc` (e.g. `mimalloc::MiMalloc`); it is used
+///   both as the type and the value of the inner allocator. Defaults to `std::alloc::System`.
 ///
 /// Environment variable precedence for report output:
 /// `HOTPATH_META_LIMIT`, `HOTPATH_META_FUNCTIONS_LIMIT`,
@@ -377,7 +378,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
         #[global_allocator]
         static __HOTPATH_META_GLOBAL_ALLOCATOR: hotpath_meta::CountingAllocator<#allocator_path> =
-            hotpath_meta::CountingAllocator::new();
+            hotpath_meta::CountingAllocator::with(#allocator_path);
     };
 
     let body = quote! {
