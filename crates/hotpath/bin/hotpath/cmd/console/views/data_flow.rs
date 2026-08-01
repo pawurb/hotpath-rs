@@ -150,7 +150,10 @@ pub(crate) fn render_channels_panel(
                 Cell::from(type_text).style(Style::default().fg(Color::Cyan)),
                 Cell::from(truncate_left(&entry.label, label_width)),
                 Cell::from(entry.instances.to_string()),
-                Cell::from(entry.state.clone()).style(state_style(&entry.state)),
+                {
+                    let state = entry.state.as_deref().unwrap_or("-");
+                    Cell::from(state.to_string()).style(state_style(state))
+                },
                 Cell::from(format!("{}/{}", entry.sent_count, entry.received_count)),
                 Cell::from(rate_text),
                 Cell::from(queue_text),
@@ -229,7 +232,10 @@ pub(crate) fn render_streams_panel(
             Row::new(vec![
                 Cell::from(truncate_left(&entry.label, label_width)),
                 Cell::from(entry.instances.to_string()),
-                Cell::from(entry.state.clone()).style(state_style(&entry.state)),
+                {
+                    let state = entry.state.as_deref().unwrap_or("-");
+                    Cell::from(state.to_string()).style(state_style(state))
+                },
                 Cell::from(entry.items_yielded.to_string()),
             ])
         })

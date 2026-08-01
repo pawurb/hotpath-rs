@@ -1054,7 +1054,11 @@ pub(crate) fn report_streams_table(
         table.add_row(Row::new(vec![
             Cell::new(&label),
             Cell::new(&stream_stats.instances.to_string()),
-            Cell::new(stream_stats.state().as_str()),
+            Cell::new(
+                stream_stats
+                    .display_state()
+                    .map_or("-", |state| state.as_str()),
+            ),
             Cell::new(&stream_stats.items_yielded.to_string()),
         ]));
     }

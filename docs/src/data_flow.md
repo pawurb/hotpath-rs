@@ -131,7 +131,7 @@ Label channels to display them on top of the list. By passing `log = true` TUI w
 
 ### Call-site aggregation and `iter = true`
 
-By default all channels created at one `channel!` call site (with the same message type) accumulate into a **single entry**. Counts and the latency histogram are summed across instances, and the `Inst` column reports how many instances the entry aggregates, so profiler state stays bounded even when a call site creates a channel per handled request. The first registration's `label` and channel kind/capacity win, and the entry shows `closed` once every aggregated instance has closed.
+By default all channels created at one `channel!` call site (with the same message type) accumulate into a **single entry**. Counts and the latency histogram are summed across instances, and the `Inst` column reports how many instances the entry aggregates, so profiler state stays bounded even when a call site creates a channel per handled request. The first registration's `label` and channel kind/capacity win. Aggregated entries show `-` for state - their instances open and close independently, so no single Active/Closed flag applies; the `Inst` count carries the lifecycle information instead.
 
 Semantics of the aggregated columns:
 
@@ -208,7 +208,7 @@ let s = hotpath::stream!(stream::iter(1..=100), iter = true);
 
 Label streams to display them on top of the list. By passing `log = true` TUI will display values that a stream yielded.
 
-Like channels, streams aggregate by call site by default: all streams created at one `stream!` call (with the same item type) share a single entry with summed `items_yielded` and an `Inst` instance count, and the entry shows `closed` once every instance has completed. Pass `iter = true` for one suffixed entry per instance - profiler state then grows with the number of streams ever created.
+Like channels, streams aggregate by call site by default: all streams created at one `stream!` call (with the same item type) share a single entry with summed `items_yielded` and an `Inst` instance count (aggregated entries show `-` for state). Pass `iter = true` for one suffixed entry per instance - profiler state then grows with the number of streams ever created.
 
 <img loading="lazy" src="{{#asset-hash images/streams-log.png}}" alt="hotpath-rs TUI showing async stream item monitoring and throughput">
 

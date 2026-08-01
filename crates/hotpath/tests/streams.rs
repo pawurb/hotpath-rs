@@ -50,7 +50,7 @@ pub mod tests {
             .expect("aggregated entry not found");
         assert_eq!(agg.instances, 4, "4 streams created at the call site");
         assert_eq!(agg.closed_instances, 4, "all streams completed");
-        assert_eq!(agg.state, "closed");
+        assert_eq!(agg.state, None, "aggregated entries report no state");
         assert_eq!(agg.items_yielded, 20, "summed across instances");
         assert_eq!(agg.iter, 0, "aggregated entries carry no iter suffix");
 

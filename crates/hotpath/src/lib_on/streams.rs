@@ -126,6 +126,14 @@ impl StreamStats {
         }
     }
 
+    /// State shown to consumers: `None` for aggregated entries (`instances >
+    /// 1`), whose instances complete independently - a single Active/Closed
+    /// flag would flicker with churn and mislead. Single-instance and
+    /// `iter = true` entries keep their exact state.
+    pub(crate) fn display_state(&self) -> Option<ChannelState> {
+        (self.instances <= 1).then(|| self.state())
+    }
+
     /// Displayed state (only Active or Closed), derived from the instance
     /// counters. `>=` rather than `==` because a `Completed` event can be
     /// drained before the `Instance` event from another thread; the counters
@@ -166,7 +174,7 @@ impl From<&StreamStats> for JsonStreamEntry {
             source: stats.source.to_string(),
             label,
             has_custom_label: stats.label.is_some(),
-            state: stats.state().as_str().to_string(),
+            state: stats.display_state().map(|s| s.as_str().to_string()),
             instances: stats.instances,
             closed_instances: stats.closed_instances,
             items_yielded: stats.items_yielded,
@@ -458,9 +466,10 @@ where
 /// item type) accumulate into a **single entry**: `items_yielded` is summed
 /// across instances and the `Inst` column reports how many instances the
 /// entry aggregates, so profiler state stays bounded even when a call site
-/// creates a stream per request. The first registration's `label` wins; the
-/// entry shows `Closed` once every aggregated instance has completed. Log
-/// windows (`log = true`) interleave items from all instances.
+/// creates a stream per request. The first registration's `label` wins.
+/// Aggregated entries show `-` for state (their instances complete
+/// independently). Log windows (`log = true`) interleave items from all
+/// instances.
 ///
 /// Pass `iter = true` to give every instance its own entry instead (displayed
 /// as `label`, `label-2`, `label-3`, ...). Profiler state then grows with the

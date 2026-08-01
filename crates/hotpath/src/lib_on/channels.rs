@@ -303,7 +303,7 @@ pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> Json
         label,
         has_custom_label: stats.label.is_some(),
         channel_type: stats.channel_type.to_string(),
-        state: stats.state().as_str().to_string(),
+        state: stats.display_state().map(|s| s.as_str().to_string()),
         instances: stats.instances,
         closed_instances: stats.closed_instances,
         sent_count: stats.sent_count,
@@ -479,6 +479,14 @@ impl ChannelEntry {
         }
         self.max_queue_size = Some(max);
         self.queue_size = Some(depth.min(max));
+    }
+
+    /// State shown to consumers: `None` for aggregated entries (`instances >
+    /// 1`), whose instances open and close independently - a single
+    /// Active/Closed flag would flicker with churn and mislead. Single-instance
+    /// and `iter = true` entries keep their exact state.
+    pub(crate) fn display_state(&self) -> Option<ChannelState> {
+        (self.instances <= 1).then(|| self.state())
     }
 
     /// Displayed state, derived from the instance counters. `>=` rather than
@@ -964,8 +972,9 @@ cfg_if::cfg_if! {
 /// histogram are summed across instances and the `Inst` column reports how
 /// many instances the entry aggregates, so profiler state stays bounded even
 /// when a call site creates a channel per request. The first registration's
-/// `label` and channel kind/capacity win; the entry shows `Closed` once every
-/// aggregated instance has closed.
+/// `label` and channel kind/capacity win. Aggregated entries show `-` for
+/// state (their instances open and close independently); the `Inst` count and
+/// `closed_instances` in JSON carry the lifecycle information instead.
 ///
 /// The reported rates are aggregate call-site throughput: total messages
 /// divided by elapsed time since the call site's first message. This is a

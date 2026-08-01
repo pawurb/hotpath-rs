@@ -63,7 +63,7 @@ pub mod tests {
         let entry = &channels.data[0];
         assert_eq!(entry.instances, 5, "5 channels created at the call site");
         assert_eq!(entry.closed_instances, 5, "all endpoints dropped");
-        assert_eq!(entry.state, "closed", "derived state after all closed");
+        assert_eq!(entry.state, None, "aggregated entries report no state");
         assert_eq!(entry.sent_count, 10, "summed across instances");
         assert_eq!(entry.received_count, 10, "summed across instances");
         assert_eq!(entry.iter, 0, "aggregated entries carry no iter suffix");
@@ -100,7 +100,7 @@ pub mod tests {
             entry.queue_size,
             entry.max_queue_size
         );
-        assert_eq!(entry.state, "active", "instances still open at report time");
+        assert_eq!(entry.state, None, "aggregated entries report no state");
     }
 
     // cargo run -p test-channels-tokio --example agg_many_tokio --features hotpath
@@ -118,7 +118,7 @@ pub mod tests {
         );
         let entry = &channels.data[0];
         assert_eq!(entry.instances, 2000);
-        assert_eq!(entry.state, "closed");
+        assert_eq!(entry.state, None);
     }
 
     // cargo build -p test-channels-tokio --example iter_tokio
