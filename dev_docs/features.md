@@ -42,4 +42,4 @@ Env vars:
 
 ## GitHub CI Integration
 
-`hotpath-utils profile-pr` compares PR branch metrics against base and posts a diff comment. Two-workflow setup (`hotpath-profile` + `hotpath-comment`) for fork security; see `.github/workflows/` and `docs/src/github_ci.md`.
+`hotpath-utils profile-pr` compares PR branch metrics against base and posts a diff comment. Two-workflow setup (`hotpath-profile` + `hotpath-comment`) for fork security; see `docs/src/github_ci.md`.
