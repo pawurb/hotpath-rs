@@ -28,8 +28,9 @@ mod lib_off;
 /// * `threads_limit` - Maximum number of threads shown in the report. Overrides `limit` for threads.
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_OUTPUT_PATH` env var.
 /// * `report` - Report sections spec: `"all"`, `"auto"`, an exact list like `"functions-timing,channels"`, or auto with exclusions like `"auto,-threads"`. Default: auto (function and thread sections plus every instrumented section with data). Overridden by `HOTPATH_REPORT` env var.
-/// * `allocator` - Optional allocator type path used when `hotpath-alloc` is enabled.
-///   Defaults to `std::alloc::System`.
+/// * `allocator` - Optional allocator used when `hotpath-alloc` is enabled. The path must
+///   name a unit struct implementing `GlobalAlloc` (e.g. `mimalloc::MiMalloc`); it is used
+///   both as the type and the value of the inner allocator. Defaults to `std::alloc::System`.
 ///
 /// Environment variable precedence for report output:
 /// `HOTPATH_LIMIT`, `HOTPATH_FUNCTIONS_LIMIT`, `HOTPATH_CHANNELS_LIMIT`,

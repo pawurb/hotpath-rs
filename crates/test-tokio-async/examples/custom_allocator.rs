@@ -8,7 +8,6 @@ mod alloc_demo {
 
     static ALLOC_CALLS: AtomicU64 = AtomicU64::new(0);
 
-    #[derive(Default)]
     pub struct TestAllocator;
 
     // SAFETY: pure pass-through to `System` - pointers and layouts are
