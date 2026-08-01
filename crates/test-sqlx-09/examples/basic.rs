@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The pool stays a plain `sqlx::SqlitePool` - no wrapper, no type ripple.
     let pool = SqlitePoolOptions::new()
-        .max_connections(4)
+        .max_connections(1)
         .connect("sqlite::memory:")
         .await?;
 

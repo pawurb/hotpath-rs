@@ -43,7 +43,7 @@ pub mod tests {
             "sql - SQL query execution time statistics.",
             // Sum of all bucket counts, including entries cut by the display
             // limit.
-            "Total calls: 116",
+            "Total calls: 115",
             "INSERT INTO users (name, age) VALUES (?, ?)",
             // Short query (4 words) arrives via `summary`, not `db.statement`.
             "SELECT COUNT(*) FROM users",
@@ -69,7 +69,7 @@ pub mod tests {
             "\"sql\"",
             "\"INSERT INTO users (name, age) VALUES (?, ?)\"",
             "\"count\":51",
-            "\"total_calls\":116",
+            "\"total_calls\":115",
         ];
         for expected in all_expected {
             assert!(
