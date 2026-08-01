@@ -30,4 +30,4 @@ mimalloc-alloc = ["dep:mimalloc"]
 
 [[example]]
 name = "mimalloc_allocator"
-required-features = ["hotpath-alloc", "mimalloc-alloc"]
+required-features = ["hotpath", "hotpath-alloc", "mimalloc-alloc"]
