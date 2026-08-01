@@ -454,8 +454,26 @@ impl ChannelEntry {
     }
 
     fn record_queue(&mut self, queue_len: usize) {
-        let depth = self.outstanding_depth();
         let mut max = self.max_queue_size.unwrap_or(0).max(queue_len);
+        let depth = self.outstanding_depth();
+        if self.instances > 1 {
+            max = max.max(depth);
+        }
+        self.max_queue_size = Some(max);
+        self.queue_size = Some(depth.min(max));
+    }
+
+    /// Re-derives the displayed depth after a non-message event changes what
+    /// the counts mean (a late `Created`/`Instance` backfill lifting the
+    /// single-instance clamp, or `Abandoned` retiring messages). Without this,
+    /// a call site whose channels go idle before their registration events are
+    /// swept would keep a stale clamped depth until the next send/receive.
+    fn refresh_queue(&mut self) {
+        if self.queue_size.is_none() {
+            return;
+        }
+        let depth = self.outstanding_depth();
+        let mut max = self.max_queue_size.unwrap_or(0);
         if self.instances > 1 {
             max = max.max(depth);
         }
@@ -594,6 +612,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             entry.wrap = wrap;
             entry.iter = iter;
             entry.instances += 1;
+            entry.refresh_queue();
             if wrap && entry.proc_hist.is_none() {
                 entry.proc_hist = Some(ChannelEntry::new_histogram());
             }
@@ -605,6 +624,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
                 .entry(id)
                 .or_insert_with(|| placeholder_channel_entry(id, wrap));
             entry.instances += 1;
+            entry.refresh_queue();
         }
         ChannelEvent::MessageSent { id, log, timestamp } => {
             let ts_ns = timestamp_nanos(timestamp);
@@ -736,10 +756,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             channel_stats.abandoned_count += count;
             // No further events arrive for the dead instance, so refresh the
             // displayed depth here instead of waiting for another send/receive.
-            if channel_stats.queue_size.is_some() {
-                let max = channel_stats.max_queue_size.unwrap_or(0);
-                channel_stats.queue_size = Some(channel_stats.outstanding_depth().min(max));
-            }
+            channel_stats.refresh_queue();
         }
         ChannelEvent::Notified { id } => {
             state
@@ -1258,6 +1275,54 @@ mod tests {
             },
         );
         assert_eq!(state.stats[&id].state(), ChannelState::Closed);
+    }
+
+    /// Sends swept ahead of their registration events land on a placeholder
+    /// with at most one known instance, so the depth is clamped to a single
+    /// channel's `len()`. The late `Created`/`Instance` backfill must lift the
+    /// clamp even if the channels then stay idle (no further queue events).
+    #[test]
+    fn late_instance_event_refreshes_combined_queue_depth() {
+        let mut state = ChannelsInternalState {
+            stats: HashMap::new(),
+            logs: HashMap::new(),
+        };
+
+        let id = 1;
+        let ts = Instant::now();
+        for msg_id in 0..2 {
+            process_channel_event(
+                &mut state,
+                ChannelEvent::WrapMessageSent {
+                    id,
+                    msg_id,
+                    log: None,
+                    timestamp: Some(ts),
+                    queue_len: 1,
+                },
+            );
+        }
+        // Single-instance clamp while the registrations are still unswept.
+        assert_eq!(state.stats[&id].queue_size, Some(1));
+
+        process_channel_event(
+            &mut state,
+            ChannelEvent::Created {
+                id,
+                source: "test",
+                display_label: None,
+                channel_type: ChannelType::Unbounded,
+                type_name: "u8",
+                type_size: 1,
+                wrap: true,
+                iter_mode: false,
+            },
+        );
+        process_channel_event(&mut state, ChannelEvent::Instance { id, wrap: true });
+
+        let entry = state.stats.get(&id).expect("channel registered");
+        assert_eq!(entry.queue_size, Some(2), "combined depth after backfill");
+        assert_eq!(entry.max_queue_size, Some(2));
     }
 
     /// Messages abandoned in a fully torn-down instance are reconciled via
