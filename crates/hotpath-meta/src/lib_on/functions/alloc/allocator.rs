@@ -8,23 +8,26 @@
 // - Adjusted to work with hotpath module system
 // - Split into feature-specific dispatching allocator
 
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    marker::PhantomData,
-};
+use std::alloc::{GlobalAlloc, Layout, System};
 
 /// Shared global allocator that dispatches to enabled allocation tracking features
-pub struct CountingAllocator<A = System>(PhantomData<A>);
+pub struct CountingAllocator<A = System>(A);
 
-impl<A> CountingAllocator<A> {
+impl CountingAllocator<System> {
     pub const fn new() -> Self {
-        Self(PhantomData)
+        Self(System)
     }
 }
 
-impl<A> Default for CountingAllocator<A> {
+impl<A> CountingAllocator<A> {
+    pub const fn with(inner: A) -> Self {
+        Self(inner)
+    }
+}
+
+impl<A: Default> Default for CountingAllocator<A> {
     fn default() -> Self {
-        Self::new()
+        Self(A::default())
     }
 }
 
@@ -35,14 +38,14 @@ impl<A> Default for CountingAllocator<A> {
 // the allocation itself.
 unsafe impl<A> GlobalAlloc for CountingAllocator<A>
 where
-    A: Default + GlobalAlloc,
+    A: GlobalAlloc,
 {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         crate::lib_on::functions::alloc::core::track_alloc(layout.size());
 
         // SAFETY: caller upholds GlobalAlloc's contract for `layout`; it is
         // forwarded unchanged.
-        unsafe { A::default().alloc(layout) }
+        unsafe { self.0.alloc(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -52,7 +55,7 @@ where
         // with `layout`, which means it came from `A::alloc`; both are
         // forwarded unchanged.
         unsafe {
-            A::default().dealloc(ptr, layout);
+            self.0.dealloc(ptr, layout);
         }
     }
 }
