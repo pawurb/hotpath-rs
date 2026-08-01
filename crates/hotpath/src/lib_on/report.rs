@@ -578,6 +578,7 @@ fn truncate_query(query: &str) -> String {
 pub(crate) fn report_sql_table(
     entries: &[SqlEntry],
     total_count: usize,
+    total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
     writer: &mut dyn Write,
@@ -591,6 +592,7 @@ pub(crate) fn report_sql_table(
         let _ = write!(writer, " ({}/{})", entries.len(), total_count);
     }
     let _ = writeln!(writer);
+    let _ = writeln!(writer, "Total calls: {}", total_calls);
 
     let mut header = vec![
         styled_header("Query"),
@@ -666,12 +668,14 @@ fn sql_to_json(entry: &SqlEntry, reference_total: u64, percentiles: &[f64]) -> J
 pub(crate) fn collect_sql_json(
     entries: &[SqlEntry],
     elapsed: std::time::Duration,
+    total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
 ) -> JsonSqlList {
     JsonSqlList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         total_ns: reference_total,
+        total_calls,
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
@@ -712,6 +716,7 @@ pub(crate) fn shutdown_http() -> Vec<HttpEntry> {
 pub(crate) fn report_http_table(
     entries: &[HttpEntry],
     total_count: usize,
+    total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
     writer: &mut dyn Write,
@@ -725,6 +730,7 @@ pub(crate) fn report_http_table(
         let _ = write!(writer, " ({}/{})", entries.len(), total_count);
     }
     let _ = writeln!(writer);
+    let _ = writeln!(writer, "Total calls: {}", total_calls);
 
     let mut header = vec![
         styled_header("Endpoint"),
@@ -790,12 +796,14 @@ fn http_to_json(entry: &HttpEntry, reference_total: u64, percentiles: &[f64]) ->
 pub(crate) fn collect_http_json(
     entries: &[HttpEntry],
     elapsed: std::time::Duration,
+    total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
 ) -> JsonHttpList {
     JsonHttpList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         total_ns: reference_total,
+        total_calls,
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()

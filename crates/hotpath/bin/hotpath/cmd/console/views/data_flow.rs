@@ -584,6 +584,7 @@ pub(crate) fn render_sql_panel(
     entries: &[JsonSqlEntry],
     percentiles: &[f64],
     total_ns: u64,
+    total_calls: u64,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -652,7 +653,8 @@ pub(crate) fn render_sql_panel(
         .header(header)
         .block(list_block(
             format!(
-                " SQL - query execution time (total: {}) ",
+                " SQL - query execution time (calls: {}, total: {}) ",
+                total_calls,
                 hotpath::format_duration(total_ns)
             ),
             show_logs,
@@ -674,6 +676,7 @@ pub(crate) fn render_http_panel(
     entries: &[JsonHttpEntry],
     percentiles: &[f64],
     total_ns: u64,
+    total_calls: u64,
     area: Rect,
     frame: &mut Frame,
     table_state: &mut TableState,
@@ -745,7 +748,8 @@ pub(crate) fn render_http_panel(
         .header(header)
         .block(list_block(
             format!(
-                " HTTP - request execution time (total: {}) ",
+                " HTTP - request execution time (calls: {}, total: {}) ",
+                total_calls,
                 hotpath::format_duration(total_ns)
             ),
             show_logs,

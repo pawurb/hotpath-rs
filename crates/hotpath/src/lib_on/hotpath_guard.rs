@@ -1063,10 +1063,12 @@ impl Drop for HotpathGuard {
                     Section::Sql => {
                         if !sql_data.is_empty() {
                             let reference_total: u64 = sql_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = sql_data.iter().map(|e| e.count).sum();
                             let limit = apply_limit(sql_data.len(), self.sql_limit);
                             report.sql = Some(report::collect_sql_json(
                                 &sql_data[..limit],
                                 elapsed,
+                                total_calls,
                                 reference_total,
                                 &percentiles,
                             ));
@@ -1076,10 +1078,12 @@ impl Drop for HotpathGuard {
                         if !http_data.is_empty() {
                             let reference_total: u64 =
                                 http_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = http_data.iter().map(|e| e.count).sum();
                             let limit = apply_limit(http_data.len(), self.http_limit);
                             report.http = Some(report::collect_http_json(
                                 &http_data[..limit],
                                 elapsed,
+                                total_calls,
                                 reference_total,
                                 &percentiles,
                             ));
@@ -1312,10 +1316,12 @@ impl Drop for HotpathGuard {
                         if matches!(format, Format::Table) {
                             let total = sql_data.len();
                             let reference_total: u64 = sql_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = sql_data.iter().map(|e| e.count).sum();
                             let limit = apply_limit(total, self.sql_limit);
                             report::report_sql_table(
                                 &sql_data[..limit],
                                 total,
+                                total_calls,
                                 reference_total,
                                 &percentiles,
                                 &mut writer,
@@ -1327,10 +1333,12 @@ impl Drop for HotpathGuard {
                             let total = http_data.len();
                             let reference_total: u64 =
                                 http_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = http_data.iter().map(|e| e.count).sum();
                             let limit = apply_limit(total, self.http_limit);
                             report::report_http_table(
                                 &http_data[..limit],
                                 total,
+                                total_calls,
                                 reference_total,
                                 &percentiles,
                                 &mut writer,
