@@ -16,6 +16,7 @@ futures-util = "0.3"
 num-bigint = "0.4"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
+mimalloc = { version = "0.1", optional = true }
 
 [features]
 default = []
@@ -25,3 +26,8 @@ hotpath-cpu = ["hotpath/hotpath-cpu"]
 hotpath-meta = ["hotpath/hotpath-meta"]
 hotpath-alloc-meta = ["hotpath/hotpath-alloc-meta"]
 dev = ["hotpath/dev"]
+mimalloc-alloc = ["dep:mimalloc"]
+
+[[example]]
+name = "mimalloc_allocator"
+required-features = ["hotpath-alloc", "mimalloc-alloc"]

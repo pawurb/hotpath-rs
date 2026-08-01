@@ -173,3 +173,16 @@ cargo run --features='hotpath,hotpath-alloc'
 By default, allocation tracking is **exclusive**, meaning each function only reports allocations made directly at its own level, excluding nested instrumented calls.
 
 To switch to **cumulative** mode (where a function's allocation count includes all allocations from nested instrumented calls), set `HOTPATH_ALLOC_CUMULATIVE=true`. Note that cumulative mode produces invalid results for recursive functions because the same allocations are counted multiple times as they propagate up through each recursive frame.
+
+## Custom inner allocator
+
+The tracking allocator forwards every allocation to an inner allocator, `std::alloc::System` by default. To profile a program that uses a different allocator, pass it via the `allocator` parameter of `#[hotpath::main]`:
+
+```rust
+#[hotpath::main(allocator = mimalloc::MiMalloc)]
+fn main() {
+    // ...
+}
+```
+
+The path must name a unit struct implementing `GlobalAlloc` (like `mimalloc::MiMalloc` or `tikv_jemallocator::Jemalloc`). When the `hotpath-alloc` feature is disabled, the parameter is ignored and no allocator is installed, so combine it with your own `#[global_allocator]` behind a feature gate if the program should also use the allocator in normal builds.
