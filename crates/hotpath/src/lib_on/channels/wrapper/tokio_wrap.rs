@@ -936,11 +936,11 @@ mod tests {
     use std::future::poll_fn;
 
     fn bounded<T: Send + 'static>(capacity: usize) -> (Sender<T>, Receiver<T>) {
-        build_bounded(mpsc::channel::<T>(capacity), "test", None, None)
+        build_bounded(mpsc::channel::<T>(capacity), "test", None, None, false)
     }
 
     fn unbounded<T: Send + 'static>() -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-        build_unbounded::<T>("test", None, None)
+        build_unbounded::<T>("test", None, None, false)
     }
 
     #[test]
