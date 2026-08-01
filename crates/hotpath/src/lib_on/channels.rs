@@ -3,7 +3,7 @@
 use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use hdrhistogram::Histogram;
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
 
 use crate::lib_on::{meta_rw_lock, MetaRwLock};
@@ -162,10 +162,42 @@ pub(crate) fn stop_channel_events() {
 /// receiver dropped); the first one wins so `closed_instances` counts
 /// instances, not endpoints. `closed` is the flag shared by the instance's
 /// endpoint wrappers.
-pub(crate) fn mark_closed(closed: &std::sync::atomic::AtomicBool, id: u32) {
+///
+/// `remaining` is the caller's count of messages still queued in the
+/// instance. The second endpoint to close fully tears the instance down, so
+/// its `remaining` messages can never be received; they are reported as
+/// [`ChannelEvent::Abandoned`] so the aggregated entry's counts-derived queue
+/// depth does not carry the sent-minus-received deficit forever.
+pub(crate) fn mark_closed(closed: &std::sync::atomic::AtomicBool, id: u32, remaining: usize) {
     if !closed.swap(true, Ordering::AcqRel) {
         send_channel_event(ChannelEvent::Closed { id });
+    } else if remaining > 0 {
+        send_channel_event(ChannelEvent::Abandoned {
+            id,
+            count: remaining as u64,
+        });
     }
+}
+
+/// Shared per-entry message-id counters for default-mode (aggregated) wrap
+/// channels: all instances at one call site draw ids from one sequence, so
+/// `msg_id` stays unique within the entry and send/receive log pairing (and
+/// the msg-0 rate anchor) stay exact. Bounded by call-site count; `iter =
+/// true` instances keep a local counter instead (their entries are already
+/// per-instance).
+static CHANNEL_MSG_COUNTERS: OnceLock<StdRwLock<HashMap<u32, Arc<AtomicU64>>>> = OnceLock::new();
+
+pub(crate) fn entry_msg_counter(id: u32) -> Arc<AtomicU64> {
+    let map = CHANNEL_MSG_COUNTERS.get_or_init(|| StdRwLock::new(HashMap::new()));
+    if let Some(counter) = map.read().unwrap().get(&id) {
+        return Arc::clone(counter);
+    }
+    let mut writer = map.write().unwrap();
+    Arc::clone(
+        writer
+            .entry(id)
+            .or_insert_with(|| Arc::new(AtomicU64::new(0))),
+    )
 }
 
 /// Event timestamp for a wrap send. Unsampled events are stamped at worker
@@ -198,6 +230,9 @@ pub(crate) struct ChannelEntry {
     pub(crate) instances: u64,
     /// Number of aggregated instances whose `Closed` event was processed.
     pub(crate) closed_instances: u64,
+    /// Messages still queued when their instance fully tore down; they can
+    /// never be received, so the counts-derived queue depth subtracts them.
+    abandoned_count: u64,
     pub(crate) sent_count: u64,
     pub(crate) received_count: u64,
     /// Earliest message timestamp (ns since start), shared across both directions.
@@ -308,6 +343,7 @@ impl ChannelEntry {
             notified: false,
             instances: 0,
             closed_instances: 0,
+            abandoned_count: 0,
             sent_count: 0,
             received_count: 0,
             first_msg_ns: None,
@@ -407,8 +443,18 @@ impl ChannelEntry {
     /// (`instances > 1`) a single-instance `len()` undercounts when several
     /// instances hold messages at once, so the peak also tracks the counts-derived
     /// combined depth and means "peak combined depth" instead.
+    /// Counts-derived in-flight depth, net of messages abandoned in fully
+    /// torn-down instances. Transiently saturates to zero when an `Abandoned`
+    /// batch is drained ahead of its instance's send events; converges once
+    /// the queues are swept.
+    fn outstanding_depth(&self) -> usize {
+        self.sent_count
+            .saturating_sub(self.received_count)
+            .saturating_sub(self.abandoned_count) as usize
+    }
+
     fn record_queue(&mut self, queue_len: usize) {
-        let depth = self.sent_count.saturating_sub(self.received_count) as usize;
+        let depth = self.outstanding_depth();
         let mut max = self.max_queue_size.unwrap_or(0).max(queue_len);
         if self.instances > 1 {
             max = max.max(depth);
@@ -482,6 +528,12 @@ pub(crate) enum ChannelEvent {
     },
     Closed {
         id: u32,
+    },
+    /// Messages left queued in an instance when its second endpoint dropped;
+    /// they can never be received. Emitted by wrap-mode endpoints only.
+    Abandoned {
+        id: u32,
+        count: u64,
     },
     #[allow(dead_code)]
     Notified {
@@ -675,6 +727,19 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
                 .entry(id)
                 .or_insert_with(|| placeholder_channel_entry(id, false))
                 .closed_instances += 1;
+        }
+        ChannelEvent::Abandoned { id, count } => {
+            let channel_stats = state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_channel_entry(id, true));
+            channel_stats.abandoned_count += count;
+            // No further events arrive for the dead instance, so refresh the
+            // displayed depth here instead of waiting for another send/receive.
+            if channel_stats.queue_size.is_some() {
+                let max = channel_stats.max_queue_size.unwrap_or(0);
+                channel_stats.queue_size = Some(channel_stats.outstanding_depth().min(max));
+            }
         }
         ChannelEvent::Notified { id } => {
             state
@@ -889,9 +954,11 @@ cfg_if::cfg_if! {
 /// divided by elapsed time since the call site's first message. This is a
 /// lifetime average - bursty call sites read lower than in-burst throughput.
 /// For aggregated entries `Queue` is the combined in-flight depth across live
-/// instances and `Max queue` the peak combined depth; with a single instance
-/// both keep their exact per-channel meaning. Log windows (`log = true`)
-/// interleave messages from all instances and `msg_id`s restart per instance.
+/// instances (messages abandoned in fully closed instances are subtracted)
+/// and `Max queue` the peak combined depth; with a single instance both keep
+/// their exact per-channel meaning. Log windows (`log = true`) interleave
+/// messages from all instances; message ids are drawn from one per-call-site
+/// sequence, so send/receive log pairing stays exact.
 ///
 /// Pass `iter = true` to give every instance its own entry instead (displayed
 /// as `label`, `label-2`, `label-3`, ...), e.g. one row per spawned worker
@@ -1191,6 +1258,70 @@ mod tests {
             },
         );
         assert_eq!(state.stats[&id].state(), ChannelState::Closed);
+    }
+
+    /// Messages abandoned in a fully torn-down instance are reconciled via
+    /// `Abandoned`, so sequential instances that each abandon a message do not
+    /// accumulate a phantom queue depth at the call site.
+    #[test]
+    fn abandoned_messages_do_not_inflate_queue_depth() {
+        let mut state = ChannelsInternalState {
+            stats: HashMap::new(),
+            logs: HashMap::new(),
+        };
+
+        let id = 1;
+        process_channel_event(
+            &mut state,
+            ChannelEvent::Created {
+                id,
+                source: "test",
+                display_label: None,
+                channel_type: ChannelType::Bounded(1),
+                type_name: "u8",
+                type_size: 1,
+                wrap: true,
+                iter_mode: false,
+            },
+        );
+
+        // Instance 1 sends one message that is never received, then fully
+        // tears down: first endpoint drop emits Closed, second Abandoned.
+        let ts = Instant::now();
+        process_channel_event(
+            &mut state,
+            ChannelEvent::WrapMessageSent {
+                id,
+                msg_id: 0,
+                log: None,
+                timestamp: Some(ts),
+                queue_len: 1,
+            },
+        );
+        process_channel_event(&mut state, ChannelEvent::Closed { id });
+        process_channel_event(&mut state, ChannelEvent::Abandoned { id, count: 1 });
+        assert_eq!(
+            state.stats[&id].queue_size,
+            Some(0),
+            "abandoned message must not linger as in-flight depth"
+        );
+
+        // Instance 2 holds one message: depth reflects only its message, and
+        // the peak does not inherit the dead instance's deficit.
+        process_channel_event(&mut state, ChannelEvent::Instance { id, wrap: true });
+        process_channel_event(
+            &mut state,
+            ChannelEvent::WrapMessageSent {
+                id,
+                msg_id: 1,
+                log: None,
+                timestamp: Some(ts),
+                queue_len: 1,
+            },
+        );
+        let entry = state.stats.get(&id).expect("channel registered");
+        assert_eq!(entry.queue_size, Some(1));
+        assert_eq!(entry.max_queue_size, Some(1));
     }
 
     /// Aggregated entries (`instances > 1`) track the counts-derived combined

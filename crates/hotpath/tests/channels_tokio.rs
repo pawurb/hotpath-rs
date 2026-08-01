@@ -304,22 +304,22 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         let sep = path_sep();
-        let iter_39 = format!("examples{sep}iter_tokio.rs:39");
-        let iter_39_2 = format!("examples{sep}iter_tokio.rs:39-2");
-        let iter_39_3 = format!("examples{sep}iter_tokio.rs:39-3");
-        let iter_51 = format!("examples{sep}iter_tokio.rs:51");
-        let iter_51_2 = format!("examples{sep}iter_tokio.rs:51-2");
-        let iter_51_3 = format!("examples{sep}iter_tokio.rs:51-3");
+        let iter_41 = format!("examples{sep}iter_tokio.rs:41");
+        let iter_41_2 = format!("examples{sep}iter_tokio.rs:41-2");
+        let iter_41_3 = format!("examples{sep}iter_tokio.rs:41-3");
+        let iter_53 = format!("examples{sep}iter_tokio.rs:53");
+        let iter_53_2 = format!("examples{sep}iter_tokio.rs:53-2");
+        let iter_53_3 = format!("examples{sep}iter_tokio.rs:53-3");
         let all_expected = [
             "Actor 1",
             "Actor 1-2",
             "Actor 1-3",
-            iter_39.as_str(),
-            iter_39_2.as_str(),
-            iter_39_3.as_str(),
-            iter_51.as_str(),
-            iter_51_2.as_str(),
-            iter_51_3.as_str(),
+            iter_41.as_str(),
+            iter_41_2.as_str(),
+            iter_41_3.as_str(),
+            iter_53.as_str(),
+            iter_53_2.as_str(),
+            iter_53_3.as_str(),
         ];
 
         for expected in all_expected {

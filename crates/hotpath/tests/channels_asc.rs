@@ -129,16 +129,16 @@ pub mod tests {
         let iter_27 = format!("examples{sep}iter_asc.rs:27");
         let iter_27_2 = format!("examples{sep}iter_asc.rs:27-2");
         let iter_27_3 = format!("examples{sep}iter_asc.rs:27-3");
-        let iter_40 = format!("examples{sep}iter_asc.rs:40");
-        let iter_40_2 = format!("examples{sep}iter_asc.rs:40-2");
-        let iter_40_3 = format!("examples{sep}iter_asc.rs:40-3");
+        let iter_41 = format!("examples{sep}iter_asc.rs:41");
+        let iter_41_2 = format!("examples{sep}iter_asc.rs:41-2");
+        let iter_41_3 = format!("examples{sep}iter_asc.rs:41-3");
         let all_expected = [
             iter_27.as_str(),
             iter_27_2.as_str(),
             iter_27_3.as_str(),
-            iter_40.as_str(),
-            iter_40_2.as_str(),
-            iter_40_3.as_str(),
+            iter_41.as_str(),
+            iter_41_2.as_str(),
+            iter_41_3.as_str(),
         ];
 
         for expected in all_expected {

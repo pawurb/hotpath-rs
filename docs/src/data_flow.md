@@ -136,8 +136,8 @@ By default all channels created at one `channel!` call site (with the same messa
 Semantics of the aggregated columns:
 
 - **Sent/s, Recv/s** - aggregate call-site throughput: total messages divided by elapsed time since the call site's first message. This is a lifetime average, so bursty call sites read lower than their in-burst throughput.
-- **Queue / Max queue** - combined in-flight depth across live instances, and its peak. With a single instance both keep their exact per-channel meaning.
-- **Logs** (`log = true`) - one log window per call site: messages from all instances interleave and message ids restart per instance.
+- **Queue / Max queue** - combined in-flight depth across live instances, and its peak; messages left unconsumed in a fully closed instance are subtracted. With a single instance both keep their exact per-channel meaning.
+- **Logs** (`log = true`) - one log window per call site: messages from all instances interleave. Message ids are drawn from one per-call-site sequence, so send/receive log pairing stays exact.
 
 Pass `iter = true` to get one entry per channel instance instead, displayed with suffixed labels (`label`, `label-2`, `label-3`, ...) - e.g. one row per spawned worker with its individual counts and rate. Profiler state then grows with the number of channels ever created, so prefer the default aggregation for call sites with unbounded instance churn.
 

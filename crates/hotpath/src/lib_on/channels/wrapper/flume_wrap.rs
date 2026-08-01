@@ -159,7 +159,7 @@ impl<T> Clone for Sender<T> {
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.sender_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            crate::channels::mark_closed(&self.closed, self.id);
+            crate::channels::mark_closed(&self.closed, self.id, self.inner.len());
         }
     }
 }
@@ -257,7 +257,7 @@ impl<T> Clone for Receiver<T> {
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.receiver_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            crate::channels::mark_closed(&self.closed, self.id);
+            crate::channels::mark_closed(&self.closed, self.id, self.inner.len());
         }
     }
 }
@@ -357,6 +357,13 @@ fn build<T>(
     let ch_type = channel_type(&orig_tx);
     let id = register_channel_wrap::<T>(source, label, ch_type, iter);
     let closed = Arc::new(AtomicBool::new(false));
+    // Aggregated instances share one msg-id sequence so ids stay unique
+    // within the entry; iter-mode instances keep a local counter.
+    let next_id = if iter {
+        Arc::new(AtomicU64::new(0))
+    } else {
+        crate::channels::entry_msg_counter(id)
+    };
 
     // Rebuild the inner channel to carry `(msg_id, send_ts, T)`. The caller's original
     // channel is discarded (wrap mode is inline-only, see module docs); only its
@@ -373,7 +380,7 @@ fn build<T>(
         inner: tx,
         id,
         sender_count: Arc::new(AtomicUsize::new(1)),
-        next_id: Arc::new(AtomicU64::new(0)),
+        next_id,
         closed: Arc::clone(&closed),
         log_fn,
     };
