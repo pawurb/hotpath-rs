@@ -290,7 +290,11 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
             label,
             type_name,
         } => {
-            let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
+            let iter = state
+                .stats
+                .values()
+                .filter(|s| s.source == source && s.label == label)
+                .count() as u32;
             let entry = state
                 .stats
                 .entry(id)
@@ -341,7 +345,9 @@ static IO_SOURCE_IDS: OnceLock<StdRwLock<HashMap<IoSourceKey, u32>>> = OnceLock:
 /// Registers an instrumented I/O value. By default the entry id of earlier
 /// wrappers from the same call site and type is reused (only the first
 /// registration emits `Created`, so its `label` wins); with `iter` every
-/// instance gets its own entry, distinguished by the entry's `iter` number.
+/// instance gets its own entry. Instances sharing a source and label are
+/// distinguished by the entry's `iter` number; a distinct label per instance
+/// keeps each entry's label as provided.
 pub(crate) fn register_io<T>(source: &'static str, label: Option<String>, iter: bool) -> u32 {
     let type_name = std::any::type_name::<T>();
     init_io_state();
@@ -481,9 +487,11 @@ pub(crate) fn compare_io_entries(a: &IoEntry, b: &IoEntry) -> std::cmp::Ordering
 /// all instances operate concurrently. See
 /// `test-io/examples/concurrent_io.rs`.
 ///
-/// Pass `iter = true` to give every wrapper instance its own entry instead
-/// (displayed as `label`, `label-2`, `label-3`, ...), e.g. one row per
-/// accepted connection with its individual rate and byte counts. Profiler
+/// Pass `iter = true` to give every wrapper instance its own entry instead,
+/// e.g. one row per accepted connection with its individual rate and byte
+/// counts. Instances sharing one label are displayed as `label`, `label-2`,
+/// `label-3`, ...; a dynamic `label` expression that differs per instance
+/// (e.g. `format!("conn-{i}")`) names each row as provided. Profiler
 /// state then grows with the number of instances ever created, so prefer the
 /// default aggregation for call sites with unbounded instance churn.
 ///

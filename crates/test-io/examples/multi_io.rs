@@ -175,7 +175,9 @@ fn gzip_section(chunk: &[u8]) {
         label = "gzip"
     );
     write_chunks(&mut encoder, chunk, COMPRESS_TOTAL);
-    // finish(self) consumes the encoder, so peel the wrapper off with io_unwrap.
+    // Compress the buffered tail while still instrumented, then peel the
+    // wrapper off with io_unwrap for the consuming finish(self).
+    encoder.flush().unwrap();
     let compressed = hotpath::io_unwrap(encoder).finish().unwrap();
 
     let mut decoder = hotpath::io!(
@@ -191,7 +193,9 @@ fn brotli_section(chunk: &[u8]) {
         label = "brotli"
     );
     write_chunks(&mut encoder, chunk, COMPRESS_TOTAL);
-    // into_inner finalizes the brotli stream before returning the buffer.
+    // Compress the buffered tail while still instrumented; into_inner then
+    // finalizes the brotli stream before returning the buffer.
+    encoder.flush().unwrap();
     let compressed = hotpath::io_unwrap(encoder).into_inner();
 
     let mut decoder = hotpath::io!(

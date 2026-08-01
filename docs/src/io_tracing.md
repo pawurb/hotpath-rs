@@ -82,6 +82,40 @@ let mut reader = hotpath::io!(
 );
 ```
 
+## Compression encoders
+
+Write-side encoders (`flate2::write::GzEncoder`, `brotli::CompressorWriter`, `zstd::stream::write::Encoder`) do their compression work inside the `write` calls they receive, so wrapping the encoder measures compression throughput directly: the write row's Bytes is the uncompressed input and Rate is how fast the codec consumes it. Two usage details keep those numbers honest.
+
+**Flush before unwrapping.** A consuming finalizer (`finish(self)`, `into_inner(self)`) runs after `io_unwrap` has removed the wrapper, so whatever work it performs is invisible to the profiler. Call `flush()` on the wrapper first: the encoder compresses and emits its buffered tail inside an instrumented flush operation, leaving only the stream epilogue to the finalizer. The tail is usually small - for brotli at quality 9 compressing 8 MB, the writes take ~680 ms while flush plus `into_inner` take ~1 ms - but the flush keeps the accounting complete regardless of how much the codec had buffered:
+
+```rust
+use std::io::Write;
+
+let mut encoder = hotpath::io!(
+    brotli::CompressorWriter::new(Vec::new(), 4096, 9, 22),
+    label = "brotli"
+);
+encoder.write_all(data)?;
+encoder.flush()?; // compress the buffered tail while still instrumented
+let compressed = hotpath::io_unwrap(encoder).into_inner();
+```
+
+**Wrap both sides to see the compression ratio.** The encoder wrapper only counts uncompressed input bytes. Nest a second `io!` around the encoder's sink and the report pairs two rows: input bytes at compression speed, and output bytes (at memcpy speed - that row's Rate is not meaningful, its Bytes column is the point):
+
+```rust
+let mut encoder = hotpath::io!(
+    flate2::write::GzEncoder::new(
+        hotpath::io!(Vec::new(), label = "gzip-out"),
+        flate2::Compression::new(9),
+    ),
+    label = "gzip"
+);
+```
+
+The `gzip` row then reports e.g. 8.0 MB consumed at 19 MB/s while `gzip-out` reports the 1.0 MB that came out the other side. See the [compression_levels_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/compression_levels_io.rs) example, which compares gzip and brotli across five compression levels this way.
+
+Read-side encoders (`flate2::read::GzEncoder`, `brotli::CompressorReader`) invert the accounting: reads return compressed bytes, so the wrapper's Bytes is the compressed output, and stream finalization happens inside the last instrumented reads. Wrap whichever side produces the number you want to read off the report.
+
 ## Cancellation caveat
 
 Async operation durations span from the first poll to `Ready`. If an operation's future is cancelled mid-`Pending` (e.g. a `tokio::select!` timeout drops a `read()` future), the wrapper cannot observe the cancellation; the next operation in the same direction resumes the pending span and reports the time since the abandoned operation began.
