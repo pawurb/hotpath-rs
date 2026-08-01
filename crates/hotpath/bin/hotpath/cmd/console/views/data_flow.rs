@@ -105,6 +105,7 @@ pub(crate) fn render_channels_panel(
     let header_cells = vec![
         "Type".to_string(),
         "Label".to_string(),
+        "Inst".to_string(),
         "State".to_string(),
         "Sent/Recv".to_string(),
         "Msg/s s/r".to_string(),
@@ -148,6 +149,7 @@ pub(crate) fn render_channels_panel(
             let mut cells = vec![
                 Cell::from(type_text).style(Style::default().fg(Color::Cyan)),
                 Cell::from(truncate_left(&entry.label, label_width)),
+                Cell::from(entry.instances.to_string()),
                 Cell::from(entry.state.clone()).style(state_style(&entry.state)),
                 Cell::from(format!("{}/{}", entry.sent_count, entry.received_count)),
                 Cell::from(rate_text),
@@ -169,6 +171,7 @@ pub(crate) fn render_channels_panel(
     let widths = vec![
         Constraint::Length(12),
         Constraint::Percentage(30),
+        Constraint::Length(5),
         Constraint::Length(10),
         Constraint::Length(14),
         Constraint::Length(15),
@@ -213,6 +216,7 @@ pub(crate) fn render_streams_panel(
 
     let header = Row::new(vec![
         Cell::from("Label"),
+        Cell::from("Inst"),
         Cell::from("State"),
         Cell::from("Yielded"),
     ])
@@ -224,6 +228,7 @@ pub(crate) fn render_streams_panel(
         .map(|entry| {
             Row::new(vec![
                 Cell::from(truncate_left(&entry.label, label_width)),
+                Cell::from(entry.instances.to_string()),
                 Cell::from(entry.state.clone()).style(state_style(&entry.state)),
                 Cell::from(entry.items_yielded.to_string()),
             ])
@@ -232,6 +237,7 @@ pub(crate) fn render_streams_panel(
 
     let widths = [
         Constraint::Percentage(70),
+        Constraint::Length(5),
         Constraint::Length(10),
         Constraint::Length(12),
     ];

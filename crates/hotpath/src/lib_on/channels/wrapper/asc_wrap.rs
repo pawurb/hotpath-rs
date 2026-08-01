@@ -25,7 +25,7 @@
 //!
 //! Returns [`Sender`]/[`Receiver`], re-exported as `hotpath::wrap::async_channel::{Sender, Receiver}`.
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use async_channel::{
@@ -76,6 +76,7 @@ pub struct Sender<T> {
     /// Monotonic message-id source, shared across all `Sender` clones so ids stay
     /// globally unique across producers.
     next_id: Arc<AtomicU64>,
+    closed: Arc<AtomicBool>,
     log_fn: Option<fn(&T) -> String>,
 }
 
@@ -155,6 +156,7 @@ impl<T> Clone for Sender<T> {
             id: self.id,
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -163,7 +165,7 @@ impl<T> Clone for Sender<T> {
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.sender_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            send_channel_event(ChannelEvent::Closed { id: self.id });
+            crate::channels::mark_closed(&self.closed, self.id);
         }
     }
 }
@@ -177,6 +179,7 @@ pub struct Receiver<T> {
     inner: InnerReceiver<Payload<T>>,
     id: u32,
     receiver_count: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
 }
 
 impl<T> Receiver<T> {
@@ -237,6 +240,7 @@ impl<T> Clone for Receiver<T> {
             inner: self.inner.clone(),
             id: self.id,
             receiver_count: Arc::clone(&self.receiver_count),
+            closed: Arc::clone(&self.closed),
         }
     }
 }
@@ -244,7 +248,7 @@ impl<T> Clone for Receiver<T> {
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.receiver_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            send_channel_event(ChannelEvent::Closed { id: self.id });
+            crate::channels::mark_closed(&self.closed, self.id);
         }
     }
 }
@@ -261,10 +265,12 @@ fn build<T>(
     source: &'static str,
     label: Option<String>,
     log_fn: Option<fn(&T) -> String>,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
     let (orig_tx, _orig_rx) = inner;
     let ch_type = channel_type(&orig_tx);
-    let id = register_channel_wrap::<T>(source, label, ch_type);
+    let id = register_channel_wrap::<T>(source, label, ch_type, iter);
+    let closed = Arc::new(AtomicBool::new(false));
 
     // Rebuild the inner channel to carry `(msg_id, send_ts, T)`. The caller's original
     // channel is discarded (wrap mode is inline-only, see module docs); only its
@@ -282,12 +288,14 @@ fn build<T>(
         id,
         sender_count: Arc::new(AtomicUsize::new(1)),
         next_id: Arc::new(AtomicU64::new(0)),
+        closed: Arc::clone(&closed),
         log_fn,
     };
     let receiver = Receiver {
         inner: rx,
         id,
         receiver_count: Arc::new(AtomicUsize::new(1)),
+        closed,
     };
     (sender, receiver)
 }
@@ -299,8 +307,9 @@ impl<T: Send + 'static> InstrumentChannelWrap for (InnerSender<T>, InnerReceiver
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        build(self, source, label, None)
+        build(self, source, label, None, iter)
     }
 }
 
@@ -313,8 +322,9 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         let log_fn: fn(&T) -> String = |m| crate::output::format_debug_truncated(m);
-        build(self, source, label, Some(log_fn))
+        build(self, source, label, Some(log_fn), iter)
     }
 }

@@ -120,11 +120,26 @@ let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), label = "worker_q
 
 // Enable message logging (requires std::fmt::Debug trait on message type)
 let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), log = true);
+
+// One entry per channel instance instead of per call site
+let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), iter = true);
 ```
 
 Label channels to display them on top of the list. By passing `log = true` TUI will display messages that a channel received.
 
 <img loading="lazy" src="{{#asset-hash images/channels-log.png}}" alt="hotpath-rs TUI showing channel message flow monitoring with send and receive logs">
+
+### Call-site aggregation and `iter = true`
+
+By default all channels created at one `channel!` call site (with the same message type) accumulate into a **single entry**. Counts and the latency histogram are summed across instances, and the `Inst` column reports how many instances the entry aggregates, so profiler state stays bounded even when a call site creates a channel per handled request. The first registration's `label` and channel kind/capacity win, and the entry shows `closed` once every aggregated instance has closed.
+
+Semantics of the aggregated columns:
+
+- **Sent/s, Recv/s** - aggregate call-site throughput: total messages divided by elapsed time since the call site's first message. This is a lifetime average, so bursty call sites read lower than their in-burst throughput.
+- **Queue / Max queue** - combined in-flight depth across live instances, and its peak. With a single instance both keep their exact per-channel meaning.
+- **Logs** (`log = true`) - one log window per call site: messages from all instances interleave and message ids restart per instance.
+
+Pass `iter = true` to get one entry per channel instance instead, displayed with suffixed labels (`label`, `label-2`, `label-3`, ...) - e.g. one row per spawned worker with its individual counts and rate. Profiler state then grows with the number of channels ever created, so prefer the default aggregation for call sites with unbounded instance churn.
 
 ### Capacity parameter requirement
 
@@ -186,9 +201,14 @@ let s = hotpath::stream!(stream::iter(1..=100), label = "data_stream");
 
 // Enable item logging (requires std::fmt::Debug trait on item type)
 let s = hotpath::stream!(stream::iter(1..=100), log = true);
+
+// One entry per stream instance instead of per call site
+let s = hotpath::stream!(stream::iter(1..=100), iter = true);
 ```
 
 Label streams to display them on top of the list. By passing `log = true` TUI will display values that a stream yielded.
+
+Like channels, streams aggregate by call site by default: all streams created at one `stream!` call (with the same item type) share a single entry with summed `items_yielded` and an `Inst` instance count, and the entry shows `closed` once every instance has completed. Pass `iter = true` for one suffixed entry per instance - profiler state then grows with the number of streams ever created.
 
 <img loading="lazy" src="{{#asset-hash images/streams-log.png}}" alt="hotpath-rs TUI showing async stream item monitoring and throughput">
 

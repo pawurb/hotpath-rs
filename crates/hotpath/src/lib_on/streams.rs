@@ -3,7 +3,7 @@
 use crossbeam_channel::{bounded, Receiver as CbReceiver, RecvTimeoutError, Sender as CbSender};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock as StdRwLock};
 
 use crate::lib_on::{meta_rw_lock, MetaRwLock};
 
@@ -26,13 +26,77 @@ pub(crate) fn next_stream_id() -> u32 {
     STREAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Entries are keyed by creation site and item type, so streams created
+/// repeatedly at one `stream!` call (e.g. per handled request) share a single
+/// accumulating entry and state stays bounded by the number of call sites
+/// rather than the number of streams ever created.
+type StreamSourceKey = (&'static str, &'static str);
+
+static STREAM_SOURCE_IDS: OnceLock<StdRwLock<HashMap<StreamSourceKey, u32>>> = OnceLock::new();
+
+/// Registers an instrumented stream. By default the entry id of earlier
+/// streams from the same call site and item type is reused (only the first
+/// registration emits [`StreamEvent::Created`], so its `label` wins); with
+/// `iter` every instance gets its own entry, distinguished by the entry's
+/// `iter` number. `Item` is the stream's item type, used to record the type
+/// name and per-item byte size.
+pub(crate) fn register_stream<Item>(
+    source: &'static str,
+    label: Option<String>,
+    iter: bool,
+) -> u32 {
+    let type_name = std::any::type_name::<Item>();
+    init_streams_state();
+
+    if !iter {
+        let map = STREAM_SOURCE_IDS.get_or_init(|| StdRwLock::new(HashMap::new()));
+        if let Some(&id) = map.read().unwrap().get(&(source, type_name)) {
+            send_stream_event(StreamEvent::Instance { id });
+            return id;
+        }
+        let mut writer = map.write().unwrap();
+        if let Some(&id) = writer.get(&(source, type_name)) {
+            send_stream_event(StreamEvent::Instance { id });
+            return id;
+        }
+        let id = next_stream_id();
+        writer.insert((source, type_name), id);
+
+        send_stream_event(StreamEvent::Created {
+            id,
+            source,
+            display_label: label,
+            type_name,
+            type_size: std::mem::size_of::<Item>(),
+            iter_mode: false,
+        });
+
+        return id;
+    }
+
+    let id = next_stream_id();
+    send_stream_event(StreamEvent::Created {
+        id,
+        source,
+        display_label: label,
+        type_name,
+        type_size: std::mem::size_of::<Item>(),
+        iter_mode: true,
+    });
+
+    id
+}
+
 /// Statistics for a single instrumented stream.
 #[derive(Debug, Clone)]
 pub(crate) struct StreamStats {
     pub(crate) id: u32,
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
-    pub(crate) state: ChannelState, // Only Active or Closed
+    /// Number of stream instances aggregated into this entry.
+    pub(crate) instances: u64,
+    /// Number of aggregated instances whose `Completed` event was processed.
+    pub(crate) closed_instances: u64,
     pub(crate) items_yielded: u64,
     pub(crate) type_name: &'static str,
     pub(crate) type_size: usize,
@@ -53,11 +117,24 @@ impl StreamStats {
             id,
             source,
             label,
-            state: ChannelState::Active,
+            instances: 0,
+            closed_instances: 0,
             items_yielded: 0,
             type_name,
             type_size,
             iter,
+        }
+    }
+
+    /// Displayed state (only Active or Closed), derived from the instance
+    /// counters. `>=` rather than `==` because a `Completed` event can be
+    /// drained before the `Instance` event from another thread; the counters
+    /// converge once idle.
+    pub(crate) fn state(&self) -> ChannelState {
+        if self.instances > 0 && self.closed_instances >= self.instances {
+            ChannelState::Closed
+        } else {
+            ChannelState::Active
         }
     }
 }
@@ -89,7 +166,9 @@ impl From<&StreamStats> for JsonStreamEntry {
             source: stats.source.to_string(),
             label,
             has_custom_label: stats.label.is_some(),
-            state: stats.state.as_str().to_string(),
+            state: stats.state().as_str().to_string(),
+            instances: stats.instances,
+            closed_instances: stats.closed_instances,
             items_yielded: stats.items_yielded,
             type_name: stats.type_name.to_string(),
             type_size: stats.type_size,
@@ -107,6 +186,15 @@ pub(crate) enum StreamEvent {
         display_label: Option<String>,
         type_name: &'static str,
         type_size: usize,
+        /// `true` when the registration opted into per-instance entries
+        /// (`iter = true`); gates the display-suffix scan.
+        iter_mode: bool,
+    },
+    /// A repeat default-mode registration at an already-known call site. The
+    /// first instance is counted by `Created`; each later one sends this
+    /// instead.
+    Instance {
+        id: u32,
     },
     Yielded {
         id: u32,
@@ -162,8 +250,16 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
             display_label,
             type_name,
             type_size,
+            iter_mode,
         } => {
-            let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
+            // The O(n) same-source scan only has meaning for per-instance
+            // entries; default-mode entries are unique per source and keep
+            // an unsuffixed label.
+            let iter = if iter_mode {
+                state.stats.values().filter(|s| s.source == source).count() as u32
+            } else {
+                0
+            };
             let entry = state
                 .stats
                 .entry(id)
@@ -173,7 +269,15 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
             entry.type_name = type_name;
             entry.type_size = type_size;
             entry.iter = iter;
+            entry.instances += 1;
             state.logs.entry(id).or_insert_with(StreamStatsLogs::new);
+        }
+        StreamEvent::Instance { id } => {
+            state
+                .stats
+                .entry(id)
+                .or_insert_with(|| placeholder_stream_stats(id))
+                .instances += 1;
         }
         StreamEvent::Yielded { id, log, timestamp } => {
             let stream_stats = state
@@ -202,7 +306,7 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_stream_stats(id))
-                .state = ChannelState::Closed;
+                .closed_instances += 1;
         }
     }
 }
@@ -286,7 +390,12 @@ pub(crate) fn init_streams_state() -> &'static StreamsState {
 #[doc(hidden)]
 pub trait InstrumentStream {
     type Output;
-    fn instrument_stream(self, source: &'static str, label: Option<String>) -> Self::Output;
+    fn instrument_stream(
+        self,
+        source: &'static str,
+        label: Option<String>,
+        iter: bool,
+    ) -> Self::Output;
 }
 
 /// Trait for instrumenting streams with message logging.
@@ -295,7 +404,12 @@ pub trait InstrumentStream {
 #[doc(hidden)]
 pub trait InstrumentStreamLog {
     type Output;
-    fn instrument_stream_log(self, source: &'static str, label: Option<String>) -> Self::Output;
+    fn instrument_stream_log(
+        self,
+        source: &'static str,
+        label: Option<String>,
+        iter: bool,
+    ) -> Self::Output;
 }
 
 // Implement InstrumentStream for all Stream types
@@ -305,8 +419,13 @@ where
 {
     type Output = crate::streams::wrapper::InstrumentedStream<S>;
 
-    fn instrument_stream(self, source: &'static str, label: Option<String>) -> Self::Output {
-        crate::streams::wrapper::InstrumentedStream::new(self, source, label)
+    fn instrument_stream(
+        self,
+        source: &'static str,
+        label: Option<String>,
+        iter: bool,
+    ) -> Self::Output {
+        crate::streams::wrapper::InstrumentedStream::new(self, source, label, iter)
     }
 }
 
@@ -318,15 +437,35 @@ where
 {
     type Output = crate::streams::wrapper::InstrumentedStreamLog<S>;
 
-    fn instrument_stream_log(self, source: &'static str, label: Option<String>) -> Self::Output {
-        crate::streams::wrapper::InstrumentedStreamLog::new(self, source, label)
+    fn instrument_stream_log(
+        self,
+        source: &'static str,
+        label: Option<String>,
+        iter: bool,
+    ) -> Self::Output {
+        crate::streams::wrapper::InstrumentedStreamLog::new(self, source, label, iter)
     }
 }
 
 /// Instrument a stream to track its item yields.
 ///
-/// Optional parameters: `label`, `log = true`.
+/// Optional parameters: `label`, `log = true`, `iter = true` (in any order).
 /// `log = true` requires `Debug` on the item type.
+///
+/// # Call-site aggregation and `iter = true`
+///
+/// By default all streams created at one `stream!` call site (with the same
+/// item type) accumulate into a **single entry**: `items_yielded` is summed
+/// across instances and the `Inst` column reports how many instances the
+/// entry aggregates, so profiler state stays bounded even when a call site
+/// creates a stream per request. The first registration's `label` wins; the
+/// entry shows `Closed` once every aggregated instance has completed. Log
+/// windows (`log = true`) interleave items from all instances.
+///
+/// Pass `iter = true` to give every instance its own entry instead (displayed
+/// as `label`, `label-2`, `label-3`, ...). Profiler state then grows with the
+/// number of streams ever created, so prefer the default aggregation for call
+/// sites with unbounded instance churn.
 ///
 /// # Examples
 ///
@@ -344,36 +483,37 @@ where
 macro_rules! stream {
     ($expr:expr) => {{
         const STREAM_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentStream::instrument_stream($expr, STREAM_ID, None)
+        $crate::InstrumentStream::instrument_stream($expr, STREAM_ID, None, false)
     }};
 
-    ($expr:expr, label = $label:expr) => {{
+    // Any argument list is parsed order-independently by the muncher below.
+    // Slots are `label log iter`; `label`/`iter` are stored as ready-to-use
+    // expression tokens so the dispatch only branches on `log`. `STREAM_ID` is
+    // captured once here so `file!()`/`line!()` resolve to the user's call site.
+    ($expr:expr, $($rest:tt)*) => {{
         const STREAM_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentStream::instrument_stream($expr, STREAM_ID, Some($label.to_string()))
+        $crate::stream!(@munch STREAM_ID, $expr ; (None) [nolog] (false) ; $($rest)*)
     }};
 
-    ($expr:expr, log = true) => {{
-        const STREAM_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentStreamLog::instrument_stream_log($expr, STREAM_ID, None)
-    }};
+    (@munch $id:ident, $e:expr ; $lbl:tt $log:tt $it:tt ;) => {
+        $crate::stream!(@dispatch $id, $e ; $lbl $log $it)
+    };
+    (@munch $id:ident, $e:expr ; $lbl:tt $log:tt $it:tt ; label = $l:expr $(, $($r:tt)*)?) => {
+        $crate::stream!(@munch $id, $e ; (Some($l.to_string())) $log $it ; $($($r)*)?)
+    };
+    (@munch $id:ident, $e:expr ; $lbl:tt $log:tt $it:tt ; log = true $(, $($r:tt)*)?) => {
+        $crate::stream!(@munch $id, $e ; $lbl [log] $it ; $($($r)*)?)
+    };
+    (@munch $id:ident, $e:expr ; $lbl:tt $log:tt $it:tt ; iter = true $(, $($r:tt)*)?) => {
+        $crate::stream!(@munch $id, $e ; $lbl $log (true) ; $($($r)*)?)
+    };
 
-    ($expr:expr, label = $label:expr, log = true) => {{
-        const STREAM_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentStreamLog::instrument_stream_log(
-            $expr,
-            STREAM_ID,
-            Some($label.to_string()),
-        )
-    }};
-
-    ($expr:expr, log = true, label = $label:expr) => {{
-        const STREAM_ID: &'static str = concat!(file!(), ":", line!());
-        $crate::InstrumentStreamLog::instrument_stream_log(
-            $expr,
-            STREAM_ID,
-            Some($label.to_string()),
-        )
-    }};
+    (@dispatch $id:ident, $e:expr ; $lbl:tt [nolog] $it:tt) => {
+        $crate::InstrumentStream::instrument_stream($e, $id, $lbl, $it)
+    };
+    (@dispatch $id:ident, $e:expr ; $lbl:tt [log] $it:tt) => {
+        $crate::InstrumentStreamLog::instrument_stream_log($e, $id, $lbl, $it)
+    };
 }
 
 /// Compare two stream stats for sorting.

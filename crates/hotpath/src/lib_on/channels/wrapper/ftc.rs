@@ -13,6 +13,7 @@ fn wrap_channel_impl<T, F>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
     mut get_msg_log: F,
 ) -> (Sender<T>, Receiver<T>)
 where
@@ -25,7 +26,7 @@ where
     let mut inner_rx = hotpath_meta::stream!(inner_rx, label = "hp-ftc-bounded-rx");
     let (mut proxy_tx, proxy_rx) = mpsc::channel::<T>(1);
 
-    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity));
+    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity), iter);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -61,8 +62,9 @@ pub(crate) fn wrap_channel<T: Send + 'static>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_channel_impl(inner, source, label, capacity, |_| None)
+    wrap_channel_impl(inner, source, label, capacity, iter, |_| None)
 }
 
 /// Wrap a bounded futures channel with logging enabled. Returns (outer_tx, outer_rx).
@@ -71,8 +73,9 @@ pub(crate) fn wrap_channel_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_channel_impl(inner, source, label, capacity, |msg| {
+    wrap_channel_impl(inner, source, label, capacity, iter, |msg| {
         Some(crate::output::format_debug_truncated(msg))
     })
 }
@@ -83,6 +86,7 @@ fn wrap_unbounded_impl<T, F>(
     inner: (UnboundedSender<T>, UnboundedReceiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
     mut get_msg_log: F,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>)
 where
@@ -95,7 +99,7 @@ where
     let mut inner_rx = hotpath_meta::stream!(inner_rx, label = "hp-ftc-unbounded-rx");
     let (proxy_tx, proxy_rx) = mpsc::unbounded::<T>();
 
-    let id = register_channel::<T>(source, label, ChannelType::Unbounded);
+    let id = register_channel::<T>(source, label, ChannelType::Unbounded, iter);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -129,8 +133,9 @@ pub(crate) fn wrap_unbounded<T: Send + 'static>(
     inner: (UnboundedSender<T>, UnboundedReceiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    wrap_unbounded_impl(inner, source, label, |_| None)
+    wrap_unbounded_impl(inner, source, label, iter, |_| None)
 }
 
 /// Wrap an unbounded futures channel with logging enabled. Returns (outer_tx, outer_rx).
@@ -138,8 +143,9 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     inner: (UnboundedSender<T>, UnboundedReceiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    wrap_unbounded_impl(inner, source, label, |msg| {
+    wrap_unbounded_impl(inner, source, label, iter, |msg| {
         Some(crate::output::format_debug_truncated(msg))
     })
 }
@@ -149,6 +155,7 @@ fn wrap_oneshot_impl<T, F>(
     inner: (oneshot::Sender<T>, oneshot::Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
     mut get_msg_log: F,
 ) -> (oneshot::Sender<T>, oneshot::Receiver<T>)
 where
@@ -158,7 +165,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = oneshot::channel::<T>();
 
-    let id = register_channel::<T>(source, label, ChannelType::Oneshot);
+    let id = register_channel::<T>(source, label, ChannelType::Oneshot, iter);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -210,8 +217,9 @@ pub(crate) fn wrap_oneshot<T: Send + 'static>(
     inner: (oneshot::Sender<T>, oneshot::Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (oneshot::Sender<T>, oneshot::Receiver<T>) {
-    wrap_oneshot_impl(inner, source, label, |_| None)
+    wrap_oneshot_impl(inner, source, label, iter, |_| None)
 }
 
 /// Wrap a oneshot futures channel with logging enabled. Returns (outer_tx, outer_rx).
@@ -219,8 +227,9 @@ pub(crate) fn wrap_oneshot_log<T: Send + std::fmt::Debug + 'static>(
     inner: (oneshot::Sender<T>, oneshot::Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (oneshot::Sender<T>, oneshot::Receiver<T>) {
-    wrap_oneshot_impl(inner, source, label, |msg| {
+    wrap_oneshot_impl(inner, source, label, iter, |msg| {
         Some(crate::output::format_debug_truncated(msg))
     })
 }
@@ -242,11 +251,12 @@ impl<T: Send + 'static> InstrumentChannelProxy
         source: &'static str,
         label: Option<String>,
         capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         if capacity.is_none() {
             panic!("Capacity is required for bounded futures channels, because they don't expose their capacity in a public API");
         }
-        wrap_channel(self, source, label, capacity.unwrap())
+        wrap_channel(self, source, label, capacity.unwrap(), iter)
     }
 }
 
@@ -265,8 +275,9 @@ impl<T: Send + 'static> InstrumentChannelProxy
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        wrap_unbounded(self, source, label)
+        wrap_unbounded(self, source, label, iter)
     }
 }
 
@@ -285,8 +296,9 @@ impl<T: Send + 'static> InstrumentChannelProxy
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        wrap_oneshot(self, source, label)
+        wrap_oneshot(self, source, label, iter)
     }
 }
 
@@ -307,11 +319,12 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
         source: &'static str,
         label: Option<String>,
         capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         if capacity.is_none() {
             panic!("Capacity is required for bounded futures channels, because they don't expose their capacity in a public API");
         }
-        wrap_channel_log(self, source, label, capacity.unwrap())
+        wrap_channel_log(self, source, label, capacity.unwrap(), iter)
     }
 }
 
@@ -330,8 +343,9 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        wrap_unbounded_log(self, source, label)
+        wrap_unbounded_log(self, source, label, iter)
     }
 }
 
@@ -350,7 +364,8 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        wrap_oneshot_log(self, source, label)
+        wrap_oneshot_log(self, source, label, iter)
     }
 }

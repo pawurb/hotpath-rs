@@ -310,6 +310,12 @@ pub struct JsonChannelEntry {
     pub has_custom_label: bool,
     pub channel_type: String,
     pub state: String,
+    /// Number of channel instances aggregated into this call-site entry.
+    #[serde(default)]
+    pub instances: u64,
+    /// Number of aggregated instances that have closed.
+    #[serde(default)]
+    pub closed_instances: u64,
     pub sent_count: u64,
     pub received_count: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -660,6 +666,12 @@ pub struct JsonStreamEntry {
     pub label: String,
     pub has_custom_label: bool,
     pub state: String,
+    /// Number of stream instances aggregated into this call-site entry.
+    #[serde(default)]
+    pub instances: u64,
+    /// Number of aggregated instances that have completed.
+    #[serde(default)]
+    pub closed_instances: u64,
     pub items_yielded: u64,
     pub type_name: String,
     pub type_size: usize,

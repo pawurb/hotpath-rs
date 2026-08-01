@@ -2,12 +2,144 @@
 pub mod tests {
     use std::process::Command;
 
+    use hotpath::json::{JsonChannelsList, JsonReport};
+
     fn path_sep() -> &'static str {
         if cfg!(windows) {
             "\\"
         } else {
             "/"
         }
+    }
+
+    // The report is followed by trailing log lines, so we locate the report's
+    // opening brace and read just the first JSON value from that point.
+    fn parse_channels(stdout: &str) -> JsonChannelsList {
+        let json_start = stdout.find('{').expect("No JSON report in output");
+        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
+            .into_iter::<JsonReport>()
+            .next()
+            .expect("No JSON value in output")
+            .expect("Failed to parse JSON report");
+        report.channels.expect("No channels section in report")
+    }
+
+    fn run_example(example: &str) -> String {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-channels-tokio",
+                "--example",
+                example,
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Command failed with status: {}\nStderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
+
+    // cargo run -p test-channels-tokio --example agg_tokio --features hotpath
+    #[test]
+    fn test_default_mode_aggregates_per_callsite() {
+        let stdout = run_example("agg_tokio");
+        let channels = parse_channels(&stdout);
+
+        assert_eq!(
+            channels.data.len(),
+            1,
+            "default mode must aggregate all loop instances into one entry, got: {:?}",
+            channels.data
+        );
+        let entry = &channels.data[0];
+        assert_eq!(entry.instances, 5, "5 channels created at the call site");
+        assert_eq!(entry.closed_instances, 5, "all endpoints dropped");
+        assert_eq!(entry.state, "closed", "derived state after all closed");
+        assert_eq!(entry.sent_count, 10, "summed across instances");
+        assert_eq!(entry.received_count, 10, "summed across instances");
+        assert_eq!(entry.iter, 0, "aggregated entries carry no iter suffix");
+
+        // Rate sanity: throughput is total count over elapsed time since the
+        // call site's first message. That window is at most the report's total
+        // elapsed time, so the rate is bounded below by count / total elapsed.
+        let rate = entry
+            .sent_per_sec
+            .expect("aggregated entry must report a rate");
+        let elapsed_secs = channels.current_elapsed_ns as f64 / 1e9;
+        let floor = entry.sent_count as f64 / elapsed_secs;
+        assert!(
+            rate >= floor * 0.9,
+            "rate {rate} inconsistent with count over elapsed ({floor})"
+        );
+    }
+
+    // cargo run -p test-channels-tokio --example agg_queue_tokio --features hotpath
+    #[test]
+    fn test_aggregated_queue_depth_is_combined() {
+        let stdout = run_example("agg_queue_tokio");
+        let channels = parse_channels(&stdout);
+
+        assert_eq!(channels.data.len(), 1);
+        let entry = &channels.data[0];
+        assert_eq!(entry.instances, 2);
+        // Two live instances each hold 3 messages: combined depth, not the
+        // largest single-instance snapshot (3).
+        assert_eq!(entry.queue_size, Some(6), "combined in-flight depth");
+        assert!(
+            entry.queue_size <= entry.max_queue_size,
+            "current depth must stay within the tracked peak: {:?} > {:?}",
+            entry.queue_size,
+            entry.max_queue_size
+        );
+        assert_eq!(entry.state, "active", "instances still open at report time");
+    }
+
+    // cargo run -p test-channels-tokio --example agg_many_tokio --features hotpath
+    #[test]
+    fn test_default_mode_state_stays_bounded() {
+        let stdout = run_example("agg_many_tokio");
+        let channels = parse_channels(&stdout);
+
+        // Boundedness: thousands of default-mode channels at one call site
+        // must not register per-instance entries.
+        assert_eq!(
+            channels.data.len(),
+            1,
+            "expected a single aggregated entry for 2000 instances"
+        );
+        let entry = &channels.data[0];
+        assert_eq!(entry.instances, 2000);
+        assert_eq!(entry.state, "closed");
+    }
+
+    // cargo build -p test-channels-tokio --example iter_tokio
+    #[test]
+    fn test_iter_param_compiles_without_feature() {
+        let output = Command::new("cargo")
+            .args([
+                "build",
+                "-p",
+                "test-channels-tokio",
+                "--example",
+                "iter_tokio",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "feature-off build of `channel!(..., iter = true)` failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     // cargo run -p test-channels-tokio --example basic_tokio --features hotpath

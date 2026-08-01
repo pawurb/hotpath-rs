@@ -14,7 +14,7 @@ fn main() {
     println!("Creating 3 unbounded channels:");
     let mut handles = vec![];
     for i in 0..3 {
-        let (tx, rx) = hotpath::channel!(crossbeam_channel::unbounded::<i32>());
+        let (tx, rx) = hotpath::channel!(crossbeam_channel::unbounded::<i32>(), iter = true);
 
         println!("  - Created unbounded channel {}", i);
 
@@ -30,7 +30,8 @@ fn main() {
         let (tx, rx) = hotpath::channel!(
             crossbeam_channel::bounded::<i32>(10),
             capacity = 10,
-            label = "bounded"
+            label = "bounded",
+            iter = true
         );
 
         println!("  - Created bounded channel {}", i);

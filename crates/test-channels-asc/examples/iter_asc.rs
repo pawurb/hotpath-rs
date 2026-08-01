@@ -24,7 +24,7 @@ fn main() {
 
         println!("Creating 3 unbounded channels:");
         for i in 0..3 {
-            let (tx, mut rx) = hotpath::channel!(async_channel::unbounded::<i32>());
+            let (tx, mut rx) = hotpath::channel!(async_channel::unbounded::<i32>(), iter = true);
 
             println!("  - Created unbounded channel {}", i);
 
@@ -37,7 +37,8 @@ fn main() {
 
         println!("\nCreating 3 bounded channels:");
         for i in 0..3 {
-            let (mut tx, mut rx) = hotpath::channel!(async_channel::bounded::<i32>(10));
+            let (mut tx, mut rx) =
+                hotpath::channel!(async_channel::bounded::<i32>(10), iter = true);
 
             println!("  - Created bounded channel {}", i);
 
