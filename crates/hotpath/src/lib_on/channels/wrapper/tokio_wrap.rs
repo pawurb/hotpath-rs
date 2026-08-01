@@ -11,9 +11,10 @@
 //! from a self-maintained `AtomicUsize`: incremented before each publish (rolled back if
 //! the send fails) and decremented after each receive. Counting before the publish keeps
 //! the counter non-negative - the channel's send->recv edge orders a producer's `+1` ahead
-//! of the consumer's matching `-1`. A bounded async `send` that is cancelled while parked
-//! on a full channel leaves its `+1` applied (the depth over-counts by the number of
-//! cancelled sends); successful and failed sends are exact.
+//! of the consumer's matching `-1`. A drop guard rolls the `+1` back unless the send
+//! completes successfully, so a bounded async `send` cancelled while parked on a full
+//! channel leaves no residue - the depth tracks successful sends exactly (it also feeds
+//! the `Abandoned` count on teardown, which must not inherit phantom messages).
 //!
 //! The inner channel carries `(msg_id, send_ts, T)`. Monotonic `msg_id` pairs a send with
 //! its matching receive under multiple producers; `send_ts` is stamped before publishing,
@@ -77,6 +78,24 @@ fn clamp_to_capacity(queue_len: usize, capacity: Option<usize>) -> usize {
     match capacity {
         Some(cap) => queue_len.min(cap),
         None => queue_len,
+    }
+}
+
+/// Rolls back a pre-send `depth` increment unless disarmed. The increment
+/// happens before the (awaitable) publish; without the guard, a send future
+/// cancelled while parked on a full channel would leak `+1` into the depth,
+/// which both skews `queue_len` and inflates the `Abandoned` count emitted at
+/// instance teardown.
+struct DepthRollback<'a> {
+    depth: &'a AtomicUsize,
+    armed: bool,
+}
+
+impl Drop for DepthRollback<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.depth.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -152,15 +171,17 @@ impl<T> Sender<T> {
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let sent_at = sample_stamp(msg_id);
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
+        let mut rollback = DepthRollback {
+            depth: &self.depth,
+            armed: true,
+        };
         match self.inner.send((msg_id, sent_at, msg)).await {
             Ok(()) => {
+                rollback.armed = false;
                 emit_sent(self.id, msg_id, sent_at, log, queue_len);
                 Ok(())
             }
-            Err(SendError((_, _, msg))) => {
-                self.depth.fetch_sub(1, Ordering::Relaxed);
-                Err(SendError(msg))
-            }
+            Err(SendError((_, _, msg))) => Err(SendError(msg)),
         }
     }
 
@@ -189,22 +210,24 @@ impl<T> Sender<T> {
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let sent_at = sample_stamp(msg_id);
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
+        let mut rollback = DepthRollback {
+            depth: &self.depth,
+            armed: true,
+        };
         match self
             .inner
             .send_timeout((msg_id, sent_at, msg), timeout)
             .await
         {
             Ok(()) => {
+                rollback.armed = false;
                 emit_sent(self.id, msg_id, sent_at, log, queue_len);
                 Ok(())
             }
-            Err(e) => {
-                self.depth.fetch_sub(1, Ordering::Relaxed);
-                Err(match e {
-                    SendTimeoutError::Timeout((_, _, msg)) => SendTimeoutError::Timeout(msg),
-                    SendTimeoutError::Closed((_, _, msg)) => SendTimeoutError::Closed(msg),
-                })
-            }
+            Err(e) => Err(match e {
+                SendTimeoutError::Timeout((_, _, msg)) => SendTimeoutError::Timeout(msg),
+                SendTimeoutError::Closed((_, _, msg)) => SendTimeoutError::Closed(msg),
+            }),
         }
     }
 
@@ -1060,6 +1083,35 @@ mod tests {
         producer.join().unwrap();
         let buf = consumer.join().unwrap();
         assert_eq!(buf, (0..25).collect::<Vec<_>>());
+    }
+
+    #[tokio::test]
+    async fn cancelled_send_rolls_back_depth() {
+        use std::future::Future;
+
+        let (tx, mut rx) = bounded::<u32>(1);
+        tx.send(0).await.unwrap();
+        assert_eq!(tx.depth.load(Ordering::Relaxed), 1);
+
+        // Park a send on the full channel, then cancel it by dropping the
+        // future: the pre-send depth increment must be rolled back so it
+        // cannot leak into queue_len or the teardown Abandoned count.
+        {
+            let mut fut = Box::pin(tx.send(1));
+            poll_fn(|cx| {
+                assert!(fut.as_mut().poll(cx).is_pending());
+                Poll::Ready(())
+            })
+            .await;
+        }
+        assert_eq!(
+            tx.depth.load(Ordering::Relaxed),
+            1,
+            "cancelled send must not leak depth"
+        );
+
+        assert_eq!(rx.recv().await, Some(0));
+        assert_eq!(tx.depth.load(Ordering::Relaxed), 0);
     }
 
     #[tokio::test]
