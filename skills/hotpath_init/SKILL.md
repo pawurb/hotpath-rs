@@ -21,7 +21,7 @@ In the target crate's `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "0.22"
+hotpath = "0.23"
 
 [features]
 hotpath = ["hotpath/hotpath"]
