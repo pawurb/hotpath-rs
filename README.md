@@ -60,7 +60,7 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 The quickest way to set up hotpath is to let an AI coding agent do it. Install the `hotpath` CLI and run `init` inside your project:
 
 ```bash
-cargo install hotpath --version '^0.22'
+cargo install hotpath --version '^0.23'
 hotpath init --agent claude # or --agent codex
 ```
 
@@ -74,7 +74,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "0.22"
+hotpath = "0.23"
 
 [features]
 hotpath = ["hotpath/hotpath"]
