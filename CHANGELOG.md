@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.23.0] - 2026-08-02
+
+### 🚀 Features
+
+- [**breaking**] Better custom allocator support
+
+- Add total calls to HTTP and SQL reports
+
+- [**breaking**] Aggregate channels and stream entries
+
+  channel! and stream! now aggregate by call site by default, previous
+  mode available with `iter = true` config.
+
+
+
+### 🐛 Bug Fixes
+
+- Forward all GlobalAlloc methods to custom allocator
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Improve multi_io example
+
+- Add encoders profiling example and improve docs
+
+- Add http parallel and sequential example
+
+- Add N+1 SQL calls example
+
+- Release 0.23.0
+
+
 ## [0.22.0] - 2026-07-26
 
 ### 🚀 Features
@@ -147,7 +180,7 @@ All notable changes to this project will be documented in this file.
 
 - [**breaking**] Extent tokio wrap channel APIs
 
-Bump min tokio version to account for new wrapped APIs.
+  Bump min tokio version to account for new wrapped APIs.
 
 
 
@@ -174,8 +207,8 @@ Bump min tokio version to account for new wrapped APIs.
 
 - [**breaking**] Channel macro default wrap mode
 
-Change the default channel instrumentation mode to wrap = true.
-The previous default mode is now available via proxy = true config.
+  Change the default channel instrumentation mode to wrap = true.
+  The previous default mode is now available via proxy = true config.
 
 
 - Improve SQL TUI view
@@ -264,14 +297,14 @@ The previous default mode is now available via proxy = true config.
 
 - [**breaking**] Add perf histogram to wrap channels
 
-Stop displaying misleading log delay for non wrap channels
+  Stop displaying misleading log delay for non wrap channels
 
 
 - Add little law example and adjust channel report
 
 - [**breaking**] Add msg per s channel metric
 
-Remove state and queue from channels table report.
+  Remove state and queue from channels table report.
 
 
 - Add wrap support for std channels
@@ -412,7 +445,7 @@ Remove state and queue from channels table report.
 
 - [**breaking**] Separate tabs and endpoints for dataflow
 
-Removes data_flow* json endpoints.
+  Removes data_flow* json endpoints.
 
 
 - Display avg total poll time
@@ -449,7 +482,7 @@ Removes data_flow* json endpoints.
 
 - [**breaking**] Remove ArcSwap for functions guard
 
-Dropping functions guard will no longer reset its state.
+  Dropping functions guard will no longer reset its state.
 
 
 - Improve deps versions and add CI
@@ -527,7 +560,7 @@ Dropping functions guard will no longer reset its state.
 
 - [**breaking**] Adjust HotpathGuardBuilder API
 
-Remove `with_` prefix for all setters.
+  Remove `with_` prefix for all setters.
 
 
 - Add per report ENV limit config
@@ -594,7 +627,7 @@ Remove `with_` prefix for all setters.
 
 - [**breaking**] Add HOTPATH_ALLOC_METRIC config
 
-JSON schema rename: The `hotpath_profiling_mode` field in `JsonFunctionsList` is renamed to `profiling_mode`, and the `ProfilingMode::Alloc` variant is split into `AllocBytes` and `AllocCount` (serialized as "alloc-bytes" / "alloc-count" instead of "alloc"), breaking deserialization of existing JSON reports.
+  JSON schema rename: The `hotpath_profiling_mode` field in `JsonFunctionsList` is renamed to `profiling_mode`, and the `ProfilingMode::Alloc` variant is split into `AllocBytes` and `AllocCount` (serialized as "alloc-bytes" / "alloc-count" instead of "alloc"), breaking deserialization of existing JSON reports.
 
 
 - Add UNSAFE_ASYNC_ALLOC
@@ -603,7 +636,7 @@ JSON schema rename: The `hotpath_profiling_mode` field in `JsonFunctionsList` is
 
 - [**breaking**] Simplify functions data pipeline
 
-Removed MetricsProvider trait and from public API.
+  Removed MetricsProvider trait and from public API.
 
 
 - Add HOTPATH_MAX_LOG_LEN config
@@ -612,7 +645,7 @@ Removed MetricsProvider trait and from public API.
 
 - [**breaking**] Add runtime aware async alloc metrics
 
-`MeasurementGuard`/`MeasurementGuardWithLog` replaced with `MeasurementGuardSync`/`MeasurementGuardSyncWithLog`/`MeasurementGuardAsync`/`MeasurementGuardAsyncWithLog`. Removed `HOTPATH_UNSAFE_ASYNC_ALLOC`.
+  `MeasurementGuard`/`MeasurementGuardWithLog` replaced with `MeasurementGuardSync`/`MeasurementGuardSyncWithLog`/`MeasurementGuardAsync`/`MeasurementGuardAsyncWithLog`. Removed `HOTPATH_UNSAFE_ASYNC_ALLOC`.
 
 
 - Improve TUI futures details
@@ -669,7 +702,7 @@ Removed MetricsProvider trait and from public API.
 
 - [**breaking**] Cleanup macro guard builders logic
 
-Refactor measurement macro/runtime naming and branching for consistency, including simplified measure_impl logic.
+  Refactor measurement macro/runtime naming and branching for consistency, including simplified measure_impl logic.
 
 
 - Simplify send_future_event
