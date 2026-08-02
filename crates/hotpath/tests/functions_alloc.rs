@@ -532,17 +532,28 @@ pub mod tests {
             .functions_alloc
             .expect("Expected functions_alloc in report");
 
-        let alloc_work = alloc
-            .data
-            .iter()
-            .find(|f| f.name == "custom_allocator::alloc_demo::alloc_work")
-            .expect("Expected custom_allocator::alloc_demo::alloc_work in alloc data");
+        let find = |name: &str| -> &hotpath::json::JsonFunctionEntry {
+            alloc
+                .data
+                .iter()
+                .find(|f| f.name == format!("custom_allocator::alloc_demo::{name}"))
+                .unwrap_or_else(|| panic!("Expected {name} in alloc data"))
+        };
 
-        let total_bytes = hotpath::parse_bytes(&alloc_work.total)
-            .expect("Failed to parse total bytes for custom_allocator::alloc_demo::alloc_work");
+        let alloc_work_bytes = hotpath::parse_bytes(&find("alloc_work").total)
+            .expect("Failed to parse total bytes for alloc_work");
         assert!(
-            total_bytes > 0,
-            "expected alloc_work to report allocated bytes"
+            alloc_work_bytes >= 1024,
+            "expected alloc_work to report the zeroed 1 KB allocation, got {alloc_work_bytes} B"
+        );
+
+        // realloc_work allocates 512 B, then a realloc to >= 4608 B is
+        // tracked as dealloc(512) + alloc(new_size).
+        let realloc_work_bytes = hotpath::parse_bytes(&find("realloc_work").total)
+            .expect("Failed to parse total bytes for realloc_work");
+        assert!(
+            realloc_work_bytes >= 512 + 4608,
+            "expected realloc_work to count both the initial alloc and the realloc'd size, got {realloc_work_bytes} B"
         );
     }
 }

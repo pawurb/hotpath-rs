@@ -186,3 +186,5 @@ fn main() {
 ```
 
 The path must name a unit struct implementing `GlobalAlloc` (like `MiMalloc` from [mimalloc](https://github.com/purpleprotocol/mimalloc_rust) or `Jemalloc` from [tikv-jemallocator](https://github.com/tikv/jemallocator)). When the `hotpath-alloc` feature is disabled, the parameter is ignored and no allocator is installed, so combine it with your own `#[global_allocator]` behind a feature gate if the program should also use the allocator in normal builds.
+
+All four `GlobalAlloc` methods (`alloc`, `dealloc`, `alloc_zeroed`, `realloc`) forward to the inner allocator's native implementations, so wrapping does not change its zeroed-allocation or reallocation behavior. A successful `realloc` is tracked as a deallocation of the old size plus an allocation of the new size.

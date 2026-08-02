@@ -32,8 +32,9 @@ impl<A: Default> Default for CountingAllocator<A> {
 }
 
 // SAFETY: pure pass-through to the inner allocator `A` - every pointer
-// returned by `alloc` comes from `A::alloc` and every `dealloc` forwards the
-// caller's `ptr`/`layout` unchanged, so `A`'s GlobalAlloc guarantees carry
+// returned by `alloc`/`alloc_zeroed`/`realloc` comes from the corresponding
+// method of `A`, and `dealloc`/`realloc` forward the caller's
+// `ptr`/`layout`/`new_size` unchanged, so `A`'s GlobalAlloc guarantees carry
 // over. The tracking hooks only update thread-local counters and never touch
 // the allocation itself.
 unsafe impl<A> GlobalAlloc for CountingAllocator<A>
@@ -57,5 +58,28 @@ where
         unsafe {
             self.0.dealloc(ptr, layout);
         }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        crate::lib_on::functions::alloc::core::track_alloc(layout.size());
+
+        // SAFETY: caller upholds GlobalAlloc's contract for `layout`; it is
+        // forwarded unchanged.
+        unsafe { self.0.alloc_zeroed(layout) }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        // SAFETY: caller guarantees `ptr` was allocated by this allocator
+        // with `layout` and that `new_size` is valid per GlobalAlloc's
+        // contract; all three are forwarded unchanged.
+        let new_ptr = unsafe { self.0.realloc(ptr, layout, new_size) };
+
+        // Track only on success: a failed realloc leaves the old block alive,
+        // so recording a dealloc for it would over-count frees.
+        if !new_ptr.is_null() {
+            crate::lib_on::functions::alloc::core::track_dealloc(layout.size());
+            crate::lib_on::functions::alloc::core::track_alloc(new_size);
+        }
+        new_ptr
     }
 }
