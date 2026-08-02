@@ -10,6 +10,7 @@ fn wrap_bounded_impl<T, F>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
     mut log_on_send: F,
 ) -> (Sender<T>, Receiver<T>)
 where
@@ -19,7 +20,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = async_channel::bounded::<T>(1);
 
-    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity));
+    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity), iter);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -67,8 +68,9 @@ pub(crate) fn wrap_bounded<T: Send + 'static>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_bounded_impl(inner, source, label, capacity, |_| None)
+    wrap_bounded_impl(inner, source, label, capacity, iter, |_| None)
 }
 
 /// Wrap a bounded async channel with logging enabled. Returns (outer_tx, outer_rx).
@@ -77,8 +79,9 @@ pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_bounded_impl(inner, source, label, capacity, |msg| {
+    wrap_bounded_impl(inner, source, label, capacity, iter, |msg| {
         Some(crate::output::format_debug_truncated(msg))
     })
 }
@@ -89,6 +92,7 @@ fn wrap_unbounded_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
     mut log_on_send: F,
 ) -> (Sender<T>, Receiver<T>)
 where
@@ -98,7 +102,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = async_channel::unbounded::<T>();
 
-    let id = register_channel::<T>(source, label, ChannelType::Unbounded);
+    let id = register_channel::<T>(source, label, ChannelType::Unbounded, iter);
 
     // Single forwarder: inner_rx -> proxy_tx
     RT.spawn(async move {
@@ -143,8 +147,9 @@ pub(crate) fn wrap_unbounded<T: Send + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_unbounded_impl(inner, source, label, |_| None)
+    wrap_unbounded_impl(inner, source, label, iter, |_| None)
 }
 
 /// Wrap an unbounded async channel with logging enabled. Returns (outer_tx, outer_rx).
@@ -152,8 +157,9 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_unbounded_impl(inner, source, label, |msg| {
+    wrap_unbounded_impl(inner, source, label, iter, |msg| {
         Some(crate::output::format_debug_truncated(msg))
     })
 }
@@ -167,12 +173,13 @@ impl<T: Send + 'static> InstrumentChannelProxy for (Sender<T>, Receiver<T>) {
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         // async-channel uses the same Sender/Receiver types for both bounded and unbounded
         // We check the capacity to determine which type it is
         match self.0.capacity() {
-            Some(capacity) => wrap_bounded(self, source, label, capacity),
-            None => wrap_unbounded(self, source, label),
+            Some(capacity) => wrap_bounded(self, source, label, capacity, iter),
+            None => wrap_unbounded(self, source, label, iter),
         }
     }
 }
@@ -186,10 +193,11 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog for (Sender<
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         match self.0.capacity() {
-            Some(capacity) => wrap_bounded_log(self, source, label, capacity),
-            None => wrap_unbounded_log(self, source, label),
+            Some(capacity) => wrap_bounded_log(self, source, label, capacity, iter),
+            None => wrap_unbounded_log(self, source, label, iter),
         }
     }
 }

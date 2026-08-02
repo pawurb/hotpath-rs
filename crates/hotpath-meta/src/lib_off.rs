@@ -72,19 +72,9 @@ macro_rules! channel {
 
 #[macro_export]
 macro_rules! stream {
-    ($expr:expr) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr) => {
-        $expr
-    };
-    ($expr:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, label = $label:expr, log = true) => {
-        $expr
-    };
-    ($expr:expr, log = true, label = $label:expr) => {
+    // Profiling disabled: every form (`label`, `log`, `iter`, any order)
+    // returns the original stream unchanged.
+    ($expr:expr $(, $($rest:tt)*)?) => {
         $expr
     };
 }
