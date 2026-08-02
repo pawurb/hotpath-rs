@@ -99,6 +99,7 @@ pub(crate) fn report_channels_table(
     table.add_row(Row::new(vec![
         styled_header("Channel"),
         styled_header("Type"),
+        styled_header("Inst"),
         styled_header("Sent"),
         styled_header("Received"),
         styled_header("Sent/s"),
@@ -118,6 +119,7 @@ pub(crate) fn report_channels_table(
         table.add_row(Row::new(vec![
             Cell::new(&label),
             Cell::new(&channel_stats.channel_type.to_string()),
+            Cell::new(&channel_stats.instances.to_string()),
             Cell::new(&channel_stats.sent_count.to_string()),
             Cell::new(&channel_stats.received_count.to_string()),
             Cell::new(&format_rate(channel_stats.sent_per_sec())),
@@ -1029,6 +1031,7 @@ pub(crate) fn report_streams_table(
     let mut table = Table::new();
     table.add_row(Row::new(vec![
         styled_header("Stream"),
+        styled_header("Inst"),
         styled_header("State"),
         styled_header("Yielded"),
     ]));
@@ -1041,7 +1044,12 @@ pub(crate) fn report_streams_table(
         );
         table.add_row(Row::new(vec![
             Cell::new(&label),
-            Cell::new(stream_stats.state.as_str()),
+            Cell::new(&stream_stats.instances.to_string()),
+            Cell::new(
+                stream_stats
+                    .display_state()
+                    .map_or("-", |state| state.as_str()),
+            ),
             Cell::new(&stream_stats.items_yielded.to_string()),
         ]));
     }
