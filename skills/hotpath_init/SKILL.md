@@ -102,12 +102,17 @@ let mut file = hotpath::io!(std::fs::File::open("data.bin")?, label = "data-file
 let stream = hotpath::io!(tokio::net::TcpStream::connect(addr).await?, label = "conn");
 ```
 
+Call-site aggregation (`channel!`, `stream!`, `io!`):
+
+- By default all instances created at one call site (with the same message/item type) aggregate into a single report entry: counts, rates, and histograms are summed across instances, and an `Inst` column reports how many instances the entry aggregates. Profiler state stays bounded by the number of call sites, so this is safe for unbounded instance churn (a channel or stream per handled request, an `io!` wrapper per accepted connection).
+- Aggregated channel/stream entries show `-` for state (instances open and close independently); single-instance entries keep their exact state.
+- Disable aggregation with `iter = true` (e.g. `hotpath::channel!(mpsc::channel::<u32>(8), iter = true)`): every instance gets its own row (`label`, `label-2`, `label-3`, ...) with individual counts and rates - useful for one row per spawned worker. State then grows with the number of instances ever created, so avoid it for unbounded churn.
+
 `io!` notes:
 
 - Wrapping the underlying resource (file, socket) measures actual resource I/O; wrapping a `BufReader`/`BufWriter` measures application-facing buffered operations.
 - The wrapper derefs to the wrapped value, so call sites don't change. For consuming methods (e.g. a codec's `finish(self)`), unwrap first with `hotpath::io_unwrap(x)` - identity when profiling is off, so call sites compile identically in both modes.
 - Wrap the side where the work happens, or the reported rate is meaningless. Deferring writers (e.g. `brotli::CompressorWriter`) accept cheap buffered `write` calls and compress at finalization, outside any measured op; prefer read-side codec adapters (`flate2::read::GzEncoder`, `brotli::CompressorReader`, `zstd::stream::read::Encoder`), which compress inside instrumented `read` calls and report compressed bytes out.
-- One report entry per `io!` call site by default (safe for unbounded instance churn, e.g. per accepted connection); `iter = true` gives every wrapper instance its own row instead.
 
 Wrapped locks/channels are drop-in: the wrappers expose the same API, so call sites don't change. If passing them across function boundaries requires type-signature changes, note that to the user rather than rewriting half the codebase silently.
 
