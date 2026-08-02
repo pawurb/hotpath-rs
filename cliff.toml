@@ -23,7 +23,7 @@ body = """
         - {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
             {% if commit.breaking %}[**breaking**] {% endif %}\
             {{ commit.message | upper_first }}\
-            {% if commit.breaking and commit.body %}\n\n  {{ commit.body | replace(from="\\n", to="  \\n  ") }}\n{% endif %}
+            {% if commit.breaking and commit.body %}\n\n{{ commit.body | indent(prefix="  ", first=true) }}\n{% endif %}
     {% endfor %}
 {% endfor %}\n
 """
@@ -59,6 +59,10 @@ require_conventional = false
 split_commits = false
 # An array of regex based parsers to modify commit messages prior to further processing.
 commit_preprocessors = [
+    # Squash-merge bodies: keep only the prose after the first `* ` bullet
+    # (the lead commit's body), drop the remaining bullet list.
+    { pattern = '(?s)\n\* [^\n]*\n(.*?)\n\* .*', replace = "\n${1}" },
+    { pattern = '(?m)^\* .*$', replace = "" },
     # Replace issue numbers with link templates to be updated in `changelog.postprocessors`.
     #{ pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](<REPO>/issues/${2}))"},
     # Check spelling of the commit message using https://github.com/crate-ci/typos.
