@@ -8,6 +8,7 @@ fn wrap_sync_channel_impl<T, F>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
     mut log_on_send: F,
 ) -> (SyncSender<T>, Receiver<T>)
 where
@@ -17,7 +18,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = mpsc::sync_channel::<T>(1);
 
-    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity));
+    let id = register_channel::<T>(source, label, ChannelType::Bounded(capacity), iter);
 
     // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
@@ -51,8 +52,9 @@ pub(crate) fn wrap_sync_channel<T: Send + 'static>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
 ) -> (SyncSender<T>, Receiver<T>) {
-    wrap_sync_channel_impl(inner, source, label, capacity, |_| None)
+    wrap_sync_channel_impl(inner, source, label, capacity, iter, |_| None)
 }
 
 /// Wrap a bounded std channel with logging enabled. Returns (outer_tx, outer_rx).
@@ -61,8 +63,9 @@ pub(crate) fn wrap_sync_channel_log<T: Send + std::fmt::Debug + 'static>(
     source: &'static str,
     label: Option<String>,
     capacity: usize,
+    iter: bool,
 ) -> (SyncSender<T>, Receiver<T>) {
-    wrap_sync_channel_impl(inner, source, label, capacity, |msg| {
+    wrap_sync_channel_impl(inner, source, label, capacity, iter, |msg| {
         Some(crate::output::format_debug_truncated(msg))
     })
 }
@@ -73,6 +76,7 @@ fn wrap_channel_impl<T, F>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
     mut log_on_send: F,
 ) -> (Sender<T>, Receiver<T>)
 where
@@ -82,7 +86,7 @@ where
     let (inner_tx, inner_rx) = inner;
     let (proxy_tx, proxy_rx) = mpsc::channel::<T>();
 
-    let id = register_channel::<T>(source, label, ChannelType::Unbounded);
+    let id = register_channel::<T>(source, label, ChannelType::Unbounded, iter);
 
     // Single forwarder: inner_rx -> proxy_tx
     std::thread::spawn(move || {
@@ -114,8 +118,9 @@ pub(crate) fn wrap_channel<T: Send + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_channel_impl(inner, source, label, |_| None)
+    wrap_channel_impl(inner, source, label, iter, |_| None)
 }
 
 /// Wrap an unbounded std channel with logging enabled. Returns (outer_tx, outer_rx).
@@ -123,8 +128,9 @@ pub(crate) fn wrap_channel_log<T: Send + std::fmt::Debug + 'static>(
     inner: (Sender<T>, Receiver<T>),
     source: &'static str,
     label: Option<String>,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    wrap_channel_impl(inner, source, label, |msg| {
+    wrap_channel_impl(inner, source, label, iter, |msg| {
         Some(crate::output::format_debug_truncated(msg))
     })
 }
@@ -140,8 +146,9 @@ impl<T: Send + 'static> InstrumentChannelProxy
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        wrap_channel(self, source, label)
+        wrap_channel(self, source, label, iter)
     }
 }
 
@@ -154,11 +161,12 @@ impl<T: Send + 'static> InstrumentChannelProxy
         source: &'static str,
         label: Option<String>,
         capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         if capacity.is_none() {
             panic!("Capacity is required for bounded std channels, because they don't expose their capacity in a public API");
         }
-        wrap_sync_channel(self, source, label, capacity.unwrap())
+        wrap_sync_channel(self, source, label, capacity.unwrap(), iter)
     }
 }
 
@@ -173,8 +181,9 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        wrap_channel_log(self, source, label)
+        wrap_channel_log(self, source, label, iter)
     }
 }
 
@@ -187,10 +196,11 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelProxyLog
         source: &'static str,
         label: Option<String>,
         capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         if capacity.is_none() {
             panic!("Capacity is required for bounded std channels, because they don't expose their capacity in a public API");
         }
-        wrap_sync_channel_log(self, source, label, capacity.unwrap())
+        wrap_sync_channel_log(self, source, label, capacity.unwrap(), iter)
     }
 }

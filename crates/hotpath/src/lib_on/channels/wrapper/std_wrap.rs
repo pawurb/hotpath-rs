@@ -34,7 +34,7 @@
 //! Returns [`Sender`]/[`SyncSender`]/[`Receiver`], re-exported as
 //! `hotpath::wrap::std::sync::mpsc::{Sender, SyncSender, Receiver}`.
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{
     self, Receiver as InnerReceiver, RecvError, RecvTimeoutError, SendError, Sender as InnerSender,
     SyncSender as InnerSyncSender, TryRecvError, TrySendError,
@@ -114,6 +114,7 @@ pub struct Sender<T> {
     next_id: Arc<AtomicU64>,
     /// Self-tracked queue depth, shared with the receiver (`std` exposes no `len()`).
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     log_fn: Option<fn(&T) -> String>,
 }
 
@@ -150,6 +151,7 @@ impl<T> Clone for Sender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -158,7 +160,8 @@ impl<T> Clone for Sender<T> {
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.sender_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            send_channel_event(ChannelEvent::Closed { id: self.id });
+            let remaining = self.depth.load(Ordering::Relaxed);
+            crate::channels::mark_closed(&self.closed, self.id, remaining);
         }
     }
 }
@@ -174,6 +177,7 @@ pub struct SyncSender<T> {
     sender_count: Arc<AtomicUsize>,
     next_id: Arc<AtomicU64>,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     log_fn: Option<fn(&T) -> String>,
 }
 
@@ -230,6 +234,7 @@ impl<T> Clone for SyncSender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -238,7 +243,8 @@ impl<T> Clone for SyncSender<T> {
 impl<T> Drop for SyncSender<T> {
     fn drop(&mut self) {
         if self.sender_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            send_channel_event(ChannelEvent::Closed { id: self.id });
+            let remaining = self.depth.load(Ordering::Relaxed);
+            crate::channels::mark_closed(&self.closed, self.id, remaining);
         }
     }
 }
@@ -253,6 +259,7 @@ pub struct Receiver<T> {
     id: u32,
     capacity: Option<usize>,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
 }
 
 impl<T> Receiver<T> {
@@ -304,7 +311,8 @@ impl<T> Receiver<T> {
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
-        send_channel_event(ChannelEvent::Closed { id: self.id });
+        let remaining = self.depth.load(Ordering::Relaxed);
+        crate::channels::mark_closed(&self.closed, self.id, remaining);
     }
 }
 
@@ -364,16 +372,26 @@ fn build_unbounded<T>(
     source: &'static str,
     label: Option<String>,
     log_fn: Option<fn(&T) -> String>,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
-    let id = register_channel_wrap::<T>(source, label, ChannelType::Unbounded);
+    let id = register_channel_wrap::<T>(source, label, ChannelType::Unbounded, iter);
     let (tx, rx) = mpsc::channel::<Payload<T>>();
     let depth = Arc::new(AtomicUsize::new(0));
+    let closed = Arc::new(AtomicBool::new(false));
+    // Aggregated instances share one msg-id sequence so ids stay unique
+    // within the entry; iter-mode instances keep a local counter.
+    let next_id = if iter {
+        Arc::new(AtomicU64::new(0))
+    } else {
+        crate::channels::entry_msg_counter(id)
+    };
     let sender = Sender {
         inner: tx,
         id,
         sender_count: Arc::new(AtomicUsize::new(1)),
-        next_id: Arc::new(AtomicU64::new(0)),
+        next_id,
         depth: Arc::clone(&depth),
+        closed: Arc::clone(&closed),
         log_fn,
     };
     let receiver = Receiver {
@@ -381,6 +399,7 @@ fn build_unbounded<T>(
         id,
         capacity: None,
         depth,
+        closed,
     };
     (sender, receiver)
 }
@@ -390,17 +409,27 @@ fn build_bounded<T>(
     label: Option<String>,
     capacity: usize,
     log_fn: Option<fn(&T) -> String>,
+    iter: bool,
 ) -> (SyncSender<T>, Receiver<T>) {
-    let id = register_channel_wrap::<T>(source, label, ChannelType::Bounded(capacity));
+    let id = register_channel_wrap::<T>(source, label, ChannelType::Bounded(capacity), iter);
     let (tx, rx) = mpsc::sync_channel::<Payload<T>>(capacity);
     let depth = Arc::new(AtomicUsize::new(0));
+    let closed = Arc::new(AtomicBool::new(false));
+    // Aggregated instances share one msg-id sequence so ids stay unique
+    // within the entry; iter-mode instances keep a local counter.
+    let next_id = if iter {
+        Arc::new(AtomicU64::new(0))
+    } else {
+        crate::channels::entry_msg_counter(id)
+    };
     let sender = SyncSender {
         inner: tx,
         id,
         capacity,
         sender_count: Arc::new(AtomicUsize::new(1)),
-        next_id: Arc::new(AtomicU64::new(0)),
+        next_id,
         depth: Arc::clone(&depth),
+        closed: Arc::clone(&closed),
         log_fn,
     };
     let receiver = Receiver {
@@ -408,6 +437,7 @@ fn build_bounded<T>(
         id,
         capacity: Some(capacity),
         depth,
+        closed,
     };
     (sender, receiver)
 }
@@ -425,8 +455,9 @@ impl<T: Send + 'static> InstrumentChannelWrap for (InnerSender<T>, InnerReceiver
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        build_unbounded(source, label, None)
+        build_unbounded(source, label, None, iter)
     }
 }
 
@@ -437,8 +468,9 @@ impl<T: Send + 'static> InstrumentChannelWrap for (InnerSyncSender<T>, InnerRece
         source: &'static str,
         label: Option<String>,
         capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        build_bounded(source, label, require_capacity(capacity), None)
+        build_bounded(source, label, require_capacity(capacity), None, iter)
     }
 }
 
@@ -451,9 +483,10 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         let log_fn: fn(&T) -> String = |m| crate::output::format_debug_truncated(m);
-        build_unbounded(source, label, Some(log_fn))
+        build_unbounded(source, label, Some(log_fn), iter)
     }
 }
 
@@ -466,8 +499,15 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
         source: &'static str,
         label: Option<String>,
         capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         let log_fn: fn(&T) -> String = |m| crate::output::format_debug_truncated(m);
-        build_bounded(source, label, require_capacity(capacity), Some(log_fn))
+        build_bounded(
+            source,
+            label,
+            require_capacity(capacity),
+            Some(log_fn),
+            iter,
+        )
     }
 }

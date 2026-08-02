@@ -27,6 +27,7 @@ fn main() {
             let (tx, mut rx) = hotpath::channel!(
                 futures_channel::mpsc::unbounded::<i32>(),
                 proxy = true,
+                iter = true,
                 label = _actor1.name.clone()
             );
 
@@ -44,6 +45,7 @@ fn main() {
             let (mut tx, mut rx) = hotpath::channel!(
                 futures_channel::mpsc::channel::<i32>(10),
                 proxy = true,
+                iter = true,
                 capacity = 10,
                 label = "bounded"
             );
@@ -59,8 +61,11 @@ fn main() {
 
         println!("\nCreating 3 oneshot channels:");
         for i in 0..3 {
-            let (tx, rx) =
-                hotpath::channel!(futures_channel::oneshot::channel::<String>(), proxy = true);
+            let (tx, rx) = hotpath::channel!(
+                futures_channel::oneshot::channel::<String>(),
+                proxy = true,
+                iter = true
+            );
 
             println!("  - Created oneshot channel {}", i);
 

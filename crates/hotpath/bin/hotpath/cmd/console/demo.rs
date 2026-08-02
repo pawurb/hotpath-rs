@@ -10,6 +10,7 @@ pub fn init() {
     spawn_io();
     spawn_channels();
     spawn_std_channel();
+    spawn_aggregated_channels();
     #[cfg(feature = "demo")]
     spawn_sqlx_sql();
     #[cfg(feature = "demo")]
@@ -36,6 +37,31 @@ fn spawn_channels() {
         while let Ok(job) = rx.recv() {
             std::hint::black_box(job);
             thread::sleep(Duration::from_millis(15));
+        }
+    });
+}
+
+fn spawn_aggregated_channels() {
+    // Default (aggregated) mode: a fresh short-lived channel per iteration at
+    // one call site, mirroring request-scoped channels in a server. All
+    // instances collapse into a single entry whose Inst count keeps climbing
+    // while counts and latency accumulate across them.
+    thread::spawn(|| {
+        let mut i = 0u64;
+        loop {
+            let (tx, rx) = hotpath::channel!(
+                crossbeam_channel::bounded::<u64>(4),
+                label = "demo-per-request"
+            );
+            for _ in 0..3 {
+                let _ = tx.send(i);
+                i += 1;
+            }
+            drop(tx);
+            while let Ok(job) = rx.recv() {
+                std::hint::black_box(job);
+            }
+            thread::sleep(Duration::from_millis(200));
         }
     });
 }

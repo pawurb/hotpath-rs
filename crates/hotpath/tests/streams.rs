@@ -2,6 +2,86 @@
 pub mod tests {
     use std::process::Command;
 
+    use hotpath::json::{JsonReport, JsonStreamsList};
+
+    // The report is followed by trailing log lines, so we locate the report's
+    // opening brace and read just the first JSON value from that point.
+    fn parse_streams(stdout: &str) -> JsonStreamsList {
+        let json_start = stdout.find('{').expect("No JSON report in output");
+        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
+            .into_iter::<JsonReport>()
+            .next()
+            .expect("No JSON value in output")
+            .expect("Failed to parse JSON report");
+        report.streams.expect("No streams section in report")
+    }
+
+    // cargo run -p test-streams --example agg_streams --features hotpath
+    #[test]
+    fn test_default_mode_aggregates_per_callsite() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-streams",
+                "--example",
+                "agg_streams",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Command failed with status: {}\nStderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let streams = parse_streams(&stdout);
+
+        // Default mode: 4 loop-created streams collapse into one entry.
+        let agg = streams
+            .data
+            .iter()
+            .find(|s| !s.has_custom_label)
+            .expect("aggregated entry not found");
+        assert_eq!(agg.instances, 4, "4 streams created at the call site");
+        assert_eq!(agg.closed_instances, 4, "all streams completed");
+        assert_eq!(agg.state, None, "aggregated entries report no state");
+        assert_eq!(agg.items_yielded, 20, "summed across instances");
+        assert_eq!(agg.iter, 0, "aggregated entries carry no iter suffix");
+
+        // iter = true: one suffixed entry per instance.
+        for label in ["itered", "itered-2", "itered-3"] {
+            let entry = streams
+                .data
+                .iter()
+                .find(|s| s.label == label)
+                .unwrap_or_else(|| panic!("per-instance entry {label} not found"));
+            assert_eq!(entry.instances, 1);
+            assert_eq!(entry.items_yielded, 2);
+        }
+        assert_eq!(streams.data.len(), 4, "one aggregated + three per-instance");
+    }
+
+    // cargo build -p test-streams --example agg_streams
+    #[test]
+    fn test_iter_param_compiles_without_feature() {
+        let output = Command::new("cargo")
+            .args(["build", "-p", "test-streams", "--example", "agg_streams"])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "feature-off build of `stream!(..., iter = true)` failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     // cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_basic_streams_output() {

@@ -23,7 +23,8 @@ async fn main() {
     for i in 0..3 {
         let (tx, mut rx) = hotpath::channel!(
             tokio::sync::mpsc::channel::<i32>(10),
-            label = _actor1.name.clone()
+            label = _actor1.name.clone(),
+            iter = true
         );
 
         println!("  - Created bounded channel {}", i);
@@ -36,7 +37,8 @@ async fn main() {
 
     println!("\nCreating 3 unbounded channels:");
     for i in 0..3 {
-        let (tx, mut rx) = hotpath::channel!(tokio::sync::mpsc::unbounded_channel::<i32>());
+        let (tx, mut rx) =
+            hotpath::channel!(tokio::sync::mpsc::unbounded_channel::<i32>(), iter = true);
 
         println!("  - Created unbounded channel {}", i);
 
@@ -48,7 +50,11 @@ async fn main() {
 
     println!("\nCreating 3 oneshot channels:");
     for i in 0..3 {
-        let (tx, rx) = hotpath::channel!(tokio::sync::oneshot::channel::<String>(), proxy = true);
+        let (tx, rx) = hotpath::channel!(
+            tokio::sync::oneshot::channel::<String>(),
+            proxy = true,
+            iter = true
+        );
 
         println!("  - Created oneshot channel {}", i);
 

@@ -1,5 +1,5 @@
 use crate::output::format_debug_truncated;
-use crate::streams::{init_streams_state, next_stream_id, send_stream_event, StreamEvent};
+use crate::streams::{register_stream, send_stream_event, StreamEvent};
 use futures_util::Stream;
 use pin_project_lite::pin_project;
 use std::pin::Pin;
@@ -21,27 +21,22 @@ pin_project! {
         #[pin]
         inner: S,
         id: u32,
+        completed: bool,
     }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl<S> InstrumentedStream<S> {
-    pub(crate) fn new(stream: S, source: &'static str, label: Option<String>) -> Self
+    pub(crate) fn new(stream: S, source: &'static str, label: Option<String>, iter: bool) -> Self
     where
         S: Stream,
     {
-        init_streams_state();
-        let id = next_stream_id();
-
-        send_stream_event(StreamEvent::Created {
+        let id = register_stream::<S::Item>(source, label, iter);
+        Self {
+            inner: stream,
             id,
-            source,
-            display_label: label,
-            type_name: std::any::type_name::<S::Item>(),
-            type_size: std::mem::size_of::<S::Item>(),
-        });
-
-        Self { inner: stream, id }
+            completed: false,
+        }
     }
 }
 
@@ -61,7 +56,13 @@ impl<S: Stream> Stream for InstrumentedStream<S> {
                 Poll::Ready(Some(item))
             }
             Poll::Ready(None) => {
-                send_stream_event(StreamEvent::Completed { id: *this.id });
+                // A fused stream can keep returning `Ready(None)`; `Completed`
+                // must count each instance once or the entry's
+                // `closed_instances` overshoots and closes the entry early.
+                if !*this.completed {
+                    *this.completed = true;
+                    send_stream_event(StreamEvent::Completed { id: *this.id });
+                }
                 Poll::Ready(None)
             }
             Poll::Pending => Poll::Pending,
@@ -82,27 +83,22 @@ pin_project! {
         #[pin]
         inner: S,
         id: u32,
+        completed: bool,
     }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]
 impl<S> InstrumentedStreamLog<S> {
-    pub(crate) fn new(stream: S, source: &'static str, label: Option<String>) -> Self
+    pub(crate) fn new(stream: S, source: &'static str, label: Option<String>, iter: bool) -> Self
     where
         S: Stream,
     {
-        init_streams_state();
-        let id = next_stream_id();
-
-        send_stream_event(StreamEvent::Created {
+        let id = register_stream::<S::Item>(source, label, iter);
+        Self {
+            inner: stream,
             id,
-            source,
-            display_label: label,
-            type_name: std::any::type_name::<S::Item>(),
-            type_size: std::mem::size_of::<S::Item>(),
-        });
-
-        Self { inner: stream, id }
+            completed: false,
+        }
     }
 }
 
@@ -126,7 +122,13 @@ where
                 Poll::Ready(Some(item))
             }
             Poll::Ready(None) => {
-                send_stream_event(StreamEvent::Completed { id: *this.id });
+                // A fused stream can keep returning `Ready(None)`; `Completed`
+                // must count each instance once or the entry's
+                // `closed_instances` overshoots and closes the entry early.
+                if !*this.completed {
+                    *this.completed = true;
+                    send_stream_event(StreamEvent::Completed { id: *this.id });
+                }
                 Poll::Ready(None)
             }
             Poll::Pending => Poll::Pending,

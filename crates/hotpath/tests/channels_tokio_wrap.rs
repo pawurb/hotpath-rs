@@ -149,7 +149,8 @@ pub mod tests {
 
         assert!(entry.wrap, "channel should be endpoint-wrapped");
         assert_eq!(
-            entry.state, "closed",
+            entry.state.as_deref(),
+            Some("closed"),
             "expected closed state after receiver drop"
         );
     }
@@ -177,7 +178,8 @@ pub mod tests {
             assert_eq!(entry.sent_count, 2, "expected 2 sends on {label}");
             assert_eq!(entry.received_count, 2, "expected 2 receives on {label}");
             assert_eq!(
-                entry.state, "closed",
+                entry.state.as_deref(),
+                Some("closed"),
                 "expected closed state after all strong senders dropped on {label}"
             );
         }

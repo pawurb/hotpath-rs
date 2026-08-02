@@ -11,9 +11,10 @@
 //! from a self-maintained `AtomicUsize`: incremented before each publish (rolled back if
 //! the send fails) and decremented after each receive. Counting before the publish keeps
 //! the counter non-negative - the channel's send->recv edge orders a producer's `+1` ahead
-//! of the consumer's matching `-1`. A bounded async `send` that is cancelled while parked
-//! on a full channel leaves its `+1` applied (the depth over-counts by the number of
-//! cancelled sends); successful and failed sends are exact.
+//! of the consumer's matching `-1`. A drop guard rolls the `+1` back unless the send
+//! completes successfully, so a bounded async `send` cancelled while parked on a full
+//! channel leaves no residue - the depth tracks successful sends exactly (it also feeds
+//! the `Abandoned` count on teardown, which must not inherit phantom messages).
 //!
 //! The inner channel carries `(msg_id, send_ts, T)`. Monotonic `msg_id` pairs a send with
 //! its matching receive under multiple producers; `send_ts` is stamped before publishing,
@@ -32,7 +33,7 @@
 //! [`WeakSender`]/[`WeakUnboundedSender`] via `downgrade`), re-exported as
 //! `hotpath::wrap::tokio::sync::mpsc::*`.
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -77,6 +78,24 @@ fn clamp_to_capacity(queue_len: usize, capacity: Option<usize>) -> usize {
     match capacity {
         Some(cap) => queue_len.min(cap),
         None => queue_len,
+    }
+}
+
+/// Rolls back a pre-send `depth` increment unless disarmed. The increment
+/// happens before the (awaitable) publish; without the guard, a send future
+/// cancelled while parked on a full channel would leak `+1` into the depth,
+/// which both skews `queue_len` and inflates the `Abandoned` count emitted at
+/// instance teardown.
+struct DepthRollback<'a> {
+    depth: &'a AtomicUsize,
+    armed: bool,
+}
+
+impl Drop for DepthRollback<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.depth.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -142,6 +161,7 @@ pub struct Sender<T> {
     sender_count: Arc<AtomicUsize>,
     next_id: Arc<AtomicU64>,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     log_fn: Option<fn(&T) -> String>,
 }
 
@@ -151,15 +171,17 @@ impl<T> Sender<T> {
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let sent_at = sample_stamp(msg_id);
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
+        let mut rollback = DepthRollback {
+            depth: &self.depth,
+            armed: true,
+        };
         match self.inner.send((msg_id, sent_at, msg)).await {
             Ok(()) => {
+                rollback.armed = false;
                 emit_sent(self.id, msg_id, sent_at, log, queue_len);
                 Ok(())
             }
-            Err(SendError((_, _, msg))) => {
-                self.depth.fetch_sub(1, Ordering::Relaxed);
-                Err(SendError(msg))
-            }
+            Err(SendError((_, _, msg))) => Err(SendError(msg)),
         }
     }
 
@@ -188,22 +210,24 @@ impl<T> Sender<T> {
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let sent_at = sample_stamp(msg_id);
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
+        let mut rollback = DepthRollback {
+            depth: &self.depth,
+            armed: true,
+        };
         match self
             .inner
             .send_timeout((msg_id, sent_at, msg), timeout)
             .await
         {
             Ok(()) => {
+                rollback.armed = false;
                 emit_sent(self.id, msg_id, sent_at, log, queue_len);
                 Ok(())
             }
-            Err(e) => {
-                self.depth.fetch_sub(1, Ordering::Relaxed);
-                Err(match e {
-                    SendTimeoutError::Timeout((_, _, msg)) => SendTimeoutError::Timeout(msg),
-                    SendTimeoutError::Closed((_, _, msg)) => SendTimeoutError::Closed(msg),
-                })
-            }
+            Err(e) => Err(match e {
+                SendTimeoutError::Timeout((_, _, msg)) => SendTimeoutError::Timeout(msg),
+                SendTimeoutError::Closed((_, _, msg)) => SendTimeoutError::Closed(msg),
+            }),
         }
     }
 
@@ -249,6 +273,7 @@ impl<T> Sender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -282,6 +307,7 @@ impl<T> Clone for Sender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -290,7 +316,8 @@ impl<T> Clone for Sender<T> {
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.sender_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            send_channel_event(ChannelEvent::Closed { id: self.id });
+            let remaining = self.depth.load(Ordering::Relaxed);
+            crate::channels::mark_closed(&self.closed, self.id, remaining);
         }
     }
 }
@@ -305,6 +332,7 @@ pub struct WeakSender<T> {
     sender_count: Arc<AtomicUsize>,
     next_id: Arc<AtomicU64>,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     log_fn: Option<fn(&T) -> String>,
 }
 
@@ -324,6 +352,7 @@ impl<T> WeakSender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         })
     }
@@ -346,6 +375,7 @@ impl<T> Clone for WeakSender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -357,6 +387,7 @@ pub struct Receiver<T> {
     id: u32,
     capacity: Option<usize>,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     /// Scratch buffer for the `recv_many` variants: tokio fills a payload-typed
     /// buffer, so messages land here first and are restamped into the caller's
     /// buffer. Reused across calls to keep the steady state allocation-free.
@@ -481,7 +512,7 @@ impl<T> Receiver<T> {
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
-        send_channel_event(ChannelEvent::Closed { id: self.id });
+        crate::channels::mark_closed(&self.closed, self.id, self.inner.len());
     }
 }
 
@@ -498,6 +529,7 @@ pub struct UnboundedSender<T> {
     sender_count: Arc<AtomicUsize>,
     next_id: Arc<AtomicU64>,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     log_fn: Option<fn(&T) -> String>,
 }
 
@@ -541,6 +573,7 @@ impl<T> UnboundedSender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -565,6 +598,7 @@ impl<T> Clone for UnboundedSender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -573,7 +607,8 @@ impl<T> Clone for UnboundedSender<T> {
 impl<T> Drop for UnboundedSender<T> {
     fn drop(&mut self) {
         if self.sender_count.fetch_sub(1, Ordering::AcqRel) == 1 {
-            send_channel_event(ChannelEvent::Closed { id: self.id });
+            let remaining = self.depth.load(Ordering::Relaxed);
+            crate::channels::mark_closed(&self.closed, self.id, remaining);
         }
     }
 }
@@ -588,6 +623,7 @@ pub struct WeakUnboundedSender<T> {
     sender_count: Arc<AtomicUsize>,
     next_id: Arc<AtomicU64>,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     log_fn: Option<fn(&T) -> String>,
 }
 
@@ -606,6 +642,7 @@ impl<T> WeakUnboundedSender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         })
     }
@@ -627,6 +664,7 @@ impl<T> Clone for WeakUnboundedSender<T> {
             sender_count: Arc::clone(&self.sender_count),
             next_id: Arc::clone(&self.next_id),
             depth: Arc::clone(&self.depth),
+            closed: Arc::clone(&self.closed),
             log_fn: self.log_fn,
         }
     }
@@ -637,6 +675,7 @@ pub struct UnboundedReceiver<T> {
     inner: mpsc::UnboundedReceiver<Payload<T>>,
     id: u32,
     depth: Arc<AtomicUsize>,
+    closed: Arc<AtomicBool>,
     /// Scratch buffer for the `recv_many` variants: tokio fills a payload-typed
     /// buffer, so messages land here first and are restamped into the caller's
     /// buffer. Reused across calls to keep the steady state allocation-free.
@@ -758,7 +797,7 @@ impl<T> UnboundedReceiver<T> {
 
 impl<T> Drop for UnboundedReceiver<T> {
     fn drop(&mut self) {
-        send_channel_event(ChannelEvent::Closed { id: self.id });
+        crate::channels::mark_closed(&self.closed, self.id, self.inner.len());
     }
 }
 
@@ -797,20 +836,30 @@ fn build_bounded<T>(
     source: &'static str,
     label: Option<String>,
     log_fn: Option<fn(&T) -> String>,
+    iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
     let capacity = inner.0.max_capacity();
-    let id = register_channel_wrap::<T>(source, label, ChannelType::Bounded(capacity));
+    let id = register_channel_wrap::<T>(source, label, ChannelType::Bounded(capacity), iter);
     // Rebuild to carry `(msg_id, send_ts, T)`; the caller's channel is discarded
     // (wrap mode is inline-only), only its capacity is copied.
     let (tx, rx) = mpsc::channel::<Payload<T>>(capacity);
     let depth = Arc::new(AtomicUsize::new(0));
+    let closed = Arc::new(AtomicBool::new(false));
+    // Aggregated instances share one msg-id sequence so ids stay unique
+    // within the entry; iter-mode instances keep a local counter.
+    let next_id = if iter {
+        Arc::new(AtomicU64::new(0))
+    } else {
+        crate::channels::entry_msg_counter(id)
+    };
     let sender = Sender {
         inner: tx,
         id,
         capacity,
         sender_count: Arc::new(AtomicUsize::new(1)),
-        next_id: Arc::new(AtomicU64::new(0)),
+        next_id,
         depth: Arc::clone(&depth),
+        closed: Arc::clone(&closed),
         log_fn,
     };
     let receiver = Receiver {
@@ -818,6 +867,7 @@ fn build_bounded<T>(
         id,
         capacity: Some(capacity),
         depth,
+        closed,
         poll_buf: Vec::new(),
     };
     (sender, receiver)
@@ -827,22 +877,33 @@ fn build_unbounded<T>(
     source: &'static str,
     label: Option<String>,
     log_fn: Option<fn(&T) -> String>,
+    iter: bool,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    let id = register_channel_wrap::<T>(source, label, ChannelType::Unbounded);
+    let id = register_channel_wrap::<T>(source, label, ChannelType::Unbounded, iter);
     let (tx, rx) = mpsc::unbounded_channel::<Payload<T>>();
     let depth = Arc::new(AtomicUsize::new(0));
+    let closed = Arc::new(AtomicBool::new(false));
+    // Aggregated instances share one msg-id sequence so ids stay unique
+    // within the entry; iter-mode instances keep a local counter.
+    let next_id = if iter {
+        Arc::new(AtomicU64::new(0))
+    } else {
+        crate::channels::entry_msg_counter(id)
+    };
     let sender = UnboundedSender {
         inner: tx,
         id,
         sender_count: Arc::new(AtomicUsize::new(1)),
-        next_id: Arc::new(AtomicU64::new(0)),
+        next_id,
         depth: Arc::clone(&depth),
+        closed: Arc::clone(&closed),
         log_fn,
     };
     let receiver = UnboundedReceiver {
         inner: rx,
         id,
         depth,
+        closed,
         poll_buf: Vec::new(),
     };
     (sender, receiver)
@@ -855,8 +916,9 @@ impl<T: Send + 'static> InstrumentChannelWrap for (mpsc::Sender<T>, mpsc::Receiv
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        build_bounded(self, source, label, None)
+        build_bounded(self, source, label, None, iter)
     }
 }
 
@@ -869,8 +931,9 @@ impl<T: Send + 'static> InstrumentChannelWrap
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
-        build_unbounded(source, label, None)
+        build_unbounded(source, label, None, iter)
     }
 }
 
@@ -883,9 +946,10 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         let log_fn: fn(&T) -> String = |m| crate::output::format_debug_truncated(m);
-        build_bounded(self, source, label, Some(log_fn))
+        build_bounded(self, source, label, Some(log_fn), iter)
     }
 }
 
@@ -898,9 +962,10 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
         source: &'static str,
         label: Option<String>,
         _capacity: Option<usize>,
+        iter: bool,
     ) -> Self::Output {
         let log_fn: fn(&T) -> String = |m| crate::output::format_debug_truncated(m);
-        build_unbounded(source, label, Some(log_fn))
+        build_unbounded(source, label, Some(log_fn), iter)
     }
 }
 
@@ -910,11 +975,11 @@ mod tests {
     use std::future::poll_fn;
 
     fn bounded<T: Send + 'static>(capacity: usize) -> (Sender<T>, Receiver<T>) {
-        build_bounded(mpsc::channel::<T>(capacity), "test", None, None)
+        build_bounded(mpsc::channel::<T>(capacity), "test", None, None, false)
     }
 
     fn unbounded<T: Send + 'static>() -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-        build_unbounded::<T>("test", None, None)
+        build_unbounded::<T>("test", None, None, false)
     }
 
     #[test]
@@ -1018,6 +1083,35 @@ mod tests {
         producer.join().unwrap();
         let buf = consumer.join().unwrap();
         assert_eq!(buf, (0..25).collect::<Vec<_>>());
+    }
+
+    #[tokio::test]
+    async fn cancelled_send_rolls_back_depth() {
+        use std::future::Future;
+
+        let (tx, mut rx) = bounded::<u32>(1);
+        tx.send(0).await.unwrap();
+        assert_eq!(tx.depth.load(Ordering::Relaxed), 1);
+
+        // Park a send on the full channel, then cancel it by dropping the
+        // future: the pre-send depth increment must be rolled back so it
+        // cannot leak into queue_len or the teardown Abandoned count.
+        {
+            let mut fut = Box::pin(tx.send(1));
+            poll_fn(|cx| {
+                assert!(fut.as_mut().poll(cx).is_pending());
+                Poll::Ready(())
+            })
+            .await;
+        }
+        assert_eq!(
+            tx.depth.load(Ordering::Relaxed),
+            1,
+            "cancelled send must not leak depth"
+        );
+
+        assert_eq!(rx.recv().await, Some(0));
+        assert_eq!(tx.depth.load(Ordering::Relaxed), 0);
     }
 
     #[tokio::test]
