@@ -1,6 +1,6 @@
 # Monitor File, Socket and Async I/O Streams in Rust
 
-`hotpath` instruments byte-level I/O to surface slow reads and writes - files, sockets, TLS streams, TCP connections like Redis, compression streams, and any custom I/O type. For every wrapped value it tracks, per operation kind (read, write, flush, shutdown):
+`hotpath` instruments byte-level I/O to surface slow reads and writes - files, sockets, TLS streams, TCP connections like Redis, compression streams, and custom I/O types. 
 
 <img loading="lazy" src="{{#asset-hash images/io_metrics.png}}" alt="hotpath-rs I/O profiling report showing per-stream read counts, bytes, transfer rate, average and P95 latency">
 
@@ -26,8 +26,6 @@ file.read_to_end(&mut buf)?;
 ```
 
 See the [basic_io_sync](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_sync.rs) and [basic_io_async](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_io_async.rs) examples.
-
-Async I/O works the same way.
 
 Profiling Redis TCP connection:
 ```rust
@@ -64,7 +62,7 @@ See the [basic_zstd_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/te
 
 Report entries are keyed by creation site and concrete type: wrappers created repeatedly at one `io!` call - for example per accepted connection in a server loop - accumulate into a single entry, so profiler memory stays bounded by the number of `io!` call sites rather than the number of values ever wrapped.
 
-## What you measure depends on what you wrap
+## Measured layers
 
 Wrapping the underlying resource (a `File`, `TcpStream`, or TLS stream) measures actual resource I/O: every syscall-level read and write, with buffering layers above it invisible.
 
@@ -112,7 +110,7 @@ let mut encoder = hotpath::io!(
 );
 ```
 
-The `gzip` row then reports e.g. 8.0 MB consumed at 19 MB/s while `gzip-out` reports the 1.0 MB that came out the other side. See the [compression_levels_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/compression_levels_io.rs) example, which compares gzip and brotli across five compression levels this way.
+The `gzip` row then reports e.g. 8.0 MB consumed at 19 MB/s while `gzip-out` reports the 1.0 MB that came out the other side. See the [compression_levels_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/compression_levels_io.rs) example, which compares gzip and brotli across various compression levels.
 
 Read-side encoders (`flate2::read::GzEncoder`, `brotli::CompressorReader`) invert the accounting: reads return compressed bytes, so the wrapper's Bytes is the compressed output, and stream finalization happens inside the last instrumented reads. Wrap whichever side produces the number you want to read off the report.
 
