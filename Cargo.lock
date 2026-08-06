@@ -1602,7 +1602,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath"
-version = "0.23.0"
+version = "0.23.1"
 dependencies = [
  "arc-swap",
  "async-channel",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath-macros"
-version = "0.23.0"
+version = "0.23.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath-macros-meta"
-version = "0.23.0"
+version = "0.23.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1671,7 +1671,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath-meta"
-version = "0.23.0"
+version = "0.23.1"
 dependencies = [
  "arc-swap",
  "async-channel",
