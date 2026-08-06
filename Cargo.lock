@@ -4490,6 +4490,7 @@ name = "test-rw-lock-tokio"
 version = "0.0.0"
 dependencies = [
  "hotpath",
+ "reqwest 0.13.4",
  "tokio",
 ]
 

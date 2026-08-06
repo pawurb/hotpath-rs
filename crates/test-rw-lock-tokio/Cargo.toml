@@ -7,7 +7,8 @@ description = "Tests for tokio::sync::RwLock instrumentation."
 
 [dependencies]
 hotpath = { workspace = true, features = ["tokio"] }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros", "time"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 [features]
 hotpath = ["hotpath/hotpath"]
