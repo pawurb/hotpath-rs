@@ -92,8 +92,7 @@ cfg_if::cfg_if! {
 
 pub(crate) use meta_rw_lock;
 
-#[cfg(feature = "hotpath-alloc")]
-pub use functions::alloc::allocator::CountingAllocator;
+pub use functions::allocator::CountingAllocator;
 pub use functions::{
     measure_async, measure_async_future, measure_async_future_log, measure_async_log,
     measure_sync_log, MeasurementGuardAsync, MeasurementGuardSync,
