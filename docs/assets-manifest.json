@@ -35,6 +35,10 @@
     "hash": "2c7a34c6",
     "hashed_path": "images/hotpath-timing-report.2c7a34c6.png"
   },
+  "images/http-report.png": {
+    "hash": "8b8e3d13",
+    "hashed_path": "images/http-report.8b8e3d13.png"
+  },
   "images/io_metrics.png": {
     "hash": "130f0659",
     "hashed_path": "images/io_metrics.130f0659.png"
@@ -60,12 +64,12 @@
     "hashed_path": "images/sql-query-execution-time.b8a618c6.png"
   },
   "images/sql-report.png": {
-    "hash": "db329ad1",
-    "hashed_path": "images/sql-report.db329ad1.png"
+    "hash": "1b44eb0f",
+    "hashed_path": "images/sql-report.1b44eb0f.png"
   },
   "images/sql_metrics.png": {
-    "hash": "839a435d",
-    "hashed_path": "images/sql_metrics.839a435d.png"
+    "hash": "1b44eb0f",
+    "hashed_path": "images/sql_metrics.1b44eb0f.png"
   },
   "images/stars-apache-opendal.svg": {
     "hash": "c7daa0d0",

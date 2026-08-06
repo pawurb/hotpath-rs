@@ -1,16 +1,8 @@
 # Rust HTTP Client Performance Profiling for reqwest
 
-`hotpath` profiles outgoing HTTP requests made with [reqwest](https://crates.io/crates/reqwest), helping you identify slow endpoints, frequent request patterns, and failing calls. Requests are grouped by normalized endpoint, so parameter-varied requests to the same route are reported together: 1,000 calls to `GET example.com/users/{id}` appear as a single entry with call count, error count, average latency, percentiles, and total execution time.
+<img loading="lazy" src="{{#asset-hash images/http-report.png}}" alt="hotpath-rs terminal HTTP report table showing normalized endpoints with source function attribution, call counts, errors, average, P95, total, and percent-of-total execution time">
 
-```bash
-http - HTTP request execution time statistics.
-+----------------------------+-------+--------+-----------+-----------+-----------+---------+
-| Endpoint                   | Calls | Errors | Avg       | P95       | Total     | % Total |
-+----------------------------+-------+--------+-----------+-----------+-----------+---------+
-| GET example.com/users/{id} | 120   | 0      | 781.35 µs | 1.21 ms   | 93.76 ms  | 88.59%  |
-| GET example.com/search     | 40    | 2      | 301.79 µs | 350.12 µs | 12.07 ms  | 11.41%  |
-+----------------------------+-------+--------+-----------+-----------+-----------+---------+
-```
+`hotpath` profiles outgoing HTTP requests made with [reqwest](https://crates.io/crates/reqwest), helping you identify slow endpoints, frequent request patterns, and failing calls. Requests are grouped by normalized endpoint, so parameter-varied requests to the same route are reported together: 1,000 calls to `GET example.com/users/{id}` appear as a single entry with call count, error count, average latency, percentiles, and total execution time.
 
 ## Wrapping the client
 

@@ -44,7 +44,7 @@ function hotpathInitAgent(agent) {
 
 [hotpath-rs](https://github.com/pawurb/hotpath-rs) is an easy-to-configure Rust performance profiling toolkit that shows exactly where your code spends time, burns CPU, and allocates memory. 
 
-It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
+It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, HTTP calls, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
 
 <div style="clear: both;"></div>
 
@@ -86,13 +86,13 @@ inspect throughput and latency of network, file or compression I/O streams:
 
 <img loading="lazy" src="{{#asset-hash images/io_metrics.png}}" alt="hotpath-rs I/O profiling report showing per-stream read counts, bytes, transfer rate, average and P95 latency">
 
+analyze SQL/HTTP calls performance with automatic source function attribution:
+
+<img loading="lazy" src="{{#asset-hash images/sql_metrics.png}}" alt="hotpath-rs SQL query profiling report showing per-query call counts, source function attribution, average and P95 execution time">
+
 monitor throughput, performance and max queue depth of instrumented channels:
 
 <img loading="lazy" src="{{#asset-hash images/channel_metrics.png}}" alt="hotpath-rs channel profiling report showing throughput, send-to-receive latency and max queue depth per channel">
-
-analyze SQL calls performance:
-
-<img loading="lazy" src="{{#asset-hash images/sql_metrics.png}}" alt="hotpath-rs SQL query profiling report showing per-query call counts, average and P95 execution time">
 
 or use the live TUI dashboard to monitor real-time performance and async data flow metrics with debug info:
 

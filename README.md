@@ -3,7 +3,7 @@
 
 hotpath-rs is an easy-to-configure Rust performance profiler that shows exactly where your code spends time, burns CPU, and allocates memory. 
 
-It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
+It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, HTTP calls, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
 
 Try the TUI demo via SSH - no installation required:
 
@@ -27,13 +27,13 @@ inspect throughput and latency of network, file or compression I/O streams:
 
 ![hotpath-rs I/O profiling report showing per-stream read counts, bytes, transfer rate, average and P95 latency](media/io_metrics.png)
 
+analyze SQL/HTTP calls performance with automatic source function attribution:
+
+![hotpath-rs SQL query profiling report showing per-query call counts, source function attribution, average and P95 execution time](media/sql_metrics.png)
+
 monitor throughput, performance and max queue depth of instrumented channels:
 
 ![hotpath-rs channel profiling report showing throughput, send-to-receive latency and max queue depth per channel](media/channel_metrics.png)
-
-analyze SQL calls performance:
-
-![hotpath-rs SQL query profiling report showing per-query call counts, average and P95 execution time](media/sql_metrics.png)
 
 or use the live TUI dashboard to monitor real-time performance metrics with debug info:
 

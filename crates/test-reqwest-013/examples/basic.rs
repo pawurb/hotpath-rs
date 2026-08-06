@@ -2,6 +2,8 @@
 //! creation. Every request sent through the returned client is timed and
 //! bucketed by normalized endpoint (`GET 127.0.0.1:{port}/users/{id}`), with
 //! transport errors and 4xx/5xx responses counted in the `Errors` column.
+//! Each request originates from an instrumented `Data` method, so the report's
+//! `Source` column attributes it to that method.
 //!
 //! Run with:
 //!   cargo run -p test-reqwest-013 --example basic --features hotpath
@@ -26,6 +28,75 @@ fn start_server() -> u16 {
     port
 }
 
+struct Data {
+    client: hotpath::wrap::reqwest::Client,
+    ext_client: hotpath::wrap::reqwest::Client,
+    port: u16,
+}
+
+#[hotpath::measure_all]
+impl Data {
+    fn new(port: u16) -> Self {
+        // The annotation pins the wrap alias: ClientWithMiddleware with `hotpath`
+        // enabled, raw reqwest::Client otherwise - same written type either way.
+        let client: hotpath::wrap::reqwest::Client = hotpath::http!(reqwest::Client::new());
+
+        // Labeled client: keys are prefixed, so its requests land in their own bucket.
+        let ext_client: hotpath::wrap::reqwest::Client =
+            hotpath::http!(reqwest::Client::new(), label = "ext");
+
+        Self {
+            client,
+            ext_client,
+            port,
+        }
+    }
+
+    async fn fetch_user(&self, id: u32) -> Result<(), Box<dyn std::error::Error>> {
+        let resp = self
+            .client
+            .get(format!(
+                "http://127.0.0.1:{}/users/{id}?verbose=true",
+                self.port
+            ))
+            .send()
+            .await?;
+        assert_eq!(resp.status().as_u16(), 200);
+        Ok(())
+    }
+
+    async fn fetch_stats(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // No /stats route on the server - the 404 counts as an error.
+        let resp = self
+            .client
+            .get(format!("http://127.0.0.1:{}/stats", self.port))
+            .send()
+            .await?;
+        assert_eq!(resp.status().as_u16(), 404);
+        Ok(())
+    }
+
+    async fn ping_replica(&self, replica_port: u16) {
+        // Connection refused (nothing listens on the dropped port) counts as an error.
+        let result = self
+            .client
+            .get(format!("http://127.0.0.1:{replica_port}/health"))
+            .send()
+            .await;
+        assert!(result.is_err());
+    }
+
+    async fn fetch_external_user(&self, id: u32) -> Result<(), Box<dyn std::error::Error>> {
+        let resp = self
+            .ext_client
+            .get(format!("http://127.0.0.1:{}/users/{id}", self.port))
+            .send()
+            .await?;
+        assert_eq!(resp.status().as_u16(), 200);
+        Ok(())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _guard = HotpathGuardBuilder::new("main")
@@ -33,46 +104,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let port = start_server();
-
-    // The annotation pins the wrap alias: ClientWithMiddleware with `hotpath`
-    // enabled, raw reqwest::Client otherwise - same written type either way.
-    let client: hotpath::wrap::reqwest::Client = hotpath::http!(reqwest::Client::new());
+    let data = Data::new(port);
 
     // Two ids, one bucket: GET 127.0.0.1:{port}/users/{id}.
     for id in 1..=2 {
-        let resp = client
-            .get(format!("http://127.0.0.1:{port}/users/{id}?verbose=true"))
-            .send()
-            .await?;
-        assert_eq!(resp.status().as_u16(), 200);
+        data.fetch_user(id).await?;
     }
 
-    // 404 counts as an error.
-    let resp = client
-        .get(format!("http://127.0.0.1:{port}/missing"))
-        .send()
-        .await?;
-    assert_eq!(resp.status().as_u16(), 404);
+    data.fetch_stats().await?;
 
-    // Connection refused (nothing listens on the dropped port) counts as an error.
-    let refused_port = {
+    let replica_port = {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         listener.local_addr()?.port()
     };
-    let result = client
-        .get(format!("http://127.0.0.1:{refused_port}/unreachable"))
-        .send()
-        .await;
-    assert!(result.is_err());
+    data.ping_replica(replica_port).await;
 
-    // Labeled client: keys are prefixed, so this lands in its own bucket.
-    let labeled: hotpath::wrap::reqwest::Client =
-        hotpath::http!(reqwest::Client::new(), label = "ext");
-    let resp = labeled
-        .get(format!("http://127.0.0.1:{port}/users/3"))
-        .send()
-        .await?;
-    assert_eq!(resp.status().as_u16(), 200);
+    data.fetch_external_user(3).await?;
 
     println!("HTTP example completed");
     Ok(())
