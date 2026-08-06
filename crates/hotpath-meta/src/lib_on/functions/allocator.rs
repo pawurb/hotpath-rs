@@ -10,7 +10,8 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 
-/// Shared global allocator that dispatches to enabled allocation tracking features
+/// Shared global allocator that tracks allocations when the `hotpath-alloc-meta`
+/// feature is enabled and forwards to the inner allocator unchanged otherwise.
 pub struct CountingAllocator<A = System>(A);
 
 impl CountingAllocator<System> {
@@ -42,6 +43,7 @@ where
     A: GlobalAlloc,
 {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
         crate::lib_on::functions::alloc::core::track_alloc(layout.size());
 
         // SAFETY: caller upholds GlobalAlloc's contract for `layout`; it is
@@ -50,6 +52,7 @@ where
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
         crate::lib_on::functions::alloc::core::track_dealloc(layout.size());
 
         // SAFETY: caller guarantees `ptr` was allocated by this allocator
@@ -61,6 +64,7 @@ where
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
         crate::lib_on::functions::alloc::core::track_alloc(layout.size());
 
         // SAFETY: caller upholds GlobalAlloc's contract for `layout`; it is
@@ -76,6 +80,7 @@ where
 
         // Track only on success: a failed realloc leaves the old block alive,
         // so recording a dealloc for it would over-count frees.
+        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
         if !new_ptr.is_null() {
             crate::lib_on::functions::alloc::core::track_dealloc(layout.size());
             crate::lib_on::functions::alloc::core::track_alloc(new_size);

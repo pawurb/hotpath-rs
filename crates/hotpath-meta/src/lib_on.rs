@@ -57,8 +57,7 @@ pub mod hotpath_guard;
 pub(crate) mod report;
 pub(crate) mod sampling;
 
-#[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
-pub use functions::alloc::allocator::CountingAllocator;
+pub use functions::allocator::CountingAllocator;
 pub use functions::{
     measure_async, measure_async_future, measure_async_future_log, measure_async_log, measure_sync,
     measure_sync_log, MeasurementGuardAsync, MeasurementGuardSync,
