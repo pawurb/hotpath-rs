@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.23.1] - 2026-08-06
+
+### 🚀 Features
+
+- Add noop CountingAllocator and improve docs
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.23.1
+
+
 ## [0.23.0] - 2026-08-02
 
 ### 🚀 Features
