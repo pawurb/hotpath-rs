@@ -25,6 +25,14 @@ SELECT * FROM users WHERE id IN (4, 5, 6, 7, 8)
 
 Bound parameters never reach the report - only the statement shape does.
 
+## Source function attribution
+
+Each query is attributed to the innermost `#[hotpath::measure]`-instrumented function that was executing when the query ran - the `Source` column in the report and TUI. `hotpath` maintains a per-thread stack of instrumented function names: sync functions push their name on entry and pop on return, and async functions push and pop around every `poll`, so tasks interleaved on one runtime thread never report a stale caller.
+
+Source is part of the grouping key: the same normalized statement executed from two different instrumented functions appears as two separate rows, so you can tell which code path is responsible for which share of the query load.
+
+If no instrumented function is active when the query executes - the query runs from uninstrumented code, or inside a spawned task whose functions aren't instrumented - the `Source` column shows `-`. To get attribution, annotate the functions that issue queries (or their callers) with `#[hotpath::measure]`.
+
 ## Profiling sqlx queries with a tracing layer
 
 Add `hotpath` with the `sqlx` feature to your `Cargo.toml`:

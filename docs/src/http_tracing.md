@@ -74,6 +74,14 @@ Requests are grouped by `METHOD host/path`. The query string, fragment, and cred
 
 So `GET /users/1?verbose=true` and `GET /users/42` merge into one `GET example.com/users/{id}` bucket. Raw URLs never reach the report - only the normalized shape does.
 
+## Source function attribution
+
+Each request is attributed to the innermost `#[hotpath::measure]`-instrumented function that issued it - the `Source` column in the report and TUI. `hotpath` maintains a per-thread stack of instrumented function names: sync functions push their name on entry and pop on return, and async functions push and pop around every `poll`, so tasks interleaved on one runtime thread never report a stale caller. The middleware captures the source when the request starts, before the first await, while it is still executing in the caller's frame.
+
+Source is part of the grouping key: the same endpoint hit from two different instrumented functions appears as two separate rows, so you can tell which code path is responsible for which share of the HTTP traffic.
+
+If no instrumented function is active when the request is sent - the request comes from uninstrumented code, or from a spawned task whose functions aren't instrumented - the `Source` column shows `-`. To get attribution, annotate the functions that send requests (or their callers) with `#[hotpath::measure]`.
+
 ## Error tracking
 
 Each bucket has an `Errors` column counting transport errors (DNS failures, connection refused, timeouts) plus responses with status >= 400.
