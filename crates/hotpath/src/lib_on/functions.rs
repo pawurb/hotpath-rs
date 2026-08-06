@@ -16,6 +16,8 @@ use crate::output::FunctionLogsList;
 #[cfg(feature = "hotpath-cpu")]
 pub(crate) mod cpu;
 
+pub(crate) mod allocator;
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "hotpath-alloc")] {
         pub(crate) mod alloc;

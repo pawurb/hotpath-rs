@@ -64,6 +64,20 @@ let _hotpath = hotpath::HotpathGuardBuilder::new("main")
     .build();
 ```
 
+Unlike `#[hotpath::main]`, the builder does not install the allocation-tracking allocator, so with the guard builder also declare it as a static (required for `hotpath-alloc` to report anything):
+
+```rust
+#[global_allocator]
+static GLOBAL: hotpath::CountingAllocator = hotpath::CountingAllocator::new();
+```
+
+No feature gating needed: `CountingAllocator` is a no-op pass-through when `hotpath-alloc` (or `hotpath`) is disabled. Never combine this static with `#[hotpath::main]` - the macro emits its own `#[global_allocator]` under `hotpath-alloc` and the build fails with a duplicate; with the macro, pass `allocator = ...` instead.
+
+If the project already declares a custom global allocator (jemalloc, mimalloc, ...):
+
+- With the guard builder: replace the existing static's type with the wrapper, e.g. `static GLOBAL: hotpath::CountingAllocator<tikv_jemallocator::Jemalloc> = hotpath::CountingAllocator::with(tikv_jemallocator::Jemalloc);`. The program keeps running on the custom allocator in all builds; tracking activates only under `hotpath-alloc`.
+- With `#[hotpath::main]`: add the `allocator = tikv_jemallocator::Jemalloc` parameter and gate the project's own `#[global_allocator]` static behind `#[cfg(not(feature = "hotpath-alloc"))]` so the two never coexist.
+
 ### 4. Instrument functions
 
 - Prefer `#[hotpath::measure_all]` on inline modules and `impl` blocks - it instruments every function inside. Exclude noisy or trivial functions with `#[hotpath::skip]`.
