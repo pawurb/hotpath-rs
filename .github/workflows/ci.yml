@@ -228,7 +228,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p ~/.cargo/bin
-          gh release download samply-macos-release -p samply -D ~/.cargo/bin --repo ${{ github.repository }}
+          gh release download samply-macos-release -p samply -D ~/.cargo/bin --clobber --repo ${{ github.repository }}
           chmod +x ~/.cargo/bin/samply
           sudo chown root:wheel ~/.cargo/bin/samply
           sudo chmod u+s ~/.cargo/bin/samply
@@ -253,7 +253,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p ~/.cargo/bin
-          gh release download samply-release -p samply -D ~/.cargo/bin --repo ${{ github.repository }}
+          gh release download samply-release -p samply -D ~/.cargo/bin --clobber --repo ${{ github.repository }}
           chmod +x ~/.cargo/bin/samply
       - name: Build hotpath-samply wrapper
         run: |
