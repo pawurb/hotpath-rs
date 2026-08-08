@@ -30,7 +30,7 @@ hotpath-alloc = ["hotpath/hotpath-alloc"]
 
 Enable extra hotpath cargo features on the dependency based on what the project uses:
 
-- `tokio` - for `tokio::sync` channel instrumentation, async `io!` traits (`AsyncRead`/`AsyncWrite`), and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.22", features = ["tokio"] }`
+- `tokio` - for `tokio::sync` channel instrumentation, async `io!` traits (`AsyncRead`/`AsyncWrite`), and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.23", features = ["tokio"] }`
 - `crossbeam` - for `crossbeam_channel` instrumentation
 - `futures` - for `futures_channel` instrumentation
 - `flume` - for `flume` channel instrumentation
