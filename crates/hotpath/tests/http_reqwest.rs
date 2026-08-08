@@ -38,12 +38,12 @@ pub mod tests {
         let all_expected = [
             "HTTP example completed",
             "http - HTTP request execution time statistics.",
-            // 2 user fetches + missing + unreachable + labeled client = 5.
+            // 2 user fetches + 404 + connection refused + labeled client = 5.
             "Total calls: 5",
             // Two ids and a query string merge into one normalized bucket.
             "/users/{id}",
-            "/missing",
-            "/unreachable",
+            "/stats",
+            "/health",
             // Labeled client prefixes its bucket keys.
             "ext: GET",
         ];
@@ -81,19 +81,19 @@ pub mod tests {
         assert_eq!(users.count, 2);
         assert_eq!(users.errors, 0);
 
-        let missing = http
+        let not_found = http
             .data
             .iter()
-            .find(|e| e.endpoint.ends_with("/missing"))
-            .expect("missing bucket");
-        assert_eq!(missing.count, 1);
-        assert_eq!(missing.errors, 1);
+            .find(|e| e.endpoint.ends_with("/stats"))
+            .expect("404 bucket");
+        assert_eq!(not_found.count, 1);
+        assert_eq!(not_found.errors, 1);
 
         let refused = http
             .data
             .iter()
-            .find(|e| e.endpoint.ends_with("/unreachable"))
-            .expect("unreachable bucket");
+            .find(|e| e.endpoint.ends_with("/health"))
+            .expect("connection-refused bucket");
         assert_eq!(refused.count, 1);
         assert_eq!(refused.errors, 1);
 

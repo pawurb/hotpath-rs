@@ -48,9 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(resp.status().as_u16(), 200);
     }
 
-    // 404 counts as an error.
+    // No /stats route on the server - the 404 counts as an error.
     let resp = client
-        .get(format!("http://127.0.0.1:{port}/missing"))
+        .get(format!("http://127.0.0.1:{port}/stats"))
         .send()
         .await?;
     assert_eq!(resp.status().as_u16(), 404);
@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         listener.local_addr()?.port()
     };
     let result = client
-        .get(format!("http://127.0.0.1:{refused_port}/unreachable"))
+        .get(format!("http://127.0.0.1:{refused_port}/health"))
         .send()
         .await;
     assert!(result.is_err());
