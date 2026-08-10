@@ -119,6 +119,12 @@ fn get_thread_info(tid: u64, ticks_per_sec: f64) -> Result<ThreadMetrics, String
     ))
 }
 
+/// Check whether a thread, identified by its kernel TID, is still alive.
+#[cfg_attr(not(feature = "hotpath-alloc"), allow(dead_code))]
+pub(crate) fn is_thread_alive(os_tid: u64) -> Option<bool> {
+    Some(std::path::Path::new(&format!("/proc/self/task/{os_tid}")).exists())
+}
+
 /// Get the RSS (Resident Set Size) of the current process in bytes
 pub(crate) fn get_rss_bytes() -> Option<u64> {
     // Read from /proc/self/statm - second field is RSS in pages

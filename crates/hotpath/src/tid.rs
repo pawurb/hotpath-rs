@@ -44,11 +44,29 @@ fn current_tid_uncached() -> u64 {
         current_tid_macos()
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
     {
-        // current_tid() is only implemented for Linux and macOS");
+        current_tid_windows()
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        // current_tid() is only implemented for Linux, macOS and Windows
         0
     }
+}
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    fn GetCurrentThreadId() -> u32;
+}
+
+#[cfg(target_os = "windows")]
+#[inline]
+fn current_tid_windows() -> u64 {
+    // SAFETY: GetCurrentThreadId takes no arguments, has no preconditions and
+    // cannot fail; it returns the calling thread's Win32 thread ID.
+    unsafe { GetCurrentThreadId() as u64 }
 }
 
 #[cfg(target_os = "linux")]

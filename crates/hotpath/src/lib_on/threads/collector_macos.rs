@@ -183,6 +183,25 @@ unsafe fn get_thread_name(thread: thread_act_t) -> Option<String> {
     None
 }
 
+/// Check whether a thread, identified by its Mach port, is still alive.
+#[cfg_attr(not(feature = "hotpath-alloc"), allow(dead_code))]
+pub(crate) fn is_thread_alive(os_tid: u64) -> Option<bool> {
+    // SAFETY: thread_info only reads the port; an invalid or dead port makes
+    // it return an error, which maps to `false`.
+    unsafe {
+        let mut info: thread_basic_info = mem::zeroed();
+        let mut count = (mem::size_of::<thread_basic_info>() / mem::size_of::<integer_t>())
+            as mach_msg_type_number_t;
+        let kr = thread_info(
+            os_tid as thread_act_t,
+            THREAD_BASIC_INFO,
+            &mut info as *mut _ as *mut integer_t,
+            &mut count,
+        );
+        Some(kr == KERN_SUCCESS)
+    }
+}
+
 /// Get the RSS (Resident Set Size) of the current process in bytes
 pub(crate) fn get_rss_bytes() -> Option<u64> {
     // Use rusage to get RSS - this is the most reliable cross-platform approach
