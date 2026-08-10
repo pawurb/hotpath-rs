@@ -5,6 +5,10 @@ use crate::tid::current_tid;
 
 pub(crate) const MAX_DEPTH: usize = 64;
 
+/// Fixed registry capacity; slots are intentionally never reclaimed so that
+/// exited threads stay reportable. After this many unique allocating threads,
+/// new threads lose per-thread attribution (function-level alloc stats are
+/// unaffected).
 const MAX_THREADS: usize = 256;
 const SLOT_UNSET: u32 = u32::MAX;
 const THREAD_NAME_LEN: usize = 64;
