@@ -1,5 +1,5 @@
 //! Fixed version of the `channels_queue_before` example: the consumer now
-//! processes a message in 5ms while the producer sends one every 25ms.
+//! processes a message in 2ms while the producer still sends one every 5ms.
 //! The consumer keeps up, so the channels report shows `Max queue` of 1 -
 //! each message is picked up before the next one arrives.
 //!
@@ -13,7 +13,7 @@ use hotpath::{HotpathGuardBuilder, Section};
 // Processing is now faster than the interval between incoming jobs.
 #[hotpath::measure]
 async fn process_job(_job: u64) {
-    tokio::time::sleep(Duration::from_millis(5)).await;
+    tokio::time::sleep(Duration::from_millis(2)).await;
 }
 
 #[tokio::main]
@@ -30,7 +30,7 @@ async fn main() {
     let producer = tokio::spawn(async move {
         for job in 0..100 {
             tx.send(job).unwrap();
-            tokio::time::sleep(Duration::from_millis(25)).await;
+            tokio::time::sleep(Duration::from_millis(5)).await;
         }
     });
 
