@@ -1,7 +1,8 @@
 //! Fix for the per-line `Regex` compilation shown in the
 //! `regex_compile_before` example: the pattern is compiled once into a
-//! `LazyLock` static, so the CPU samples shift from regex compilation
-//! internals to actual matching.
+//! `LazyLock` static. Compilation disappears from the cpu report and matching
+//! becomes too cheap to register - the next pipeline hotspot, `count_levels`,
+//! now tops the report instead.
 //!
 //! Run with:
 //!   cargo run --release -p test-cpu --example regex_compile_after --features hotpath,hotpath-cpu

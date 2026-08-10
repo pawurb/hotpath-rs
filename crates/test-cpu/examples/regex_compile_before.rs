@@ -1,8 +1,8 @@
 //! Demonstrates finding a CPU hotspot with sampling: a fresh `Regex` is
-//! compiled for every parsed line, so nearly all CPU samples land in regex
-//! compilation internals instead of matching. The timing report only shows
-//! that `parse_logs` is slow - the cpu report shows why. Compare with the
-//! `regex_compile_after` example.
+//! compiled for every parsed line. Compilation is measured separately from
+//! matching, so the cpu report attributes over 90% of samples to
+//! `compile_pattern` - pinpointing pattern compilation, not matching, as the
+//! hotspot. Compare with the `regex_compile_after` example.
 //!
 //! Run with:
 //!   cargo run --release -p test-cpu --example regex_compile_before --features hotpath,hotpath-cpu
@@ -11,13 +11,16 @@ use regex::Regex;
 
 const LINES: usize = 10_000;
 
+#[hotpath::measure]
+fn compile_pattern() -> Regex {
+    Regex::new(r"^\d{4}-\d{2}-\d{2} (ERROR|WARN|INFO) .+").unwrap()
+}
+
 // A fresh Regex is compiled for every line: parsing the pattern costs far
 // more CPU than matching it.
 #[hotpath::measure]
 fn is_valid(line: &str) -> bool {
-    Regex::new(r"^\d{4}-\d{2}-\d{2} (ERROR|WARN|INFO) .+")
-        .unwrap()
-        .is_match(line)
+    compile_pattern().is_match(line)
 }
 
 #[hotpath::measure]
