@@ -29,6 +29,7 @@ members = [
     "crates/test-futures",
     "crates/test-io",
     "crates/test-alloc",
+    "crates/test-cpu",
     "crates/test-debug",
     "crates/hotpath-meta",
     "crates/hotpath-macros-meta",
