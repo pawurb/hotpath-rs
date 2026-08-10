@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
 
 use crate::tid::current_tid;
 
@@ -7,6 +7,11 @@ pub(crate) const MAX_DEPTH: usize = 64;
 
 const MAX_THREADS: usize = 256;
 const SLOT_UNSET: u32 = u32::MAX;
+const THREAD_NAME_LEN: usize = 64;
+/// Slot tid marker for a dead thread whose OS tid was recycled by a new
+/// thread. The slot's counters and name stay reportable, but the tid no
+/// longer identifies it.
+pub(crate) const TID_ORPHANED: u64 = u64::MAX;
 
 #[repr(align(64))]
 pub(crate) struct ThreadAllocStats {
@@ -14,6 +19,10 @@ pub(crate) struct ThreadAllocStats {
     pub(crate) tid: AtomicU64,
     pub(crate) alloc_bytes: AtomicU64,
     pub(crate) dealloc_bytes: AtomicU64,
+    /// Length of `name`; 0 = no name captured. Stored with Release after the
+    /// name bytes, so a reader observing a non-zero length sees the full name.
+    name_len: AtomicU32,
+    name: [AtomicU8; THREAD_NAME_LEN],
 }
 
 impl Default for ThreadAllocStats {
@@ -28,7 +37,21 @@ impl ThreadAllocStats {
             tid: AtomicU64::new(0),
             alloc_bytes: AtomicU64::new(0),
             dealloc_bytes: AtomicU64::new(0),
+            name_len: AtomicU32::new(0),
+            name: [const { AtomicU8::new(0) }; THREAD_NAME_LEN],
         }
+    }
+
+    fn name(&self) -> Option<String> {
+        let len = self.name_len.load(Ordering::Acquire) as usize;
+        if len == 0 || len > THREAD_NAME_LEN {
+            return None;
+        }
+        let bytes: Vec<u8> = self.name[..len]
+            .iter()
+            .map(|b| b.load(Ordering::Relaxed))
+            .collect();
+        String::from_utf8(bytes).ok()
     }
 }
 
@@ -89,7 +112,13 @@ fn get_or_create_slot_index_slow(tid: u64) -> Option<usize> {
         let slot_tid = slot.tid.load(Ordering::Acquire);
 
         if slot_tid == tid {
-            return Some(idx);
+            // The slow path only runs on a thread's first tracked allocation
+            // (afterwards the slot index is cached thread-locally), so finding
+            // our tid already registered means an earlier, now dead thread
+            // with a recycled OS tid owns this slot. Orphan it - its counters
+            // and name stay reportable - and claim a fresh slot below.
+            slot.tid.store(TID_ORPHANED, Ordering::Release);
+            continue;
         }
 
         if slot_tid == 0 {
@@ -97,13 +126,89 @@ fn get_or_create_slot_index_slow(tid: u64) -> Option<usize> {
                 .tid
                 .compare_exchange(0, tid, Ordering::AcqRel, Ordering::Acquire)
             {
-                Ok(_) => return Some(idx),
+                Ok(_) => {
+                    capture_thread_name(slot);
+                    return Some(idx);
+                }
                 Err(current) if current == tid => return Some(idx),
                 Err(_) => continue,
             }
         }
     }
     None
+}
+
+/// One-time per-thread registration hook, running on the thread itself when it
+/// claims its allocation slot (i.e. on its first tracked allocation). Captures
+/// the thread's own name so it can be reported even after the thread exits,
+/// when resolving it via its pthread is no longer possible.
+#[cold]
+fn capture_thread_name(slot: &ThreadAllocStats) {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let mut buf = [0u8; THREAD_NAME_LEN];
+        // SAFETY: pthread_self is always valid for the calling thread and the
+        // buffer is valid for the passed length. pthread_getname_np writes a
+        // NUL-terminated string and does not allocate.
+        let ret = unsafe {
+            libc::pthread_getname_np(
+                libc::pthread_self(),
+                buf.as_mut_ptr() as *mut libc::c_char,
+                THREAD_NAME_LEN,
+            )
+        };
+        if ret != 0 {
+            return;
+        }
+        let len = buf.iter().position(|&b| b == 0).unwrap_or(0);
+        if len == 0 {
+            return;
+        }
+        for (i, &b) in buf[..len].iter().enumerate() {
+            slot.name[i].store(b, Ordering::Relaxed);
+        }
+        slot.name_len.store(len as u32, Ordering::Release);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = slot;
+    }
+}
+
+/// Name a registered thread was seen with, if any.
+#[cfg_attr(not(feature = "threads"), allow(dead_code))]
+pub(crate) fn get_registered_thread_name(os_tid: u64) -> Option<String> {
+    for slot in &THREAD_ALLOC_STATS {
+        let slot_tid = slot.tid.load(Ordering::Acquire);
+        if slot_tid == 0 {
+            break;
+        }
+        if slot_tid == os_tid {
+            return slot.name();
+        }
+    }
+    None
+}
+
+/// Snapshot of every registered per-thread allocation slot:
+/// `(tid, alloc_bytes, dealloc_bytes, name)`. Slots outlive their threads, so
+/// this includes threads that already exited.
+#[cfg_attr(not(feature = "threads"), allow(dead_code))]
+pub(crate) fn get_registered_thread_stats() -> Vec<(u64, u64, u64, Option<String>)> {
+    let mut stats = Vec::new();
+    for slot in &THREAD_ALLOC_STATS {
+        let slot_tid = slot.tid.load(Ordering::Acquire);
+        if slot_tid == 0 {
+            break;
+        }
+        stats.push((
+            slot_tid,
+            slot.alloc_bytes.load(Ordering::Relaxed),
+            slot.dealloc_bytes.load(Ordering::Relaxed),
+            slot.name(),
+        ));
+    }
+    stats
 }
 
 pub(crate) struct AllocationInfo {

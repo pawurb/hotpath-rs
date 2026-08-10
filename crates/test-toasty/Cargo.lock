@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath"
-version = "0.21.5"
+version = "0.23.1"
 dependencies = [
  "arc-swap",
  "cfg-if",
@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "hotpath-macros"
-version = "0.21.5"
+version = "0.23.1"
 dependencies = [
  "proc-macro2",
  "quote",

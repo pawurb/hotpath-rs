@@ -1,0 +1,13 @@
+[package]
+name = "test-alloc"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for memory allocation tracking via the hotpath-alloc feature."
+
+[dependencies]
+hotpath = { workspace = true }
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
