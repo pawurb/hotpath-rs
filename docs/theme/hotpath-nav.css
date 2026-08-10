@@ -129,6 +129,10 @@
     margin-top: 0;
 }
 
+.waitlist-card-brand {
+    color: var(--hp-ember);
+}
+
 .waitlist-card p {
     margin-bottom: 0;
 }
