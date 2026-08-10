@@ -1,6 +1,6 @@
 //! Fix for the N+1 query shown in the `n_plus_one_before` example: posts and
 //! their comment counts are fetched in a single JOIN + GROUP BY query. The SQL
-//! report shows one call attributed to `list_posts_with_comment_counts`
+//! report shows one call attributed to `list_comments`
 //! instead of one per post.
 //!
 //! Run with:
@@ -71,7 +71,7 @@ fn seed(conn: &mut SqliteConnection) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[hotpath::measure]
-fn list_posts_with_comment_counts(
+fn list_comments(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<(String, i64)>, Box<dyn std::error::Error>> {
     let rows: Vec<(String, i64)> = posts::table
@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut conn = SqliteConnection::establish(":memory:")?;
     seed(&mut conn)?;
 
-    for (title, count) in list_posts_with_comment_counts(&mut conn)? {
+    for (title, count) in list_comments(&mut conn)? {
         println!("{title}: {count} comments");
     }
     Ok(())

@@ -2,7 +2,7 @@
 //! their comment counts issues one query for the posts plus one query per
 //! post. In the SQL report the per-post query shows up as a single bucket
 //! with `Calls` equal to the number of posts, attributed to
-//! `list_posts_with_comment_counts`. Compare with the `n_plus_one_after`
+//! `list_comments`. Compare with the `n_plus_one_after`
 //! example.
 //!
 //! Run with:
@@ -71,7 +71,7 @@ fn seed(conn: &mut SqliteConnection) -> Result<(), Box<dyn std::error::Error>> {
 
 // N+1: one query for the posts, then one more per post to load its comments.
 #[hotpath::measure]
-fn list_posts_with_comment_counts(
+fn list_comments(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<(String, usize)>, Box<dyn std::error::Error>> {
     let all_posts: Vec<Post> = posts::table.load(conn)?;
@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut conn = SqliteConnection::establish(":memory:")?;
     seed(&mut conn)?;
 
-    for (title, count) in list_posts_with_comment_counts(&mut conn)? {
+    for (title, count) in list_comments(&mut conn)? {
         println!("{title}: {count} comments");
     }
     Ok(())
