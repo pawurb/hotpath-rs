@@ -269,7 +269,7 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
             #[cfg(feature = "hotpath-alloc")]
             {
                 use crate::lib_on::functions::alloc::core::{
-                    get_registered_thread_stats, get_thread_alloc_stats, TID_ORPHANED,
+                    get_registered_thread_stats, get_thread_alloc_stats, is_orphaned_tid,
                 };
 
                 for m in &mut current_metrics {
@@ -285,7 +285,7 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
                     if live_tids.contains(&tid) {
                         continue;
                     }
-                    let status = if tid == TID_ORPHANED {
+                    let status = if is_orphaned_tid(tid) {
                         "Exited"
                     } else {
                         match collector::is_thread_alive(tid) {
@@ -294,7 +294,7 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
                         }
                     };
                     let name = name.unwrap_or_else(|| {
-                        if tid == TID_ORPHANED {
+                        if is_orphaned_tid(tid) {
                             "(recycled tid)".to_string()
                         } else {
                             format!("thread_{tid}")

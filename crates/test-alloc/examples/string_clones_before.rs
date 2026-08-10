@@ -1,7 +1,7 @@
 //! Demonstrates the allocation cost of sending owned `String` copies through
 //! a channel: every `send` call clones the 1 KB payload, so the alloc report
 //! shows ~1 KB allocated per call and the threads report shows the `producer`
-//! thread allocating ~50 MB. Compare with the `string_clones_after` example.
+//! thread allocating ~5 GB. Compare with the `string_clones_after` example.
 //!
 //! Run with:
 //!   cargo run --release -p test-alloc --example string_clones_before --features hotpath,hotpath-alloc

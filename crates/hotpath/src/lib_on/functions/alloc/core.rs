@@ -12,10 +12,17 @@ pub(crate) const MAX_DEPTH: usize = 64;
 const MAX_THREADS: usize = 256;
 const SLOT_UNSET: u32 = u32::MAX;
 const THREAD_NAME_LEN: usize = 64;
-/// Slot tid marker for a dead thread whose OS tid was recycled by a new
-/// thread. The slot's counters and name stay reportable, but the tid no
-/// longer identifies it.
-pub(crate) const TID_ORPHANED: u64 = u64::MAX;
+/// Base of the synthetic tid range for dead threads whose OS tid was recycled
+/// by a new thread. The slot's counters and name stay reportable, and each
+/// orphaned slot keeps a distinct, stable identity derived from its index, so
+/// report consumers can still use the tid as a row identity.
+pub(crate) const TID_ORPHANED_BASE: u64 = u64::MAX - MAX_THREADS as u64;
+
+/// Whether a tid is a synthetic identity of an orphaned slot rather than a
+/// live OS tid.
+pub(crate) fn is_orphaned_tid(tid: u64) -> bool {
+    tid >= TID_ORPHANED_BASE
+}
 
 #[repr(align(64))]
 pub(crate) struct ThreadAllocStats {
@@ -121,7 +128,8 @@ fn get_or_create_slot_index_slow(tid: u64) -> Option<usize> {
             // our tid already registered means an earlier, now dead thread
             // with a recycled OS tid owns this slot. Orphan it - its counters
             // and name stay reportable - and claim a fresh slot below.
-            slot.tid.store(TID_ORPHANED, Ordering::Release);
+            slot.tid
+                .store(TID_ORPHANED_BASE + idx as u64, Ordering::Release);
             continue;
         }
 
