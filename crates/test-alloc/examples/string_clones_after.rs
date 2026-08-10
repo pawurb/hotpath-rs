@@ -22,7 +22,7 @@ fn process(message: Arc<str>) -> usize {
     std::hint::black_box(message.len())
 }
 
-#[hotpath::main(report = "functions-timing,functions-alloc,threads", threads_limit = 0)]
+#[hotpath::main(report = "functions-timing,functions-alloc,threads", threads_limit = 2)]
 fn main() {
     let (tx, rx) = mpsc::sync_channel::<Arc<str>>(1024);
 
