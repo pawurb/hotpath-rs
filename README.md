@@ -173,6 +173,8 @@ threads - Thread CPU and memory statistics. (RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc
 
 See the full docs and advanced config tutorials at [hotpath.rs](https://hotpath.rs).
 
+Read the [complete guide to profiling Rust applications](https://hotpath.rs/blog/profiling-rust-guide) - a comprehensive overview of debugging performance issues in Rust.
+
 - [Sampling Comparison](https://hotpath.rs/blog/sampling_comparison) - when to use `hotpath` vs CPU sampling profilers
 - [Profiling modes](https://hotpath.rs/profiling_modes) - static reports vs live TUI dashboard
 - [Profiling overhead](https://hotpath.rs/profiling_overhead) - per-operation instrumentation cost and time sampling

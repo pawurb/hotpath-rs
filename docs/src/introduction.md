@@ -271,6 +271,8 @@ cargo install hotpath --features='tui' --version '^{{HOTPATH_VERSION}}'
 
 ## Learn more
 
+Read the [complete guide to profiling Rust applications](https://hotpath.rs/blog/profiling-rust-guide) - a comprehensive overview of debugging performance issues in Rust.
+
 Explore the docs for customization options and advanced profiling features.
 
 - [Profiling modes](./profiling_modes.html) - static reports vs live TUI dashboard
