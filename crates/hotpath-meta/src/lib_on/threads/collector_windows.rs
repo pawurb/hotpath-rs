@@ -252,6 +252,12 @@ fn get_thread_info(thread_id: DWORD, current_pid: DWORD) -> Result<ThreadMetrics
     ))
 }
 
+/// Thread liveness probe is not implemented on Windows.
+#[cfg_attr(not(feature = "hotpath-alloc-meta"), allow(dead_code))]
+pub(crate) fn is_thread_alive(_os_tid: u64) -> Option<bool> {
+    None
+}
+
 /// Get the RSS (Resident Set Size) of the current process in bytes
 pub(crate) fn get_rss_bytes() -> Option<u64> {
     use std::mem::MaybeUninit;
