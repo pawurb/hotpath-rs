@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.23.2] - 2026-08-11
+
+### 🐛 Bug Fixes
+
+- Register short lived threads
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.23.2
+
+
 ## [0.23.1] - 2026-08-06
 
 ### 🚀 Features
