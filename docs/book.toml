@@ -25,4 +25,5 @@ runnable = false
 
 [preprocessor.reading-time]
 
-[preprocessor.external-links2]
+[preprocessor.blank-links]
+ignore = ["hotpath.rs"]

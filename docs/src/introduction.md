@@ -3,8 +3,8 @@
 <h2 class="hero-subtitle">Profile CPU, memory, async execution, SQL and HTTP calls, I/O streams, lock contention and channels from a single tool.</h2>
 
 <div class="hero-badges">
-  <a href="https://github.com/pawurb/hotpath-rs" target="_blank"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a>
-  <a href="https://crates.io/crates/hotpath" target="_blank"><img src="https://img.shields.io/crates/d/hotpath?cacheSeconds=86400" alt="crates.io downloads"></a>
+  <a href="https://github.com/pawurb/hotpath-rs" target="_blank" rel="noopener noreferrer"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a>
+  <a href="https://crates.io/crates/hotpath" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/crates/d/hotpath?cacheSeconds=86400" alt="crates.io downloads"></a>
 </div>
 
 <div class="hero-row">
@@ -51,27 +51,27 @@ It helps you distinguish between functions that are slow because they wait on I/
 <div class="trusted-by">
   <p class="trusted-by-tagline">Used by <a href="/adoption">{{#adoption_count}} open-source projects</a>, including:</p>
   <div class="trusted-by-grid">
-    <a href="https://github.com/rustfs/rustfs" target="_blank" class="trusted-by-project">
+    <a href="https://github.com/rustfs/rustfs" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
       <span class="trusted-by-name">rustfs/rustfs</span>
       <img src="{{#asset-hash images/stars-rustfs-rustfs.svg}}" alt="rustfs GitHub stars">
     </a>
-    <a href="https://github.com/apache/opendal" target="_blank" class="trusted-by-project">
+    <a href="https://github.com/apache/opendal" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
       <span class="trusted-by-name">apache/opendal</span>
       <img src="{{#asset-hash images/stars-apache-opendal.svg}}" alt="opendal GitHub stars">
     </a>
-    <a href="https://github.com/maplibre/martin" target="_blank" class="trusted-by-project">
+    <a href="https://github.com/maplibre/martin" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
       <span class="trusted-by-name">maplibre/martin</span>
       <img src="{{#asset-hash images/stars-maplibre-martin.svg}}" alt="martin GitHub stars">
     </a>
-    <a href="https://github.com/marc2332/freya" target="_blank" class="trusted-by-project">
+    <a href="https://github.com/marc2332/freya" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
       <span class="trusted-by-name">marc2332/freya</span>
       <img src="{{#asset-hash images/stars-marc2332-freya.svg}}" alt="freya GitHub stars">
     </a>
-    <a href="https://github.com/parseablehq/parseable" target="_blank" class="trusted-by-project">
+    <a href="https://github.com/parseablehq/parseable" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
       <span class="trusted-by-name">parseablehq/parseable</span>
       <img src="{{#asset-hash images/stars-parseablehq-parseable.svg}}" alt="parseable GitHub stars">
     </a>
-    <a href="https://github.com/tqwewe/kameo" target="_blank" class="trusted-by-project">
+    <a href="https://github.com/tqwewe/kameo" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
       <span class="trusted-by-name">tqwewe/kameo</span>
       <img src="{{#asset-hash images/stars-tqwewe-kameo.svg}}" alt="kameo GitHub stars">
     </a>
@@ -123,7 +123,7 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
     <a href="/auth/github/login" class="waitlist-cta"><svg class="waitlist-cta-icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>Join waitlist with GitHub</a>
   </div>
 </div>
-<p class="waitlist-building-note">Building in public. Follow development progress on X: <a href="https://x.com/pawelurbanekcom">@pawelurbanekcom</a></p>
+<p class="waitlist-building-note">Building in public. Follow development progress on X: <a href="https://x.com/pawelurbanekcom" target="_blank" rel="noopener noreferrer">@pawelurbanekcom</a></p>
 
 ## Getting Started
 
@@ -247,7 +247,7 @@ threads - Thread CPU and memory statistics. (RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc
 
 ## Quick demo
 
-Other than the SSH demo an easy way to quickly try the <a href="https://ratatui.rs/" target="_blank">ratatui.rs</a>-powered TUI is to run it in **auto-instrumentation mode**. The TUI process profiles itself and displays its own performance metrics in real time.
+Other than the SSH demo an easy way to quickly try the [ratatui.rs](https://ratatui.rs/)-powered TUI is to run it in **auto-instrumentation mode**. The TUI process profiles itself and displays its own performance metrics in real time.
 
 First, install `hotpath` CLI with auto-instrumentation enabled:
 

@@ -1,6 +1,6 @@
 # Sponsor hotpath-rs development
 
-`hotpath-rs` is an independent open-source project created and maintained by <a href="https://pawelurbanek.com" target="_blank">Paweł Urbanek</a>.
+`hotpath-rs` is an independent open-source project created and maintained by [Paweł Urbanek](https://pawelurbanek.com).
 
 The project requires continuous work to improve performance, stability, and deliver new features.
 
@@ -8,8 +8,8 @@ I'm currently opening a limited number of sponsorship slots for companies intere
 
 **Project traction**
 
-- <a href="https://crates.io/crates/hotpath" target="_blank"><img src="https://img.shields.io/crates/d/hotpath?cacheSeconds=86400" alt="crates.io downloads"></a> 100k+ downloads on <a href="https://crates.io/crates/hotpath" target="_blank">crates.io</a>
-- <a href="https://github.com/pawurb/hotpath-rs" target="_blank"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a> 1k+ GitHub stars
+- <a href="https://crates.io/crates/hotpath" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/crates/d/hotpath?cacheSeconds=86400" alt="crates.io downloads"></a> 100k+ downloads on [crates.io](https://crates.io/crates/hotpath)
+- <a href="https://github.com/pawurb/hotpath-rs" target="_blank" rel="noopener noreferrer"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a> 1k+ GitHub stars
 
 **Sponsorship starts at $500/month and may include:**
 
