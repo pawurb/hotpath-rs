@@ -51,6 +51,7 @@ test_all:
     cargo test --features hotpath --test io -- --nocapture --test-threads=1
     cargo test --features hotpath --test io_redis -- --nocapture --test-threads=1
     cargo test --features hotpath --test http_reqwest -- --nocapture --test-threads=1
+    cargo test --features hotpath --test http_ureq -- --nocapture --test-threads=1
     cargo test --features hotpath --test sql_sqlite -- --nocapture --test-threads=1
     cargo test --features hotpath --test sql_pg -- --nocapture --test-threads=1
     cargo test --features hotpath --test diesel -- --nocapture --test-threads=1

@@ -283,6 +283,7 @@ where
             feature = "toasty",
             feature = "reqwest-0-12",
             feature = "reqwest-0-13",
+            feature = "ureq-3",
         ))] {
             crate::futures::wrapper::InstrumentedFuture::new(
                 fut,
