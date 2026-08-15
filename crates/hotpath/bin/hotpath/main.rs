@@ -8,7 +8,7 @@ use cmd::console::ConsoleArgs;
 #[cfg(feature = "tui")]
 #[derive(Parser, Debug)]
 pub struct InitCliArgs {
-    #[arg(long, help = "AI agent to launch: claude or codex")]
+    #[arg(long, help = "AI agent to launch: claude, codex or opencode")]
     pub agent: String,
 }
 
@@ -68,7 +68,7 @@ fn main() -> std::process::ExitCode {
                 (Some(flag), None) if flag.starts_with("--agent=") => {
                     Ok(flag["--agent=".len()..].to_string())
                 }
-                _ => Err("Usage: hotpath init --agent <claude|codex>".to_string()),
+                _ => Err("Usage: hotpath init --agent <claude|codex|opencode>".to_string()),
             };
             let result = agent_arg
                 .and_then(|agent| cmd::init::Agent::from_arg(&agent))
@@ -88,7 +88,7 @@ fn main() -> std::process::ExitCode {
 Usage: hotpath <COMMAND>
 
 Commands:
-  init --agent <claude|codex>  Configure hotpath in the current repo via an AI agent session
+  init --agent <claude|codex|opencode>  Configure hotpath in the current repo via an AI agent session
 
 The 'console' command requires building with the 'tui' feature."
             );
