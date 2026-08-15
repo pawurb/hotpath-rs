@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.23.3] - 2026-08-15
+
+### 🚀 Features
+
+- Add opencode init CLI
+
+- Support ureq http tracing
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.23.3
+
+
 ## [0.23.2] - 2026-08-11
 
 ### 🐛 Bug Fixes
