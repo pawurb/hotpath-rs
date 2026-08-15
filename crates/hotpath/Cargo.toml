@@ -43,7 +43,7 @@ hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/c
 hotpath-alloc-meta = ["hotpath-meta/hotpath-alloc-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta"]
 hotpath-alloc = ["dep:tokio", "hotpath-meta?/hotpath-alloc", "hotpath-macros/hotpath-alloc"]
-utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq"]
+utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
 tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
 demo = ["hotpath", "sqlx", "dep:sqlx", "diesel", "diesel/sqlite", "dep:libsqlite3-sys", "reqwest-0-13"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "tokio/time"]
@@ -58,6 +58,7 @@ toasty = ["dep:tracing", "dep:tracing-subscriber"]
 diesel = ["dep:diesel"]
 "reqwest-0-12" = ["dep:reqwest-012", "dep:reqwest-middleware-04", "reqwest-middleware-04/multipart", "reqwest-middleware-04/json", "dep:async-trait", "dep:http"]
 "reqwest-0-13" = ["dep:reqwest", "dep:reqwest-middleware-05", "reqwest-middleware-05/multipart", "reqwest-middleware-05/json", "reqwest-middleware-05/query", "reqwest-middleware-05/form", "dep:async-trait", "dep:http"]
+"ureq-3" = ["dep:ureq"]
 threads = []
 dev = ["dep:time"]
 hotpath-cpu = ["hotpath-macros/hotpath-cpu", "dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
@@ -83,8 +84,8 @@ serde = { version = "1.0.130", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 tiny_http = { version = "0.12", optional = true }
 tokio = { version = "1.47", features = ["rt"], optional = true }
-ureq = { version = "3", features = ["json"], optional = true }
-reqwest = { version = "0.13", default-features = false, optional = true }
+ureq = { version = "3", default-features = false, optional = true }
+reqwest ={ version = "0.13", default-features = false, optional = true }
 reqwest-012 = { package = "reqwest", version = "0.12", default-features = false, optional = true }
 reqwest-middleware-04 = { package = "reqwest-middleware", version = "0.4", optional = true }
 reqwest-middleware-05 = { package = "reqwest-middleware", version = "0.5", optional = true }

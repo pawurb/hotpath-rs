@@ -1,0 +1,14 @@
+[package]
+name = "test-ureq"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for ureq 3 HTTP request instrumentation via ureq middleware."
+
+[dependencies]
+hotpath = { workspace = true, features = ["ureq-3"] }
+ureq = { version = "3", default-features = false }
+tiny_http = "0.12"
+
+[features]
+hotpath = ["hotpath/hotpath"]

@@ -5,12 +5,13 @@
 //! (see [`normalize`]). Normalization runs on the background worker thread to
 //! keep the request path light.
 //!
-//! The write path (worker, events) is driven by the reqwest-middleware
-//! front-ends ([`ReqwestHttpMiddleware`] attached via the `http!` macro or
-//! manually), gated behind the `reqwest-0-12` / `reqwest-0-13` features; the
-//! read path stays compiled so the report/metrics wiring is feature-uniform.
+//! The write path (worker, events) is driven by the client middleware
+//! front-ends ([`ReqwestHttpMiddleware`] / [`UreqHttpMiddleware`] attached via
+//! the `http!` macro or manually), gated behind the `reqwest-0-12` /
+//! `reqwest-0-13` / `ureq-3` features; the read path stays compiled so the
+//! report/metrics wiring is feature-uniform.
 #![cfg_attr(
-    not(any(feature = "reqwest-0-12", feature = "reqwest-0-13")),
+    not(any(feature = "reqwest-0-12", feature = "reqwest-0-13", feature = "ureq-3")),
     allow(dead_code)
 )]
 
@@ -34,6 +35,8 @@ pub(crate) mod normalize;
 mod reqwest_012;
 #[cfg(feature = "reqwest-0-13")]
 mod reqwest_013;
+#[cfg(feature = "ureq-3")]
+mod ureq_3;
 
 static HTTP_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -47,6 +50,10 @@ fn next_http_id() -> u32 {
 /// `reqwest-middleware` can attach it to their stack manually with `.with(...)`.
 /// Stack order matters: placed inside a retry middleware it times each attempt
 /// separately, outside it times the total including retries.
+#[cfg_attr(
+    not(any(feature = "reqwest-0-12", feature = "reqwest-0-13")),
+    allow(dead_code)
+)]
 #[derive(Default, Clone)]
 pub struct ReqwestHttpMiddleware {
     pub(crate) label: Option<String>,
@@ -67,9 +74,39 @@ impl ReqwestHttpMiddleware {
     }
 }
 
+/// Middleware that reports per-request timing to the hotpath HTTP worker.
+///
+/// The `http!` macro appends it to a `ureq` `ConfigBuilder`; apps that want to
+/// control its position in their middleware chain can add it manually with
+/// `.middleware(hotpath::UreqHttpMiddleware::new())`. Chain order matters:
+/// placed after a retry middleware it times each attempt separately, before it
+/// times the total including retries.
+#[cfg_attr(not(feature = "ureq-3"), allow(dead_code))]
+#[derive(Default, Clone)]
+pub struct UreqHttpMiddleware {
+    pub(crate) label: Option<String>,
+}
+
+impl UreqHttpMiddleware {
+    pub fn new() -> Self {
+        init_http_state();
+        Self::default()
+    }
+
+    /// Prefixes every endpoint key produced by this middleware with `label`.
+    pub fn with_label(label: impl Into<String>) -> Self {
+        init_http_state();
+        Self {
+            label: Some(label.into()),
+        }
+    }
+}
+
 /// Wraps an HTTP client so every request it sends is timed and reported.
-/// Implemented for `reqwest::Client` (per enabled reqwest generation); the
-/// concrete client type routes to the matching `reqwest-middleware` wrapper.
+/// Implemented for `reqwest::Client` (per enabled reqwest generation), where
+/// the concrete client type routes to the matching `reqwest-middleware`
+/// wrapper, and for ureq's `ConfigBuilder<AgentScope>`, which is returned with
+/// the middleware appended.
 pub trait InstrumentHttpClient {
     type Output;
 
@@ -271,7 +308,8 @@ fn flush_http_buffer(buffer: &mut Vec<HttpEvent>, inner: &Arc<MetaRwLock<HttpInt
 }
 
 /// Initialize the HTTP statistics collection system (called by the `http!`
-/// macro and the [`ReqwestHttpMiddleware`] constructors).
+/// macro and the [`ReqwestHttpMiddleware`] / [`UreqHttpMiddleware`]
+/// constructors).
 pub fn init_http_state() {
     HTTP_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
@@ -353,12 +391,14 @@ pub(crate) fn endpoint_pre_key(
     }
 }
 
-/// Wrap a `reqwest::Client` so every request it sends is timed and reported
-/// in the `http` section, keyed by normalized endpoint.
+/// Wrap an HTTP client so every request it sends is timed and reported in the
+/// `http` section, keyed by normalized endpoint.
 ///
-/// Returns the matching `reqwest-middleware` `ClientWithMiddleware` (spelled
-/// `hotpath::wrap::reqwest::Client` for feature-independent type names); with
-/// the `hotpath` feature disabled the client is returned unchanged.
+/// For `reqwest::Client` this returns the matching `reqwest-middleware`
+/// `ClientWithMiddleware` (spelled `hotpath::wrap::reqwest::Client` for
+/// feature-independent type names). For a ureq `ConfigBuilder` it returns the
+/// same builder with hotpath's middleware appended. With the `hotpath` feature
+/// disabled the argument is returned unchanged.
 ///
 /// Optional parameter: `label` (prefixes every endpoint key).
 ///
@@ -370,6 +410,12 @@ pub(crate) fn endpoint_pre_key(
 ///
 /// // Normal reqwest usage from here on:
 /// let resp = client.get("https://api.example.com/users/1").send().await?;
+///
+/// // ureq: instrument the config builder before building the agent.
+/// let agent: ureq::Agent = hotpath::http!(ureq::Agent::config_builder())
+///     .build()
+///     .new_agent();
+/// let resp = agent.get("https://api.example.com/users/1").call()?;
 /// ```
 #[macro_export]
 macro_rules! http {

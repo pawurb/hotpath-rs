@@ -468,6 +468,35 @@ where
     tracing_subscriber::layer::Identity::new()
 }
 
+/// No-op ureq middleware used when the `hotpath` feature is disabled. Lets
+/// call sites keep `.middleware(hotpath::UreqHttpMiddleware::new())` in their
+/// agent config unconditionally - it forwards every request untouched.
+#[cfg(feature = "ureq-3")]
+#[derive(Default, Clone)]
+pub struct UreqHttpMiddleware;
+
+#[cfg(feature = "ureq-3")]
+impl UreqHttpMiddleware {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn with_label(_label: impl Into<String>) -> Self {
+        Self
+    }
+}
+
+#[cfg(feature = "ureq-3")]
+impl ureq::middleware::Middleware for UreqHttpMiddleware {
+    fn handle(
+        &self,
+        req: ureq::http::Request<ureq::SendBody>,
+        next: ureq::middleware::MiddlewareNext,
+    ) -> Result<ureq::http::Response<ureq::Body>, ureq::Error> {
+        next.handle(req)
+    }
+}
+
 /// No-op Diesel SQL instrumentation install used when the `hotpath` feature is
 /// disabled. Lets call sites keep `hotpath::instrument_diesel_sql()`
 /// unconditionally - it registers nothing and forwards nothing.

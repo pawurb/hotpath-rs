@@ -47,7 +47,7 @@ pub use channels::{
     InstrumentChannelWrapLog,
 };
 pub use futures::{InstrumentFuture, InstrumentFutureLog};
-pub use http::{InstrumentHttpClient, ReqwestHttpMiddleware};
+pub use http::{InstrumentHttpClient, ReqwestHttpMiddleware, UreqHttpMiddleware};
 pub use io::io_unwrap;
 pub use mutexes::InstrumentMutex;
 pub use rw_locks::InstrumentRwLock;

@@ -39,7 +39,7 @@ Add `hotpath` with the `sqlx` feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "{{HOTPATH_VERSION}}", features=["sqlx"]
+hotpath = { version = "{{HOTPATH_VERSION}}", features = ["sqlx"] }
 ```
 
 `hotpath` uses `tracing_subscriber::Layer` to capture `sqlx` query events with their timing info. Configure it like this:
@@ -64,7 +64,7 @@ Add `hotpath` with the `diesel` feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "{{HOTPATH_VERSION}}", features=["diesel"]
+hotpath = { version = "{{HOTPATH_VERSION}}", features = ["diesel"] }
 ```
 
 Diesel emits nothing through `tracing`, so instead of a layer it exposes a custom callback trait. Install `hotpath`'s instrumentation before opening connections:
@@ -90,7 +90,7 @@ Add `hotpath` with the `toasty` feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "{{HOTPATH_VERSION}}", features=["toasty"]
+hotpath = { version = "{{HOTPATH_VERSION}}", features = ["toasty"] }
 ```
 
 Every [Toasty](https://github.com/tokio-rs/toasty) driver emits one `tracing` event per physical database operation, and `hotpath` captures them the same way it does for sqlx - with a `tracing_subscriber::Layer`:

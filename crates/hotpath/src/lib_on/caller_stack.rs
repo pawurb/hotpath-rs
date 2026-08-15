@@ -13,6 +13,7 @@ cfg_if::cfg_if! {
         feature = "toasty",
         feature = "reqwest-0-12",
         feature = "reqwest-0-13",
+        feature = "ureq-3",
     ))] {
         use std::cell::Cell;
 

@@ -1,16 +1,16 @@
-# Rust HTTP Client Performance Profiling for reqwest
+# Rust HTTP Client Performance Profiling for reqwest and ureq
 
 <img loading="lazy" src="{{#asset-hash images/http-report.png}}" alt="hotpath-rs terminal HTTP report table showing normalized endpoints with source function attribution, call counts, errors, average, P95, total, and percent-of-total execution time">
 
-`hotpath` profiles outgoing HTTP requests made with [reqwest](https://crates.io/crates/reqwest), helping you identify slow endpoints, frequent request patterns, and failing calls. Requests are grouped by normalized endpoint, so parameter-varied requests to the same route are reported together: 1,000 calls to `GET example.com/users/{id}` appear as a single entry with call count, error count, average latency, percentiles, and total execution time.
+`hotpath` profiles outgoing HTTP requests made with [reqwest](https://crates.io/crates/reqwest) or [ureq](https://crates.io/crates/ureq), helping you identify slow endpoints, frequent request patterns, and failing calls. Requests are grouped by normalized endpoint, so parameter-varied requests to the same route are reported together: 1,000 calls to `GET example.com/users/{id}` appear as a single entry with call count, error count, average latency, percentiles, and total execution time.
 
-## Wrapping the client
+## Wrapping the reqwest client
 
 Add `hotpath` with the feature matching your `reqwest` crate version to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "{{HOTPATH_VERSION}}", features=["reqwest-0-13"] # or "reqwest-0-12"
+hotpath = { version = "{{HOTPATH_VERSION}}", features = ["reqwest-0-13"] } # or "reqwest-0-12"
 ```
 
 Wrap the client once at creation with the `http!` macro - every request sent through it is then profiled, with no other code changes required:
@@ -56,6 +56,39 @@ let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
 
 Stack order matters: placed *before* a retry middleware, hotpath times the total including retries; placed *after* it, each attempt is timed separately.
 
+## Instrumenting a ureq agent
+
+Enable the `ureq-3` feature (ureq 3.x):
+
+```toml
+[dependencies]
+hotpath = { version = "{{HOTPATH_VERSION}}", features = ["ureq-3"] }
+```
+
+ureq registers middleware on the agent's config builder, so the `http!` macro takes the `ConfigBuilder` rather than a finished agent. It returns the same builder with hotpath's middleware appended - build the agent from it as usual:
+
+```rust
+let agent: ureq::Agent = hotpath::http!(ureq::Agent::config_builder())
+    .build()
+    .new_agent();
+
+// Normal ureq usage from here on:
+let resp = agent.get("https://example.com/users/1").call()?;
+```
+
+The type doesn't change across profiling modes: with `hotpath` disabled the macro returns the builder untouched, so no `hotpath::wrap` alias is needed. Labels work the same way as for reqwest (`hotpath::http!(ureq::Agent::config_builder(), label = "github")`).
+
+To control where hotpath sits in an existing middleware chain, skip the macro and add `hotpath::UreqHttpMiddleware` yourself. The type compiles into a pass-through middleware when `hotpath` is disabled, so the line can stay in place unconditionally:
+
+```rust
+let agent: ureq::Agent = ureq::Agent::config_builder()
+    .middleware(hotpath::UreqHttpMiddleware::new())
+    .build()
+    .new_agent();
+```
+
+ureq's default `http_status_as_error(true)` returns 4xx/5xx responses as `Err(ureq::Error::StatusCode(..))`; hotpath recovers the status from that error, so those requests are recorded with their status (and counted in `Errors`) rather than as transport failures.
+
 ## Normalizing endpoints
 
 Requests are grouped by `METHOD host/path`. The query string, fragment, and credentials are dropped, and path segments that look like identifiers collapse into `{id}`:
@@ -70,7 +103,7 @@ So `GET /users/1?verbose=true` and `GET /users/42` merge into one `GET example.c
 
 Each request is attributed to the innermost `#[hotpath::measure]`-instrumented function that issued it - the `Source` column in the report and TUI. `hotpath` maintains a per-thread stack of instrumented function names: sync functions push their name on entry and pop on return, and async functions push and pop around every `poll`, so tasks interleaved on one runtime thread never report a stale caller. The middleware captures the source when the request starts, before the first await, while it is still executing in the caller's frame.
 
-Source is part of the grouping key: the same endpoint hit from two different instrumented functions appears as two separate rows, so you can tell which code path is responsible for which share of the HTTP traffic.
+Source is part of the grouping key: the same endpoint hit from two different instrumented functions appears as two separate rows, so you can tell which code path is responsible for which share of the HTTP traffic. For blocking ureq calls the whole request runs on the caller's thread, so attribution is simply the innermost instrumented function on the current call stack.
 
 If no instrumented function is active when the request is sent - the request comes from uninstrumented code, or from a spawned task whose functions aren't instrumented - the `Source` column shows `-`. To get attribution, annotate the functions that send requests (or their callers) with `#[hotpath::measure]`.
 
@@ -88,13 +121,13 @@ The number of endpoints shown is unlimited by default (`0`). Cap it with:
 
 ## What is measured
 
-The middleware times reqwest's `execute` future, which resolves at a specific protocol moment: when the response **status line and headers have been fully received**. The `Response` returned at that point holds an open handle onto the connection - body bytes flow only when your code later awaits `.json()`, `.text()`, `.bytes()`, or polls `.bytes_stream()`, and by then the measurement is already recorded.
+The middleware times reqwest's `execute` future (or, for ureq, the blocking `next.handle(req)` call), which resolves at a specific protocol moment: when the response **status line and headers have been fully received**. The `Response` returned at that point holds an open handle onto the connection - body bytes flow only when your code later awaits `.json()`, `.text()`, `.bytes()`, or polls `.bytes_stream()` (reads `body_mut()` for ureq), and by then the measurement is already recorded.
 
 Included in the measured window:
 
 - DNS resolution, TCP connect, and TLS handshake - but only when no pooled connection is reused; requests over a warm connection pool skip these
 - *Sending* the request, including uploading the full request body
-- Redirect hops (`execute` follows redirects internally, so each hop's full round trip counts)
+- Redirect hops (reqwest's `execute` and ureq's agent both follow redirects internally, so each hop's full round trip counts, bucketed under the original pre-redirect URL)
 - Server processing time, up to receipt of the response headers
 
 Excluded:
@@ -105,8 +138,8 @@ Note the asymmetry: request-body *upload* is inside the window, response-body *d
 
 In practice the metric behaves like **time-to-first-byte plus connection cost**. An endpoint that is slow because the server computes for 800ms before answering shows up accurately. An endpoint that answers headers in 20ms and then streams 50MB of JSON for 4 seconds shows up as 20ms. A body-read failure also won't appear in the `Errors` column - by then the request was already recorded with its response status. For SSE and long-poll endpoints that keep the body open indefinitely this is the behavior you want (the request would otherwise never "complete"); for large payload downloads it undercounts.
 
-This boundary is inherent to the reqwest-middleware interception point - the `Middleware` chain hands back the `Response` as soon as headers arrive, and body consumption belongs to the caller. It captures server latency reliably; it is not a measure of network throughput.
+This boundary is inherent to the middleware interception point in both clients - the `Middleware` chain hands back the `Response` as soon as headers arrive, and body consumption belongs to the caller. It captures server latency reliably; it is not a measure of network throughput.
 
 ## Other limitations
 
-Only requests sent through wrapped clients are visible; HTTP calls made inside third-party crates holding their own `reqwest::Client` are not captured. The async client only - `reqwest::blocking` is not supported by `hotpath::http!`.
+Only requests sent through wrapped clients are visible; HTTP calls made inside third-party crates holding their own `reqwest::Client` or `ureq::Agent` are not captured. For reqwest only the async client is supported - `reqwest::blocking` is not supported by `hotpath::http!`. For ureq only the agent-based API is instrumented; the free functions (`ureq::get(..)` etc.) use ureq's global agent, which carries no middleware.

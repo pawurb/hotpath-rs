@@ -107,7 +107,7 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 - **Async observability** - futures, channels and streams.
 - **I/O monitoring** - bytes, throughput, latency of any sync or async IO stream like files, TCP, or compression.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
-- **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest.
+- **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest and ureq.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
@@ -284,7 +284,7 @@ Explore the docs for customization options and advanced profiling features.
 - [Async Data Flow](./data_flow.html) - monitor channels, streams, and futures
 - [Locks](./locks.html) - track Mutex and RwLock wait and hold times
 - [SQL queries](./sql_tracing.html) - profile query execution time for sqlx and Diesel
-- [HTTP requests](./http_tracing.html) - profile reqwest client calls per endpoint
+- [HTTP requests](./http_tracing.html) - profile reqwest and ureq client calls per endpoint
 - [I/O tracing](./io_tracing.html) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](./tokio_runtime.html) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
