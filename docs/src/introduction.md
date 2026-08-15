@@ -18,8 +18,9 @@
     <p class="ssh-demo-label">Or let your own AI agent configure profiling in a repo:</p>
     <div class="terminal-shell terminal-shell-multi">
       <div class="terminal-tabs">
-        <button class="terminal-tab active" data-agent="claude" onclick="hotpathInitAgent('claude')">Claude</button>
-        <button class="terminal-tab" data-agent="codex&nbsp;" onclick="hotpathInitAgent('codex&nbsp;')">Codex</button>
+        <button class="terminal-tab active" data-agent="claude&nbsp;&nbsp;" onclick="hotpathInitAgent('claude&nbsp;&nbsp;')">Claude</button>
+        <button class="terminal-tab" data-agent="codex&nbsp;&nbsp;&nbsp;" onclick="hotpathInitAgent('codex&nbsp;&nbsp;&nbsp;')">Codex</button>
+        <button class="terminal-tab" data-agent="opencode" onclick="hotpathInitAgent('opencode')">OpenCode</button>
       </div>
       <div class="terminal-line">
         <span class="terminal-prompt">$</span>
@@ -27,7 +28,7 @@
       </div>
       <div class="terminal-line">
         <span class="terminal-prompt">$</span>
-        <span class="terminal-command">hotpath init --agent <span id="init-agent-name">claude</span></span>
+        <span class="terminal-command">hotpath init --agent <span id="init-agent-name">claude&nbsp;&nbsp;</span></span>
       </div>
     </div>
   </div>
@@ -133,12 +134,12 @@ The quickest way to set up hotpath is to let your own AI coding agent do it. Ins
 
 ```bash
 cargo install hotpath --version '^{{HOTPATH_VERSION}}'
-hotpath init --agent claude # or --agent codex
+hotpath init --agent claude # or --agent codex / --agent opencode
 ```
 
-`hotpath init` downloads the [hotpath_init agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init/SKILL.md) from GitHub and starts your installed Claude Code or Codex with it as setup instructions. The agent inspects your project, adds the dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled.
+`hotpath init` downloads the [hotpath_init agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init/SKILL.md) from GitHub and starts your installed Claude Code, Codex or OpenCode with it as setup instructions. The agent inspects your project, adds the dependency, instruments `main` and a starting set of functions, channels and locks, then verifies that everything compiles with profiling enabled and disabled.
 
-Your agent remains in control: you review and approve edits through its regular permission prompts. Requires `curl` and the `claude` or `codex` CLI on `PATH`.
+Your agent remains in control: you review and approve edits through its regular permission prompts. Requires `curl` and the `claude`, `codex` or `opencode` CLI on `PATH`.
 
 You can also install the skill directly, without the hotpath CLI:
 

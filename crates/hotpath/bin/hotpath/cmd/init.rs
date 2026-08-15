@@ -12,6 +12,7 @@ const KICKOFF_PROMPT: &str = "Set up hotpath profiling in this repo.";
 pub enum Agent {
     Claude,
     Codex,
+    OpenCode,
 }
 
 impl Agent {
@@ -19,8 +20,9 @@ impl Agent {
         match arg {
             "claude" => Ok(Self::Claude),
             "codex" => Ok(Self::Codex),
+            "opencode" => Ok(Self::OpenCode),
             other => Err(format!(
-                "Unknown agent '{other}'. Supported agents: claude, codex"
+                "Unknown agent '{other}'. Supported agents: claude, codex, opencode"
             )),
         }
     }
@@ -29,6 +31,7 @@ impl Agent {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::OpenCode => "opencode",
         }
     }
 }
@@ -60,9 +63,10 @@ pub fn run(agent: Agent) -> Result<(), String> {
                 .arg(KICKOFF_PROMPT);
         }
         Agent::Codex => {
-            command.arg(format!(
-                "{instructions}\n\n{KICKOFF_PROMPT} Follow the instructions above."
-            ));
+            command.arg(inline_prompt(instructions));
+        }
+        Agent::OpenCode => {
+            command.arg("--prompt").arg(inline_prompt(instructions));
         }
     }
 
@@ -82,6 +86,10 @@ pub fn run(agent: Agent) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn inline_prompt(instructions: &str) -> String {
+    format!("{instructions}\n\n{KICKOFF_PROMPT} Follow the instructions above.")
 }
 
 fn branch_skill_url() -> String {
