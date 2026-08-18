@@ -116,7 +116,7 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 - **Zero cost when disabled** - fully feature-gated.
 
 <div class="waitlist-card" id="waitlist">
-  <h2 class="waitlist-card-title">Every Rust PR gets a performance review.</h2>
+  <h2 class="waitlist-card-title"><span class="waitlist-card-brand">hotpath Diff</span> - every Rust PR gets a performance review</h2>
   <p>Catch regressions in memory, SQL queries, HTTP calls and concurrency bottlenecks before they reach production. Iterate on reproducible signals, not CI noise.</p>
   <img src="{{#asset-hash images/hotpath-team-poc.webp}}" class="waitlist-card-image" alt="Hotpath Team commit timeline comparing duration, memory, HTTP and SQL metrics across commits, flagging a PR that introduced 171 new SQL calls" loading="lazy" width="1672" height="941">
   <p class="waitlist-cta-note">Launching soon • Early access invitations will be sent to waitlist members first.</p>
