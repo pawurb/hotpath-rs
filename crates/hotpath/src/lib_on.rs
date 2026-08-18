@@ -33,6 +33,7 @@ pub mod http;
 pub mod io;
 pub mod mutexes;
 pub mod rw_locks;
+pub mod server;
 pub mod sql;
 pub mod streams;
 #[cfg(feature = "threads")]
@@ -51,6 +52,7 @@ pub use http::{InstrumentHttpClient, ReqwestHttpMiddleware, UreqHttpMiddleware};
 pub use io::io_unwrap;
 pub use mutexes::InstrumentMutex;
 pub use rw_locks::InstrumentRwLock;
+pub use server::AxumLayer;
 #[cfg(feature = "diesel")]
 pub use sql::instrument_diesel_sql;
 #[cfg(feature = "sqlx")]

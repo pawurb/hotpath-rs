@@ -7,8 +7,8 @@ use hotpath::json::{
     JsonDebugValLogs, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList,
     JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonHttpList,
     JsonHttpLogsList, JsonIoList, JsonMutexesList, JsonProfilerStatus, JsonRuntimeSnapshot,
-    JsonRwLocksList, JsonSqlList, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList,
-    JsonThreadsList,
+    JsonRwLocksList, JsonServerList, JsonSqlList, JsonSqlLogsList, JsonStreamLogsList,
+    JsonStreamsList, JsonThreadsList,
 };
 use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
 use reqwest::StatusCode;
@@ -33,6 +33,7 @@ enum RequestKey {
     Mutexes,
     Sql,
     Http,
+    Server,
     Io,
     Threads,
     Debug,
@@ -44,6 +45,7 @@ enum RequestKey {
     FutureLogs,
     SqlLogs,
     HttpLogs,
+    ServerLogs,
     DebugDbgLogs,
     DebugValLogs,
     DebugGaugeLogs,
@@ -64,6 +66,7 @@ impl DataRequest {
             DataRequest::RefreshMutexes => RequestKey::Mutexes,
             DataRequest::RefreshSql => RequestKey::Sql,
             DataRequest::RefreshHttp => RequestKey::Http,
+            DataRequest::RefreshServer => RequestKey::Server,
             DataRequest::RefreshIo => RequestKey::Io,
             DataRequest::RefreshThreads => RequestKey::Threads,
             DataRequest::RefreshDebug => RequestKey::Debug,
@@ -75,6 +78,7 @@ impl DataRequest {
             DataRequest::FetchFutureLogs(_) => RequestKey::FutureLogs,
             DataRequest::FetchSqlLogs(_) => RequestKey::SqlLogs,
             DataRequest::FetchHttpLogs(_) => RequestKey::HttpLogs,
+            DataRequest::FetchServerLogs(_) => RequestKey::ServerLogs,
             DataRequest::FetchDebugDbgLogs(_) => RequestKey::DebugDbgLogs,
             DataRequest::FetchDebugValLogs(_) => RequestKey::DebugValLogs,
             DataRequest::FetchDebugGaugeLogs(_) => RequestKey::DebugGaugeLogs,
@@ -232,6 +236,9 @@ impl RouteExt for Route {
             }
             Route::SqlLogs { sql_id } => Some(DataResponse::SqlLogsNotFound { id: *sql_id }),
             Route::HttpLogs { http_id } => Some(DataResponse::HttpLogsNotFound { id: *http_id }),
+            Route::ServerLogs { server_id } => {
+                Some(DataResponse::ServerLogsNotFound { id: *server_id })
+            }
             Route::DebugDbgLogs { id }
             | Route::DebugValLogs { id }
             | Route::DebugGaugeLogs { id } => Some(DataResponse::DebugLogsNotFound { id: *id }),
@@ -262,6 +269,7 @@ impl RouteExt for Route {
             Route::Mutexes => parse_json::<JsonMutexesList>(bytes).map(DataResponse::Mutexes),
             Route::Sql => parse_json::<JsonSqlList>(bytes).map(DataResponse::Sql),
             Route::Http => parse_json::<JsonHttpList>(bytes).map(DataResponse::Http),
+            Route::Server => parse_json::<JsonServerList>(bytes).map(DataResponse::Server),
             Route::Io => parse_json::<JsonIoList>(bytes).map(DataResponse::Io),
             Route::Threads => parse_json::<JsonThreadsList>(bytes).map(DataResponse::Threads),
             Route::FunctionTimingLogs { function_id } => {
@@ -302,6 +310,12 @@ impl RouteExt for Route {
                 .map(|logs| DataResponse::SqlLogs { id: *sql_id, logs }),
             Route::HttpLogs { http_id } => parse_json::<JsonHttpLogsList>(bytes)
                 .map(|logs| DataResponse::HttpLogs { id: *http_id, logs }),
+            Route::ServerLogs { server_id } => {
+                parse_json::<JsonHttpLogsList>(bytes).map(|logs| DataResponse::ServerLogs {
+                    id: *server_id,
+                    logs,
+                })
+            }
             Route::Debug => parse_json::<JsonDebugList>(bytes).map(DataResponse::Debug),
             Route::DebugDbgLogs { id } => {
                 parse_json::<JsonDebugDbgLogs>(bytes).map(|logs| DataResponse::DebugDbgLogs {

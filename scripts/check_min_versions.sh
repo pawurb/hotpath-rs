@@ -44,38 +44,12 @@ import re, pathlib
 drop = (
     "crates/hotpath-meta",
     "crates/hotpath-macros-meta",
-    "crates/test-tokio-async",
-    "crates/test-smol-async",
-    "crates/test-all-features",
-    "crates/test-custom-feature",
-    "crates/test-channels-asc",
-    "crates/test-channels-crossbeam",
-    "crates/test-channels-ftc",
-    "crates/test-channels-flume",
-    "crates/test-channels-std",
-    "crates/test-channels-tokio",
-    "crates/test-rw-lock-std",
-    "crates/test-rw-lock-parking-lot",
-    "crates/test-rw-lock-async-lock",
-    "crates/test-rw-lock-tokio",
-    "crates/test-mutex-std",
-    "crates/test-mutex-parking-lot",
-    "crates/test-mutex-tokio",
-    "crates/test-mutex-async-lock",
-    "crates/test-streams",
-    "crates/test-futures",
-    "crates/test-io",
-    "crates/test-debug",
-    "crates/test-sqlx-08",
-    "crates/test-sqlx-09",
-    "crates/test-reqwest-012",
-    "crates/test-reqwest-013",
-    "crates/test-diesel",
 )
 p = pathlib.Path("Cargo.toml")
 src = p.read_text()
 for path in drop:
     src = re.sub(rf'\s*"{re.escape(path)}",', '', src)
+src = re.sub(r'\s*"crates/test-[^"]*",', '', src)
 src = re.sub(r'^hotpath-meta\s*=.*\n', '', src, flags=re.MULTILINE)
 src = re.sub(r'^hotpath-macros-meta\s*=.*\n', '', src, flags=re.MULTILINE)
 p.write_text(src)

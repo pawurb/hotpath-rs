@@ -105,6 +105,13 @@ struct HttpIdParam {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+struct ServerIdParam {
+    #[schemars(description = "Server route id from the server list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    server_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 struct GaugeIdParam {
     #[schemars(description = "Gauge id from the gauges list")]
     #[serde(deserialize_with = "id_from_number_or_string")]
@@ -432,6 +439,53 @@ Returns JSON array of recent requests with timestamps, durations, and status cod
             }
             None => Ok(CallToolResult::error(vec![Content::text(
                 "HTTP endpoint not found",
+            )])),
+        }
+    }
+
+    #[tool(
+        description = r#"Get response-time metrics for HTTP requests served by the app's axum router, captured via hotpath's AxumLayer.
+
+Returns JSON array with one entry per matched route template (e.g. GET /users/{id}; requests that matched no route are bucketed by their normalized raw path):
+- id: route identifier
+- route: METHOD template key
+- count: number of requests served
+- status_4xx / status_5xx: responses with a 4xx / 5xx status
+- avg, configured percentiles, and total duration (measured until the response head is produced; body streaming is excluded)
+
+Requires wrapping the router with hotpath::axum!(...) (or adding hotpath::AxumLayer::new() via Router::layer). Use server_logs with a route id to get recent individual requests."#
+    )]
+    async fn server(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: server");
+
+        let server = crate::server::get_server_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &server,
+        )?)]))
+    }
+
+    #[tool(
+        description = r#"Get detailed request logs for a specific server route.
+
+Returns JSON array of recent requests with timestamps, durations, and status codes. Use server first to get route IDs, then use this tool to get detailed logs."#
+    )]
+    async fn server_logs(
+        &self,
+        params: Parameters<ServerIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let server_id = params.0.server_id;
+        log_debug(&format!("Tool called: server_logs({})", server_id));
+
+        match crate::server::get_server_logs(server_id) {
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = JsonHttpLogsList::from_logs(&logs, current_elapsed_ns);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &formatted,
+                )?)]))
+            }
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "Server route not found",
             )])),
         }
     }

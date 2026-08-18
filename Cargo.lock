@@ -1646,6 +1646,8 @@ dependencies = [
  "tiny_http",
  "tokio",
  "tokio-util",
+ "tower-layer",
+ "tower-service",
  "tracing",
  "tracing-subscriber",
  "ureq",
@@ -4309,6 +4311,16 @@ name = "test-alloc"
 version = "0.0.0"
 dependencies = [
  "hotpath",
+]
+
+[[package]]
+name = "test-axum"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "hotpath",
+ "tokio",
+ "ureq",
 ]
 
 [[package]]

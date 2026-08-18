@@ -21,7 +21,7 @@ pub use lib_on::threads;
 #[cfg(all(feature = "hotpath", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
 #[cfg(feature = "hotpath")]
-pub use lib_on::{channels, futures, http, io, mutexes, sql, streams};
+pub use lib_on::{channels, futures, http, io, mutexes, server, sql, streams};
 
 #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub(crate) mod output;

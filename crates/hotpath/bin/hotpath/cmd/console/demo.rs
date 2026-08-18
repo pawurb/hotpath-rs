@@ -316,25 +316,36 @@ fn lookup_order(conn: &mut diesel::SqliteConnection, i: i64) {
 
 #[cfg(feature = "demo")]
 fn spawn_http() {
-    // Local server so the demo generates real request latencies without
-    // network access. Per-route delays give the endpoints distinct profiles.
-    let server = tiny_http::Server::http("127.0.0.1:0").expect("Failed to bind demo http server");
-    let port = server.server_addr().to_ip().expect("ip listener").port();
-
+    // Local axum server wrapped in `hotpath::axum!`, so one request loop feeds
+    // both the HTTP (client) and Server subtabs without network access.
+    // Per-route delays give the endpoints distinct profiles.
+    let (port_tx, port_rx) = std::sync::mpsc::channel::<u16>();
     thread::spawn(move || {
-        for request in server.incoming_requests() {
-            let (status, delay_ms) = match request.url() {
-                url if url.starts_with("/users/") => (200, 5),
-                url if url.starts_with("/search") => (200, 40),
-                url if url.starts_with("/slow") => (200, 250),
-                _ => (404, 2),
-            };
-            thread::sleep(Duration::from_millis(delay_ms));
-            let response =
-                tiny_http::Response::from_string("{\"ok\":true}").with_status_code(status);
-            let _ = request.respond(response);
-        }
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime");
+
+        rt.block_on(async move {
+            use axum::routing::get;
+
+            let app = hotpath::axum!(axum::Router::new()
+                .route("/users/{id}", get(|| delayed_ok(5)))
+                .route("/search", get(|| delayed_ok(40)))
+                .route("/slow", get(|| delayed_ok(250)))
+                .fallback(|| async {
+                    tokio::time::sleep(Duration::from_millis(2)).await;
+                    axum::http::StatusCode::NOT_FOUND
+                }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("Failed to bind demo http server");
+            let port = listener.local_addr().expect("local addr").port();
+            let _ = port_tx.send(port);
+            axum::serve(listener, app).await.expect("demo axum server");
+        });
     });
+    let port = port_rx.recv().expect("demo http server port");
 
     thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -368,6 +379,12 @@ fn spawn_http() {
             }
         });
     });
+}
+
+#[cfg(feature = "demo")]
+async fn delayed_ok(delay_ms: u64) -> &'static str {
+    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+    "{\"ok\":true}"
 }
 
 #[cfg(feature = "demo")]
