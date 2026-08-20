@@ -72,9 +72,9 @@ It helps you distinguish between functions that are slow because they wait on I/
       <span class="trusted-by-name">parseablehq/parseable</span>
       <img src="{{#asset-hash images/stars-parseablehq-parseable.svg}}" alt="parseable GitHub stars">
     </a>
-    <a href="https://github.com/tqwewe/kameo" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
-      <span class="trusted-by-name">tqwewe/kameo</span>
-      <img src="{{#asset-hash images/stars-tqwewe-kameo.svg}}" alt="kameo GitHub stars">
+    <a href="https://github.com/MapleTechLabs/maple" target="_blank" rel="noopener noreferrer" class="trusted-by-project">
+      <span class="trusted-by-name">MapleTechLabs/maple</span>
+      <img src="{{#asset-hash images/stars-MapleTechLabs-maple.svg}}" alt="maple GitHub stars">
     </a>
   </div>
 </div>

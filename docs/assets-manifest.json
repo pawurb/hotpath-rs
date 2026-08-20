@@ -71,6 +71,10 @@
     "hash": "1b44eb0f",
     "hashed_path": "images/sql_metrics.1b44eb0f.png"
   },
+  "images/stars-MapleTechLabs-maple.svg": {
+    "hash": "df4f7b82",
+    "hashed_path": "images/stars-MapleTechLabs-maple.df4f7b82.svg"
+  },
   "images/stars-apache-opendal.svg": {
     "hash": "c7daa0d0",
     "hashed_path": "images/stars-apache-opendal.c7daa0d0.svg"
@@ -80,8 +84,8 @@
     "hashed_path": "images/stars-maplibre-martin.b7c090d2.svg"
   },
   "images/stars-marc2332-freya.svg": {
-    "hash": "6b133c7e",
-    "hashed_path": "images/stars-marc2332-freya.6b133c7e.svg"
+    "hash": "70daf482",
+    "hashed_path": "images/stars-marc2332-freya.70daf482.svg"
   },
   "images/stars-parseablehq-parseable.svg": {
     "hash": "1fb14fa5",
@@ -92,12 +96,8 @@
     "hashed_path": "images/stars-pawurb-hotpath-rs.17290aeb.svg"
   },
   "images/stars-rustfs-rustfs.svg": {
-    "hash": "5ba341af",
-    "hashed_path": "images/stars-rustfs-rustfs.5ba341af.svg"
-  },
-  "images/stars-tqwewe-kameo.svg": {
-    "hash": "b4a9297f",
-    "hashed_path": "images/stars-tqwewe-kameo.b4a9297f.svg"
+    "hash": "ac7827fe",
+    "hashed_path": "images/stars-rustfs-rustfs.ac7827fe.svg"
   },
   "images/streams-log.png": {
     "hash": "cd023bff",

@@ -76,7 +76,7 @@ fetch-badges:
     fetch maplibre-martin maplibre/martin
     fetch marc2332-freya marc2332/freya
     fetch parseablehq-parseable parseablehq/parseable
-    fetch tqwewe-kameo tqwewe/kameo
+    fetch MapleTechLabs-maple MapleTechLabs/maple
     fetch pawurb-hotpath-rs pawurb/hotpath-rs
 
     echo "Badges saved to ${DIR}/"
