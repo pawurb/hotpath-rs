@@ -250,10 +250,10 @@ threads - Thread CPU and memory statistics. (RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc
 
 Other than the SSH demo an easy way to quickly try the [ratatui.rs](https://ratatui.rs/)-powered TUI is to run it in **auto-instrumentation mode**. The TUI process profiles itself and displays its own performance metrics in real time.
 
-First, install `hotpath` CLI with auto-instrumentation enabled:
+First, install `hotpath` CLI with auto-instrumentation and demo mode enabled:
 
 ```bash
-cargo install hotpath --features='tui,hotpath,hotpath-alloc' --version '^{{HOTPATH_VERSION}}'
+cargo install hotpath --features='tui,hotpath,hotpath-alloc,demo' --version '^{{HOTPATH_VERSION}}'
 ```
 
 Then launch the TUI:
