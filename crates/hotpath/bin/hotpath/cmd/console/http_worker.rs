@@ -87,17 +87,29 @@ impl DataRequest {
     }
 }
 
+const UNAUTHORIZED_MSG: &str =
+    "Metrics server requires an auth token - set HOTPATH_METRICS_AUTH_TOKEN or pass --metrics-auth-token";
+
 pub(crate) fn spawn_http_worker(
     request_rx: Receiver<DataRequest>,
     event_tx: Sender<AppEvent>,
     base_url: String,
+    auth_token: Option<String>,
 ) {
     std::thread::spawn(move || {
         info!("HTTP worker started, connecting to {}", base_url);
         let rt = Runtime::new().expect("Failed to create Tokio runtime");
         hotpath::tokio_runtime!(rt.handle());
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(token) = auth_token {
+            let mut value = reqwest::header::HeaderValue::from_str(&token)
+                .expect("auth token validated at startup");
+            value.set_sensitive(true);
+            headers.insert(reqwest::header::AUTHORIZATION, value);
+        }
         let client = reqwest::Client::builder()
             .timeout(Duration::from_millis(HTTP_TIMEOUT_MS))
+            .default_headers(headers)
             .build()
             .expect("Failed to create HTTP client");
 
@@ -167,6 +179,9 @@ impl RouteExt for Route {
                 let msg = parse_error_body(resp.text().await.unwrap_or_default());
                 return DataResponse::FunctionsCpuUnavailable(msg);
             }
+            if status == StatusCode::UNAUTHORIZED {
+                return DataResponse::Error(UNAUTHORIZED_MSG.to_string());
+            }
             return DataResponse::Error(format!("CPU snapshot HTTP {}", status));
         }
 
@@ -180,6 +195,11 @@ impl RouteExt for Route {
 
         let status = resp.status();
         trace!("Response status {} for {}", status, url);
+
+        if status == StatusCode::UNAUTHORIZED {
+            warn!("Unauthorized response for {}", url);
+            return DataResponse::Error(UNAUTHORIZED_MSG.to_string());
+        }
 
         if status == StatusCode::NOT_FOUND {
             let msg = parse_error_body(resp.text().await.unwrap_or_default());

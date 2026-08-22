@@ -29,6 +29,12 @@ pub struct ConsoleArgs {
     )]
     pub metrics_host: String,
 
+    #[arg(
+        long,
+        help = "Token sent verbatim in the Authorization header to the metrics server (env: HOTPATH_METRICS_AUTH_TOKEN)"
+    )]
+    pub metrics_auth_token: Option<String>,
+
     #[arg(long, default_value_t = default_refresh_interval(), help = "Refresh interval in milliseconds (env: HOTPATH_TUI_REFRESH_INTERVAL_MS)")]
     pub refresh_interval: u64,
 }
@@ -41,7 +47,20 @@ impl ConsoleArgs {
         #[cfg(feature = "hotpath")]
         demo::init();
 
-        let mut app = App::new(&self.metrics_host, self.metrics_port, self.refresh_interval);
+        let auth_token = self
+            .metrics_auth_token
+            .clone()
+            .or_else(default_metrics_auth_token)
+            .map(|token| validate_metrics_auth_token(&token))
+            .transpose()
+            .map_err(|e| eyre::eyre!(e))?;
+
+        let mut app = App::new(
+            &self.metrics_host,
+            self.metrics_port,
+            auth_token,
+            self.refresh_interval,
+        );
 
         let mut terminal = ratatui::init();
         enable_mouse_capture();
@@ -79,6 +98,7 @@ impl Default for ConsoleArgs {
         Self {
             metrics_port: default_metrics_port(),
             metrics_host: default_metrics_host(),
+            metrics_auth_token: default_metrics_auth_token(),
             refresh_interval: default_refresh_interval(),
         }
     }
@@ -100,6 +120,21 @@ fn default_refresh_interval() -> u64 {
 
 fn default_metrics_host() -> String {
     std::env::var("HOTPATH_METRICS_HOST").unwrap_or_else(|_| "http://localhost".to_string())
+}
+
+fn default_metrics_auth_token() -> Option<String> {
+    std::env::var("HOTPATH_METRICS_AUTH_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
+fn validate_metrics_auth_token(s: &str) -> Result<String, String> {
+    if s.is_empty() {
+        return Err("metrics auth token cannot be empty".to_string());
+    }
+    reqwest::header::HeaderValue::from_str(s)
+        .map_err(|_| "metrics auth token must be visible ASCII".to_string())?;
+    Ok(s.to_string())
 }
 
 fn validate_metrics_host(s: &str) -> Result<String, String> {

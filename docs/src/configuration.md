@@ -61,6 +61,7 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 |----------|-------------|
 | `HOTPATH_METRICS_PORT` | Port for the HTTP metrics server (binds to `localhost` only). (default: `6770`) |
 | `HOTPATH_METRICS_SERVER_OFF` | Set to `true` or `1` to disable the HTTP metrics server entirely. (default: `false`) |
+| `HOTPATH_METRICS_AUTH_TOKEN` | When set, every request must include this token verbatim in the `Authorization` header (no `Bearer` prefix) or it gets `401`. The token travels in plaintext: the server still binds to `localhost` only, so this guards against other local processes and accidental exposure through tunnels, not a substitute for TLS. (default: `''`) |
 
 ## MCP Server
 
@@ -78,6 +79,7 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 | `HOTPATH_TUI_AUTO_EXPAND_LOGS` | Auto-open the logs panel once initial data arrives and pin selection to the given table index. Set to an integer (e.g. `0` for the first row, `2` for the third). (default: unset) |
 | `HOTPATH_METRICS_HOST` | Host URL that the TUI console connects to for metrics data. (default: `http://localhost`) |
 | `HOTPATH_METRICS_PORT` | Port that the TUI console connects to for metrics data. (default: `6770`) |
+| `HOTPATH_METRICS_AUTH_TOKEN` | Token the TUI console sends in the `Authorization` header; must match the value the profiled app was started with. Can also be passed as `--metrics-auth-token`. (default: unset) |
 | `HOTPATH_DISABLE_SAMPLY_LOAD` | Set to `true` or `1` to disable the `samply load` shortcut on the CPU subtab; the `'f'` keybinding and its hint are hidden. (default: `false`) |
 
 ## Other
