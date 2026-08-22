@@ -1707,6 +1707,8 @@ dependencies = [
  "tiny_http",
  "tokio",
  "tokio-util",
+ "tower-layer",
+ "tower-service",
  "ureq",
 ]
 

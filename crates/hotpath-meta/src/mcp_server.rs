@@ -105,6 +105,13 @@ struct HttpIdParam {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+struct ServerIdParam {
+    #[schemars(description = "Server route id from the server list")]
+    #[serde(deserialize_with = "id_from_number_or_string")]
+    server_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 struct GaugeIdParam {
     #[schemars(description = "Gauge id from the gauges list")]
     #[serde(deserialize_with = "id_from_number_or_string")]
@@ -433,6 +440,53 @@ Returns JSON array of recent requests with timestamps, durations, and status cod
         }
     }
 
+    #[tool(
+        description = r#"Get response-time metrics for HTTP requests served by the app's axum router, captured via hotpath's AxumLayer.
+
+Returns JSON array with one entry per matched route template (e.g. GET /users/{id}; requests that matched no route are bucketed by their normalized raw path):
+- id: route identifier
+- route: METHOD template key
+- count: number of requests served
+- status_4xx / status_5xx: responses with a 4xx / 5xx status
+- avg, configured percentiles, and total duration (measured until the response head is produced; body streaming is excluded)
+
+Requires wrapping the router with hotpath::axum!(...) (or adding hotpath::AxumLayer::new() via Router::layer). Use server_logs with a route id to get recent individual requests."#
+    )]
+    async fn server(&self) -> Result<CallToolResult, McpError> {
+        log_debug("Tool called: server");
+
+        let server = crate::server::get_server_json();
+        Ok(CallToolResult::success(vec![Content::text(to_json(
+            &server,
+        )?)]))
+    }
+
+    #[tool(
+        description = r#"Get detailed request logs for a specific server route.
+
+Returns JSON array of recent requests with timestamps, durations, and status codes. Use server first to get route IDs, then use this tool to get detailed logs."#
+    )]
+    async fn server_logs(
+        &self,
+        params: Parameters<ServerIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let server_id = params.0.server_id;
+        log_debug(&format!("Tool called: server_logs({})", server_id));
+
+        match crate::server::get_server_logs(server_id) {
+            Some(logs) => {
+                let current_elapsed_ns = get_current_elapsed_ns();
+                let formatted = JsonHttpLogsList::from_logs(&logs, current_elapsed_ns);
+                Ok(CallToolResult::success(vec![Content::text(to_json(
+                    &formatted,
+                )?)]))
+            }
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "Server route not found",
+            )])),
+        }
+    }
+
     #[tool(description = r#"Get CPU usage metrics for all monitored threads.
 
 Returns JSON array with:
@@ -749,38 +803,17 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<String, McpError> {
         .map_err(|e| McpError::internal_error(format!("Failed to serialize metrics: {}", e), None))
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
-fn check_auth(expected: Option<&str>, provided: Option<&str>) -> bool {
-    match expected {
-        None => true,
-        Some(expected) => provided
-            .map(|p| constant_time_eq(p.as_bytes(), expected.as_bytes()))
-            .unwrap_or(false),
-    }
-}
-
 async fn auth_middleware(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Result<axum::response::Response, axum::http::StatusCode> {
-    let expected = std::env::var("HOTPATH_META_MCP_AUTH_TOKEN")
-        .ok()
-        .filter(|s| !s.is_empty());
+    let expected = crate::auth::token_from_env("HOTPATH_META_MCP_AUTH_TOKEN");
     let provided = request
         .headers()
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
 
-    if check_auth(expected.as_deref(), provided) {
+    if crate::auth::check_auth(expected.as_deref(), provided) {
         Ok(next.run(request).await)
     } else {
         Err(axum::http::StatusCode::UNAUTHORIZED)
@@ -793,10 +826,7 @@ pub(crate) fn start_mcp_server_once() {
     MCP_SERVER_STARTED.get_or_init(|| {
         let port = *MCP_SERVER_PORT;
 
-        let auth_enabled = std::env::var("HOTPATH_META_MCP_AUTH_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .is_some();
+        let auth_enabled = crate::auth::token_from_env("HOTPATH_META_MCP_AUTH_TOKEN").is_some();
         log_debug(&format!(
             "Starting MCP server on port {} (auth: {})",
             port,
@@ -881,30 +911,6 @@ fn log_debug(_msg: &str) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn auth_disabled_allows_all() {
-        assert!(check_auth(None, None));
-        assert!(check_auth(None, Some("anything")));
-    }
-
-    #[test]
-    fn auth_enabled_rejects_missing() {
-        assert!(!check_auth(Some("secret"), None));
-    }
-
-    #[test]
-    fn auth_enabled_rejects_wrong() {
-        assert!(!check_auth(Some("secret"), Some("wrong")));
-        assert!(!check_auth(Some("secret"), Some("Secret")));
-        assert!(!check_auth(Some("secret"), Some("")));
-    }
-
-    #[test]
-    fn auth_enabled_accepts_correct() {
-        assert!(check_auth(Some("secret"), Some("secret")));
-        assert!(check_auth(Some("Bearer token"), Some("Bearer token")));
-    }
 
     #[test]
     fn id_param_accepts_number_and_string() {

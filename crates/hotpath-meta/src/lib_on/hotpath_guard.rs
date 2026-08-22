@@ -33,6 +33,53 @@ pub(crate) static LOGS_LIMIT: LazyLock<usize> = LazyLock::new(|| {
         .unwrap_or(DEFAULT_LOGS_LIMIT)
 });
 
+/// Maximum number of distinct entries kept per runtime-keyed subsystem (server
+/// routes, outbound HTTP endpoints, SQL queries). Once reached, new keys are
+/// folded into a single [`OVERFLOW_ENTRY`] bucket so attacker- or data-driven
+/// cardinality (unmatched 404 paths, dynamic SQL) cannot grow memory without
+/// bound. Compile-time keyed subsystems (functions, channels, ...) need no cap.
+const DEFAULT_ENTRIES_LIMIT: usize = 1000;
+pub(crate) static ENTRIES_LIMIT: LazyLock<usize> = LazyLock::new(|| {
+    std::env::var("HOTPATH_META_ENTRIES_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_ENTRIES_LIMIT)
+});
+
+/// Name of the bucket that absorbs entries beyond [`ENTRIES_LIMIT`].
+pub(crate) const OVERFLOW_ENTRY: &str = "<other>";
+
+/// Returns `key` when `map` already holds it or still has room under
+/// [`ENTRIES_LIMIT`]; otherwise returns the overflow key from `overflow`. One
+/// slot is reserved for the overflow bucket, so the map never exceeds the
+/// limit. Callers must produce a single fixed overflow key per map.
+pub(crate) fn bounded_key<K, V>(
+    map: &std::collections::HashMap<K, V>,
+    key: K,
+    overflow: impl FnOnce() -> K,
+) -> K
+where
+    K: Eq + std::hash::Hash,
+{
+    bounded_key_with_limit(map, *ENTRIES_LIMIT, key, overflow)
+}
+
+fn bounded_key_with_limit<K, V>(
+    map: &std::collections::HashMap<K, V>,
+    limit: usize,
+    key: K,
+    overflow: impl FnOnce() -> K,
+) -> K
+where
+    K: Eq + std::hash::Hash,
+{
+    if map.contains_key(&key) || map.len() + 1 < limit {
+        key
+    } else {
+        overflow()
+    }
+}
+
 use std::io::Write;
 
 use crate::json::{JsonCpuBaseline, JsonFunctionsList, JsonReport};
@@ -80,6 +127,7 @@ pub struct HotpathGuardBuilder {
     mutexes_limit: usize,
     sql_limit: usize,
     http_limit: usize,
+    server_limit: usize,
     io_limit: usize,
     threads_limit: usize,
     output_path: Option<PathBuf>,
@@ -102,6 +150,7 @@ impl HotpathGuardBuilder {
             mutexes_limit: 0,
             sql_limit: 0,
             http_limit: 0,
+            server_limit: 0,
             io_limit: 0,
             threads_limit: 5,
             output_path: None,
@@ -128,6 +177,7 @@ impl HotpathGuardBuilder {
         self.mutexes_limit = limit;
         self.sql_limit = limit;
         self.http_limit = limit;
+        self.server_limit = limit;
         self.io_limit = limit;
         self.threads_limit = limit;
         self
@@ -174,6 +224,12 @@ impl HotpathGuardBuilder {
     /// Maximum number of HTTP endpoints shown in the report. Set to `0` for unlimited.
     pub fn http_limit(mut self, limit: usize) -> Self {
         self.http_limit = limit;
+        self
+    }
+
+    /// Maximum number of server routes shown in the report. Set to `0` for unlimited.
+    pub fn server_limit(mut self, limit: usize) -> Self {
+        self.server_limit = limit;
         self
     }
 
@@ -312,6 +368,7 @@ impl HotpathGuardBuilder {
             self.mutexes_limit,
             self.sql_limit,
             self.http_limit,
+            self.server_limit,
             self.io_limit,
             self.threads_limit,
         )
@@ -354,6 +411,7 @@ pub struct HotpathGuard {
     mutexes_limit: usize,
     sql_limit: usize,
     http_limit: usize,
+    server_limit: usize,
     io_limit: usize,
     threads_limit: usize,
 }
@@ -375,6 +433,7 @@ impl HotpathGuard {
         mutexes_limit: usize,
         sql_limit: usize,
         http_limit: usize,
+        server_limit: usize,
         io_limit: usize,
         threads_limit: usize,
     ) -> Self {
@@ -618,6 +677,7 @@ impl HotpathGuard {
             mutexes_limit,
             sql_limit,
             http_limit,
+            server_limit,
             io_limit,
             threads_limit,
         }
@@ -746,6 +806,7 @@ impl Drop for HotpathGuard {
         let mutexes_data = report::shutdown_mutexes();
         let sql_data = report::shutdown_sql();
         let http_data = report::shutdown_http();
+        let server_data = report::shutdown_server();
         let io_data = report::shutdown_io();
 
         let sections: Vec<Section> = match &self.sections_mode {
@@ -774,6 +835,7 @@ impl Drop for HotpathGuard {
                                 Section::Mutexes => !mutexes_data.is_empty(),
                                 Section::Sql => !sql_data.is_empty(),
                                 Section::Http => !http_data.is_empty(),
+                                Section::Server => !server_data.is_empty(),
                                 Section::Io => !io_data.is_empty(),
                                 Section::Debug => report::has_debug_entries(),
                                 _ => false,
@@ -801,6 +863,7 @@ impl Drop for HotpathGuard {
             self.mutexes_limit = global;
             self.sql_limit = global;
             self.http_limit = global;
+            self.server_limit = global;
             self.io_limit = global;
             self.threads_limit = global;
         }
@@ -824,6 +887,9 @@ impl Drop for HotpathGuard {
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_HTTP_LIMIT") {
             self.http_limit = v;
+        }
+        if let Some(v) = parse_usize_env("HOTPATH_META_SERVER_LIMIT") {
+            self.server_limit = v;
         }
         if let Some(v) = parse_usize_env("HOTPATH_META_IO_LIMIT") {
             self.io_limit = v;
@@ -975,6 +1041,21 @@ impl Drop for HotpathGuard {
                             report.http = Some(report::collect_http_json(
                                 &http_data[..limit],
                                 elapsed,
+                                reference_total,
+                                &percentiles,
+                            ));
+                        }
+                    }
+                    Section::Server => {
+                        if !server_data.is_empty() {
+                            let reference_total: u64 =
+                                server_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = server_data.iter().map(|e| e.count).sum();
+                            let limit = apply_limit(server_data.len(), self.server_limit);
+                            report.server = Some(report::collect_server_json(
+                                &server_data[..limit],
+                                elapsed,
+                                total_calls,
                                 reference_total,
                                 &percentiles,
                             ));
@@ -1232,6 +1313,23 @@ impl Drop for HotpathGuard {
                             );
                         }
                     }
+                    Section::Server => {
+                        if matches!(format, Format::Table) {
+                            let total = server_data.len();
+                            let reference_total: u64 =
+                                server_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = server_data.iter().map(|e| e.count).sum();
+                            let limit = apply_limit(total, self.server_limit);
+                            report::report_server_table(
+                                &server_data[..limit],
+                                total,
+                                total_calls,
+                                reference_total,
+                                &percentiles,
+                                &mut writer,
+                            );
+                        }
+                    }
                     Section::Io => {
                         if matches!(format, Format::Table) {
                             let total = io_data.len();
@@ -1259,5 +1357,43 @@ impl Drop for HotpathGuard {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::lib_on::hotpath_guard::{bounded_key_with_limit, OVERFLOW_ENTRY};
+
+    #[test]
+    fn bounded_key_folds_new_keys_into_overflow_once_full() {
+        let mut map: HashMap<String, u32> = HashMap::new();
+        let overflow = || OVERFLOW_ENTRY.to_string();
+
+        // Limit 3 leaves room for two regular keys plus the overflow slot.
+        for key in ["a", "b"] {
+            let k = bounded_key_with_limit(&map, 3, key.to_string(), overflow);
+            assert_eq!(k, key);
+            map.insert(k, 1);
+        }
+
+        // Regular slots full: unknown key goes to the overflow bucket, known keys pass.
+        assert_eq!(
+            bounded_key_with_limit(&map, 3, "c".to_string(), overflow),
+            OVERFLOW_ENTRY
+        );
+        assert_eq!(
+            bounded_key_with_limit(&map, 3, "a".to_string(), overflow),
+            "a"
+        );
+
+        // With the overflow bucket present the map sits exactly at the limit.
+        map.insert(OVERFLOW_ENTRY.to_string(), 1);
+        assert_eq!(map.len(), 3);
+        assert_eq!(
+            bounded_key_with_limit(&map, 3, "d".to_string(), overflow),
+            OVERFLOW_ENTRY
+        );
     }
 }

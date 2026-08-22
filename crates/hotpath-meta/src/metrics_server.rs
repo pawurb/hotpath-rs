@@ -21,6 +21,9 @@ pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
         .unwrap_or(6780)
 });
 
+pub(crate) static METRICS_AUTH_TOKEN: LazyLock<Option<String>> =
+    LazyLock::new(|| crate::auth::token_from_env("HOTPATH_META_METRICS_AUTH_TOKEN"));
+
 pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_META_METRICS_SERVER_OFF"));
 
@@ -57,6 +60,8 @@ pub(crate) fn start_metrics_server_once(port: u16) {
 }
 
 fn start_metrics_server(port: u16) {
+    LazyLock::force(&METRICS_AUTH_TOKEN);
+
     #[cfg(feature = "threads")]
     crate::threads::init_threads_monitoring();
 
@@ -86,6 +91,16 @@ fn start_metrics_server(port: u16) {
 }
 
 fn handle_request(request: Request) {
+    let provided = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Authorization"))
+        .map(|h| h.value.as_str());
+    if !crate::auth::check_auth(METRICS_AUTH_TOKEN.as_deref(), provided) {
+        respond_error(request, 401, "Unauthorized");
+        return;
+    }
+
     let path = request.url();
 
     match path.parse::<Route>() {
@@ -174,6 +189,17 @@ fn handle_request(request: Request) {
                 respond_json(request, &formatted);
             }
             None => respond_error(request, 404, "HTTP endpoint not found"),
+        },
+        Ok(Route::Server) => {
+            let server = crate::server::get_server_json();
+            respond_json(request, &server);
+        }
+        Ok(Route::ServerLogs { server_id }) => match crate::server::get_server_logs(server_id) {
+            Some(logs) => {
+                let formatted = JsonHttpLogsList::from_logs(&logs, get_current_elapsed_ns());
+                respond_json(request, &formatted);
+            }
+            None => respond_error(request, 404, "Server route not found"),
         },
         Ok(Route::Io) => {
             let io = crate::io::get_io_json();
