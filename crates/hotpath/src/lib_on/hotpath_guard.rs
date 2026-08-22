@@ -51,8 +51,9 @@ pub(crate) static ENTRIES_LIMIT: LazyLock<usize> = LazyLock::new(|| {
 pub(crate) const OVERFLOW_ENTRY: &str = "<other>";
 
 /// Returns `key` when `map` already holds it or still has room under
-/// [`ENTRIES_LIMIT`]; otherwise returns the overflow key from `overflow`, which
-/// is always admitted so totals keep adding up.
+/// [`ENTRIES_LIMIT`]; otherwise returns the overflow key from `overflow`. One
+/// slot is reserved for the overflow bucket, so the map never exceeds the
+/// limit. Callers must produce a single fixed overflow key per map.
 pub(crate) fn bounded_key<K, V>(
     map: &std::collections::HashMap<K, V>,
     key: K,
@@ -73,7 +74,7 @@ fn bounded_key_with_limit<K, V>(
 where
     K: Eq + std::hash::Hash,
 {
-    if map.len() < limit || map.contains_key(&key) {
+    if map.contains_key(&key) || map.len() + 1 < limit {
         key
     } else {
         overflow()
@@ -1487,26 +1488,28 @@ mod tests {
         let mut map: HashMap<String, u32> = HashMap::new();
         let overflow = || OVERFLOW_ENTRY.to_string();
 
+        // Limit 3 leaves room for two regular keys plus the overflow slot.
         for key in ["a", "b"] {
-            let k = bounded_key_with_limit(&map, 2, key.to_string(), overflow);
+            let k = bounded_key_with_limit(&map, 3, key.to_string(), overflow);
             assert_eq!(k, key);
             map.insert(k, 1);
         }
 
-        // Map full: unknown key goes to the overflow bucket, known keys pass.
+        // Regular slots full: unknown key goes to the overflow bucket, known keys pass.
         assert_eq!(
-            bounded_key_with_limit(&map, 2, "c".to_string(), overflow),
+            bounded_key_with_limit(&map, 3, "c".to_string(), overflow),
             OVERFLOW_ENTRY
         );
         assert_eq!(
-            bounded_key_with_limit(&map, 2, "a".to_string(), overflow),
+            bounded_key_with_limit(&map, 3, "a".to_string(), overflow),
             "a"
         );
 
-        // Overflow bucket itself is always admitted, even above the limit.
+        // With the overflow bucket present the map sits exactly at the limit.
         map.insert(OVERFLOW_ENTRY.to_string(), 1);
+        assert_eq!(map.len(), 3);
         assert_eq!(
-            bounded_key_with_limit(&map, 2, "d".to_string(), overflow),
+            bounded_key_with_limit(&map, 3, "d".to_string(), overflow),
             OVERFLOW_ENTRY
         );
     }

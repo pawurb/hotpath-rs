@@ -272,7 +272,7 @@ fn process_http_event(state: &mut HttpInternalState, event: HttpEvent) {
         key = format!("{label}: {key}");
     }
     let key = bounded_key(&state.stats, (source, key), || {
-        (source, OVERFLOW_ENTRY.to_string())
+        (None, OVERFLOW_ENTRY.to_string())
     });
     let entry = state
         .stats

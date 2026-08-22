@@ -206,7 +206,7 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
 
     let normalized = normalize::normalize(&sql);
     let key = bounded_key(&state.stats, (source, normalized), || {
-        (source, OVERFLOW_ENTRY.to_string())
+        (None, OVERFLOW_ENTRY.to_string())
     });
     let entry = state
         .stats
