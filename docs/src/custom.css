@@ -155,6 +155,11 @@
     opacity: 0.9;
 }
 
+.content h2.hero-subtitle b,
+.content h2.hero-subtitle strong {
+    font-weight: 600;
+}
+
 .hero-badges {
     display: flex;
     justify-content: flex-start;
