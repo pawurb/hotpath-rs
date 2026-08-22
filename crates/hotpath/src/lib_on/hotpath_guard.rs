@@ -34,6 +34,53 @@ pub(crate) static LOGS_LIMIT: LazyLock<usize> = LazyLock::new(|| {
         .unwrap_or(DEFAULT_LOGS_LIMIT)
 });
 
+/// Maximum number of distinct entries kept per runtime-keyed subsystem (server
+/// routes, outbound HTTP endpoints, SQL queries). Once reached, new keys are
+/// folded into a single [`OVERFLOW_ENTRY`] bucket so attacker- or data-driven
+/// cardinality (unmatched 404 paths, dynamic SQL) cannot grow memory without
+/// bound. Compile-time keyed subsystems (functions, channels, ...) need no cap.
+const DEFAULT_ENTRIES_LIMIT: usize = 1000;
+pub(crate) static ENTRIES_LIMIT: LazyLock<usize> = LazyLock::new(|| {
+    std::env::var("HOTPATH_ENTRIES_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_ENTRIES_LIMIT)
+});
+
+/// Name of the bucket that absorbs entries beyond [`ENTRIES_LIMIT`].
+pub(crate) const OVERFLOW_ENTRY: &str = "<other>";
+
+/// Returns `key` when `map` already holds it or still has room under
+/// [`ENTRIES_LIMIT`]; otherwise returns the overflow key from `overflow`. One
+/// slot is reserved for the overflow bucket, so the map never exceeds the
+/// limit. Callers must produce a single fixed overflow key per map.
+pub(crate) fn bounded_key<K, V>(
+    map: &std::collections::HashMap<K, V>,
+    key: K,
+    overflow: impl FnOnce() -> K,
+) -> K
+where
+    K: Eq + std::hash::Hash,
+{
+    bounded_key_with_limit(map, *ENTRIES_LIMIT, key, overflow)
+}
+
+fn bounded_key_with_limit<K, V>(
+    map: &std::collections::HashMap<K, V>,
+    limit: usize,
+    key: K,
+    overflow: impl FnOnce() -> K,
+) -> K
+where
+    K: Eq + std::hash::Hash,
+{
+    if map.contains_key(&key) || map.len() + 1 < limit {
+        key
+    } else {
+        overflow()
+    }
+}
+
 use std::io::Write;
 
 use crate::json::{JsonCpuBaseline, JsonFunctionsList, JsonReport};
@@ -1427,5 +1474,43 @@ impl Drop for HotpathGuard {
         if let Some(arc_swap) = FUNCTIONS_STATE.get() {
             arc_swap.store(None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::lib_on::hotpath_guard::{bounded_key_with_limit, OVERFLOW_ENTRY};
+
+    #[test]
+    fn bounded_key_folds_new_keys_into_overflow_once_full() {
+        let mut map: HashMap<String, u32> = HashMap::new();
+        let overflow = || OVERFLOW_ENTRY.to_string();
+
+        // Limit 3 leaves room for two regular keys plus the overflow slot.
+        for key in ["a", "b"] {
+            let k = bounded_key_with_limit(&map, 3, key.to_string(), overflow);
+            assert_eq!(k, key);
+            map.insert(k, 1);
+        }
+
+        // Regular slots full: unknown key goes to the overflow bucket, known keys pass.
+        assert_eq!(
+            bounded_key_with_limit(&map, 3, "c".to_string(), overflow),
+            OVERFLOW_ENTRY
+        );
+        assert_eq!(
+            bounded_key_with_limit(&map, 3, "a".to_string(), overflow),
+            "a"
+        );
+
+        // With the overflow bucket present the map sits exactly at the limit.
+        map.insert(OVERFLOW_ENTRY.to_string(), 1);
+        assert_eq!(map.len(), 3);
+        assert_eq!(
+            bounded_key_with_limit(&map, 3, "d".to_string(), overflow),
+            OVERFLOW_ENTRY
+        );
     }
 }

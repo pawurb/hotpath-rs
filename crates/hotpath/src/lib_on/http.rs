@@ -26,7 +26,7 @@ use crate::lib_on::{meta_rw_lock, MetaRwLock};
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
 use crate::json::{HttpLogEntry, HttpLogs};
-use crate::lib_on::hotpath_guard::{DRAIN_INTERVAL_MS, LOGS_LIMIT};
+use crate::lib_on::hotpath_guard::{bounded_key, DRAIN_INTERVAL_MS, LOGS_LIMIT, OVERFLOW_ENTRY};
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
@@ -271,9 +271,12 @@ fn process_http_event(state: &mut HttpInternalState, event: HttpEvent) {
     if let Some(label) = label {
         key = format!("{label}: {key}");
     }
+    let key = bounded_key(&state.stats, (source, key), || {
+        (None, OVERFLOW_ENTRY.to_string())
+    });
     let entry = state
         .stats
-        .entry((source, key))
+        .entry(key)
         .or_insert_with_key(|(source, endpoint)| {
             HttpEntry::new(next_http_id(), endpoint.clone(), *source)
         });
