@@ -1251,6 +1251,7 @@ impl Drop for HotpathGuard {
                             report::report_channels_table(
                                 &channels_data[..limit],
                                 total,
+                                elapsed,
                                 &mut writer,
                             );
                             report::report_channel_latency_table(

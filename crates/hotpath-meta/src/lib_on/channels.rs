@@ -269,7 +269,11 @@ pub(crate) struct ChannelsInternalState {
     pub(crate) logs: HashMap<u32, ChannelEntryLogs>,
 }
 
-pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> JsonChannelEntry {
+pub(crate) fn channel_to_json(
+    stats: &ChannelEntry,
+    percentiles: &[f64],
+    now_ns: u64,
+) -> JsonChannelEntry {
     let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
     let mut proc_percentiles = HashMap::new();
@@ -303,8 +307,8 @@ pub(crate) fn channel_to_json(stats: &ChannelEntry, percentiles: &[f64]) -> Json
         closed_instances: stats.closed_instances,
         sent_count: stats.sent_count,
         received_count: stats.received_count,
-        sent_per_sec: stats.sent_per_sec(),
-        received_per_sec: stats.received_per_sec(),
+        sent_per_sec: stats.sent_per_sec(now_ns),
+        received_per_sec: stats.received_per_sec(now_ns),
         type_name: stats.type_name.to_string(),
         type_size: stats.type_size,
         wrap: stats.wrap,
@@ -383,7 +387,7 @@ impl ChannelEntry {
         self.first_msg_ns = Some(self.first_msg_ns.map_or(ts_ns, |first| first.min(ts_ns)));
     }
 
-    fn rate_per_sec(&self, count: u64) -> Option<f64> {
+    fn rate_per_sec(&self, count: u64, now_ns: u64) -> Option<f64> {
         // A oneshot carries a single message, so any rate is meaningless.
         if self.channel_type == ChannelType::Oneshot {
             return None;
@@ -397,19 +401,21 @@ impl ChannelEntry {
         // single inter-event gap for sparse channels and yields absurd rates;
         // dividing by real elapsed time stays bounded and cannot blow up.
         let first = self.first_msg_ns?;
-        let elapsed_ns = crate::lib_on::current_elapsed_ns().checked_sub(first)?;
+        let elapsed_ns = now_ns.checked_sub(first)?;
         if elapsed_ns == 0 {
             return None;
         }
         Some(count as f64 / (elapsed_ns as f64 / 1e9))
     }
 
-    pub(crate) fn sent_per_sec(&self) -> Option<f64> {
-        self.rate_per_sec(self.sent_count)
+    /// `now_ns` is the report's elapsed timestamp so the rate window never
+    /// exceeds the `current_elapsed_ns` published alongside the entry.
+    pub(crate) fn sent_per_sec(&self, now_ns: u64) -> Option<f64> {
+        self.rate_per_sec(self.sent_count, now_ns)
     }
 
-    pub(crate) fn received_per_sec(&self) -> Option<f64> {
-        self.rate_per_sec(self.received_count)
+    pub(crate) fn received_per_sec(&self, now_ns: u64) -> Option<f64> {
+        self.rate_per_sec(self.received_count, now_ns)
     }
 
     pub(crate) fn proc_avg_nanos(&self) -> u64 {
@@ -1100,13 +1106,14 @@ pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
 
 pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
     let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    let current_elapsed_ns = crate::lib_on::current_elapsed_ns();
     let data = get_sorted_channel_entries()
         .iter()
-        .map(|entry| channel_to_json(entry, &percentiles))
+        .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns))
         .collect();
 
     crate::json::JsonChannelsList {
-        current_elapsed_ns: crate::lib_on::current_elapsed_ns(),
+        current_elapsed_ns,
         percentiles,
         data,
     }

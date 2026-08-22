@@ -88,8 +88,10 @@ pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
 pub(crate) fn report_channels_table(
     channels: &[ChannelEntry],
     total_count: usize,
+    elapsed: std::time::Duration,
     writer: &mut dyn Write,
 ) {
+    let now_ns = elapsed.as_nanos() as u64;
     if channels.is_empty() {
         return;
     }
@@ -124,8 +126,8 @@ pub(crate) fn report_channels_table(
             Cell::new(&channel_stats.instances.to_string()),
             Cell::new(&channel_stats.sent_count.to_string()),
             Cell::new(&channel_stats.received_count.to_string()),
-            Cell::new(&format_rate(channel_stats.sent_per_sec())),
-            Cell::new(&format_rate(channel_stats.received_per_sec())),
+            Cell::new(&format_rate(channel_stats.sent_per_sec(now_ns))),
+            Cell::new(&format_rate(channel_stats.received_per_sec(now_ns))),
             Cell::new(&max_queue),
         ]));
     }
@@ -200,12 +202,13 @@ pub(crate) fn collect_channels_json(
     elapsed: std::time::Duration,
     percentiles: &[f64],
 ) -> JsonChannelsList {
+    let current_elapsed_ns = elapsed.as_nanos() as u64;
     JsonChannelsList {
-        current_elapsed_ns: elapsed.as_nanos() as u64,
+        current_elapsed_ns,
         percentiles: percentiles.to_vec(),
         data: channels
             .iter()
-            .map(|entry| channel_to_json(entry, percentiles))
+            .map(|entry| channel_to_json(entry, percentiles, current_elapsed_ns))
             .collect(),
     }
 }
