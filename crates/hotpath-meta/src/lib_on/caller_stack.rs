@@ -3,6 +3,10 @@
 //! column). The meta crate carries no SQL or HTTP front-end, so these compile
 //! to no-ops; the call sites in the measurement guards stay in place so the
 //! guard code mirrors the main crate.
+//!
+//! Also holds the per-thread axum route context (the "Route" column): the
+//! server middleware enters the matched route template around every poll of
+//! the handler future, and SQL/HTTP front-ends read it alongside the caller.
 
 #[inline]
 pub(crate) fn push_caller(_name: &'static str) {}
@@ -14,4 +18,114 @@ pub(crate) fn pop_caller() {}
 #[allow(dead_code)]
 pub(crate) fn current_caller() -> Option<&'static str> {
     None
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "axum-0-8")] {
+        use std::collections::HashSet;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::RwLock;
+
+        thread_local! {
+            static CURRENT_ROUTE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+        }
+
+        static ROUTE_SCOPE_ENABLED: AtomicBool = AtomicBool::new(true);
+
+        static INTERNED_ROUTES: RwLock<Option<HashSet<&'static str>>> = RwLock::new(None);
+
+        /// Disables or enables attributing SQL queries and HTTP requests to
+        /// the axum route that triggered them.
+        pub(crate) fn set_route_scope(enabled: bool) {
+            ROUTE_SCOPE_ENABLED.store(enabled, Ordering::Relaxed);
+        }
+
+        pub(crate) fn route_scope_enabled() -> bool {
+            ROUTE_SCOPE_ENABLED.load(Ordering::Relaxed)
+        }
+
+        /// Leaks each distinct route template once so the thread-local stays
+        /// `Copy`. The set is capped at `HOTPATH_META_ENTRIES_LIMIT` like the
+        /// per-subsystem maps; templates beyond the cap get no route context.
+        pub(crate) fn intern_route(route: &str) -> Option<&'static str> {
+            if let Some(found) = INTERNED_ROUTES
+                .read()
+                .unwrap()
+                .as_ref()
+                .and_then(|set| set.get(route).copied())
+            {
+                return Some(found);
+            }
+            let _suspend = crate::lib_on::SuspendAllocTracking::new();
+            let mut guard = INTERNED_ROUTES.write().unwrap();
+            let set = guard.get_or_insert_with(HashSet::new);
+            if let Some(found) = set.get(route) {
+                return Some(found);
+            }
+            let limit = *crate::lib_on::hotpath_guard::ENTRIES_LIMIT;
+            if limit > 0 && set.len() >= limit {
+                return None;
+            }
+            let leaked: &'static str = Box::leak(route.to_owned().into_boxed_str());
+            set.insert(leaked);
+            Some(leaked)
+        }
+
+        /// Sets the current route for the duration of the returned guard and
+        /// restores the previous value on drop, so nested layers and
+        /// interleaved tasks on one runtime thread never observe a stale route.
+        #[inline]
+        pub(crate) fn enter_route(route: &'static str) -> RouteScopeGuard {
+            let previous = CURRENT_ROUTE
+                .try_with(|cell| cell.replace(Some(route)))
+                .unwrap_or(None);
+            RouteScopeGuard { previous }
+        }
+
+        #[inline]
+        #[allow(dead_code)]
+        pub(crate) fn current_route() -> Option<&'static str> {
+            CURRENT_ROUTE.try_with(|cell| cell.get()).ok().flatten()
+        }
+
+        pub(crate) struct RouteScopeGuard {
+            previous: Option<&'static str>,
+        }
+
+        impl Drop for RouteScopeGuard {
+            #[inline]
+            fn drop(&mut self) {
+                let _ = CURRENT_ROUTE.try_with(|cell| cell.set(self.previous));
+            }
+        }
+    } else {
+        #[inline]
+        #[allow(dead_code)]
+        pub(crate) fn current_route() -> Option<&'static str> {
+            None
+        }
+    }
+}
+
+#[cfg(all(test, feature = "axum-0-8"))]
+mod tests {
+    use crate::lib_on::caller_stack::{current_route, enter_route, intern_route};
+
+    #[test]
+    fn nested_route_scopes_restore_previous() {
+        assert_eq!(current_route(), None);
+        let outer = intern_route("GET /outer").unwrap();
+        let inner = intern_route("GET /inner").unwrap();
+        assert!(std::ptr::eq(outer, intern_route("GET /outer").unwrap()));
+        {
+            let _outer = enter_route(outer);
+            assert_eq!(current_route(), Some(outer));
+            {
+                let _inner = enter_route(inner);
+                assert_eq!(current_route(), Some(inner));
+            }
+            assert_eq!(current_route(), Some(outer));
+        }
+        assert_eq!(current_route(), None);
+    }
 }

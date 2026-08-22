@@ -130,6 +130,8 @@ pub struct HotpathGuardBuilder {
     server_limit: usize,
     io_limit: usize,
     threads_limit: usize,
+    #[cfg(feature = "axum-0-8")]
+    route_scope: bool,
     output_path: Option<PathBuf>,
     sections_mode: Option<SectionsMode>,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
@@ -153,6 +155,8 @@ impl HotpathGuardBuilder {
             server_limit: 0,
             io_limit: 0,
             threads_limit: 5,
+            #[cfg(feature = "axum-0-8")]
+            route_scope: true,
             output_path: None,
             sections_mode: None,
             before_shutdown: None,
@@ -230,6 +234,15 @@ impl HotpathGuardBuilder {
     /// Maximum number of server routes shown in the report. Set to `0` for unlimited.
     pub fn server_limit(mut self, limit: usize) -> Self {
         self.server_limit = limit;
+        self
+    }
+
+    /// Whether SQL queries and outbound HTTP requests issued while handling an
+    /// axum request are attributed to the matched route (the `route` field /
+    /// "Route" column). Enabled by default; `HOTPATH_META_ROUTE_SCOPE=0` overrides.
+    #[cfg(feature = "axum-0-8")]
+    pub fn route_scope(mut self, enabled: bool) -> Self {
+        self.route_scope = enabled;
         self
     }
 
@@ -350,6 +363,15 @@ impl HotpathGuardBuilder {
 
     pub fn build(self) -> HotpathGuard {
         crate::lib_on::sampling::init_time_sampling_rate(&self.time_sampling);
+
+        #[cfg(feature = "axum-0-8")]
+        {
+            let enabled = match std::env::var("HOTPATH_META_ROUTE_SCOPE") {
+                Ok(v) => !(v == "0" || v.eq_ignore_ascii_case("false")),
+                Err(_) => self.route_scope,
+            };
+            crate::lib_on::caller_stack::set_route_scope(enabled);
+        }
 
         let sections_mode = self.resolve_sections_mode();
 

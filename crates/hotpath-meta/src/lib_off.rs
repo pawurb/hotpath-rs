@@ -298,6 +298,11 @@ impl HotpathGuardBuilder {
         self
     }
 
+    #[cfg(feature = "axum-0-8")]
+    pub fn route_scope(self, _enabled: bool) -> Self {
+        self
+    }
+
     pub fn limit(self, _limit: usize) -> Self {
         self
     }

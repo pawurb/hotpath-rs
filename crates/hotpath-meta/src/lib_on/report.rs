@@ -594,12 +594,12 @@ pub(crate) fn report_sql_table(
     }
     let _ = writeln!(writer);
 
-    let mut header = vec![
-        styled_header("Query"),
-        styled_header("Source"),
-        styled_header("Calls"),
-        styled_header("Avg"),
-    ];
+    let show_route = entries.iter().any(|e| e.route.is_some());
+    let mut header = vec![styled_header("Query"), styled_header("Source")];
+    if show_route {
+        header.push(styled_header("Route"));
+    }
+    header.extend([styled_header("Calls"), styled_header("Avg")]);
     for &p in percentiles {
         header.push(styled_header(&format_percentile_header(p)));
     }
@@ -613,9 +613,14 @@ pub(crate) fn report_sql_table(
         let mut row = vec![
             Cell::new(&truncate_query(&entry.query)),
             Cell::new(&format_source(entry.source)),
+        ];
+        if show_route {
+            row.push(Cell::new(&format_route(entry.route)));
+        }
+        row.extend([
             Cell::new(&entry.count.to_string()),
             Cell::new(&format_duration(entry.avg_nanos())),
-        ];
+        ]);
         for &p in percentiles {
             row.push(Cell::new(&format_duration(entry.percentile_nanos(p))));
         }
@@ -633,6 +638,10 @@ pub(crate) fn report_sql_table(
 
 fn format_source(source: Option<&'static str>) -> String {
     source.map_or_else(|| "-".to_string(), crate::output::shorten_function_name)
+}
+
+fn format_route(route: Option<&'static str>) -> String {
+    route.unwrap_or("-").to_string()
 }
 
 fn format_sql_percent(total_nanos: u64, reference_total: u64) -> String {
@@ -657,6 +666,7 @@ fn sql_to_json(entry: &SqlEntry, reference_total: u64, percentiles: &[f64]) -> J
         id: entry.id,
         query: entry.query.clone(),
         source: entry.source.map(String::from),
+        route: entry.route.map(String::from),
         count: entry.count,
         avg: format_duration(entry.avg_nanos()),
         total: format_duration(entry.total_nanos),
@@ -728,13 +738,16 @@ pub(crate) fn report_http_table(
     }
     let _ = writeln!(writer);
 
-    let mut header = vec![
-        styled_header("Endpoint"),
-        styled_header("Source"),
+    let show_route = entries.iter().any(|e| e.route.is_some());
+    let mut header = vec![styled_header("Endpoint"), styled_header("Source")];
+    if show_route {
+        header.push(styled_header("Route"));
+    }
+    header.extend([
         styled_header("Calls"),
         styled_header("Errors"),
         styled_header("Avg"),
-    ];
+    ]);
     for &p in percentiles {
         header.push(styled_header(&format_percentile_header(p)));
     }
@@ -748,10 +761,15 @@ pub(crate) fn report_http_table(
         let mut row = vec![
             Cell::new(&truncate_query(&entry.endpoint)),
             Cell::new(&format_source(entry.source)),
+        ];
+        if show_route {
+            row.push(Cell::new(&format_route(entry.route)));
+        }
+        row.extend([
             Cell::new(&entry.count.to_string()),
             Cell::new(&entry.error_count.to_string()),
             Cell::new(&format_duration(entry.avg_nanos())),
-        ];
+        ]);
         for &p in percentiles {
             row.push(Cell::new(&format_duration(entry.percentile_nanos(p))));
         }
@@ -780,6 +798,7 @@ fn http_to_json(entry: &HttpEntry, reference_total: u64, percentiles: &[f64]) ->
         id: entry.id,
         endpoint: entry.endpoint.clone(),
         source: entry.source.map(String::from),
+        route: entry.route.map(String::from),
         count: entry.count,
         errors: entry.error_count,
         avg: format_duration(entry.avg_nanos()),
