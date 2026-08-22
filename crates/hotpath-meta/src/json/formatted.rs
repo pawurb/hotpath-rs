@@ -516,6 +516,32 @@ impl JsonHttpLogsList {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonServerList {
+    pub current_elapsed_ns: u64,
+    pub total_ns: u64,
+    /// Total number of served requests across all entries, including ones
+    /// truncated from `data` by the display limit.
+    #[serde(default)]
+    pub total_calls: u64,
+    pub percentiles: Vec<f64>,
+    pub data: Vec<JsonServerEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonServerEntry {
+    pub id: u32,
+    /// `METHOD template` of the matched route, e.g. `GET /users/{id}`.
+    pub route: String,
+    pub count: u64,
+    pub status_4xx: u64,
+    pub status_5xx: u64,
+    pub avg: String,
+    pub total: String,
+    pub percent_total: String,
+    pub percentiles: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonIoList {
     pub current_elapsed_ns: u64,
     pub percentiles: Vec<f64>,
@@ -983,6 +1009,8 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http: Option<JsonHttpList>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub server: Option<JsonServerList>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub io: Option<JsonIoList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<JsonThreadsList>,
@@ -1008,6 +1036,7 @@ impl Default for JsonReport {
             mutexes: None,
             sql: None,
             http: None,
+            server: None,
             io: None,
             threads: None,
             debug: None,

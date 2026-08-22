@@ -25,7 +25,7 @@ pub use lib_on::threads;
 #[cfg(all(feature = "hotpath-meta", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
 #[cfg(feature = "hotpath-meta")]
-pub use lib_on::{channels, futures, http, io, mutexes, sql, streams};
+pub use lib_on::{channels, futures, http, io, mutexes, server, sql, streams};
 
 #[cfg(any(feature = "hotpath-meta", feature = "tui"))]
 pub(crate) mod output;
@@ -41,6 +41,9 @@ pub use output::{
 
 #[cfg(feature = "hotpath-meta")]
 pub(crate) mod output_on;
+
+#[cfg(feature = "hotpath-meta")]
+pub(crate) mod auth;
 
 #[cfg(feature = "hotpath-meta")]
 pub(crate) mod metrics_server;

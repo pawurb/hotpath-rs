@@ -18,7 +18,7 @@ use std::sync::{Arc, LazyLock, Mutex as StdMutex, OnceLock, RwLock as StdRwLock}
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
 use crate::json::{SqlLogEntry, SqlLogs};
-use crate::lib_on::hotpath_guard::{DRAIN_INTERVAL_MS, LOGS_LIMIT};
+use crate::lib_on::hotpath_guard::{bounded_key, DRAIN_INTERVAL_MS, LOGS_LIMIT, OVERFLOW_ENTRY};
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::MAX_LOG_LEN;
@@ -182,9 +182,12 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
     } = event;
 
     let normalized = normalize::normalize(&sql);
+    let key = bounded_key(&state.stats, (source, normalized), || {
+        (None, OVERFLOW_ENTRY.to_string())
+    });
     let entry = state
         .stats
-        .entry((source, normalized))
+        .entry(key)
         .or_insert_with_key(|(source, query)| SqlEntry::new(next_sql_id(), query.clone(), *source));
     entry.count += 1;
     entry.total_nanos += duration_nanos;

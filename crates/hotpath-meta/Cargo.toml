@@ -44,6 +44,7 @@ flume = ["dep:flume", "dep:tokio", "tokio/rt-multi-thread"]
 threads = []
 dev-meta = ["dep:time"]
 hotpath-mcp-meta = ["hotpath-meta", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
+"axum-0-8" = ["dep:axum", "dep:tower-layer", "dep:tower-service", "dep:pin-project-lite"]
 
 [dependencies]
 arc-swap = { version = "1.7", optional = true }
@@ -75,6 +76,8 @@ time = { version = "0.3", features = ["formatting", "local-offset", "macros"], o
 rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
+tower-layer = { version = "0.3", optional = true }
+tower-service = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", optional = true }
 object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }
 rustc-demangle = { version = "0.1", optional = true }

@@ -864,6 +864,8 @@ pub(crate) fn start_mcp_server_once() {
                     let app = Router::new()
                         .nest_service("/mcp", service)
                         .layer(axum::middleware::from_fn(auth_middleware));
+                    #[cfg(feature = "hotpath-meta")]
+                    let app = hotpath_meta::axum!(app);
 
                     let addr = format!("127.0.0.1:{}", port);
                     let listener = match tokio::net::TcpListener::bind(&addr).await {
