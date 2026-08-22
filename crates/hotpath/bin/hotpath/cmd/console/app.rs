@@ -342,7 +342,12 @@ pub(crate) struct App {
 
 #[hotpath::measure_all]
 impl App {
-    pub(crate) fn new(metrics_host: &str, metrics_port: u16, refresh_interval_ms: u64) -> Self {
+    pub(crate) fn new(
+        metrics_host: &str,
+        metrics_port: u16,
+        auth_token: Option<String>,
+        refresh_interval_ms: u64,
+    ) -> Self {
         let (request_tx, request_rx) = hotpath::channel!(
             crossbeam_channel::unbounded::<DataRequest>(),
             label = "tui_requests",
@@ -355,7 +360,12 @@ impl App {
         );
 
         let base_url = format!("{}:{}", metrics_host.trim_end_matches('/'), metrics_port);
-        super::http_worker::spawn_http_worker(request_rx, event_tx.clone(), base_url.clone());
+        super::http_worker::spawn_http_worker(
+            request_rx,
+            event_tx.clone(),
+            base_url.clone(),
+            auth_token,
+        );
         super::input::spawn_input_reader(event_tx);
 
         let initial_tab = std::env::var("HOTPATH_TUI_TAB")

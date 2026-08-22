@@ -21,6 +21,9 @@ pub(crate) static METRICS_SERVER_PORT: LazyLock<u16> = LazyLock::new(|| {
         .unwrap_or(6770)
 });
 
+pub(crate) static METRICS_AUTH_TOKEN: LazyLock<Option<String>> =
+    LazyLock::new(|| crate::auth::token_from_env("HOTPATH_METRICS_AUTH_TOKEN"));
+
 pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_METRICS_SERVER_OFF"));
 
@@ -59,6 +62,8 @@ pub(crate) fn start_metrics_server_once(port: u16) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn start_metrics_server(port: u16) {
+    LazyLock::force(&METRICS_AUTH_TOKEN);
+
     #[cfg(feature = "threads")]
     crate::threads::init_threads_monitoring();
 
@@ -89,6 +94,16 @@ fn start_metrics_server(port: u16) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn handle_request(request: Request) {
+    let provided = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Authorization"))
+        .map(|h| h.value.as_str());
+    if !crate::auth::check_auth(METRICS_AUTH_TOKEN.as_deref(), provided) {
+        respond_error(request, 401, "Unauthorized");
+        return;
+    }
+
     let path = request.url();
 
     match path.parse::<Route>() {

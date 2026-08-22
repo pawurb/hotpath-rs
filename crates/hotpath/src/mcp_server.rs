@@ -808,38 +808,17 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<String, McpError> {
         .map_err(|e| McpError::internal_error(format!("Failed to serialize metrics: {}", e), None))
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
-fn check_auth(expected: Option<&str>, provided: Option<&str>) -> bool {
-    match expected {
-        None => true,
-        Some(expected) => provided
-            .map(|p| constant_time_eq(p.as_bytes(), expected.as_bytes()))
-            .unwrap_or(false),
-    }
-}
-
 async fn auth_middleware(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Result<axum::response::Response, axum::http::StatusCode> {
-    let expected = std::env::var("HOTPATH_MCP_AUTH_TOKEN")
-        .ok()
-        .filter(|s| !s.is_empty());
+    let expected = crate::auth::token_from_env("HOTPATH_MCP_AUTH_TOKEN");
     let provided = request
         .headers()
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
 
-    if check_auth(expected.as_deref(), provided) {
+    if crate::auth::check_auth(expected.as_deref(), provided) {
         Ok(next.run(request).await)
     } else {
         Err(axum::http::StatusCode::UNAUTHORIZED)
@@ -853,10 +832,7 @@ pub(crate) fn start_mcp_server_once() {
     MCP_SERVER_STARTED.get_or_init(|| {
         let port = *MCP_SERVER_PORT;
 
-        let auth_enabled = std::env::var("HOTPATH_MCP_AUTH_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .is_some();
+        let auth_enabled = crate::auth::token_from_env("HOTPATH_MCP_AUTH_TOKEN").is_some();
         log_debug(&format!(
             "Starting MCP server on port {} (auth: {})",
             port,
@@ -941,30 +917,6 @@ fn log_debug(_msg: &str) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn auth_disabled_allows_all() {
-        assert!(check_auth(None, None));
-        assert!(check_auth(None, Some("anything")));
-    }
-
-    #[test]
-    fn auth_enabled_rejects_missing() {
-        assert!(!check_auth(Some("secret"), None));
-    }
-
-    #[test]
-    fn auth_enabled_rejects_wrong() {
-        assert!(!check_auth(Some("secret"), Some("wrong")));
-        assert!(!check_auth(Some("secret"), Some("Secret")));
-        assert!(!check_auth(Some("secret"), Some("")));
-    }
-
-    #[test]
-    fn auth_enabled_accepts_correct() {
-        assert!(check_auth(Some("secret"), Some("secret")));
-        assert!(check_auth(Some("Bearer token"), Some("Bearer token")));
-    }
 
     #[test]
     fn id_param_accepts_number_and_string() {

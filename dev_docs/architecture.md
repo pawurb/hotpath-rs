@@ -8,7 +8,7 @@ Each subsystem spawns a dedicated worker thread named `hp-<subsystem>` from its 
 
 ## HTTP Metrics Server
 
-Non-authenticated tiny_http server, localhost-only, port 6770 by default (`HOTPATH_METRICS_PORT`; disable with `HOTPATH_METRICS_SERVER_OFF`). Feeds the TUI. Implementation: `crates/hotpath/src/metrics_server.rs`; the route table is the `Route` enum in `crates/hotpath/src/json.rs` - read that enum for the current endpoint list (per-section metrics as JSON plus `/{id}/logs` sub-routes and the CPU snapshot trigger).
+tiny_http server, localhost-only, port 6770 by default (`HOTPATH_METRICS_PORT`; disable with `HOTPATH_METRICS_SERVER_OFF`). Optional shared-secret auth: `HOTPATH_METRICS_AUTH_TOKEN` (read once into a `LazyLock`) must be sent as-is in the `Authorization` header on every route, else `401`; the constant-time comparison lives in `crates/hotpath/src/auth.rs` and is shared with the MCP server. The TUI sends it from the same env var or `--metrics-auth-token`. Feeds the TUI. Implementation: `crates/hotpath/src/metrics_server.rs`; the route table is the `Route` enum in `crates/hotpath/src/json.rs` - read that enum for the current endpoint list (per-section metrics as JSON plus `/{id}/logs` sub-routes and the CPU snapshot trigger).
 
 ## MCP Server
 

@@ -39,6 +39,9 @@ pub use output::{
 pub(crate) mod output_on;
 
 #[cfg(feature = "hotpath")]
+pub(crate) mod auth;
+
+#[cfg(feature = "hotpath")]
 pub(crate) mod metrics_server;
 
 #[cfg(feature = "hotpath-mcp")]
