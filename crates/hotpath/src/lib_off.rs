@@ -285,6 +285,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn server_limit(self, _limit: usize) -> Self {
+        self
+    }
+
     pub fn io_limit(self, _limit: usize) -> Self {
         self
     }
@@ -443,6 +447,36 @@ macro_rules! http {
     ($client:expr, label = $label:expr) => {
         $client
     };
+}
+
+#[macro_export]
+macro_rules! axum {
+    ($router:expr) => {
+        $router
+    };
+}
+
+/// No-op tower layer used when the `hotpath` feature is disabled. Lets call
+/// sites keep `.layer(hotpath::AxumLayer::new())` in their router setup
+/// unconditionally - it returns the inner service untouched.
+#[cfg(feature = "axum-0-8")]
+#[derive(Default, Clone, Copy, Debug)]
+pub struct AxumLayer;
+
+#[cfg(feature = "axum-0-8")]
+impl AxumLayer {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[cfg(feature = "axum-0-8")]
+impl<S> tower_layer::Layer<S> for AxumLayer {
+    type Service = S;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        inner
+    }
 }
 
 /// No-op SQL profiling layer used when the `hotpath` feature is disabled. Lets

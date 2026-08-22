@@ -45,7 +45,7 @@ hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta"]
 hotpath-alloc = ["dep:tokio", "hotpath-meta?/hotpath-alloc", "hotpath-macros/hotpath-alloc"]
 utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
 tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
-demo = ["hotpath", "sqlx", "dep:sqlx", "diesel", "diesel/sqlite", "dep:libsqlite3-sys", "reqwest-0-13"]
+demo = ["hotpath", "sqlx", "dep:sqlx", "diesel", "diesel/sqlite", "dep:libsqlite3-sys", "reqwest-0-13", "axum-0-8"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "tokio/time"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:futures-channel"]
 async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:async-channel"]
@@ -59,6 +59,7 @@ diesel = ["dep:diesel"]
 "reqwest-0-12" = ["dep:reqwest-012", "dep:reqwest-middleware-04", "reqwest-middleware-04/multipart", "reqwest-middleware-04/json", "dep:async-trait", "dep:http"]
 "reqwest-0-13" = ["dep:reqwest", "dep:reqwest-middleware-05", "reqwest-middleware-05/multipart", "reqwest-middleware-05/json", "reqwest-middleware-05/query", "reqwest-middleware-05/form", "dep:async-trait", "dep:http"]
 "ureq-3" = ["dep:ureq"]
+"axum-0-8" = ["dep:axum", "dep:tower-layer", "dep:tower-service", "dep:pin-project-lite"]
 threads = []
 dev = ["dep:time"]
 hotpath-cpu = ["hotpath-macros/hotpath-cpu", "dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
@@ -105,6 +106,8 @@ libsqlite3-sys = { version = "0.30", features = ["bundled"], optional = true }
 rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
+tower-layer = { version = "0.3", optional = true }
+tower-service = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", optional = true }
 hotpath-meta = { workspace = true, optional = true }
 object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }

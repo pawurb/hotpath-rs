@@ -182,6 +182,9 @@ jobs:
       - name: Run http ureq tests
         run: |
           cargo test --features hotpath --test http_ureq -- --nocapture --test-threads=1
+      - name: Run server axum tests
+        run: |
+          cargo test --features hotpath --test server_axum -- --nocapture --test-threads=1
       - name: Run sql sqlite tests
         # sqlx 0.9 (test-sqlx-09) has MSRV 1.94
         if: matrix.rust != '1.89'

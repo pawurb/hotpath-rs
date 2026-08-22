@@ -5,7 +5,8 @@ use hotpath::json::{
     JsonDebugLog, JsonFunctionAllocLogsList, JsonFunctionTimingLogsList, JsonFunctionsList,
     JsonFutureLog, JsonFutureLogsList, JsonFuturesList, JsonHttpList, JsonHttpLog,
     JsonHttpLogsList, JsonIoList, JsonMutexesList, JsonRuntimeSnapshot, JsonRwLocksList,
-    JsonSqlList, JsonSqlLog, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList, JsonThreadsList,
+    JsonServerList, JsonSqlList, JsonSqlLog, JsonSqlLogsList, JsonStreamLogsList, JsonStreamsList,
+    JsonThreadsList,
 };
 use hotpath::wrap::crossbeam_channel::{Receiver, Sender};
 use ratatui::layout::Rect;
@@ -136,6 +137,7 @@ pub(crate) enum IoSubTab {
     #[default]
     Sql,
     Http,
+    Server,
     Bytes,
 }
 
@@ -144,6 +146,7 @@ impl IoSubTab {
         match self {
             IoSubTab::Sql => "SQL",
             IoSubTab::Http => "HTTP",
+            IoSubTab::Server => "Server",
             IoSubTab::Bytes => "Bytes",
         }
     }
@@ -151,7 +154,8 @@ impl IoSubTab {
     pub(crate) fn cycle(&self) -> Self {
         match self {
             IoSubTab::Sql => IoSubTab::Http,
-            IoSubTab::Http => IoSubTab::Bytes,
+            IoSubTab::Http => IoSubTab::Server,
+            IoSubTab::Server => IoSubTab::Bytes,
             IoSubTab::Bytes => IoSubTab::Sql,
         }
     }
@@ -281,6 +285,7 @@ pub(crate) struct App {
     pub(crate) mutexes: JsonMutexesList,
     pub(crate) sql: JsonSqlList,
     pub(crate) http: JsonHttpList,
+    pub(crate) server: JsonServerList,
     pub(crate) io_bytes: JsonIoList,
     pub(crate) channels_table_state: TableState,
     pub(crate) streams_table_state: TableState,
@@ -289,12 +294,15 @@ pub(crate) struct App {
     pub(crate) mutexes_table_state: TableState,
     pub(crate) sql_table_state: TableState,
     pub(crate) http_table_state: TableState,
+    pub(crate) server_table_state: TableState,
     pub(crate) io_bytes_table_state: TableState,
     pub(crate) io_focus: IoFocus,
     pub(crate) show_sql_logs: bool,
     pub(crate) sql_logs: Option<JsonSqlLogsList>,
     pub(crate) sql_logs_table_state: TableState,
     pub(crate) inspected_sql_log: Option<JsonSqlLog>,
+    /// Logs pane shared by the HTTP and Server subtabs: both list
+    /// `JsonHttpLogsList` entries and the pane is reset on every subtab switch.
     pub(crate) show_http_logs: bool,
     pub(crate) http_logs: Option<JsonHttpLogsList>,
     pub(crate) http_logs_table_state: TableState,
@@ -451,6 +459,13 @@ impl App {
                 percentiles: vec![],
                 data: vec![],
             },
+            server: JsonServerList {
+                current_elapsed_ns: 0,
+                total_ns: 0,
+                total_calls: 0,
+                percentiles: vec![],
+                data: vec![],
+            },
             io_bytes: JsonIoList {
                 current_elapsed_ns: 0,
                 percentiles: vec![],
@@ -463,6 +478,7 @@ impl App {
             mutexes_table_state: TableState::default().with_selected(0),
             sql_table_state: TableState::default().with_selected(0),
             http_table_state: TableState::default().with_selected(0),
+            server_table_state: TableState::default().with_selected(0),
             io_bytes_table_state: TableState::default().with_selected(0),
             io_focus: IoFocus::List,
             show_sql_logs: false,
@@ -544,6 +560,7 @@ impl App {
             SelectedTab::Io => match self.io_sub_tab {
                 IoSubTab::Sql => &mut self.sql_table_state,
                 IoSubTab::Http => &mut self.http_table_state,
+                IoSubTab::Server => &mut self.server_table_state,
                 IoSubTab::Bytes => &mut self.io_bytes_table_state,
             },
             SelectedTab::Threads => &mut self.threads_table_state,
@@ -566,6 +583,7 @@ impl App {
         match self.io_sub_tab {
             IoSubTab::Sql => self.sql.data.len(),
             IoSubTab::Http => self.http.data.len(),
+            IoSubTab::Server => self.server.data.len(),
             IoSubTab::Bytes => self.io_bytes.data.len(),
         }
     }
@@ -613,6 +631,11 @@ impl App {
     pub(crate) fn selected_http_id(&self) -> Option<u32> {
         let idx = self.http_table_state.selected()?;
         self.http.data.get(idx).map(|e| e.id)
+    }
+
+    pub(crate) fn selected_server_id(&self) -> Option<u32> {
+        let idx = self.server_table_state.selected()?;
+        self.server.data.get(idx).map(|e| e.id)
     }
 
     pub(crate) fn run(

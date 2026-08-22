@@ -46,6 +46,7 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 - **I/O monitoring** - bytes, throughput, latency and errors for any sync or async IO stream like files, TCP, or compression.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
 - **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest and ureq.
+- **HTTP server profiling** - per-route response time and error metrics for axum.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
@@ -185,6 +186,7 @@ Read the [complete guide to profiling Rust applications](https://hotpath.rs/blog
 - [Locks](https://hotpath.rs/locks) - track Mutex and RwLock wait and hold times
 - [SQL queries](https://hotpath.rs/sql_tracing) - profile query execution time for sqlx and Diesel
 - [HTTP requests](https://hotpath.rs/http_tracing) - profile reqwest and ureq client calls per endpoint
+- [HTTP server (axum)](https://hotpath.rs/axum_tracing) - profile served requests per axum route
 - [I/O tracing](https://hotpath.rs/io_tracing) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](https://hotpath.rs/tokio_runtime) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](https://hotpath.rs/debug) - track custom values with `dbg!`, `val!`, and `gauge!` macros

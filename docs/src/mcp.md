@@ -34,6 +34,8 @@ These tools return aggregated performance summaries:
 | `rw_locks` | RwLock read/write wait & acquire-time statistics |
 | `mutexes` | Mutex wait & acquire-time statistics |
 | `sql` | SQL query execution-time statistics per normalized query (requires `sqlx_tracing_layer()`) |
+| `http` | Outgoing HTTP request statistics per normalized endpoint (requires `hotpath::http!(client)`) |
+| `server` | Served request response-time statistics per axum route (requires `hotpath::axum!(router)`) |
 | `threads` | Thread activity and timing |
 | `gauges` | Custom gauge values |
 | `dbg_entries` | All `dbg!` debug entries |
@@ -53,6 +55,8 @@ These tools accept parameters to retrieve detailed execution logs:
 | `stream_logs` | `stream_name`, `limit` | Stream operation logs |
 | `future_logs` | `future_name`, `limit` | Future execution logs |
 | `sql_logs` | `sql_id` | Individual execution logs for a SQL query |
+| `http_logs` | `http_id` | Individual request logs for an outgoing HTTP endpoint |
+| `server_logs` | `server_id` | Individual request logs for a served axum route |
 | `gauge_logs` | `gauge_name`, `limit` | Gauge value history |
 | `dbg_logs` | `debug_id` | Detailed logs for a `dbg!` entry |
 | `val_logs` | `debug_id` | Detailed logs for a `val!` entry |

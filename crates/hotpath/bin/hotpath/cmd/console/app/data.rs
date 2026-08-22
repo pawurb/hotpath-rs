@@ -9,8 +9,8 @@ use hotpath::json::{
     DebugEntryType, JsonChannelLogsList, JsonChannelsList, JsonDebugList,
     JsonFunctionAllocLogsList, JsonFunctionEntry, JsonFunctionTimingLogsList,
     JsonFunctionsCpuEnvelope, JsonFunctionsList, JsonFutureLogsList, JsonFuturesList, JsonHttpList,
-    JsonIoList, JsonMutexesList, JsonRwLocksList, JsonSqlList, JsonStreamLogsList, JsonStreamsList,
-    JsonThreadsList,
+    JsonIoList, JsonMutexesList, JsonRwLocksList, JsonServerList, JsonSqlList, JsonStreamLogsList,
+    JsonStreamsList, JsonThreadsList,
 };
 use std::time::Instant;
 
@@ -394,14 +394,46 @@ impl App {
         self.try_auto_expand_logs();
     }
 
+    /// Requests logs for the HTTP-shaped subtab currently shown (HTTP or
+    /// Server); both land in the shared `http_logs` pane.
     pub(crate) fn request_http_logs(&self) {
         if self.paused {
             return;
         }
 
-        if let Some(id) = self.selected_http_id() {
-            let _ = self.request_tx.send(DataRequest::FetchHttpLogs(id));
+        let request = match self.io_sub_tab {
+            IoSubTab::Http => self.selected_http_id().map(DataRequest::FetchHttpLogs),
+            IoSubTab::Server => self.selected_server_id().map(DataRequest::FetchServerLogs),
+            _ => None,
+        };
+        if let Some(request) = request {
+            let _ = self.request_tx.send(request);
         }
+    }
+
+    pub(crate) fn update_server(&mut self, server: JsonServerList) {
+        let selected_id = self.selected_server_id();
+        self.server = server;
+        self.last_successful_fetch = Some(Instant::now());
+        self.error_message = None;
+
+        let len = self.server.data.len();
+        if let Some(id) = selected_id {
+            if let Some(new_idx) = self.server.data.iter().position(|e| e.id == id) {
+                self.server_table_state.select(Some(new_idx));
+            } else if len > 0 {
+                self.server_table_state.select(Some(len - 1));
+            }
+        } else if let Some(selected) = self.server_table_state.selected() {
+            if selected >= len && len > 0 {
+                self.server_table_state.select(Some(len - 1));
+            }
+        }
+
+        if self.show_http_logs {
+            self.request_http_logs();
+        }
+        self.try_auto_expand_logs();
     }
 
     pub(crate) fn handle_http_logs(&mut self, _id: u32, logs: hotpath::json::JsonHttpLogsList) {
@@ -625,6 +657,7 @@ impl App {
                 match self.io_sub_tab {
                     IoSubTab::Sql => DataRequest::RefreshSql,
                     IoSubTab::Http => DataRequest::RefreshHttp,
+                    IoSubTab::Server => DataRequest::RefreshServer,
                     IoSubTab::Bytes => DataRequest::RefreshIo,
                 }
             }
@@ -739,6 +772,11 @@ impl App {
                 self.loading_io = false;
                 self.update_http(data);
             }
+            DataResponse::Server(data) => {
+                trace!("Received server: {} entries", data.data.len());
+                self.loading_io = false;
+                self.update_server(data);
+            }
             DataResponse::Io(data) => {
                 trace!("Received io: {} entries", data.data.len());
                 self.loading_io = false;
@@ -781,7 +819,11 @@ impl App {
                 trace!("Received http {} logs: {} entries", id, logs.logs.len());
                 self.handle_http_logs(id, logs);
             }
-            DataResponse::HttpLogsNotFound { .. } => {
+            DataResponse::ServerLogs { id, logs } => {
+                trace!("Received server {} logs: {} entries", id, logs.logs.len());
+                self.handle_http_logs(id, logs);
+            }
+            DataResponse::HttpLogsNotFound { .. } | DataResponse::ServerLogsNotFound { .. } => {
                 self.http_logs = None;
             }
             DataResponse::Threads(data) => {

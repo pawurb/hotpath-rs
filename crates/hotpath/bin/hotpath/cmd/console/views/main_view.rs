@@ -278,15 +278,20 @@ fn render_data_flow_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
 #[hotpath::measure]
 fn render_io_subtabs(frame: &mut Frame, area: Rect, app: &mut App) {
     let sub_tab = app.io_sub_tab;
-    let labels = [IoSubTab::Sql, IoSubTab::Http, IoSubTab::Bytes]
-        .into_iter()
-        .map(|tab| {
-            (
-                sub_tab_label(tab.name(), tab == sub_tab),
-                SubTabHit::Io(tab),
-            )
-        })
-        .collect();
+    let labels = [
+        IoSubTab::Sql,
+        IoSubTab::Http,
+        IoSubTab::Server,
+        IoSubTab::Bytes,
+    ]
+    .into_iter()
+    .map(|tab| {
+        (
+            sub_tab_label(tab.name(), tab == sub_tab),
+            SubTabHit::Io(tab),
+        )
+    })
+    .collect();
     render_sub_tab_line(frame, area, " [3]", labels, &mut app.sub_tab_hit_areas);
 }
 
@@ -331,6 +336,12 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 Line::from(""),
                 Line::from("Wrap your reqwest client with hotpath::http!(...)").centered(),
             ],
+            IoSubTab::Server => vec![
+                Line::from(""),
+                Line::from("No served requests found").yellow().centered(),
+                Line::from(""),
+                Line::from("Wrap your axum router with hotpath::axum!(...)").centered(),
+            ],
             IoSubTab::Bytes => vec![
                 Line::from(""),
                 Line::from("No I/O wrappers found").yellow().centered(),
@@ -349,7 +360,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let show_logs = match app.io_sub_tab {
         IoSubTab::Sql => app.show_sql_logs,
-        IoSubTab::Http => app.show_http_logs,
+        IoSubTab::Http | IoSubTab::Server => app.show_http_logs,
         IoSubTab::Bytes => false,
     };
     let (table_area, logs_area) = if show_logs {
@@ -365,6 +376,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let selected_index = match app.io_sub_tab {
         IoSubTab::Sql => app.sql_table_state.selected().unwrap_or(0),
         IoSubTab::Http => app.http_table_state.selected().unwrap_or(0),
+        IoSubTab::Server => app.server_table_state.selected().unwrap_or(0),
         IoSubTab::Bytes => app.io_bytes_table_state.selected().unwrap_or(0),
     };
     let position = selected_index + 1;
@@ -391,6 +403,19 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
             table_area,
             frame,
             &mut app.http_table_state,
+            app.show_http_logs,
+            app.io_focus == IoFocus::List,
+            position,
+            total,
+        ),
+        IoSubTab::Server => data_flow::render_server_panel(
+            &app.server.data,
+            &app.server.percentiles,
+            app.server.total_ns,
+            app.server.total_calls,
+            table_area,
+            frame,
+            &mut app.server_table_state,
             app.show_http_logs,
             app.io_focus == IoFocus::List,
             position,
@@ -465,6 +490,28 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                     data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
                 }
             }
+            IoSubTab::Server => {
+                let label = app
+                    .server_table_state
+                    .selected()
+                    .and_then(|i| app.server.data.get(i))
+                    .map(|e| truncate_message(&e.route, 48))
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                if let Some(ref logs) = app.http_logs {
+                    io_logs::render_http_logs_panel(
+                        logs,
+                        &label,
+                        None,
+                        logs_area,
+                        frame,
+                        &mut app.http_logs_table_state,
+                        app.io_focus == IoFocus::Logs,
+                    );
+                } else {
+                    data_flow_logs::render_logs_placeholder(&label, message, logs_area, frame);
+                }
+            }
             IoSubTab::Bytes => {}
         }
     }
@@ -476,7 +523,7 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
                     io_inspect::render_sql_inspect_popup(inspected, area, frame);
                 }
             }
-            IoSubTab::Http => {
+            IoSubTab::Http | IoSubTab::Server => {
                 if let Some(ref inspected) = app.inspected_http_log {
                     io_inspect::render_http_inspect_popup(inspected, area, frame);
                 }

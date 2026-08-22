@@ -40,6 +40,7 @@ Enable extra hotpath cargo features on the dependency based on what the project 
 - `sqlx` - for SQL query profiling via `hotpath::sqlx_tracing_layer()`
 - `diesel` - for SQL query profiling via `hotpath::instrument_diesel_sql()`
 - `reqwest-0-12` / `reqwest-0-13` - for HTTP request profiling via `hotpath::http!(client)`; pick the feature matching the project's reqwest major version
+- `axum-0-8` - for server-side response time profiling per axum 0.8 route via `hotpath::axum!(router)`
 
 If the crate already has a `[features]` section, merge the entries.
 
@@ -140,6 +141,7 @@ Apply `log = true` only if `Debug` is already implemented.
 - SQL profiling (sqlx 0.8/0.9): add the layer to the tracing subscriber once - `tracing_subscriber::registry().with(hotpath::sqlx_tracing_layer()).init();` (requires `sqlx` feature). Don't filter out the `sqlx::query` target.
 - SQL profiling (diesel): call `hotpath::instrument_diesel_sql();` once at startup (requires `diesel` feature).
 - HTTP profiling (reqwest, async client only): wrap the client once at creation - `let client = hotpath::http!(reqwest::Client::new());` (requires `reqwest-0-12` or `reqwest-0-13` feature). Call sites stay unchanged; requests are reported per normalized endpoint (`GET host/path` with id-like segments collapsed to `{id}`) with an error count. Optional `label = "name"` prefixes endpoint keys - use it when the app has several clients. Where the client is stored in a struct or named in signatures, use `hotpath::wrap::reqwest::Client` (it resolves to the raw `reqwest::Client` when the feature is off). If the app already uses reqwest-middleware, attach `hotpath::ReqwestHttpMiddleware::new()` to its existing stack instead of the macro.
+- axum server profiling: wrap the finished router once - `let app = hotpath::axum!(Router::new().route(..).route(..));` (requires `axum-0-8` feature). It expands to `router.layer(hotpath::AxumLayer::new())`, so it must come after the last `.route(..)`/`.fallback(..)` call; requests are reported per matched route template (`GET /users/{id}`) with 4xx/5xx counts. If the app already stacks tower layers on the router, add `.layer(hotpath::AxumLayer::new())` where it fits instead of the macro.
 
 ### 7. Verify
 

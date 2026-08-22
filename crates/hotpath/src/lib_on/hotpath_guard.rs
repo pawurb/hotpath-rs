@@ -103,6 +103,7 @@ pub struct HotpathGuardBuilder {
     mutexes_limit: usize,
     sql_limit: usize,
     http_limit: usize,
+    server_limit: usize,
     io_limit: usize,
     threads_limit: usize,
     output_path: Option<PathBuf>,
@@ -142,6 +143,7 @@ impl HotpathGuardBuilder {
             mutexes_limit: 0,
             sql_limit: 0,
             http_limit: 0,
+            server_limit: 0,
             io_limit: 0,
             threads_limit: 5,
             output_path: None,
@@ -169,6 +171,7 @@ impl HotpathGuardBuilder {
         self.mutexes_limit = limit;
         self.sql_limit = limit;
         self.http_limit = limit;
+        self.server_limit = limit;
         self.io_limit = limit;
         self.threads_limit = limit;
         self
@@ -219,6 +222,12 @@ impl HotpathGuardBuilder {
     /// Maximum number of HTTP endpoints shown in the report. Set to `0` for unlimited.
     pub fn http_limit(mut self, limit: usize) -> Self {
         self.http_limit = limit;
+        self
+    }
+
+    /// Maximum number of server routes shown in the report. Set to `0` for unlimited.
+    pub fn server_limit(mut self, limit: usize) -> Self {
+        self.server_limit = limit;
         self
     }
 
@@ -368,6 +377,7 @@ impl HotpathGuardBuilder {
             self.mutexes_limit,
             self.sql_limit,
             self.http_limit,
+            self.server_limit,
             self.io_limit,
             self.threads_limit,
         )
@@ -419,6 +429,7 @@ pub struct HotpathGuard {
     mutexes_limit: usize,
     sql_limit: usize,
     http_limit: usize,
+    server_limit: usize,
     io_limit: usize,
     threads_limit: usize,
     #[cfg(feature = "hotpath-meta")]
@@ -442,6 +453,7 @@ impl HotpathGuard {
         mutexes_limit: usize,
         sql_limit: usize,
         http_limit: usize,
+        server_limit: usize,
         io_limit: usize,
         threads_limit: usize,
     ) -> Self {
@@ -704,6 +716,7 @@ impl HotpathGuard {
             mutexes_limit,
             sql_limit,
             http_limit,
+            server_limit,
             io_limit,
             threads_limit,
             #[cfg(feature = "hotpath-meta")]
@@ -851,6 +864,7 @@ impl Drop for HotpathGuard {
         let mutexes_data = report::shutdown_mutexes();
         let sql_data = report::shutdown_sql();
         let http_data = report::shutdown_http();
+        let server_data = report::shutdown_server();
         let io_data = report::shutdown_io();
 
         let sections: Vec<Section> = match &self.sections_mode {
@@ -879,6 +893,7 @@ impl Drop for HotpathGuard {
                                 Section::Mutexes => !mutexes_data.is_empty(),
                                 Section::Sql => !sql_data.is_empty(),
                                 Section::Http => !http_data.is_empty(),
+                                Section::Server => !server_data.is_empty(),
                                 Section::Io => !io_data.is_empty(),
                                 Section::Debug => report::has_debug_entries(),
                                 _ => false,
@@ -906,6 +921,7 @@ impl Drop for HotpathGuard {
             self.mutexes_limit = global;
             self.sql_limit = global;
             self.http_limit = global;
+            self.server_limit = global;
             self.io_limit = global;
             self.threads_limit = global;
         }
@@ -929,6 +945,9 @@ impl Drop for HotpathGuard {
         }
         if let Some(v) = parse_usize_env("HOTPATH_HTTP_LIMIT") {
             self.http_limit = v;
+        }
+        if let Some(v) = parse_usize_env("HOTPATH_SERVER_LIMIT") {
+            self.server_limit = v;
         }
         if let Some(v) = parse_usize_env("HOTPATH_IO_LIMIT") {
             self.io_limit = v;
@@ -1082,6 +1101,21 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(http_data.len(), self.http_limit);
                             report.http = Some(report::collect_http_json(
                                 &http_data[..limit],
+                                elapsed,
+                                total_calls,
+                                reference_total,
+                                &percentiles,
+                            ));
+                        }
+                    }
+                    Section::Server => {
+                        if !server_data.is_empty() {
+                            let reference_total: u64 =
+                                server_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = server_data.iter().map(|e| e.count).sum();
+                            let limit = apply_limit(server_data.len(), self.server_limit);
+                            report.server = Some(report::collect_server_json(
+                                &server_data[..limit],
                                 elapsed,
                                 total_calls,
                                 reference_total,
@@ -1337,6 +1371,23 @@ impl Drop for HotpathGuard {
                             let limit = apply_limit(total, self.http_limit);
                             report::report_http_table(
                                 &http_data[..limit],
+                                total,
+                                total_calls,
+                                reference_total,
+                                &percentiles,
+                                &mut writer,
+                            );
+                        }
+                    }
+                    Section::Server => {
+                        if matches!(format, Format::Table) {
+                            let total = server_data.len();
+                            let reference_total: u64 =
+                                server_data.iter().map(|e| e.total_nanos).sum();
+                            let total_calls: u64 = server_data.iter().map(|e| e.count).sum();
+                            let limit = apply_limit(total, self.server_limit);
+                            report::report_server_table(
+                                &server_data[..limit],
                                 total,
                                 total_calls,
                                 reference_total,

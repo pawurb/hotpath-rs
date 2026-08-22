@@ -178,6 +178,17 @@ fn handle_request(request: Request) {
             }
             None => respond_error(request, 404, "HTTP endpoint not found"),
         },
+        Ok(Route::Server) => {
+            let server = crate::server::get_server_json();
+            respond_json(request, &server);
+        }
+        Ok(Route::ServerLogs { server_id }) => match crate::server::get_server_logs(server_id) {
+            Some(logs) => {
+                let formatted = JsonHttpLogsList::from_logs(&logs, get_current_elapsed_ns());
+                respond_json(request, &formatted);
+            }
+            None => respond_error(request, 404, "Server route not found"),
+        },
         Ok(Route::Io) => {
             let io = crate::io::get_io_json();
             respond_json(request, &io);

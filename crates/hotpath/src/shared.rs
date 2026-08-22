@@ -12,6 +12,7 @@ pub enum Section {
     Mutexes,
     Sql,
     Http,
+    Server,
     Io,
     Threads,
     Debug,
@@ -30,6 +31,7 @@ impl Section {
             Section::Mutexes,
             Section::Sql,
             Section::Http,
+            Section::Server,
             Section::Io,
             Section::Threads,
             Section::Debug,
@@ -48,6 +50,7 @@ impl Section {
             Section::Mutexes => "mutexes",
             Section::Sql => "sql",
             Section::Http => "http",
+            Section::Server => "server",
             Section::Io => "io",
             Section::Threads => "threads",
             Section::Debug => "debug",
@@ -66,6 +69,7 @@ impl Section {
             "mutexes" => Some(Section::Mutexes),
             "sql" => Some(Section::Sql),
             "http" => Some(Section::Http),
+            "server" => Some(Section::Server),
             "io" => Some(Section::Io),
             "threads" => Some(Section::Threads),
             "debug" => Some(Section::Debug),
@@ -79,7 +83,7 @@ impl Section {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SectionsMode {
     /// Base sections (functions, threads) plus every data-driven section
-    /// (channels, streams, futures, rw_locks, mutexes, sql, http, io, debug)
+    /// (channels, streams, futures, rw_locks, mutexes, sql, http, server, io, debug)
     /// that has data at shutdown. `include` forces sections in, `exclude`
     /// hides them.
     Auto {

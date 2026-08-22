@@ -25,6 +25,7 @@ members = [
     "crates/test-reqwest-012",
     "crates/test-reqwest-013",
     "crates/test-ureq",
+    "crates/test-axum",
     "crates/test-diesel",
     "crates/test-channels-tokio",
     "crates/test-futures",

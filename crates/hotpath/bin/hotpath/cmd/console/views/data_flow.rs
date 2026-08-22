@@ -6,7 +6,7 @@ use crate::cmd::console::views::common_styles;
 use crate::cmd::console::widgets::formatters::{truncate_left, truncate_right};
 use hotpath::json::{
     JsonChannelEntry, JsonFutureEntry, JsonHttpEntry, JsonIoEntry, JsonIoOpStats, JsonMutexEntry,
-    JsonRwLockEntry, JsonSqlEntry, JsonStreamEntry,
+    JsonRwLockEntry, JsonServerEntry, JsonSqlEntry, JsonStreamEntry,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -761,6 +761,100 @@ pub(crate) fn render_http_panel(
         .block(list_block(
             format!(
                 " HTTP - request execution time (calls: {}, total: {}) ",
+                total_calls,
+                hotpath::format_duration(total_ns)
+            ),
+            show_logs,
+            list_focused,
+            position,
+            total,
+        ))
+        .column_spacing(1)
+        .row_highlight_style(common_styles::SELECTED_ROW_STYLE)
+        .highlight_symbol(">> ")
+        .highlight_spacing(HighlightSpacing::Always);
+
+    frame.render_stateful_widget(table, area, table_state);
+}
+
+#[hotpath::measure]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_server_panel(
+    entries: &[JsonServerEntry],
+    percentiles: &[f64],
+    total_ns: u64,
+    total_calls: u64,
+    area: Rect,
+    frame: &mut Frame,
+    table_state: &mut TableState,
+    show_logs: bool,
+    list_focused: bool,
+    position: usize,
+    total: usize,
+) {
+    let available_width = area.width.saturating_sub(10);
+    let route_width = ((available_width as f32 * 0.40) as usize).max(20);
+
+    let percentile_keys: Vec<String> = percentiles
+        .iter()
+        .map(|p| hotpath::format_percentile_key(*p))
+        .collect();
+
+    let mut header_cells = vec![
+        Cell::from("Route"),
+        Cell::from("Calls"),
+        Cell::from("4xx"),
+        Cell::from("5xx"),
+        Cell::from("Avg"),
+    ];
+    for p in percentiles {
+        header_cells.push(Cell::from(hotpath::format_percentile_header(*p)));
+    }
+    header_cells.push(Cell::from("Total"));
+    header_cells.push(Cell::from("% Total"));
+    let header = Row::new(header_cells)
+        .style(common_styles::HEADER_STYLE_CYAN)
+        .height(1);
+
+    let rows: Vec<Row> = entries
+        .iter()
+        .map(|entry| {
+            let mut cells = vec![
+                Cell::from(truncate_right(&entry.route, route_width)),
+                Cell::from(entry.count.to_string()),
+                Cell::from(entry.status_4xx.to_string()),
+                Cell::from(entry.status_5xx.to_string()),
+                Cell::from(entry.avg.clone()),
+            ];
+            for key in &percentile_keys {
+                cells.push(Cell::from(
+                    entry.percentiles.get(key).cloned().unwrap_or_default(),
+                ));
+            }
+            cells.push(Cell::from(entry.total.clone()));
+            cells.push(Cell::from(entry.percent_total.clone()));
+            Row::new(cells)
+        })
+        .collect();
+
+    let mut widths = vec![
+        Constraint::Percentage(40),
+        Constraint::Length(8),
+        Constraint::Length(6),
+        Constraint::Length(6),
+        Constraint::Length(10),
+    ];
+    for _ in percentiles {
+        widths.push(Constraint::Length(10));
+    }
+    widths.push(Constraint::Length(10));
+    widths.push(Constraint::Length(8));
+
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(list_block(
+            format!(
+                " Server - response time per route (requests: {}, total: {}) ",
                 total_calls,
                 hotpath::format_duration(total_ns)
             ),

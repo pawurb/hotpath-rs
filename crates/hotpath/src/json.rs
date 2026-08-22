@@ -163,7 +163,8 @@ pub(crate) struct HttpLogEntry {
     pub status: Option<u16>,
 }
 
-/// Serializable log response containing recent requests for an HTTP endpoint.
+/// Serializable log response containing recent requests for an HTTP endpoint
+/// or a server route (both record only status and timing per request).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct HttpLogs {
     pub id: u32,
@@ -362,6 +363,10 @@ pub enum Route {
     Http,
     /// GET /http/{id}/logs - Returns recent requests for an HTTP endpoint
     HttpLogs { http_id: u32 },
+    /// GET /server - Returns HTTP server per-route statistics
+    Server,
+    /// GET /server/{id}/logs - Returns recent requests for a server route
+    ServerLogs { server_id: u32 },
     /// GET /io - Returns byte-level I/O statistics
     Io,
     /// GET /tokio_runtime - Returns Tokio runtime metrics snapshot
@@ -401,6 +406,8 @@ impl Route {
             Route::SqlLogs { sql_id } => format!("/sql/{}/logs", sql_id),
             Route::Http => "/http".to_string(),
             Route::HttpLogs { http_id } => format!("/http/{}/logs", http_id),
+            Route::Server => "/server".to_string(),
+            Route::ServerLogs { server_id } => format!("/server/{}/logs", server_id),
             Route::Io => "/io".to_string(),
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
@@ -439,6 +446,7 @@ impl FromStr for Route {
             "/mutexes" => return Ok(Route::Mutexes),
             "/sql" => return Ok(Route::Sql),
             "/http" => return Ok(Route::Http),
+            "/server" => return Ok(Route::Server),
             "/io" => return Ok(Route::Io),
             "/tokio_runtime" => return Ok(Route::TokioRuntime),
             "/profiler_status" => return Ok(Route::ProfilerStatus),
@@ -483,6 +491,10 @@ impl FromStr for Route {
 
         if let Some(http_id) = parse_id_from_path(path, "/http/") {
             return Ok(Route::HttpLogs { http_id });
+        }
+
+        if let Some(server_id) = parse_id_from_path(path, "/server/") {
+            return Ok(Route::ServerLogs { server_id });
         }
 
         Err(())
