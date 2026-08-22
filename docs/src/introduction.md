@@ -285,6 +285,7 @@ Explore the docs for customization options and advanced profiling features.
 - [Locks](./locks.html) - track Mutex and RwLock wait and hold times
 - [SQL queries](./sql_tracing.html) - profile query execution time for sqlx and Diesel
 - [HTTP requests](./http_tracing.html) - profile reqwest and ureq client calls per endpoint
+- [HTTP server (axum)](./axum_tracing.html) - profile axum request latency and errors per route
 - [I/O tracing](./io_tracing.html) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](./tokio_runtime.html) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
