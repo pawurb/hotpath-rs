@@ -115,25 +115,30 @@ cfg_if::cfg_if! {
         }
 
         /// Leaks each distinct route template once so the thread-local stays
-        /// `Copy`; growth is bounded by the number of matched routes.
-        pub(crate) fn intern_route(route: &str) -> &'static str {
+        /// `Copy`. The set is capped at `HOTPATH_ENTRIES_LIMIT` like the
+        /// per-subsystem maps; templates beyond the cap get no route context.
+        pub(crate) fn intern_route(route: &str) -> Option<&'static str> {
             if let Some(found) = INTERNED_ROUTES
                 .read()
                 .unwrap()
                 .as_ref()
                 .and_then(|set| set.get(route).copied())
             {
-                return found;
+                return Some(found);
             }
             let _suspend = crate::lib_on::SuspendAllocTracking::new();
             let mut guard = INTERNED_ROUTES.write().unwrap();
             let set = guard.get_or_insert_with(HashSet::new);
             if let Some(found) = set.get(route) {
-                return found;
+                return Some(found);
+            }
+            let limit = *crate::lib_on::hotpath_guard::ENTRIES_LIMIT;
+            if limit > 0 && set.len() >= limit {
+                return None;
             }
             let leaked: &'static str = Box::leak(route.to_owned().into_boxed_str());
             set.insert(leaked);
-            leaked
+            Some(leaked)
         }
 
         /// Sets the current route for the duration of the returned guard and
@@ -179,9 +184,9 @@ mod tests {
     #[test]
     fn nested_route_scopes_restore_previous() {
         assert_eq!(current_route(), None);
-        let outer = intern_route("GET /outer");
-        let inner = intern_route("GET /inner");
-        assert!(std::ptr::eq(outer, intern_route("GET /outer")));
+        let outer = intern_route("GET /outer").unwrap();
+        let inner = intern_route("GET /inner").unwrap();
+        assert!(std::ptr::eq(outer, intern_route("GET /outer").unwrap()));
         {
             let _outer = enter_route(outer);
             assert_eq!(current_route(), Some(outer));

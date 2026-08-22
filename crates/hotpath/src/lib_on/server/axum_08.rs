@@ -46,7 +46,9 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let (route, matched) = route_key(&req);
-        let scope = (matched && route_scope_enabled()).then(|| intern_route(&route));
+        let scope = (matched && route_scope_enabled())
+            .then(|| intern_route(&route))
+            .flatten();
         AxumResponseFuture {
             inner: self.inner.call(req),
             route,
