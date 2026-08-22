@@ -138,4 +138,77 @@ Then launch your instrumented application (with `hotpath` feature enabled) in a 
   <source src="{{#asset-hash videos/hotpath-live-dashboard.mp4}}" type="video/mp4">
 </video>
 
-You can learn how to instrument any Rust program in the next sections.
+## Optional vs non-optional dependency
+
+`hotpath` can be added either as a regular dependency or as an `optional` one. Both work; they differ only in how much `cfg` gating the code needs.
+
+### Non-optional dependency (recommended)
+
+It is safe to keep `hotpath` as a regular, non-optional dependency. Unless the `hotpath` feature is enabled:
+
+- **Zero compile-time overhead** - the crate contains no profiling code and pulls in no dependencies. All of its dependencies are optional and are only compiled when the feature is on.
+- **Zero runtime overhead** - `#[hotpath::main]`, `#[hotpath::measure]`, `measure_block!`, and all channel, lock, stream and future wrappers expand to a no-op that returns the original code unchanged.
+
+This is the recommended setup from the [installation guide](introduction.md#manual-installation):
+
+```toml
+[dependencies]
+hotpath = "{{HOTPATH_VERSION}}"
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+```
+
+With this config, macros can be used directly in the code without any `cfg` gating, and builds without `--features=hotpath` are identical to builds that don't depend on `hotpath` at all.
+
+### Optional dependency
+
+If you prefer not to have `hotpath` in the dependency tree at all unless profiling is enabled, declare it as `optional` and enable it from your feature:
+
+```toml
+[dependencies]
+hotpath = { version = "{{HOTPATH_VERSION}}", optional = true }
+
+[features]
+hotpath = ["dep:hotpath", "hotpath/hotpath"]
+hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
+```
+
+Because the crate is now absent from non-profiling builds, every use of its macros must be gated with `cfg_attr` / `cfg`:
+
+```rust
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
+fn sync_function() {
+    // ...
+}
+
+#[cfg_attr(feature = "hotpath", hotpath::measure)]
+async fn async_function() {
+    // ...
+}
+
+#[tokio::main]
+#[cfg_attr(feature = "hotpath", hotpath::main)]
+async fn main() {
+    sync_function();
+    async_function().await;
+}
+```
+
+Function-like macros and wrappers need a `cfg` branch for each variant:
+
+```rust
+#[cfg(feature = "hotpath")]
+let (tx, mut rx) = hotpath::channel!(tokio::sync::mpsc::channel::<String>(100));
+#[cfg(not(feature = "hotpath"))]
+let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(100);
+```
+
+Both setups are run the same way:
+
+```bash
+cargo run --features=hotpath
+```
+
+The optional variant trades extra `cfg` noise in the code for an empty dependency entry when profiling is off. Since the non-optional setup already has no compile-time or runtime cost, prefer it unless your project policy requires the dependency to be absent.
