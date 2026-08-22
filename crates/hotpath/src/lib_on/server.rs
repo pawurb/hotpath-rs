@@ -201,6 +201,8 @@ pub(crate) fn send_server_event(event: ServerEvent) {
 /// Stops producers ahead of the worker's final sweep at shutdown.
 pub(crate) fn stop_server_events() {
     EVENT_QUEUES.set_active(false);
+    #[cfg(feature = "axum-0-8")]
+    crate::lib_on::caller_stack::set_route_scope(false);
 }
 
 fn process_server_event(state: &mut ServerInternalState, event: ServerEvent) {

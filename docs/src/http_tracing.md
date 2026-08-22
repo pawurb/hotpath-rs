@@ -107,6 +107,8 @@ Source is part of the grouping key: the same endpoint hit from two different ins
 
 If no instrumented function is active when the request is sent - the request comes from uninstrumented code, or from a spawned task whose functions aren't instrumented - the `Source` column shows `-`. To get attribution, annotate the functions that send requests (or their callers) with `#[hotpath::measure]`.
 
+In axum applications wrapped with [`hotpath::axum!`](axum_tracing.md#route-scoping-for-sql-and-http) outbound requests are additionally grouped by the server route that issued them, shown in a `Route` column.
+
 ## Error tracking
 
 Each bucket has an `Errors` column counting transport errors (DNS failures, connection refused, timeouts) plus responses with status >= 400.

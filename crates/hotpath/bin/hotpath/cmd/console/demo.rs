@@ -327,20 +327,74 @@ fn spawn_http() {
             .expect("Failed to create tokio runtime");
 
         rt.block_on(async move {
+            use axum::extract::{Path, State};
             use axum::routing::get;
+            use diesel::prelude::*;
+            use diesel::sql_types::{Integer, Text};
+            use std::sync::Mutex;
 
-            let app = hotpath::axum!(axum::Router::new()
-                .route("/users/{id}", get(|| delayed_ok(5)))
-                .route("/search", get(|| delayed_ok(40)))
-                .route("/slow", get(|| delayed_ok(250)))
-                .fallback(|| async {
-                    tokio::time::sleep(Duration::from_millis(2)).await;
-                    axum::http::StatusCode::NOT_FOUND
-                }));
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
                 .await
                 .expect("Failed to bind demo http server");
             let port = listener.local_addr().expect("local addr").port();
+
+            // SQL queries and outbound HTTP requests issued from handlers pick
+            // up the matched route, populating the Route column in the SQL and
+            // HTTP subtabs. Diesel runs sqlite statements on the calling thread
+            // (sqlx sqlite would execute them on a connection worker thread,
+            // outside the route context).
+            let mut conn = SqliteConnection::establish(":memory:")
+                .expect("Failed to open demo server sqlite connection");
+            diesel::sql_query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+                .execute(&mut conn)
+                .expect("Failed to create demo server table");
+
+            #[derive(Clone)]
+            struct DemoState {
+                conn: Arc<Mutex<SqliteConnection>>,
+                client: DemoHttpClient,
+                base: String,
+            }
+
+            async fn user_by_id(
+                State(state): State<DemoState>,
+                Path(id): Path<i32>,
+            ) -> &'static str {
+                let _ = diesel::sql_query("SELECT id, name FROM users WHERE id = ?")
+                    .bind::<Integer, _>(id)
+                    .execute(&mut *state.conn.lock().unwrap());
+                delayed_ok(5).await
+            }
+
+            // Fans out to the server's own /users/{id} so the client-side HTTP
+            // entry is attributed to "GET /search".
+            async fn search(State(state): State<DemoState>) -> &'static str {
+                let _ = diesel::sql_query("SELECT id FROM users WHERE name LIKE ?")
+                    .bind::<Text, _>("user%")
+                    .execute(&mut *state.conn.lock().unwrap());
+                let _ = state
+                    .client
+                    .get(format!("{}/users/1", state.base))
+                    .send()
+                    .await;
+                delayed_ok(40).await
+            }
+
+            let state = DemoState {
+                conn: Arc::new(Mutex::new(conn)),
+                client: hotpath::http!(reqwest::Client::new()),
+                base: format!("http://127.0.0.1:{port}"),
+            };
+
+            let app = hotpath::axum!(axum::Router::new()
+                .route("/users/{id}", get(user_by_id))
+                .route("/search", get(search))
+                .route("/slow", get(|| delayed_ok(250)))
+                .fallback(|| async {
+                    tokio::time::sleep(Duration::from_millis(2)).await;
+                    axum::http::StatusCode::NOT_FOUND
+                })
+                .with_state(state));
             let _ = port_tx.send(port);
             axum::serve(listener, app).await.expect("demo axum server");
         });

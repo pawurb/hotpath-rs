@@ -66,22 +66,29 @@ pub(crate) enum SqlEvent {
     /// `timestamp_ns` is the completion time in ns since profiler start.
     /// `source` is the innermost instrumented function on the emitting thread's
     /// caller stack, `None` when the query completed outside any measured scope.
+    /// `route` is the axum route template handling the request that issued the
+    /// query, `None` outside the server middleware or with route scoping off.
     Executed {
         sql: Arc<str>,
         duration_nanos: u64,
         timestamp_ns: u64,
         source: Option<&'static str>,
+        route: Option<&'static str>,
     },
 }
 
+/// `(route, source, normalized query)`.
+pub(crate) type SqlKey = (Option<&'static str>, Option<&'static str>, String);
+
 /// Aggregated statistics for a single normalized query executed from a single
-/// source function. The same statement called from two instrumented functions
-/// produces two entries.
+/// source function under a single axum route. The same statement called from
+/// two instrumented functions (or under two routes) produces two entries.
 #[derive(Debug, Clone)]
 pub(crate) struct SqlEntry {
     pub(crate) id: u32,
     pub(crate) query: String,
     pub(crate) source: Option<&'static str>,
+    pub(crate) route: Option<&'static str>,
     pub(crate) count: u64,
     pub(crate) total_nanos: u64,
     hist: Option<Histogram<u64>>,
@@ -92,11 +99,17 @@ impl SqlEntry {
     const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
     const SIGFIGS: u8 = 3;
 
-    fn new(id: u32, query: String, source: Option<&'static str>) -> Self {
+    fn new(
+        id: u32,
+        query: String,
+        source: Option<&'static str>,
+        route: Option<&'static str>,
+    ) -> Self {
         Self {
             id,
             query,
             source,
+            route,
             count: 0,
             total_nanos: 0,
             hist: Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
@@ -125,7 +138,7 @@ impl SqlEntry {
 }
 
 pub(crate) struct SqlInternalState {
-    pub(crate) stats: HashMap<(Option<&'static str>, String), SqlEntry>,
+    pub(crate) stats: HashMap<SqlKey, SqlEntry>,
     /// Recent executions per entry id, capped at `LOGS_LIMIT`. Log entries keep
     /// the *normalized* statement text - raw text would leak inline literals
     /// (query params), which must never reach the report or metrics server
@@ -202,16 +215,19 @@ fn process_sql_event(state: &mut SqlInternalState, event: SqlEvent) {
         duration_nanos,
         timestamp_ns,
         source,
+        route,
     } = event;
 
     let normalized = normalize::normalize(&sql);
-    let key = bounded_key(&state.stats, (source, normalized), || {
-        (None, OVERFLOW_ENTRY.to_string())
+    let key = bounded_key(&state.stats, (route, source, normalized), || {
+        (None, None, OVERFLOW_ENTRY.to_string())
     });
     let entry = state
         .stats
         .entry(key)
-        .or_insert_with_key(|(source, query)| SqlEntry::new(next_sql_id(), query.clone(), *source));
+        .or_insert_with_key(|(route, source, query)| {
+            SqlEntry::new(next_sql_id(), query.clone(), *source, *route)
+        });
     entry.count += 1;
     entry.total_nanos += duration_nanos;
     entry.record(duration_nanos);

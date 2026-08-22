@@ -50,6 +50,27 @@ Requests that match no route - the router's fallback, or services mounted with `
 
 Each route has `4xx` and `5xx` columns counting responses by status class. They are split because 4xx responses are usually the client's fault (validation errors, missing resources) while 5xx responses point at the handler.
 
+## Route scoping for SQL and HTTP
+
+When the layer is installed, [SQL queries](sql_tracing.md) and [outbound HTTP requests](http_tracing.md) issued while a handler runs are additionally attributed to the route that triggered them. Both sections gain a `Route` column (and a `route` field in the JSON report, metrics API, and MCP tools) next to the existing `Source` column, shown only when at least one entry has a route:
+
+```
+sql - SQL query execution time statistics.
++-----------------------------------------+----------------+--------------------+-------+----------+
+| Query                                   | Source         | Route              | Calls | Avg      |
++-----------------------------------------+----------------+--------------------+-------+----------+
+| SELECT id, name FROM users WHERE id = ? | app::load_user | GET /users/{id}    | 5     | 31.83 µs |
+| SELECT id, name FROM users WHERE id = ? | app::load_user | GET /profiles/{id} | 3     | 32.14 µs |
+| INSERT INTO users (name) VALUES (?)     | -              | -                  | 3     | 28.75 µs |
++-----------------------------------------+----------------+--------------------+-------+----------+
+```
+
+The route is part of the grouping key, so the same statement (or the same outbound endpoint) executed under two routes appears as two rows. Dividing a row's call count by the route's request count in the `server` section gives the number of queries per request for that route, which is how N+1 query patterns surface. `Source` and `Route` are independent: a query from uninstrumented code inside a handler gets a route but no source, and a query outside any request gets neither.
+
+The layer sets the route around every poll of the handler future, the same way `Source` is tracked, so concurrent requests interleaved on one runtime thread never see each other's route. The same limits apply: work moved off the request future with `tokio::spawn` or `spawn_blocking` runs outside the route context, and async sqlx sqlite executes statements on its own connection worker thread where neither source nor route is visible (PostgreSQL/MySQL sqlx drivers, Diesel, and Toasty run on the calling task and are attributed normally). Requests that match no route (fallback, `nest_service`) set no route context.
+
+Route scoping is on whenever the layer is installed. Turn it off with `HotpathGuardBuilder::route_scope(false)` or `HOTPATH_ROUTE_SCOPE=0`, which collapses the SQL and HTTP sections back to `(source, query)` grouping.
+
 ## Limiting and capping route output
 
 The number of routes shown is unlimited by default (`0`). Cap it with:

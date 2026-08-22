@@ -33,6 +33,8 @@ Source is part of the grouping key: the same normalized statement executed from 
 
 If no instrumented function is active when the query executes - the query runs from uninstrumented code, or inside a spawned task whose functions aren't instrumented - the `Source` column shows `-`. To get attribution, annotate the functions that issue queries (or their callers) with `#[hotpath::measure]`.
 
+In axum applications wrapped with [`hotpath::axum!`](axum_tracing.md#route-scoping-for-sql-and-http) queries are additionally grouped by the route that issued them, shown in a `Route` column.
+
 ## Profiling sqlx queries with a tracing layer
 
 Add `hotpath` with the `sqlx` feature to your `Cargo.toml`:

@@ -14,6 +14,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 use crate::instant::Instant;
+use crate::lib_on::caller_stack::{enter_route, intern_route, route_scope_enabled};
 use crate::lib_on::server::{send_server_event, AxumLayer, ServerEvent};
 
 impl<S> Layer<S> for AxumLayer {
@@ -45,10 +46,14 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let (route, matched) = route_key(&req);
+        let scope = (matched && route_scope_enabled())
+            .then(|| intern_route(&route))
+            .flatten();
         AxumResponseFuture {
             inner: self.inner.call(req),
             route,
             matched,
+            scope,
             start: Instant::now(),
         }
     }
@@ -74,6 +79,9 @@ pin_project! {
         inner: F,
         route: Arc<str>,
         matched: bool,
+        // Only matched templates are interned: raw paths of unmatched requests
+        // are unbounded and would leak through the route interner.
+        scope: Option<&'static str>,
         start: Instant,
     }
 }
@@ -86,6 +94,7 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
+        let _route_scope = this.scope.map(enter_route);
         let outcome = ready!(this.inner.poll(cx));
         if let Ok(response) = &outcome {
             send_server_event(ServerEvent::Completed {
