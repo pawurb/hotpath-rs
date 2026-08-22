@@ -4,7 +4,9 @@
 //! Entries are keyed by `METHOD route-template`, so the router's own path
 //! template does the bucketing; requests that never matched a route
 //! (fallbacks, `nest_service` targets) fall back to the raw path normalized
-//! by [`crate::lib_on::http::normalize`] so cardinality stays bounded.
+//! by [`crate::lib_on::http::normalize`]. Distinct keys are capped at
+//! `HOTPATH_ENTRIES_LIMIT`; beyond that new keys land in the `<other>` bucket
+//! (see [`crate::lib_on::hotpath_guard::bounded_key`]).
 //!
 //! The write path (worker, events) is driven by the tower [`AxumLayer`]
 //! (attached via the `axum!` macro or `Router::layer`), gated behind the
@@ -23,7 +25,7 @@ use crate::lib_on::{meta_rw_lock, MetaRwLock};
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
 use crate::json::{HttpLogEntry, HttpLogs};
-use crate::lib_on::hotpath_guard::{DRAIN_INTERVAL_MS, LOGS_LIMIT};
+use crate::lib_on::hotpath_guard::{bounded_key, DRAIN_INTERVAL_MS, LOGS_LIMIT, OVERFLOW_ENTRY};
 use crate::lib_on::http::normalize::normalize_endpoint;
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
@@ -215,6 +217,7 @@ fn process_server_event(state: &mut ServerInternalState, event: ServerEvent) {
     } else {
         normalize_endpoint(&route)
     };
+    let key = bounded_key(&state.stats, key, || OVERFLOW_ENTRY.to_string());
     let entry = state
         .stats
         .entry(key)
