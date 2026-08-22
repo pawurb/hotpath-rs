@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.24.0] - 2026-08-22
+
+### 🚀 Features
+
+- Add axum endpoints tracing
+
+- Add metrics auth
+
+- Track axum endpoint source
+
+
+### 🐛 Bug Fixes
+
+- Limit unbounded metrics growth
+
+- Compute channel rates against correct elapsed time
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.24.0
+
+
 ## [0.23.3] - 2026-08-15
 
 ### 🚀 Features
