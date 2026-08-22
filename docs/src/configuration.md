@@ -91,5 +91,6 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 | `HOTPATH_TOKIO_RUNTIME_INTERVAL_MS` | Tokio runtime metrics sampling interval in milliseconds. (default: `1000`) |
 | `HOTPATH_LOGS_LIMIT` | Maximum number of log entries to keep per channel, stream, or function. (default: `50`) |
 | `HOTPATH_ENTRIES_LIMIT` | Maximum number of distinct entries tracked per runtime-keyed subsystem (server routes, outbound HTTP endpoints, SQL queries). Further new keys are aggregated into a single `<other>` bucket so unmatched 404 paths or dynamic SQL cannot grow memory without bound. (default: `1000`) |
+| `HOTPATH_ROUTE_SCOPE` | Set to `0` to stop attributing SQL queries and outbound HTTP requests to the axum route handling the request (the `Route` column, see [axum profiling](axum_tracing.md#route-scoping-for-sql-and-http)). Overrides `HotpathGuardBuilder::route_scope`. Requires the `axum-0-8` feature. (default: `1`) |
 | `HOTPATH_MAX_LOG_LEN` | Maximum character length for logged return values (`log = true`). Values exceeding this limit are truncated with `...`. (default: `1536`) |
 | `HOTPATH_SHUTDOWN_MS` | If set a profiled program will shutdown after the specified ms timeout and print the performance report. (default: `''`). Use `before_shutdown` to specify before shutdown callback. |

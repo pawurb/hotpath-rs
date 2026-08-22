@@ -417,6 +417,10 @@ pub struct JsonSqlEntry {
     /// outside any measured scope.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// axum route template (`GET /users/{id}`) whose handler issued it, `None`
+    /// outside the server middleware or with route scoping disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<String>,
     pub count: u64,
     pub avg: String,
     pub total: String,
@@ -478,6 +482,10 @@ pub struct JsonHttpEntry {
     /// sent outside any measured scope.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// axum route template (`GET /users/{id}`) whose handler issued it, `None`
+    /// outside the server middleware or with route scoping disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<String>,
     pub count: u64,
     pub errors: u64,
     pub avg: String,

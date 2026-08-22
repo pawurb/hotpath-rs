@@ -29,6 +29,7 @@ impl Middleware for ReqwestHttpMiddleware {
         // Captured before the first await: the initial poll runs in the
         // caller's frame, so the caller stack still identifies the issuer.
         let source = crate::lib_on::caller_stack::current_caller();
+        let route = crate::lib_on::caller_stack::current_route();
         let start = Instant::now();
         let outcome = next.run(req, extensions).await;
         let duration_nanos = start.elapsed().as_nanos() as u64;
@@ -46,6 +47,7 @@ impl Middleware for ReqwestHttpMiddleware {
             status,
             timestamp_ns: crate::lib_on::current_elapsed_ns(),
             source,
+            route,
         });
 
         outcome

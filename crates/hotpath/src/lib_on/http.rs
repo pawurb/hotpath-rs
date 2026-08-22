@@ -122,7 +122,9 @@ pub(crate) enum HttpEvent {
     /// transport errors. `timestamp_ns` is the completion time in ns since
     /// profiler start. `source` is the innermost instrumented function on the
     /// caller stack when the request was issued, `None` when it was sent
-    /// outside any measured scope.
+    /// outside any measured scope. `route` is the axum route template handling
+    /// the request that issued it, `None` outside the server middleware or with
+    /// route scoping off.
     Executed {
         endpoint: Arc<str>,
         label: Option<Arc<str>>,
@@ -130,17 +132,22 @@ pub(crate) enum HttpEvent {
         status: Option<u16>,
         timestamp_ns: u64,
         source: Option<&'static str>,
+        route: Option<&'static str>,
     },
 }
 
+/// `(route, source, normalized endpoint)`.
+pub(crate) type HttpKey = (Option<&'static str>, Option<&'static str>, String);
+
 /// Aggregated statistics for a single normalized endpoint requested from a
-/// single source function. The same endpoint hit from two instrumented
-/// functions produces two entries.
+/// single source function under a single axum route. The same endpoint hit
+/// from two instrumented functions (or under two routes) produces two entries.
 #[derive(Debug, Clone)]
 pub(crate) struct HttpEntry {
     pub(crate) id: u32,
     pub(crate) endpoint: String,
     pub(crate) source: Option<&'static str>,
+    pub(crate) route: Option<&'static str>,
     pub(crate) count: u64,
     /// Transport errors plus responses with status >= 400.
     pub(crate) error_count: u64,
@@ -153,11 +160,17 @@ impl HttpEntry {
     const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
     const SIGFIGS: u8 = 3;
 
-    fn new(id: u32, endpoint: String, source: Option<&'static str>) -> Self {
+    fn new(
+        id: u32,
+        endpoint: String,
+        source: Option<&'static str>,
+        route: Option<&'static str>,
+    ) -> Self {
         Self {
             id,
             endpoint,
             source,
+            route,
             count: 0,
             error_count: 0,
             total_nanos: 0,
@@ -187,7 +200,7 @@ impl HttpEntry {
 }
 
 pub(crate) struct HttpInternalState {
-    pub(crate) stats: HashMap<(Option<&'static str>, String), HttpEntry>,
+    pub(crate) stats: HashMap<HttpKey, HttpEntry>,
     /// Recent requests per entry id, capped at `LOGS_LIMIT`. Log entries keep
     /// only status and timing - raw URLs (which could carry query params or
     /// path ids) are never stored.
@@ -265,20 +278,21 @@ fn process_http_event(state: &mut HttpInternalState, event: HttpEvent) {
         status,
         timestamp_ns,
         source,
+        route,
     } = event;
 
     let mut key = normalize::normalize_endpoint(&endpoint);
     if let Some(label) = label {
         key = format!("{label}: {key}");
     }
-    let key = bounded_key(&state.stats, (source, key), || {
-        (None, OVERFLOW_ENTRY.to_string())
+    let key = bounded_key(&state.stats, (route, source, key), || {
+        (None, None, OVERFLOW_ENTRY.to_string())
     });
     let entry = state
         .stats
         .entry(key)
-        .or_insert_with_key(|(source, endpoint)| {
-            HttpEntry::new(next_http_id(), endpoint.clone(), *source)
+        .or_insert_with_key(|(route, source, endpoint)| {
+            HttpEntry::new(next_http_id(), endpoint.clone(), *source, *route)
         });
     entry.count += 1;
     entry.total_nanos += duration_nanos;

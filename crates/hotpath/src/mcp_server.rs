@@ -366,6 +366,8 @@ I/O values are instrumented via hotpath::io!(expr). Wrapping the underlying reso
 Returns JSON array with one entry per normalized query (parameter-varied executions merge into one bucket):
 - id: query identifier
 - query: normalized SQL statement text
+- source: innermost instrumented function that ran the query (absent outside measured scopes)
+- route: axum route template (e.g. GET /users/{id}) whose handler ran the query; absent outside AxumLayer or when route scoping is disabled. The same query under two routes yields two entries
 - call_count: number of executions
 - avg, configured percentiles, and total duration in nanoseconds
 
@@ -405,6 +407,8 @@ Returns JSON array of recent executions with timestamps and durations. Use sql f
 Returns JSON array with one entry per normalized endpoint (parameter-varied requests to the same route merge into one bucket, e.g. GET api.example.com/users/{id}):
 - id: endpoint identifier
 - endpoint: normalized METHOD host/path key
+- source: innermost instrumented function that sent the request (absent outside measured scopes)
+- route: axum route template (e.g. GET /users/{id}) whose handler sent the request; absent outside AxumLayer or when route scoping is disabled. The same endpoint under two routes yields two entries
 - count: number of requests
 - errors: transport errors plus responses with status >= 400
 - avg, configured percentiles, and total duration

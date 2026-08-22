@@ -4320,7 +4320,10 @@ name = "test-axum"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "diesel",
  "hotpath",
+ "libsqlite3-sys",
+ "reqwest 0.13.4",
  "tokio",
  "ureq",
 ]
