@@ -148,6 +148,7 @@ cfg_if::cfg_if! {
         }
 
         #[inline]
+        #[allow(dead_code)]
         pub(crate) fn current_route() -> Option<&'static str> {
             CURRENT_ROUTE.try_with(|cell| cell.get()).ok().flatten()
         }
