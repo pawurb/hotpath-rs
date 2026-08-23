@@ -818,13 +818,26 @@ pub(crate) fn render_server_panel(
         .map(|p| hotpath::format_percentile_key(*p))
         .collect();
 
+    // Per-request columns are present only when the matching subsystem
+    // attributed at least one call to some route.
+    let show_sql = entries.iter().any(|e| e.sql_per_request.is_some());
+    let show_http = entries.iter().any(|e| e.http_per_request.is_some());
+    let format_per_request =
+        |value: Option<f64>| value.map_or_else(|| "-".to_string(), |v| format!("{v:.1}"));
+
     let mut header_cells = vec![
         Cell::from("Route"),
         Cell::from("Calls"),
         Cell::from("4xx"),
         Cell::from("5xx"),
-        Cell::from("Avg"),
     ];
+    if show_sql {
+        header_cells.push(Cell::from("SQL/req"));
+    }
+    if show_http {
+        header_cells.push(Cell::from("HTTP/req"));
+    }
+    header_cells.push(Cell::from("Avg"));
     for p in percentiles {
         header_cells.push(Cell::from(hotpath::format_percentile_header(*p)));
     }
@@ -842,8 +855,14 @@ pub(crate) fn render_server_panel(
                 Cell::from(entry.count.to_string()),
                 Cell::from(entry.status_4xx.to_string()),
                 Cell::from(entry.status_5xx.to_string()),
-                Cell::from(entry.avg.clone()),
             ];
+            if show_sql {
+                cells.push(Cell::from(format_per_request(entry.sql_per_request)));
+            }
+            if show_http {
+                cells.push(Cell::from(format_per_request(entry.http_per_request)));
+            }
+            cells.push(Cell::from(entry.avg.clone()));
             for key in &percentile_keys {
                 cells.push(Cell::from(
                     entry.percentiles.get(key).cloned().unwrap_or_default(),
@@ -860,8 +879,14 @@ pub(crate) fn render_server_panel(
         Constraint::Length(8),
         Constraint::Length(6),
         Constraint::Length(6),
-        Constraint::Length(10),
     ];
+    if show_sql {
+        widths.push(Constraint::Length(8));
+    }
+    if show_http {
+        widths.push(Constraint::Length(9));
+    }
+    widths.push(Constraint::Length(10));
     for _ in percentiles {
         widths.push(Constraint::Length(10));
     }

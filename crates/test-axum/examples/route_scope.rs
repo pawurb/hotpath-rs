@@ -2,7 +2,8 @@
 //! while an axum handler runs are attributed to the matched route template in
 //! the `Route` column of the SQL and HTTP sections, alongside the `Source`
 //! column. The same statement executed under two routes yields two entries,
-//! which makes per-route query counts (N+1 detection) visible.
+//! which makes per-route query counts (N+1 detection) visible. The `server`
+//! section derives `SQL/req` and `HTTP/req` per route from that attribution.
 //!
 //! Run with:
 //!   cargo run -p test-axum --example route_scope --features hotpath
@@ -39,22 +40,34 @@ fn load_user(conn: &mut SqliteConnection, id: i32) -> usize {
         .expect("load_user")
 }
 
+#[hotpath::measure]
+fn count_users(conn: &mut SqliteConnection) -> usize {
+    diesel::sql_query("SELECT COUNT(*) FROM users")
+        .execute(conn)
+        .expect("count_users")
+}
+
 async fn get_user(State(state): State<AppState>, Path(id): Path<i32>) -> String {
     let rows = load_user(&mut state.conn.lock().unwrap(), id);
     format!("user {id}: {rows}")
 }
 
-// Runs the same statement as GET /users/{id} plus an outbound request to the
-// server's own /users/{id}: both land under the GET /profiles/{id} route.
+// Runs the same statement as GET /users/{id} plus a second query and an
+// outbound request to the server's own /users/{id}: all land under the
+// GET /profiles/{id} route, so the server section reports 2 SQL/req and
+// 1 HTTP/req for it.
 async fn get_profile(State(state): State<AppState>, Path(id): Path<i32>) -> String {
-    let rows = load_user(&mut state.conn.lock().unwrap(), id);
+    let (rows, total) = {
+        let mut conn = state.conn.lock().unwrap();
+        (load_user(&mut conn, id), count_users(&mut conn))
+    };
     let resp = state
         .client
         .get(format!("{}/users/{id}", state.base))
         .send()
         .await
         .expect("GET /users/{id}");
-    format!("profile {id}: {rows} {}", resp.status())
+    format!("profile {id}: {rows}/{total} {}", resp.status())
 }
 
 // Queries outside any handler carry no route.
@@ -106,6 +119,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for id in 1..=3 {
         client.get(format!("{base}/profiles/{id}")).send().await?;
     }
+    // Unmatched request: no route scope, so no SQL/HTTP attribution.
+    client.get(format!("{base}/missing")).send().await?;
 
     if let Ok(secs) = std::env::var("TEST_SLEEP_SECONDS") {
         if let Ok(secs) = secs.parse::<u64>() {

@@ -14,7 +14,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 use crate::instant::Instant;
-use crate::lib_on::caller_stack::{enter_route, intern_route, route_scope_enabled};
+use crate::lib_on::caller_stack::{enter_route, intern_route, route_scope_enabled, RequestCalls};
 use crate::lib_on::server::{send_server_event, AxumLayer, ServerEvent};
 
 impl<S> Layer<S> for AxumLayer {
@@ -54,6 +54,7 @@ where
             route,
             matched,
             scope,
+            calls: RequestCalls::ZERO,
             start: Instant::now(),
         }
     }
@@ -82,6 +83,8 @@ pin_project! {
         // Only matched templates are interned: raw paths of unmatched requests
         // are unbounded and would leak through the route interner.
         scope: Option<&'static str>,
+        // SQL queries / outbound HTTP requests issued so far under `scope`.
+        calls: RequestCalls,
         start: Instant,
     }
 }
@@ -94,8 +97,12 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let _route_scope = this.scope.map(enter_route);
-        let outcome = ready!(this.inner.poll(cx));
+        let outcome = {
+            // The guard writes the scope's call counts back into `this.calls`
+            // on drop, including on the early return of `ready!`.
+            let _route_scope = this.scope.map(|route| enter_route(route, this.calls));
+            ready!(this.inner.poll(cx))
+        };
         if let Ok(response) = &outcome {
             send_server_event(ServerEvent::Completed {
                 route: Arc::clone(this.route),
@@ -103,6 +110,7 @@ where
                 duration_nanos: this.start.elapsed().as_nanos() as u64,
                 status: response.status().as_u16(),
                 timestamp_ns: crate::lib_on::current_elapsed_ns(),
+                calls: this.scope.map(|_| *this.calls),
             });
         }
         Poll::Ready(outcome)

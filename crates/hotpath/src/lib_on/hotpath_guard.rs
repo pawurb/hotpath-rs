@@ -1198,6 +1198,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                report::ServerColumns::from_state(),
                             ));
                         }
                     }
@@ -1478,6 +1479,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                report::ServerColumns::from_state(),
                                 &mut writer,
                             );
                         }
