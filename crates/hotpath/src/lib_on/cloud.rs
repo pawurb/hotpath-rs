@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::json::JsonReport;
 
-const DEFAULT_UPLOAD_URL: &str = "https://hotpath.rs";
+const UPLOAD_URL: &str = "https://hotpath.rs";
 const AUDIENCE: &str = "hotpath.rs";
 const APP_URL: &str = "https://github.com/apps/hotpath-rs";
 const MINT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -44,15 +44,6 @@ pub(crate) fn benchmark_name() -> String {
         .unwrap_or_else(|| "default".to_string())
 }
 
-// Internal override used by integration tests and hotpath-backend's CI.
-pub(crate) fn upload_url() -> String {
-    std::env::var("HOTPATH_UPLOAD_URL")
-        .ok()
-        .map(|s| s.trim().trim_end_matches('/').to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_UPLOAD_URL.to_string())
-}
-
 pub(crate) fn upload(report: &JsonReport) {
     if std::thread::panicking() {
         eprintln!("hotpath: upload skipped: the profiled program panicked");
@@ -75,7 +66,7 @@ pub(crate) fn upload(report: &JsonReport) {
     let result = mint_token(&request_url, &request_token).and_then(|token| {
         let body =
             serde_json::to_vec(report).map_err(|e| format!("failed to serialize report: {e}"))?;
-        post_report(&upload_url(), &token, &benchmark, &body)
+        post_report(UPLOAD_URL, &token, &benchmark, &body)
     });
 
     match result {
