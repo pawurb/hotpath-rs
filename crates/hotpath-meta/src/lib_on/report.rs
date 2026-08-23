@@ -857,12 +857,35 @@ pub(crate) fn shutdown_server() -> Vec<ServerEntry> {
         .unwrap_or_default()
 }
 
+/// Which per-request columns the server table shows: each only when the
+/// corresponding subsystem initialized, so an app without SQL profiling does
+/// not get an all-`-` column.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ServerColumns {
+    pub(crate) sql: bool,
+    pub(crate) http: bool,
+}
+
+impl ServerColumns {
+    pub(crate) fn from_state() -> Self {
+        Self {
+            sql: SQL_STATE.get().is_some(),
+            http: HTTP_STATE.get().is_some(),
+        }
+    }
+}
+
+fn format_per_request(value: Option<f64>) -> String {
+    value.map_or_else(|| "-".to_string(), |v| format!("{v:.1}"))
+}
+
 pub(crate) fn report_server_table(
     entries: &[ServerEntry],
     total_count: usize,
     total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
+    columns: ServerColumns,
     writer: &mut dyn Write,
 ) {
     if entries.is_empty() {
@@ -885,8 +908,14 @@ pub(crate) fn report_server_table(
         styled_header("Calls"),
         styled_header("4xx"),
         styled_header("5xx"),
-        styled_header("Avg"),
     ];
+    if columns.sql {
+        header.push(styled_header("SQL/req"));
+    }
+    if columns.http {
+        header.push(styled_header("HTTP/req"));
+    }
+    header.push(styled_header("Avg"));
     for &p in percentiles {
         header.push(styled_header(&format_percentile_header(p)));
     }
@@ -902,8 +931,14 @@ pub(crate) fn report_server_table(
             Cell::new(&entry.count.to_string()),
             Cell::new(&entry.status_4xx.to_string()),
             Cell::new(&entry.status_5xx.to_string()),
-            Cell::new(&format_duration(entry.avg_nanos())),
         ];
+        if columns.sql {
+            row.push(Cell::new(&format_per_request(entry.sql_per_request())));
+        }
+        if columns.http {
+            row.push(Cell::new(&format_per_request(entry.http_per_request())));
+        }
+        row.push(Cell::new(&format_duration(entry.avg_nanos())));
         for &p in percentiles {
             row.push(Cell::new(&format_duration(entry.percentile_nanos(p))));
         }
@@ -923,6 +958,7 @@ fn server_to_json(
     entry: &ServerEntry,
     reference_total: u64,
     percentiles: &[f64],
+    columns: ServerColumns,
 ) -> JsonServerEntry {
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
@@ -938,6 +974,8 @@ fn server_to_json(
         count: entry.count,
         status_4xx: entry.status_4xx,
         status_5xx: entry.status_5xx,
+        sql_per_request: columns.sql.then(|| entry.sql_per_request()).flatten(),
+        http_per_request: columns.http.then(|| entry.http_per_request()).flatten(),
         avg: format_duration(entry.avg_nanos()),
         total: format_duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
@@ -951,6 +989,7 @@ pub(crate) fn collect_server_json(
     total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
+    columns: ServerColumns,
 ) -> JsonServerList {
     JsonServerList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
@@ -959,7 +998,7 @@ pub(crate) fn collect_server_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| server_to_json(entry, reference_total, percentiles))
+            .map(|entry| server_to_json(entry, reference_total, percentiles, columns))
             .collect(),
     }
 }
@@ -1493,5 +1532,17 @@ pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::J
     crate::json::JsonDebugList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         entries,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::lib_on::report::format_per_request;
+
+    #[test]
+    fn per_request_formatting() {
+        assert_eq!(format_per_request(None), "-");
+        assert_eq!(format_per_request(Some(2.0)), "2.0");
+        assert_eq!(format_per_request(Some(1.25)), "1.2");
     }
 }

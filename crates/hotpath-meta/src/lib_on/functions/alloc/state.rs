@@ -140,21 +140,21 @@ impl FunctionStats {
 
     #[inline]
     fn record_alloc(&mut self, bytes_total: Option<u64>, count_total: Option<u64>) {
+        // Zero is always recordable regardless of the histogram's lowest
+        // discernible value, so non-allocating calls count toward percentiles.
         if let (Some(ref mut bytes_total_hist), Some(bytes)) =
             (&mut self.bytes_total_hist, bytes_total)
         {
-            if bytes > 0 {
-                let clamped_total = bytes.clamp(Self::LOW_BYTES, Self::HIGH_BYTES);
-                bytes_total_hist.record(clamped_total).unwrap();
-            }
+            bytes_total_hist
+                .record(bytes.min(Self::HIGH_BYTES))
+                .unwrap();
         }
         if let (Some(ref mut count_total_hist), Some(count)) =
             (&mut self.count_total_hist, count_total)
         {
-            if count > 0 {
-                let clamped_total = count.clamp(Self::LOW_COUNT, Self::HIGH_COUNT);
-                count_total_hist.record(clamped_total).unwrap();
-            }
+            count_total_hist
+                .record(count.min(Self::HIGH_COUNT))
+                .unwrap();
         }
     }
 
@@ -166,11 +166,8 @@ impl FunctionStats {
         self.duration_sampled_count += 1;
         self.total_duration_ns += duration_ns;
         if let Some(ref mut duration_hist) = self.duration_hist {
-            if duration_ns > 0 {
-                let clamped_duration =
-                    duration_ns.clamp(Self::LOW_DURATION_NS, Self::HIGH_DURATION_NS);
-                duration_hist.record(clamped_duration).unwrap();
-            }
+            let clamped_duration = duration_ns.clamp(Self::LOW_DURATION_NS, Self::HIGH_DURATION_NS);
+            duration_hist.record(clamped_duration).unwrap();
         }
     }
 
@@ -261,6 +258,13 @@ impl FunctionStats {
         }
         let p = p.clamp(0.0, 100.0);
         self.duration_hist.as_ref().unwrap().value_at_percentile(p)
+    }
+
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.duration_sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::functions::histogram_base64(self.duration_hist.as_ref()?)
     }
 
     #[inline]
@@ -377,4 +381,57 @@ pub(crate) fn send_alloc_measurement_with_log(
         tid,
         result_log,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::lib_on::functions::alloc::state::FunctionStats;
+
+    #[test]
+    fn zero_duration_samples_land_in_histogram() {
+        let mut stats = FunctionStats::new_alloc(
+            1,
+            "f",
+            Some(0),
+            Some(0),
+            Some(0),
+            Duration::ZERO,
+            false,
+            None,
+            None,
+        );
+        stats.update_alloc(Some(0), Some(0), Some(0), Duration::ZERO, None, None);
+        stats.update_alloc(Some(0), Some(0), Some(500), Duration::ZERO, None, None);
+
+        assert_eq!(stats.duration_sampled_count, 3);
+        assert_eq!(stats.duration_hist.as_ref().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn zero_alloc_samples_land_in_histograms() {
+        let mut stats = FunctionStats::new_alloc(
+            1,
+            "f",
+            Some(0),
+            Some(0),
+            Some(10),
+            Duration::ZERO,
+            false,
+            None,
+            None,
+        );
+        stats.update_alloc(Some(0), Some(0), Some(10), Duration::ZERO, None, None);
+        stats.update_alloc(Some(0), Some(0), Some(10), Duration::ZERO, None, None);
+        stats.update_alloc(Some(4096), Some(2), Some(10), Duration::ZERO, None, None);
+
+        assert_eq!(stats.count, 4);
+        assert_eq!(stats.bytes_total_hist.as_ref().unwrap().len(), 4);
+        assert_eq!(stats.count_total_hist.as_ref().unwrap().len(), 4);
+        assert_eq!(stats.bytes_total_percentile(50.0), 0);
+        assert_eq!(stats.count_total_percentile(50.0), 0);
+        assert!(stats.bytes_total_percentile(100.0) >= 4096);
+        assert_eq!(stats.count_total_percentile(100.0), 2);
+    }
 }

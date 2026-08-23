@@ -46,6 +46,14 @@ pub(crate) struct FunctionStatsConfig {
     pub(crate) percentiles: Vec<f64>,
     pub(crate) caller_name: &'static str,
     pub(crate) limit: usize,
+    /// Set only for the final static report, never for the live metrics server.
+    pub(crate) histograms: bool,
+}
+
+/// HdrHistogram V2 deflate payload, base64-encoded. Only the main crate's
+/// `hotpath-cloud` feature produces it; the meta crate has no cloud upload.
+pub(crate) fn histogram_base64(_hist: &hdrhistogram::Histogram<u64>) -> Option<String> {
+    None
 }
 
 pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
