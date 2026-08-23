@@ -61,6 +61,8 @@ pub use sql::sqlx_tracing_layer;
 pub use sql::toasty_tracing_layer;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
+#[cfg(feature = "hotpath-cloud")]
+pub(crate) mod cloud;
 pub mod hotpath_guard;
 pub(crate) mod report;
 pub(crate) mod sampling;

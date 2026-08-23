@@ -1024,17 +1024,26 @@ impl Drop for HotpathGuard {
         if let Some(v) = parse_usize_env("HOTPATH_THREADS_LIMIT") {
             self.threads_limit = v;
         }
-        let mut writer = match output.writer() {
+        #[cfg(feature = "hotpath-cloud")]
+        let cloud_enabled = crate::lib_on::cloud::enabled();
+        #[cfg(not(feature = "hotpath-cloud"))]
+        let cloud_enabled = false;
+
+        // An unusable local output must not block the cloud upload.
+        let mut writer: Box<dyn Write> = match output.writer() {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Failed to create output writer: {}", e);
-                return;
+                if !cloud_enabled {
+                    return;
+                }
+                Box::new(std::io::sink())
             }
         };
 
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
 
-        if is_json {
+        if is_json || cloud_enabled {
             let mut report = JsonReport {
                 label: std::env::var("HOTPATH_REPORT_LABEL")
                     .ok()
@@ -1243,7 +1252,14 @@ impl Drop for HotpathGuard {
                 }
                 _ => {}
             }
-        } else {
+
+            #[cfg(feature = "hotpath-cloud")]
+            if cloud_enabled {
+                crate::lib_on::cloud::upload(&report);
+            }
+        }
+
+        if !is_json {
             let baseline_ns = cpu_baseline.as_ref().map(|b| b.avg_ns);
             let label = std::env::var("HOTPATH_REPORT_LABEL")
                 .ok()

@@ -25,6 +25,7 @@ Features:
 - `tokio` is only for tokio-specific integrations (tokio channels/locks, async `io!` traits, `tokio_runtime!()`). Async function profiling itself is runtime-agnostic and needs no feature.
 - `sqlx`/`toasty` layers pull in no sqlx/toasty dependency - they are generic `tracing` layers reading event fields (`sqlx::query` / `toasty::query` targets; don't globally filter those out). One sqlx layer covers 0.8 and 0.9. Toasty key-value (DynamoDB) ops carry no SQL and are skipped.
 - `demo` implies `hotpath` and pulls sqlx/diesel/reqwest clients only for the TUI demo, never in plain `tui` or library builds.
+- `hotpath-cloud` (`lib_on/cloud.rs`, not user-documented yet) does not imply `hotpath`; with `hotpath` on it uploads the `JsonReport` from `HotpathGuard::drop` to hotpath.rs when `HOTPATH_UPLOAD=1`, via a sync `ureq` client (the guard may outlive the tokio runtime). Needs `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN` (GitHub Actions with `id-token: write`), otherwise prints a skip line. `HOTPATH_BENCHMARK` names the series (default `default`). The base URL is hard-coded to `https://hotpath.rs`. Upload is additive to the configured output format and never affects the exit code.
 
 Macros:
 - `#[measure]` `label = "..."`: duplicate labels panic at runtime. `impl_type = "Type"` is required for correct `hotpath-cpu` attribution on bare-annotated impl methods (`#[measure_all]` on inherent impls auto-injects it; trait impl methods never match, see `dev_docs/architecture.md`).
