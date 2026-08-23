@@ -866,12 +866,83 @@ pub(crate) fn shutdown_server() -> Vec<ServerEntry> {
         .unwrap_or_default()
 }
 
+/// Per-route SQL query and outbound HTTP request counts, derived from the
+/// `route` attribution of [`SqlEntry`] / [`HttpEntry`]. Each side is `None`
+/// when the corresponding subsystem never initialized, so the report can
+/// skip the column entirely instead of rendering `-` everywhere.
+#[derive(Debug, Default)]
+pub(crate) struct RouteCallCounts<'a> {
+    sql: Option<HashMap<&'a str, u64>>,
+    http: Option<HashMap<&'a str, u64>>,
+}
+
+impl<'a> RouteCallCounts<'a> {
+    /// `sql` / `http` are `None` when that subsystem is inactive; an active
+    /// subsystem with no attributed calls yields an empty map.
+    pub(crate) fn new(sql: Option<&'a [SqlEntry]>, http: Option<&'a [HttpEntry]>) -> Self {
+        Self {
+            sql: sql.map(|entries| sum_by_route(entries.iter().map(|e| (e.route, e.count)))),
+            http: http.map(|entries| sum_by_route(entries.iter().map(|e| (e.route, e.count)))),
+        }
+    }
+
+    /// Builds from the live SQL / HTTP state, for the metrics server and MCP.
+    pub(crate) fn from_state(sql: &'a [SqlEntry], http: &'a [HttpEntry]) -> Self {
+        Self::new(SQL_STATE.get().map(|_| sql), HTTP_STATE.get().map(|_| http))
+    }
+
+    pub(crate) fn has_sql(&self) -> bool {
+        self.sql.is_some()
+    }
+
+    pub(crate) fn has_http(&self) -> bool {
+        self.http.is_some()
+    }
+
+    /// Average SQL queries per request for `entry`, `None` when the SQL
+    /// subsystem is inactive or no query was attributed to the route.
+    pub(crate) fn sql_per_request(&self, entry: &ServerEntry) -> Option<f64> {
+        per_request(self.sql.as_ref()?, entry)
+    }
+
+    /// Average outbound HTTP requests per request for `entry`, `None` when
+    /// the HTTP subsystem is inactive or no request was attributed to the route.
+    pub(crate) fn http_per_request(&self, entry: &ServerEntry) -> Option<f64> {
+        per_request(self.http.as_ref()?, entry)
+    }
+}
+
+fn sum_by_route<'a>(
+    entries: impl Iterator<Item = (Option<&'a str>, u64)>,
+) -> HashMap<&'a str, u64> {
+    let mut counts = HashMap::new();
+    for (route, count) in entries {
+        if let Some(route) = route {
+            *counts.entry(route).or_insert(0) += count;
+        }
+    }
+    counts
+}
+
+fn per_request(counts: &HashMap<&str, u64>, entry: &ServerEntry) -> Option<f64> {
+    if entry.count == 0 {
+        return None;
+    }
+    let calls = *counts.get(entry.route.as_str())?;
+    Some(calls as f64 / entry.count as f64)
+}
+
+fn format_per_request(value: Option<f64>) -> String {
+    value.map_or_else(|| "-".to_string(), |v| format!("{v:.1}"))
+}
+
 pub(crate) fn report_server_table(
     entries: &[ServerEntry],
     total_count: usize,
     total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
+    route_calls: &RouteCallCounts,
     writer: &mut dyn Write,
 ) {
     if entries.is_empty() {
@@ -894,8 +965,14 @@ pub(crate) fn report_server_table(
         styled_header("Calls"),
         styled_header("4xx"),
         styled_header("5xx"),
-        styled_header("Avg"),
     ];
+    if route_calls.has_sql() {
+        header.push(styled_header("SQL/req"));
+    }
+    if route_calls.has_http() {
+        header.push(styled_header("HTTP/req"));
+    }
+    header.push(styled_header("Avg"));
     for &p in percentiles {
         header.push(styled_header(&format_percentile_header(p)));
     }
@@ -911,8 +988,18 @@ pub(crate) fn report_server_table(
             Cell::new(&entry.count.to_string()),
             Cell::new(&entry.status_4xx.to_string()),
             Cell::new(&entry.status_5xx.to_string()),
-            Cell::new(&format_duration(entry.avg_nanos())),
         ];
+        if route_calls.has_sql() {
+            row.push(Cell::new(&format_per_request(
+                route_calls.sql_per_request(entry),
+            )));
+        }
+        if route_calls.has_http() {
+            row.push(Cell::new(&format_per_request(
+                route_calls.http_per_request(entry),
+            )));
+        }
+        row.push(Cell::new(&format_duration(entry.avg_nanos())));
         for &p in percentiles {
             row.push(Cell::new(&format_duration(entry.percentile_nanos(p))));
         }
@@ -932,6 +1019,7 @@ fn server_to_json(
     entry: &ServerEntry,
     reference_total: u64,
     percentiles: &[f64],
+    route_calls: &RouteCallCounts,
 ) -> JsonServerEntry {
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
@@ -947,6 +1035,8 @@ fn server_to_json(
         count: entry.count,
         status_4xx: entry.status_4xx,
         status_5xx: entry.status_5xx,
+        sql_per_request: route_calls.sql_per_request(entry),
+        http_per_request: route_calls.http_per_request(entry),
         avg: format_duration(entry.avg_nanos()),
         total: format_duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
@@ -960,6 +1050,7 @@ pub(crate) fn collect_server_json(
     total_calls: u64,
     reference_total: u64,
     percentiles: &[f64],
+    route_calls: &RouteCallCounts,
 ) -> JsonServerList {
     JsonServerList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
@@ -968,7 +1059,7 @@ pub(crate) fn collect_server_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| server_to_json(entry, reference_total, percentiles))
+            .map(|entry| server_to_json(entry, reference_total, percentiles, route_calls))
             .collect(),
     }
 }
@@ -1502,5 +1593,67 @@ pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::J
     crate::json::JsonDebugList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         entries,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn server(route: &str, count: u64) -> ServerEntry {
+        let mut entry = ServerEntry::new(1, route.to_string());
+        entry.count = count;
+        entry
+    }
+
+    fn sql(route: Option<&'static str>, count: u64) -> SqlEntry {
+        let mut entry = SqlEntry::new(1, "SELECT 1".to_string(), None, route);
+        entry.count = count;
+        entry
+    }
+
+    fn http(route: Option<&'static str>, count: u64) -> HttpEntry {
+        let mut entry = HttpEntry::new(1, "GET /x".to_string(), None, route);
+        entry.count = count;
+        entry
+    }
+
+    #[test]
+    fn route_call_counts_sum_per_route() {
+        let sql = [
+            sql(Some("GET /a"), 4),
+            sql(Some("GET /a"), 2),
+            sql(Some("GET /b"), 1),
+            sql(None, 10),
+        ];
+        let http = [http(Some("GET /a"), 3), http(None, 7)];
+        let counts = RouteCallCounts::new(Some(&sql), Some(&http));
+        assert!(counts.has_sql() && counts.has_http());
+
+        let a = server("GET /a", 4);
+        assert_eq!(counts.sql_per_request(&a), Some(1.5));
+        assert_eq!(counts.http_per_request(&a), Some(0.75));
+
+        let b = server("GET /b", 2);
+        assert_eq!(counts.sql_per_request(&b), Some(0.5));
+        assert_eq!(counts.http_per_request(&b), None);
+
+        let unattributed = server("GET /c", 1);
+        assert_eq!(counts.sql_per_request(&unattributed), None);
+        assert_eq!(counts.http_per_request(&unattributed), None);
+
+        let no_requests = server("GET /a", 0);
+        assert_eq!(counts.sql_per_request(&no_requests), None);
+    }
+
+    #[test]
+    fn route_call_counts_inactive_subsystems() {
+        let counts = RouteCallCounts::new(None, None);
+        assert!(!counts.has_sql() && !counts.has_http());
+        assert_eq!(counts.sql_per_request(&server("GET /a", 1)), None);
+        assert_eq!(counts.http_per_request(&server("GET /a", 1)), None);
+        assert_eq!(format_per_request(None), "-");
+        assert_eq!(format_per_request(Some(2.0)), "2.0");
+        assert_eq!(format_per_request(Some(1.25)), "1.2");
     }
 }

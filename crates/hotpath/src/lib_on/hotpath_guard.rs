@@ -934,6 +934,10 @@ impl Drop for HotpathGuard {
         let sql_data = report::shutdown_sql();
         let http_data = report::shutdown_http();
         let server_data = report::shutdown_server();
+        let route_calls = report::RouteCallCounts::new(
+            crate::sql::SQL_STATE.get().map(|_| sql_data.as_slice()),
+            crate::http::HTTP_STATE.get().map(|_| http_data.as_slice()),
+        );
         let io_data = report::shutdown_io();
 
         let sections: Vec<Section> = match &self.sections_mode {
@@ -1193,6 +1197,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                &route_calls,
                             ));
                         }
                     }
@@ -1473,6 +1478,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                &route_calls,
                                 &mut writer,
                             );
                         }

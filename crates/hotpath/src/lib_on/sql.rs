@@ -99,7 +99,7 @@ impl SqlEntry {
     const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
     const SIGFIGS: u8 = 3;
 
-    fn new(
+    pub(crate) fn new(
         id: u32,
         query: String,
         source: Option<&'static str>,

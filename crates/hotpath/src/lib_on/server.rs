@@ -100,7 +100,7 @@ impl ServerEntry {
     const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
     const SIGFIGS: u8 = 3;
 
-    fn new(id: u32, route: String) -> Self {
+    pub(crate) fn new(id: u32, route: String) -> Self {
         Self {
             id,
             route,
@@ -171,6 +171,10 @@ pub(crate) fn get_server_logs(id: u32) -> Option<HttpLogs> {
 
 pub(crate) fn get_server_json() -> crate::json::JsonServerList {
     let entries = get_sorted_server_entries();
+    let sql_entries = crate::lib_on::sql::get_sorted_sql_entries();
+    let http_entries = crate::lib_on::http::get_sorted_http_entries();
+    let route_calls =
+        crate::lib_on::report::RouteCallCounts::from_state(&sql_entries, &http_entries);
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
     let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
     let total_calls: u64 = entries.iter().map(|e| e.count).sum();
@@ -180,6 +184,7 @@ pub(crate) fn get_server_json() -> crate::json::JsonServerList {
         total_calls,
         reference_total,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        &route_calls,
     )
 }
 

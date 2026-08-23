@@ -1,6 +1,6 @@
 # Rust HTTP Server Performance Profiling for axum
 
-`hotpath` profiles the requests your [axum](https://crates.io/crates/axum) application serves, reporting response time per route so you can see which endpoints are slow, which are hit most, and which return errors. Requests are grouped by the route template that handled them - 1,000 requests to `GET /users/{id}` appear as a single entry with request count, 4xx/5xx counts, average latency, percentiles, and total time.
+`hotpath` profiles the requests your [axum](https://crates.io/crates/axum) application serves, reporting response time per route so you can see which endpoints are slow, which are hit most, and which return errors. Requests are grouped by the route template that handled them - 1,000 requests to `GET /users/{id}` appear as a single entry with request count, 4xx/5xx counts, SQL queries and outbound HTTP requests per request, average latency, percentiles, and total time.
 
 ## Wrapping the router
 
@@ -65,7 +65,28 @@ sql - SQL query execution time statistics.
 +-----------------------------------------+----------------+--------------------+-------+----------+
 ```
 
-The route is part of the grouping key, so the same statement (or the same outbound endpoint) executed under two routes appears as two rows. Dividing a row's call count by the route's request count in the `server` section gives the number of queries per request for that route, which is how N+1 query patterns surface. `Source` and `Route` are independent: a query from uninstrumented code inside a handler gets a route but no source, and a query outside any request gets neither.
+The route is part of the grouping key, so the same statement (or the same outbound endpoint) executed under two routes appears as two rows. `Source` and `Route` are independent: a query from uninstrumented code inside a handler gets a route but no source, and a query outside any request gets neither.
+
+### Queries and requests per route
+
+The `server` section turns that attribution into per-route averages: `SQL/req` is the number of SQL queries issued per request of the route, `HTTP/req` the number of outbound HTTP requests. Each column appears only when the corresponding profiling subsystem is active. This is how N+1 query patterns surface - a list endpoint averaging 51 queries per request is loading its rows one by one:
+
+```
+server - HTTP server response time statistics per route.
++--------------------+-------+-----+-----+---------+----------+-----------+-----------+
+| Route              | Calls | 4xx | 5xx | SQL/req | HTTP/req | Avg       | P95       |
++--------------------+-------+-----+-----+---------+----------+-----------+-----------+
+| GET /profiles/{id} | 3     | 0   | 0   | 2.0     | 1.0      | 530.60 µs | 830.46 µs |
+| GET /users/{id}    | 5     | 0   | 0   | 1.0     | -        | 49.41 µs  | 92.09 µs  |
+| GET /missing       | 1     | 1   | 0   | -       | -        | 4.54 µs   | 4.54 µs   |
++--------------------+-------+-----+-----+---------+----------+-----------+-----------+
+```
+
+The values are derived at report time by summing the call counts of the SQL and HTTP entries carrying the route and dividing by the route's request count; they are exposed as `sql_per_request` / `http_per_request` in the JSON report, the `/server` metrics endpoint, and MCP tools, and shown in the TUI server panel. They inherit the limits of route scoping:
+
+- `-` means nothing was attributed to the route: requests that match no route (fallback, `nest_service`) set no route context, and so do handlers whose queries run inside `tokio::spawn` / `spawn_blocking` or on a driver worker thread.
+- Only the average is reported, so a route whose requests alternate between 1 and 100 queries shows `50.5`.
+- When the entry cap (`HOTPATH_ENTRIES_LIMIT`) is hit, SQL and HTTP entries folded into `<other>` lose their route and are not counted.
 
 The layer sets the route around every poll of the handler future, the same way `Source` is tracked, so concurrent requests interleaved on one runtime thread never see each other's route. The same limits apply: work moved off the request future with `tokio::spawn` or `spawn_blocking` runs outside the route context, and async sqlx sqlite executes statements on its own connection worker thread where neither source nor route is visible (PostgreSQL/MySQL sqlx drivers, Diesel, and Toasty run on the calling task and are attributed normally). Requests that match no route (fallback, `nest_service`) set no route context.
 
