@@ -140,21 +140,21 @@ impl FunctionStats {
 
     #[inline]
     fn record_alloc(&mut self, bytes_total: Option<u64>, count_total: Option<u64>) {
+        // Zero is always recordable regardless of the histogram's lowest
+        // discernible value, so non-allocating calls count toward percentiles.
         if let (Some(ref mut bytes_total_hist), Some(bytes)) =
             (&mut self.bytes_total_hist, bytes_total)
         {
-            if bytes > 0 {
-                let clamped_total = bytes.clamp(Self::LOW_BYTES, Self::HIGH_BYTES);
-                bytes_total_hist.record(clamped_total).unwrap();
-            }
+            bytes_total_hist
+                .record(bytes.min(Self::HIGH_BYTES))
+                .unwrap();
         }
         if let (Some(ref mut count_total_hist), Some(count)) =
             (&mut self.count_total_hist, count_total)
         {
-            if count > 0 {
-                let clamped_total = count.clamp(Self::LOW_COUNT, Self::HIGH_COUNT);
-                count_total_hist.record(clamped_total).unwrap();
-            }
+            count_total_hist
+                .record(count.min(Self::HIGH_COUNT))
+                .unwrap();
         }
     }
 
@@ -400,5 +400,31 @@ mod tests {
 
         assert_eq!(stats.duration_sampled_count, 3);
         assert_eq!(stats.duration_hist.as_ref().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn zero_alloc_samples_land_in_histograms() {
+        let mut stats = FunctionStats::new_alloc(
+            1,
+            "f",
+            Some(0),
+            Some(0),
+            Some(10),
+            Duration::ZERO,
+            false,
+            None,
+            None,
+        );
+        stats.update_alloc(Some(0), Some(0), Some(10), Duration::ZERO, None, None);
+        stats.update_alloc(Some(0), Some(0), Some(10), Duration::ZERO, None, None);
+        stats.update_alloc(Some(4096), Some(2), Some(10), Duration::ZERO, None, None);
+
+        assert_eq!(stats.count, 4);
+        assert_eq!(stats.bytes_total_hist.as_ref().unwrap().len(), 4);
+        assert_eq!(stats.count_total_hist.as_ref().unwrap().len(), 4);
+        assert_eq!(stats.bytes_total_percentile(50.0), 0);
+        assert_eq!(stats.count_total_percentile(50.0), 0);
+        assert!(stats.bytes_total_percentile(100.0) >= 4096);
+        assert_eq!(stats.count_total_percentile(100.0), 2);
     }
 }
