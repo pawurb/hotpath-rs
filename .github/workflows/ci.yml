@@ -275,3 +275,32 @@ jobs:
       - name: Build hotpath-samply wrapper (updated deps)
         run: |
           cargo build -p hotpath --bin hotpath-samply --features "hotpath,hotpath-cpu"
+
+  # End-to-end test of the hotpath-cloud upload: the example built with
+  # `hotpath,hotpath-cloud` uploads its own report to hotpath.rs using this
+  # job's OIDC token. Skipped on fork PRs, which get no token.
+  cloud-upload:
+    name: cloud upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run example and upload report
+        env:
+          HOTPATH_UPLOAD: "1"
+          HOTPATH_BENCHMARK: ci
+          HOTPATH_OUTPUT_FORMAT: none
+        run: |
+          cargo run -q -p test-all-features --example basic_all_features \
+            --features hotpath,hotpath-alloc,hotpath-cloud 2>&1 | tee run.log
+          grep -q '^hotpath: uploaded report ' run.log
+          {
+            echo "## hotpath.rs upload"
+            echo '```'; grep '^hotpath: upload' run.log; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

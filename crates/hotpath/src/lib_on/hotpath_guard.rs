@@ -1033,8 +1033,12 @@ impl Drop for HotpathGuard {
         };
 
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
+        #[cfg(feature = "hotpath-cloud")]
+        let cloud_enabled = crate::lib_on::cloud::enabled();
+        #[cfg(not(feature = "hotpath-cloud"))]
+        let cloud_enabled = false;
 
-        if is_json {
+        if is_json || cloud_enabled {
             let mut report = JsonReport {
                 label: std::env::var("HOTPATH_REPORT_LABEL")
                     .ok()
@@ -1243,7 +1247,14 @@ impl Drop for HotpathGuard {
                 }
                 _ => {}
             }
-        } else {
+
+            #[cfg(feature = "hotpath-cloud")]
+            if cloud_enabled {
+                crate::lib_on::cloud::upload(&report);
+            }
+        }
+
+        if !is_json {
             let baseline_ns = cpu_baseline.as_ref().map(|b| b.avg_ns);
             let label = std::env::var("HOTPATH_REPORT_LABEL")
                 .ok()
