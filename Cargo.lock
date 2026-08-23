@@ -1609,6 +1609,7 @@ dependencies = [
  "async-lock",
  "async-trait",
  "axum",
+ "base64 0.22.1",
  "cfg-if",
  "clap",
  "crossbeam-channel",

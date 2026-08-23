@@ -46,6 +46,25 @@ pub(crate) struct FunctionStatsConfig {
     pub(crate) percentiles: Vec<f64>,
     pub(crate) caller_name: &'static str,
     pub(crate) limit: usize,
+    /// Set only for the final static report, never for the live metrics server.
+    pub(crate) histograms: bool,
+}
+
+/// HdrHistogram V2 deflate payload, base64-encoded. Decodable by any HdrHistogram
+/// implementation (`hdrhistogram::serialization::Deserializer`, hdr-histogram-js).
+#[cfg(feature = "hotpath-cloud")]
+pub(crate) fn histogram_base64(hist: &hdrhistogram::Histogram<u64>) -> Option<String> {
+    use base64::Engine;
+    use hdrhistogram::serialization::{Serializer, V2DeflateSerializer};
+
+    let mut buf = Vec::new();
+    V2DeflateSerializer::new().serialize(hist, &mut buf).ok()?;
+    Some(base64::engine::general_purpose::STANDARD.encode(&buf))
+}
+
+#[cfg(not(feature = "hotpath-cloud"))]
+pub(crate) fn histogram_base64(_hist: &hdrhistogram::Histogram<u64>) -> Option<String> {
+    None
 }
 
 pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -488,4 +507,31 @@ pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<FunctionLogsLi
         response_tx,
     })
     .flatten()
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod tests {
+    use base64::Engine;
+    use hdrhistogram::serialization::Deserializer;
+    use hdrhistogram::Histogram;
+
+    use crate::lib_on::functions::histogram_base64;
+
+    #[test]
+    fn histogram_base64_round_trips() {
+        let mut hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap();
+        for v in [180_000u64, 190_000, 1_400_000, 1_500_000, 9_000_000] {
+            hist.record(v).unwrap();
+        }
+
+        let b64 = histogram_base64(&hist).unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap();
+        let decoded: Histogram<u64> = Deserializer::new().deserialize(&mut &bytes[..]).unwrap();
+
+        assert_eq!(decoded.len(), hist.len());
+        assert_eq!(decoded.max(), hist.max());
+        assert_eq!(decoded.value_at_quantile(0.5), hist.value_at_quantile(0.5));
+    }
 }

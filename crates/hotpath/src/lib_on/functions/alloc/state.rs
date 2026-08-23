@@ -260,6 +260,13 @@ impl FunctionStats {
         self.duration_hist.as_ref().unwrap().value_at_percentile(p)
     }
 
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.duration_sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::functions::histogram_base64(self.duration_hist.as_ref()?)
+    }
+
     #[inline]
     pub fn avg_duration_ns(&self) -> u64 {
         self.total_duration_ns

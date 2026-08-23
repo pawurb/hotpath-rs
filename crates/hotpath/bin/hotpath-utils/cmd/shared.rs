@@ -722,6 +722,7 @@ mod test {
             percentiles,
             total: hotpath::format_duration(total),
             percent_total: format!("{:.2}%", percent as f64 / 100.0),
+            histogram: None,
         }
     }
 
@@ -761,6 +762,7 @@ mod test {
             percentiles,
             total: hotpath::format_bytes(total_bytes),
             percent_total: format!("{:.2}%", percent as f64 / 100.0),
+            histogram: None,
         }
     }
 
