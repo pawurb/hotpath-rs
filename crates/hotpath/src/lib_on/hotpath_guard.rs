@@ -501,6 +501,7 @@ pub struct HotpathGuard {
     server_limit: usize,
     io_limit: usize,
     threads_limit: usize,
+    run_failed: std::sync::atomic::AtomicBool,
     #[cfg(feature = "hotpath-meta")]
     _meta_guard: Option<hotpath_meta::HotpathGuard>,
 }
@@ -788,9 +789,19 @@ impl HotpathGuard {
             server_limit,
             io_limit,
             threads_limit,
+            run_failed: std::sync::atomic::AtomicBool::new(false),
             #[cfg(feature = "hotpath-meta")]
             _meta_guard,
         }
+    }
+
+    /// Marks the profiled run as failed so its report is not uploaded to the
+    /// cloud. Called by the `#[hotpath::main]` expansion when the entrypoint
+    /// returns `Err`.
+    #[doc(hidden)]
+    pub fn mark_failed(&self) {
+        self.run_failed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -1255,7 +1266,11 @@ impl Drop for HotpathGuard {
 
             #[cfg(feature = "hotpath-cloud")]
             if cloud_enabled {
-                crate::lib_on::cloud::upload(&report);
+                if self.run_failed.load(std::sync::atomic::Ordering::Relaxed) {
+                    eprintln!("hotpath: upload skipped: the profiled program returned an error");
+                } else {
+                    crate::lib_on::cloud::upload(&report);
+                }
             }
         }
 

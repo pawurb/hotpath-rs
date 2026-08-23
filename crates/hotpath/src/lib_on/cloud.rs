@@ -6,7 +6,6 @@
 //! be gone, so it never spawns tasks. Failures are reported on stderr and never
 //! affect the process exit code.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -25,14 +24,6 @@ pub(crate) struct UploadResponse {
     pub(crate) repository: String,
     pub(crate) benchmark: String,
     pub(crate) baseline: Option<String>,
-}
-
-static FAILED: AtomicBool = AtomicBool::new(false);
-
-/// Marks the profiled entrypoint as failed (returned `Err`), so the report
-/// of a broken run never enters cloud history.
-pub(crate) fn mark_failed() {
-    FAILED.store(true, Ordering::Relaxed);
 }
 
 pub(crate) fn enabled() -> bool {
@@ -65,10 +56,6 @@ pub(crate) fn upload_url() -> String {
 pub(crate) fn upload(report: &JsonReport) {
     if std::thread::panicking() {
         eprintln!("hotpath: upload skipped: the profiled program panicked");
-        return;
-    }
-    if FAILED.load(Ordering::Relaxed) {
-        eprintln!("hotpath: upload skipped: the profiled program returned an error");
         return;
     }
     let (request_url, request_token) = match (

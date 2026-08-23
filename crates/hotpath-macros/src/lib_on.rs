@@ -409,7 +409,9 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         {
             use hotpath::__private::{FailureProbe, ResultFailureProbe};
             if (&__hotpath_out).hotpath_failed() {
-                hotpath::__private::mark_failed();
+                if let Some(guard) = &_hotpath {
+                    guard.mark_failed();
+                }
             }
         }
         __hotpath_out

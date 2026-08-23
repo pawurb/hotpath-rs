@@ -85,11 +85,6 @@ pub mod __private {
             self.is_err()
         }
     }
-
-    pub fn mark_failed() {
-        #[cfg(feature = "hotpath-cloud")]
-        crate::lib_on::cloud::mark_failed();
-    }
 }
 pub mod hotpath_guard;
 pub(crate) mod report;
