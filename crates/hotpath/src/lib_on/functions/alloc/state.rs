@@ -166,11 +166,8 @@ impl FunctionStats {
         self.duration_sampled_count += 1;
         self.total_duration_ns += duration_ns;
         if let Some(ref mut duration_hist) = self.duration_hist {
-            if duration_ns > 0 {
-                let clamped_duration =
-                    duration_ns.clamp(Self::LOW_DURATION_NS, Self::HIGH_DURATION_NS);
-                duration_hist.record(clamped_duration).unwrap();
-            }
+            let clamped_duration = duration_ns.clamp(Self::LOW_DURATION_NS, Self::HIGH_DURATION_NS);
+            duration_hist.record(clamped_duration).unwrap();
         }
     }
 
@@ -377,4 +374,31 @@ pub(crate) fn send_alloc_measurement_with_log(
         tid,
         result_log,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::lib_on::functions::alloc::state::FunctionStats;
+
+    #[test]
+    fn zero_duration_samples_land_in_histogram() {
+        let mut stats = FunctionStats::new_alloc(
+            1,
+            "f",
+            Some(0),
+            Some(0),
+            Some(0),
+            Duration::ZERO,
+            false,
+            None,
+            None,
+        );
+        stats.update_alloc(Some(0), Some(0), Some(0), Duration::ZERO, None, None);
+        stats.update_alloc(Some(0), Some(0), Some(500), Duration::ZERO, None, None);
+
+        assert_eq!(stats.duration_sampled_count, 3);
+        assert_eq!(stats.duration_hist.as_ref().unwrap().len(), 3);
+    }
 }
