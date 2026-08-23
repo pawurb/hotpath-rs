@@ -188,7 +188,7 @@ fn url_encode(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::lib_on::cloud::{is_truthy, map_status, url_encode, APP_URL};
 
     #[test]
     fn truthy_values() {

@@ -1598,7 +1598,10 @@ pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::J
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::http::HttpEntry;
+    use crate::lib_on::report::{format_per_request, RouteCallCounts};
+    use crate::server::ServerEntry;
+    use crate::sql::SqlEntry;
 
     fn server(route: &str, count: u64) -> ServerEntry {
         let mut entry = ServerEntry::new(1, route.to_string());
