@@ -114,10 +114,7 @@ pub(crate) fn mint_token(request_url: &str, request_token: &str) -> Result<Strin
     let status = resp.status().as_u16();
     if status != 200 {
         let body = read_body(&mut resp);
-        return Err(format!(
-            "OIDC token request returned HTTP {status}: {}",
-            truncate(&body)
-        ));
+        return Err(format!("OIDC token request returned HTTP {status}: {body}"));
     }
     let token: TokenResponse = resp
         .body_mut()
@@ -158,23 +155,12 @@ pub(crate) fn map_status(status: u16, body: &str) -> String {
             "hotpath GitHub App is not installed on this repository (HTTP 403), install it at {APP_URL}"
         ),
         413 => "report exceeds the 5 MiB upload limit (HTTP 413)".to_string(),
-        400 => format!("server rejected the report (HTTP 400): {}", truncate(body)),
-        _ => format!("server returned HTTP {status}: {}", truncate(body)),
+        _ => format!("server returned HTTP {status}: {body}"),
     }
 }
 
 fn read_body(resp: &mut ureq::http::Response<ureq::Body>) -> String {
     resp.body_mut().read_to_string().unwrap_or_default()
-}
-
-fn truncate(s: &str) -> String {
-    const MAX: usize = 200;
-    let s = s.trim();
-    if s.chars().count() <= MAX {
-        s.to_string()
-    } else {
-        format!("{}...", s.chars().take(MAX).collect::<String>())
-    }
 }
 
 fn url_encode(s: &str) -> String {
@@ -215,7 +201,6 @@ mod tests {
         assert!(map_status(401, "").contains("401"));
         assert!(map_status(403, "").contains(APP_URL));
         assert!(map_status(413, "").contains("5 MiB"));
-        assert!(map_status(400, "bad").contains("bad"));
         assert!(map_status(500, "boom").contains("HTTP 500: boom"));
     }
 }
