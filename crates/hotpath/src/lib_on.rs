@@ -63,6 +63,34 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 #[cfg(feature = "hotpath-cloud")]
 pub(crate) mod cloud;
+
+/// Used by the `#[hotpath::main]` expansion; not part of the public API.
+#[doc(hidden)]
+pub mod __private {
+    /// Fallback probe: anything that is not a `Result` counts as success.
+    /// Resolved through autoref, so `(&value).hotpath_failed()` picks
+    /// [`ResultFailureProbe`] for `Result` and this impl for everything else.
+    pub trait FailureProbe {
+        fn hotpath_failed(&self) -> bool {
+            false
+        }
+    }
+    impl<T> FailureProbe for &T {}
+
+    pub trait ResultFailureProbe {
+        fn hotpath_failed(&self) -> bool;
+    }
+    impl<T, E> ResultFailureProbe for Result<T, E> {
+        fn hotpath_failed(&self) -> bool {
+            self.is_err()
+        }
+    }
+
+    pub fn mark_failed() {
+        #[cfg(feature = "hotpath-cloud")]
+        crate::lib_on::cloud::mark_failed();
+    }
+}
 pub mod hotpath_guard;
 pub(crate) mod report;
 pub(crate) mod sampling;

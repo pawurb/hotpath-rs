@@ -391,9 +391,28 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
+    let ret_ty = match &sig.output {
+        syn::ReturnType::Default => quote! { () },
+        syn::ReturnType::Type(_, ty) => quote! { #ty },
+    };
+    // The body runs inside a closure / async block so an early `return Err(..)`
+    // still lands in `__hotpath_out`, which is probed for failure before the
+    // guard drops and uploads the report.
+    let run_body = if asyncness {
+        quote! { async { #block }.await }
+    } else {
+        quote! { (|| -> #ret_ty { #block })() }
+    };
     let body = quote! {
         #guard_init
-        #block
+        let __hotpath_out: #ret_ty = #run_body;
+        {
+            use hotpath::__private::{FailureProbe, ResultFailureProbe};
+            if (&__hotpath_out).hotpath_failed() {
+                hotpath::__private::mark_failed();
+            }
+        }
+        __hotpath_out
     };
 
     let wrapped_body = if asyncness {
