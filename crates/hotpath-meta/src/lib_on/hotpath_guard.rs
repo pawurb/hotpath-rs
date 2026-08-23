@@ -534,6 +534,7 @@ impl HotpathGuard {
                                     percentiles: worker_percentiles.clone(),
                                     caller_name: worker_caller_name,
                                     limit: worker_limit,
+                                    histograms: false,
                                 };
                                 let current_elapsed_ns = config.total_elapsed.as_nanos() as u64;
 
@@ -721,6 +722,7 @@ fn parse_usize_env(name: &str) -> Option<usize> {
 fn make_functions_config(
     state_guard: &FunctionsState,
     total_elapsed: std::time::Duration,
+    histograms: bool,
 ) -> FunctionStatsConfig {
     let limit = parse_usize_env("HOTPATH_META_FUNCTIONS_LIMIT")
         .or_else(|| parse_usize_env("HOTPATH_META_LIMIT"))
@@ -731,6 +733,7 @@ fn make_functions_config(
         percentiles: state_guard.percentiles.clone(),
         caller_name: state_guard.caller_name,
         limit,
+        histograms,
     }
 }
 
@@ -945,7 +948,8 @@ impl Drop for HotpathGuard {
                             if let Ok(state_guard) = state.read() {
                                 let total_elapsed = end_time.duration_since(state_guard.start_time);
                                 let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                let config = make_functions_config(&state_guard, total_elapsed);
+                                let config =
+                                    make_functions_config(&state_guard, total_elapsed, false);
                                 report.functions_timing =
                                     Some(build_timing_list(stats, &config, elapsed_ns));
                             }
@@ -958,7 +962,7 @@ impl Drop for HotpathGuard {
                                     if let Ok(state_guard) = state.read() {
                                         let total_elapsed = end_time.duration_since(state_guard.start_time);
                                         let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                        let config = make_functions_config(&state_guard, total_elapsed);
+                                        let config = make_functions_config(&state_guard, total_elapsed, false);
                                         report.functions_alloc = Some(
                                             build_functions_list_alloc(stats, &config, elapsed_ns),
                                         );
@@ -976,7 +980,8 @@ impl Drop for HotpathGuard {
                                     let total_elapsed =
                                         end_time.duration_since(state_guard.start_time);
                                     let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                    let config = make_functions_config(&state_guard, total_elapsed);
+                                    let config =
+                                        make_functions_config(&state_guard, total_elapsed, false);
                                     let list = crate::functions::cpu::build_cpu_json(
                                         cpu,
                                         total_elapsed,
@@ -1080,6 +1085,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                report::ServerColumns::from_state(),
                             ));
                         }
                     }
@@ -1158,7 +1164,8 @@ impl Drop for HotpathGuard {
                         if let Some(ref stats) = functions_stats {
                             if let Ok(state_guard) = state.read() {
                                 let total_elapsed = end_time.duration_since(state_guard.start_time);
-                                let config = make_functions_config(&state_guard, total_elapsed);
+                                let config =
+                                    make_functions_config(&state_guard, total_elapsed, false);
                                 let elapsed_ns = total_elapsed.as_nanos() as u64;
                                 let list = build_timing_list(stats, &config, elapsed_ns);
 
@@ -1186,7 +1193,7 @@ impl Drop for HotpathGuard {
                                 if let Some(ref stats) = functions_stats {
                                     if let Ok(state_guard) = state.read() {
                                         let total_elapsed = end_time.duration_since(state_guard.start_time);
-                                        let config = make_functions_config(&state_guard, total_elapsed);
+                                        let config = make_functions_config(&state_guard, total_elapsed, false);
                                         let elapsed_ns = total_elapsed.as_nanos() as u64;
                                         let list = build_functions_list_alloc(stats, &config, elapsed_ns);
 
@@ -1220,8 +1227,11 @@ impl Drop for HotpathGuard {
                                         let total_elapsed =
                                             end_time.duration_since(state_guard.start_time);
                                         let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                        let config =
-                                            make_functions_config(&state_guard, total_elapsed);
+                                        let config = make_functions_config(
+                                            &state_guard,
+                                            total_elapsed,
+                                            false,
+                                        );
                                         let list = crate::functions::cpu::build_cpu_json(
                                             cpu,
                                             total_elapsed,
@@ -1349,6 +1359,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                report::ServerColumns::from_state(),
                                 &mut writer,
                             );
                         }

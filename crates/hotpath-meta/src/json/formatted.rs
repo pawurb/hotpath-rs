@@ -73,6 +73,10 @@ pub struct JsonFunctionEntry {
     pub percentiles: HashMap<String, String>,
     pub total: String,
     pub percent_total: String,
+    /// Base64 HdrHistogram V2 (deflate) of sampled call durations in ns.
+    /// Present only in static reports with `hotpath-cloud` upload enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -543,6 +547,16 @@ pub struct JsonServerEntry {
     pub count: u64,
     pub status_4xx: u64,
     pub status_5xx: u64,
+    /// Average SQL queries issued per completed request of this route,
+    /// counted under the request's route scope. `None` when SQL profiling is
+    /// inactive or no completed request carried a route scope (unmatched
+    /// routes, route scoping disabled, route interner cap hit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sql_per_request: Option<f64>,
+    /// Average outbound HTTP requests per request of this route; same
+    /// semantics as `sql_per_request`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_per_request: Option<f64>,
     pub avg: String,
     pub total: String,
     pub percent_total: String,
@@ -992,6 +1006,10 @@ fn default_report_type() -> String {
 pub struct JsonReport {
     #[serde(default = "default_report_type")]
     pub r#type: String,
+    /// hotpath crate version that produced the report; empty when read from a
+    /// report written before the field existed.
+    #[serde(default)]
+    pub version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1032,6 +1050,7 @@ impl Default for JsonReport {
     fn default() -> Self {
         Self {
             r#type: default_report_type(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
             label: None,
             time_sampling: None,
             functions_timing: None,

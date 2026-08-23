@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
 use crate::json::{HttpLogEntry, HttpLogs};
+use crate::lib_on::caller_stack::RequestCalls;
 use crate::lib_on::hotpath_guard::{bounded_key, DRAIN_INTERVAL_MS, LOGS_LIMIT, OVERFLOW_ENTRY};
 use crate::lib_on::http::normalize::normalize_endpoint;
 use crate::lib_on::START_TIME;
@@ -69,13 +70,17 @@ pub(crate) enum ServerEvent {
     /// `METHOD template` when the router matched a route; otherwise it is
     /// `METHOD raw-path` and `matched` is `false`, which makes the worker
     /// normalize id-like segments before bucketing. `timestamp_ns` is the
-    /// completion time in ns since profiler start.
+    /// completion time in ns since profiler start. `calls` holds the SQL
+    /// queries and outbound HTTP requests issued under the request's route
+    /// scope, `None` when the request had no scope (unmatched route, route
+    /// scoping disabled, or the route interner cap was hit).
     Completed {
         route: Arc<str>,
         matched: bool,
         duration_nanos: u64,
         status: u16,
         timestamp_ns: u64,
+        calls: Option<RequestCalls>,
     },
 }
 
@@ -90,7 +95,18 @@ pub(crate) struct ServerEntry {
     /// Responses with a 5xx status.
     pub(crate) status_5xx: u64,
     pub(crate) total_nanos: u64,
+    /// Completed requests that carried a route scope; the denominator of
+    /// the per-request SQL / HTTP averages.
+    pub(crate) scoped_count: u64,
+    /// SQL queries issued by scoped requests.
+    pub(crate) sql_calls: u64,
+    /// Outbound HTTP requests issued by scoped requests.
+    pub(crate) http_calls: u64,
     hist: Option<Histogram<u64>>,
+}
+
+fn per_request(calls: u64, scoped_count: u64) -> Option<f64> {
+    (scoped_count > 0).then(|| calls as f64 / scoped_count as f64)
 }
 
 impl ServerEntry {
@@ -106,6 +122,9 @@ impl ServerEntry {
             status_4xx: 0,
             status_5xx: 0,
             total_nanos: 0,
+            scoped_count: 0,
+            sql_calls: 0,
+            http_calls: 0,
             hist: Histogram::<u64>::new_with_bounds(Self::LOW_NS, Self::HIGH_NS, Self::SIGFIGS)
                 .ok(),
         }
@@ -117,6 +136,18 @@ impl ServerEntry {
             hist.record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
                 .unwrap();
         }
+    }
+
+    /// Average SQL queries per scoped request, `None` when no completed
+    /// request of this route carried a route scope.
+    pub(crate) fn sql_per_request(&self) -> Option<f64> {
+        per_request(self.sql_calls, self.scoped_count)
+    }
+
+    /// Average outbound HTTP requests per scoped request, `None` when no
+    /// completed request of this route carried a route scope.
+    pub(crate) fn http_per_request(&self) -> Option<f64> {
+        per_request(self.http_calls, self.scoped_count)
     }
 
     pub(crate) fn avg_nanos(&self) -> u64 {
@@ -131,6 +162,7 @@ impl ServerEntry {
     }
 }
 
+#[derive(Default)]
 pub(crate) struct ServerInternalState {
     pub(crate) stats: HashMap<String, ServerEntry>,
     /// Recent requests per entry id, capped at `LOGS_LIMIT`. Only status and
@@ -178,6 +210,7 @@ pub(crate) fn get_server_json() -> crate::json::JsonServerList {
         total_calls,
         reference_total,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        crate::lib_on::report::ServerColumns::from_state(),
     )
 }
 
@@ -210,6 +243,7 @@ fn process_server_event(state: &mut ServerInternalState, event: ServerEvent) {
         duration_nanos,
         status,
         timestamp_ns,
+        calls,
     } = event;
 
     let key = if matched {
@@ -230,6 +264,11 @@ fn process_server_event(state: &mut ServerInternalState, event: ServerEvent) {
         _ => {}
     }
     entry.record(duration_nanos);
+    if let Some(calls) = calls {
+        entry.scoped_count += 1;
+        entry.sql_calls += u64::from(calls.sql);
+        entry.http_calls += u64::from(calls.http);
+    }
 
     let logs = state.logs.entry(entry.id).or_default();
     if logs.len() >= *LOGS_LIMIT {
@@ -340,4 +379,50 @@ macro_rules! axum {
     ($router:expr) => {
         $router.layer($crate::AxumLayer::new())
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::lib_on::caller_stack::RequestCalls;
+    use crate::lib_on::server::{process_server_event, ServerEvent, ServerInternalState};
+    use std::sync::Arc;
+
+    fn completed(route: &str, calls: Option<RequestCalls>) -> ServerEvent {
+        ServerEvent::Completed {
+            route: Arc::from(route),
+            matched: true,
+            duration_nanos: 1_000,
+            status: 200,
+            timestamp_ns: 0,
+            calls,
+        }
+    }
+
+    #[test]
+    fn per_request_averages_use_scoped_requests_only() {
+        let mut state = ServerInternalState::default();
+        let route = "GET /users/{id}";
+        process_server_event(
+            &mut state,
+            completed(route, Some(RequestCalls { sql: 3, http: 1 })),
+        );
+        process_server_event(
+            &mut state,
+            completed(route, Some(RequestCalls { sql: 1, http: 0 })),
+        );
+        // A request that lost its scope (interner cap) counts as a request
+        // but not towards the averages.
+        process_server_event(&mut state, completed(route, None));
+
+        let entry = &state.stats[route];
+        assert_eq!(entry.count, 3);
+        assert_eq!(entry.scoped_count, 2);
+        assert_eq!(entry.sql_per_request(), Some(2.0));
+        assert_eq!(entry.http_per_request(), Some(0.5));
+
+        process_server_event(&mut state, completed("GET /missing", None));
+        let unscoped = &state.stats["GET /missing"];
+        assert_eq!(unscoped.sql_per_request(), None);
+        assert_eq!(unscoped.http_per_request(), None);
+    }
 }

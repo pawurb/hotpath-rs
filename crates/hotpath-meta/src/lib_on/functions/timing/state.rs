@@ -136,6 +136,13 @@ impl FunctionStats {
         let v = self.hist.as_ref().unwrap().value_at_percentile(p);
         Duration::from_nanos(v)
     }
+
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::functions::histogram_base64(self.hist.as_ref()?)
+    }
 }
 
 pub(crate) struct FunctionsState {

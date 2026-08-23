@@ -20,6 +20,19 @@ pub(crate) fn current_caller() -> Option<&'static str> {
     None
 }
 
+/// Number of SQL queries and outbound HTTP requests one server request has
+/// issued, carried by [`crate::lib_on::server::ServerEvent::Completed`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct RequestCalls {
+    pub(crate) sql: u32,
+    pub(crate) http: u32,
+}
+
+impl RequestCalls {
+    #[allow(dead_code)]
+    pub(crate) const ZERO: Self = Self { sql: 0, http: 0 };
+}
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "axum-0-8")] {
         use std::collections::HashSet;
@@ -28,6 +41,10 @@ cfg_if::cfg_if! {
 
         thread_local! {
             static CURRENT_ROUTE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+            /// SQL queries and outbound HTTP requests issued so far by the
+            /// request currently in scope; swapped in and out by
+            /// [`enter_route`] so interleaved requests keep separate counts.
+            static REQUEST_CALLS: std::cell::Cell<RequestCalls> = const { std::cell::Cell::new(RequestCalls::ZERO) };
         }
 
         static ROUTE_SCOPE_ENABLED: AtomicBool = AtomicBool::new(true);
@@ -74,12 +91,26 @@ cfg_if::cfg_if! {
         /// Sets the current route for the duration of the returned guard and
         /// restores the previous value on drop, so nested layers and
         /// interleaved tasks on one runtime thread never observe a stale route.
+        ///
+        /// `calls` holds the request's running SQL / HTTP counts: they are
+        /// installed for the scope and written back when the guard drops, so
+        /// the owner sees the total across polls.
         #[inline]
-        pub(crate) fn enter_route(route: &'static str) -> RouteScopeGuard {
+        pub(crate) fn enter_route<'a>(
+            route: &'static str,
+            calls: &'a mut RequestCalls,
+        ) -> RouteScopeGuard<'a> {
             let previous = CURRENT_ROUTE
                 .try_with(|cell| cell.replace(Some(route)))
                 .unwrap_or(None);
-            RouteScopeGuard { previous }
+            let previous_calls = REQUEST_CALLS
+                .try_with(|cell| cell.replace(*calls))
+                .unwrap_or_default();
+            RouteScopeGuard {
+                previous,
+                previous_calls,
+                calls,
+            }
         }
 
         #[inline]
@@ -88,20 +119,59 @@ cfg_if::cfg_if! {
             CURRENT_ROUTE.try_with(|cell| cell.get()).ok().flatten()
         }
 
-        pub(crate) struct RouteScopeGuard {
-            previous: Option<&'static str>,
+        /// Route of the request issuing a SQL query, counting the query
+        /// towards that request's `SQL/req`.
+        #[inline]
+        #[allow(dead_code)]
+        pub(crate) fn current_sql_route() -> Option<&'static str> {
+            let route = current_route()?;
+            let _ = REQUEST_CALLS.try_with(|cell| {
+                let mut calls = cell.get();
+                calls.sql = calls.sql.saturating_add(1);
+                cell.set(calls);
+            });
+            Some(route)
         }
 
-        impl Drop for RouteScopeGuard {
+        /// Route of the request issuing an outbound HTTP request, counting
+        /// it towards that request's `HTTP/req`.
+        #[inline]
+        #[allow(dead_code)]
+        pub(crate) fn current_http_route() -> Option<&'static str> {
+            let route = current_route()?;
+            let _ = REQUEST_CALLS.try_with(|cell| {
+                let mut calls = cell.get();
+                calls.http = calls.http.saturating_add(1);
+                cell.set(calls);
+            });
+            Some(route)
+        }
+
+        pub(crate) struct RouteScopeGuard<'a> {
+            previous: Option<&'static str>,
+            previous_calls: RequestCalls,
+            calls: &'a mut RequestCalls,
+        }
+
+        impl Drop for RouteScopeGuard<'_> {
             #[inline]
             fn drop(&mut self) {
                 let _ = CURRENT_ROUTE.try_with(|cell| cell.set(self.previous));
+                let _ = REQUEST_CALLS.try_with(|cell| {
+                    *self.calls = cell.replace(self.previous_calls);
+                });
             }
         }
     } else {
         #[inline]
         #[allow(dead_code)]
-        pub(crate) fn current_route() -> Option<&'static str> {
+        pub(crate) fn current_sql_route() -> Option<&'static str> {
+            None
+        }
+
+        #[inline]
+        #[allow(dead_code)]
+        pub(crate) fn current_http_route() -> Option<&'static str> {
             None
         }
     }
@@ -109,7 +179,10 @@ cfg_if::cfg_if! {
 
 #[cfg(all(test, feature = "axum-0-8"))]
 mod tests {
-    use crate::lib_on::caller_stack::{current_route, enter_route, intern_route};
+    use crate::lib_on::caller_stack::{
+        current_http_route, current_route, current_sql_route, enter_route, intern_route,
+        RequestCalls,
+    };
 
     #[test]
     fn nested_route_scopes_restore_previous() {
@@ -117,15 +190,33 @@ mod tests {
         let outer = intern_route("GET /outer").unwrap();
         let inner = intern_route("GET /inner").unwrap();
         assert!(std::ptr::eq(outer, intern_route("GET /outer").unwrap()));
+        let mut outer_calls = RequestCalls::ZERO;
+        let mut inner_calls = RequestCalls::ZERO;
         {
-            let _outer = enter_route(outer);
+            let _outer = enter_route(outer, &mut outer_calls);
             assert_eq!(current_route(), Some(outer));
+            assert_eq!(current_sql_route(), Some(outer));
             {
-                let _inner = enter_route(inner);
+                let _inner = enter_route(inner, &mut inner_calls);
                 assert_eq!(current_route(), Some(inner));
+                assert_eq!(current_sql_route(), Some(inner));
+                assert_eq!(current_sql_route(), Some(inner));
+                assert_eq!(current_http_route(), Some(inner));
             }
             assert_eq!(current_route(), Some(outer));
+            assert_eq!(current_http_route(), Some(outer));
         }
         assert_eq!(current_route(), None);
+        // Calls outside any scope are not counted.
+        assert_eq!(current_sql_route(), None);
+        assert_eq!(outer_calls, RequestCalls { sql: 1, http: 1 });
+        assert_eq!(inner_calls, RequestCalls { sql: 2, http: 1 });
+
+        // Re-entering resumes the previous counts, as across polls.
+        {
+            let _outer = enter_route(outer, &mut outer_calls);
+            current_sql_route();
+        }
+        assert_eq!(outer_calls, RequestCalls { sql: 2, http: 1 });
     }
 }
