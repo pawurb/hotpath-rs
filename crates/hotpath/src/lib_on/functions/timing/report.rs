@@ -93,6 +93,11 @@ pub(crate) fn build_functions_list(
                 } else {
                     format!("{:.2}%", percentage)
                 },
+                histogram: if config.histograms {
+                    s.histogram_base64()
+                } else {
+                    None
+                },
             }
         })
         .collect();

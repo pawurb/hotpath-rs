@@ -73,6 +73,10 @@ pub struct JsonFunctionEntry {
     pub percentiles: HashMap<String, String>,
     pub total: String,
     pub percent_total: String,
+    /// Base64 HdrHistogram V2 (deflate) of sampled call durations in ns.
+    /// Present only in static reports with `hotpath-cloud` upload enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1010,6 +1014,10 @@ fn default_report_type() -> String {
 pub struct JsonReport {
     #[serde(default = "default_report_type")]
     pub r#type: String,
+    /// hotpath crate version that produced the report; empty when read from a
+    /// report written before the field existed.
+    #[serde(default)]
+    pub version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1050,6 +1058,7 @@ impl Default for JsonReport {
     fn default() -> Self {
         Self {
             r#type: default_report_type(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
             label: None,
             time_sampling: None,
             functions_timing: None,
