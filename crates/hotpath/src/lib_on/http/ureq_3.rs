@@ -27,7 +27,7 @@ impl Middleware for UreqHttpMiddleware {
         );
 
         let source = crate::lib_on::caller_stack::current_caller();
-        let route = crate::lib_on::caller_stack::current_route();
+        let route = crate::lib_on::caller_stack::current_http_route();
         let start = Instant::now();
         let outcome = next.handle(req);
         let duration_nanos = start.elapsed().as_nanos() as u64;

@@ -551,6 +551,16 @@ pub struct JsonServerEntry {
     pub count: u64,
     pub status_4xx: u64,
     pub status_5xx: u64,
+    /// Average SQL queries issued per completed request of this route,
+    /// counted under the request's route scope. `None` when SQL profiling is
+    /// inactive or no completed request carried a route scope (unmatched
+    /// routes, route scoping disabled, route interner cap hit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sql_per_request: Option<f64>,
+    /// Average outbound HTTP requests per request of this route; same
+    /// semantics as `sql_per_request`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_per_request: Option<f64>,
     pub avg: String,
     pub total: String,
     pub percent_total: String,
