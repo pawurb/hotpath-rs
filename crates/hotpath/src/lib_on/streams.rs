@@ -29,7 +29,9 @@ pub(crate) fn next_stream_id() -> u32 {
 /// Entries are keyed by creation site and item type, so streams created
 /// repeatedly at one `stream!` call (e.g. per handled request) share a single
 /// accumulating entry and state stays bounded by the number of call sites
-/// rather than the number of streams ever created.
+/// rather than the number of streams ever created. The site key includes the
+/// column (`file:line:column`), so two invocations on one physical line do
+/// not alias; the displayed source stays `file:line`.
 type StreamSourceKey = (&'static str, &'static str);
 
 static STREAM_SOURCE_IDS: OnceLock<StdRwLock<HashMap<StreamSourceKey, u32>>> = OnceLock::new();
@@ -40,30 +42,28 @@ static STREAM_SOURCE_IDS: OnceLock<StdRwLock<HashMap<StreamSourceKey, u32>>> = O
 /// `iter` every instance gets its own entry, distinguished by the entry's
 /// `iter` number. `Item` is the stream's item type, used to record the type
 /// name and per-item byte size.
-pub(crate) fn register_stream<Item>(
-    source: &'static str,
-    label: Option<String>,
-    iter: bool,
-) -> u32 {
+pub(crate) fn register_stream<Item>(key: &'static str, label: Option<String>, iter: bool) -> u32 {
     let type_name = std::any::type_name::<Item>();
+    let source = crate::channels::display_source(key);
     init_streams_state();
 
     if !iter {
         let map = STREAM_SOURCE_IDS.get_or_init(|| StdRwLock::new(HashMap::new()));
-        if let Some(&id) = map.read().unwrap().get(&(source, type_name)) {
+        if let Some(&id) = map.read().unwrap().get(&(key, type_name)) {
             send_stream_event(StreamEvent::Instance { id });
             return id;
         }
         let mut writer = map.write().unwrap();
-        if let Some(&id) = writer.get(&(source, type_name)) {
+        if let Some(&id) = writer.get(&(key, type_name)) {
             send_stream_event(StreamEvent::Instance { id });
             return id;
         }
         let id = next_stream_id();
-        writer.insert((source, type_name), id);
+        writer.insert((key, type_name), id);
 
         send_stream_event(StreamEvent::Created {
             id,
+            key,
             source,
             display_label: label,
             type_name,
@@ -77,6 +77,7 @@ pub(crate) fn register_stream<Item>(
     let id = next_stream_id();
     send_stream_event(StreamEvent::Created {
         id,
+        key,
         source,
         display_label: label,
         type_name,
@@ -91,6 +92,10 @@ pub(crate) fn register_stream<Item>(
 #[derive(Debug, Clone)]
 pub(crate) struct StreamStats {
     pub(crate) id: u32,
+    /// Column-including call-site key (`file:line:column`); the identity used
+    /// by the display-suffix scan so same-line call sites do not cross-suffix.
+    pub(crate) key: &'static str,
+    /// The `file:line` form shown to users.
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     /// Number of stream instances aggregated into this entry.
@@ -107,6 +112,7 @@ pub(crate) struct StreamStats {
 impl StreamStats {
     fn new(
         id: u32,
+        key: &'static str,
         source: &'static str,
         label: Option<String>,
         type_name: &'static str,
@@ -115,6 +121,7 @@ impl StreamStats {
     ) -> Self {
         Self {
             id,
+            key,
             source,
             label,
             instances: 0,
@@ -190,6 +197,10 @@ impl From<&StreamStats> for JsonStreamEntry {
 pub(crate) enum StreamEvent {
     Created {
         id: u32,
+        /// Column-including call-site key (`file:line:column`); distinguishes
+        /// same-line invocations in the display-suffix scan. `source` is the
+        /// `file:line` shown to users.
+        key: &'static str,
         source: &'static str,
         display_label: Option<String>,
         type_name: &'static str,
@@ -246,7 +257,7 @@ pub(crate) fn stop_stream_events() {
 /// per-thread order, so another thread's data events can be drained first).
 /// `Created` backfills the metadata.
 fn placeholder_stream_stats(id: u32) -> StreamStats {
-    StreamStats::new(id, "", None, "", 0, 0)
+    StreamStats::new(id, "", "", None, "", 0, 0)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -254,17 +265,18 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
     match event {
         StreamEvent::Created {
             id,
+            key,
             source,
             display_label,
             type_name,
             type_size,
             iter_mode,
         } => {
-            // The O(n) same-source scan only has meaning for per-instance
-            // entries; default-mode entries are unique per source and keep
+            // The O(n) same-site scan only has meaning for per-instance
+            // entries; default-mode entries are unique per site key and keep
             // an unsuffixed label.
             let iter = if iter_mode {
-                state.stats.values().filter(|s| s.source == source).count() as u32
+                state.stats.values().filter(|s| s.key == key).count() as u32
             } else {
                 0
             };
@@ -272,6 +284,7 @@ fn process_stream_event(state: &mut StreamsInternalState, event: StreamEvent) {
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_stream_stats(id));
+            entry.key = key;
             entry.source = source;
             entry.label = display_label;
             entry.type_name = type_name;
@@ -491,7 +504,7 @@ where
 #[macro_export]
 macro_rules! stream {
     ($expr:expr) => {{
-        const STREAM_ID: &'static str = concat!(file!(), ":", line!());
+        const STREAM_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentStream::instrument_stream($expr, STREAM_ID, None, false)
     }};
 
@@ -500,7 +513,7 @@ macro_rules! stream {
     // expression tokens so the dispatch only branches on `log`. `STREAM_ID` is
     // captured once here so `file!()`/`line!()` resolve to the user's call site.
     ($expr:expr, $($rest:tt)*) => {{
-        const STREAM_ID: &'static str = concat!(file!(), ":", line!());
+        const STREAM_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::stream!(@munch STREAM_ID, $expr ; (None) [nolog] (false) ; $($rest)*)
     }};
 

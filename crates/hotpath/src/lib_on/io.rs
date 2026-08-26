@@ -54,6 +54,10 @@ impl IoOpKind {
 pub(crate) enum IoEvent {
     Created {
         id: u32,
+        /// Column-including call-site key (`file:line:column`); distinguishes
+        /// same-line invocations in the display-suffix scan. `source` is the
+        /// `file:line` shown to users.
+        key: &'static str,
         source: &'static str,
         label: Option<String>,
         type_name: &'static str,
@@ -152,6 +156,10 @@ impl IoOpStats {
 #[derive(Debug, Clone)]
 pub(crate) struct IoEntry {
     pub(crate) id: u32,
+    /// Column-including call-site key (`file:line:column`); the identity used
+    /// by the display-suffix scan so same-line call sites do not cross-suffix.
+    pub(crate) key: &'static str,
+    /// The `file:line` form shown to users.
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) type_name: &'static str,
@@ -270,6 +278,7 @@ pub(crate) fn stop_io_events() {
 fn placeholder_io_entry(id: u32) -> IoEntry {
     IoEntry {
         id,
+        key: "",
         source: "",
         label: None,
         type_name: "",
@@ -286,6 +295,7 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
     match event {
         IoEvent::Created {
             id,
+            key,
             source,
             label,
             type_name,
@@ -293,12 +303,13 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
             let iter = state
                 .stats
                 .values()
-                .filter(|s| s.source == source && s.label == label)
+                .filter(|s| s.key == key && s.label == label)
                 .count() as u32;
             let entry = state
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_io_entry(id));
+            entry.key = key;
             entry.source = source;
             entry.label = label;
             entry.type_name = type_name;
@@ -337,7 +348,9 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
 /// Entries are keyed by creation site and concrete type, so wrappers created
 /// repeatedly at one `io!` call (e.g. per accepted connection in a server)
 /// share a single accumulating entry and state stays bounded by the number of
-/// call sites rather than the number of values ever wrapped.
+/// call sites rather than the number of values ever wrapped. The site key
+/// includes the column (`file:line:column`), so two invocations on one
+/// physical line do not alias; the displayed source stays `file:line`.
 type IoSourceKey = (&'static str, &'static str);
 
 static IO_SOURCE_IDS: OnceLock<StdRwLock<HashMap<IoSourceKey, u32>>> = OnceLock::new();
@@ -348,26 +361,28 @@ static IO_SOURCE_IDS: OnceLock<StdRwLock<HashMap<IoSourceKey, u32>>> = OnceLock:
 /// instance gets its own entry. Instances sharing a source and label are
 /// distinguished by the entry's `iter` number; a distinct label per instance
 /// keeps each entry's label as provided.
-pub(crate) fn register_io<T>(source: &'static str, label: Option<String>, iter: bool) -> u32 {
+pub(crate) fn register_io<T>(key: &'static str, label: Option<String>, iter: bool) -> u32 {
     let type_name = std::any::type_name::<T>();
+    let source = crate::channels::display_source(key);
     init_io_state();
 
     if !iter {
         let map = IO_SOURCE_IDS.get_or_init(|| StdRwLock::new(HashMap::new()));
-        if let Some(&id) = map.read().unwrap().get(&(source, type_name)) {
+        if let Some(&id) = map.read().unwrap().get(&(key, type_name)) {
             send_io_event(IoEvent::Instance { id });
             return id;
         }
         let mut writer = map.write().unwrap();
-        if let Some(&id) = writer.get(&(source, type_name)) {
+        if let Some(&id) = writer.get(&(key, type_name)) {
             send_io_event(IoEvent::Instance { id });
             return id;
         }
         let id = next_io_id();
-        writer.insert((source, type_name), id);
+        writer.insert((key, type_name), id);
 
         send_io_event(IoEvent::Created {
             id,
+            key,
             source,
             label,
             type_name,
@@ -379,6 +394,7 @@ pub(crate) fn register_io<T>(source: &'static str, label: Option<String>, iter: 
     let id = next_io_id();
     send_io_event(IoEvent::Created {
         id,
+        key,
         source,
         label,
         type_name,
@@ -515,12 +531,12 @@ pub(crate) fn compare_io_entries(a: &IoEntry, b: &IoEntry) -> std::cmp::Ordering
 #[macro_export]
 macro_rules! io {
     ($expr:expr) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, None, false)
     }};
 
     ($expr:expr, label = $label:expr) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented(
             $expr,
             IO_ID,
@@ -530,17 +546,17 @@ macro_rules! io {
     }};
 
     ($expr:expr, iter = true) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, None, true)
     }};
 
     ($expr:expr, label = $label:expr, iter = true) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
 
     ($expr:expr, iter = true, label = $label:expr) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
 }

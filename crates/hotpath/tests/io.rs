@@ -308,4 +308,35 @@ pub mod tests {
             );
         }
     }
+
+    // Two `io!` invocations on one physical line wrapping the same concrete
+    // type must register distinct entries: the registration key includes the
+    // column, so the second call site does not reuse the first one's id. The
+    // displayed source keeps the plain `file:line` form.
+    //
+    // cargo run -p test-io --example same_line_io --features hotpath (json)
+    #[test]
+    fn test_same_line_call_sites_stay_distinct() {
+        let stdout = run_example("same_line_io", true);
+        let io = parse_io(&stdout);
+
+        let a = entry(&io, "same-line-a");
+        let b = entry(&io, "same-line-b");
+
+        assert_ne!(a.id, b.id, "same-line call sites must not share an entry");
+        assert_eq!(a.read.bytes, 30, "bytes must not merge across call sites");
+        assert_eq!(b.read.bytes, 70, "bytes must not merge across call sites");
+        assert_eq!(a.instances, 1);
+        assert_eq!(b.instances, 1);
+
+        // The displayed source is identical for both (same file:line) and the
+        // path contains no ':', so exactly one colon proves the column stays
+        // out of the display string.
+        assert_eq!(a.source, b.source, "one physical line renders one source");
+        assert_eq!(
+            a.source.matches(':').count(),
+            1,
+            "source must stay file:line"
+        );
+    }
 }

@@ -290,4 +290,45 @@ pub mod tests {
         assert_eq!(entry.received_count, 30, "expected 30 receives");
         assert_eq!(entry.queue_size, Some(0), "expected drained queue");
     }
+
+    // Two `channel!` invocations on one physical line (same message type) must
+    // register distinct entries: the registration key includes the column, so
+    // the second call site does not reuse the first one's id. The displayed
+    // source keeps the plain `file:line` form.
+    //
+    // cargo run -p test-channels-tokio --example same_line_tokio --features hotpath
+    #[test]
+    fn test_same_line_call_sites_stay_distinct() {
+        let stdout = run_example("same_line_tokio");
+        let channels = parse_channels(&stdout);
+
+        let a = channels
+            .data
+            .iter()
+            .find(|c| c.label == "same-line-a")
+            .expect("same-line-a channel not found");
+        let b = channels
+            .data
+            .iter()
+            .find(|c| c.label == "same-line-b")
+            .expect("same-line-b channel not found");
+
+        assert_ne!(a.id, b.id, "same-line call sites must not share an entry");
+        assert_eq!(a.sent_count, 3, "counts must not merge across call sites");
+        assert_eq!(b.sent_count, 5, "counts must not merge across call sites");
+        assert_eq!(a.channel_type, "bounded[4]");
+        assert_eq!(b.channel_type, "bounded[8]");
+        assert_eq!(a.instances, 1);
+        assert_eq!(b.instances, 1);
+
+        // The displayed source is identical for both (same file:line) and the
+        // path contains no ':', so exactly one colon proves the column stays
+        // out of the display string.
+        assert_eq!(a.source, b.source, "one physical line renders one source");
+        assert_eq!(
+            a.source.matches(':').count(),
+            1,
+            "source must stay file:line"
+        );
+    }
 }
