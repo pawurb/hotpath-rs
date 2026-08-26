@@ -33,6 +33,10 @@ fn next_mutex_id() -> u32 {
 pub(crate) enum MutexEvent {
     Created {
         id: u32,
+        /// Column-including call-site key (`file:line:column`); distinguishes
+        /// same-line invocations in the display-suffix scan. `source` is the
+        /// `file:line` shown to users.
+        key: &'static str,
         source: &'static str,
         label: Option<String>,
         type_name: &'static str,
@@ -52,6 +56,10 @@ pub(crate) enum MutexEvent {
 #[derive(Debug, Clone)]
 pub(crate) struct MutexEntry {
     pub(crate) id: u32,
+    /// Column-including call-site key (`file:line:column`); the identity used
+    /// by the display-suffix scan so same-line call sites do not cross-suffix.
+    pub(crate) key: &'static str,
+    /// The `file:line` form shown to users.
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) type_name: &'static str,
@@ -186,6 +194,7 @@ pub(crate) fn stop_mutex_events() {
 fn placeholder_mutex_entry(id: u32) -> MutexEntry {
     MutexEntry {
         id,
+        key: "",
         source: "",
         label: None,
         type_name: "",
@@ -203,15 +212,17 @@ fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
     match event {
         MutexEvent::Created {
             id,
+            key,
             source,
             label,
             type_name,
         } => {
-            let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
+            let iter = state.stats.values().filter(|s| s.key == key).count() as u32;
             let entry = state
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_mutex_entry(id));
+            entry.key = key;
             entry.source = source;
             entry.label = label;
             entry.type_name = type_name;
@@ -239,13 +250,15 @@ fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
 }
 
 /// Registers a new Mutex with the profiling subsystem.
-pub(crate) fn register_mutex<T>(source: &'static str, label: Option<String>) -> u32 {
+pub(crate) fn register_mutex<T>(key: &'static str, label: Option<String>) -> u32 {
     let type_name = std::any::type_name::<T>();
+    let source = crate::channels::display_source(key);
     init_mutexes_state();
     let id = next_mutex_id();
 
     send_mutex_event(MutexEvent::Created {
         id,
+        key,
         source,
         label,
         type_name,
@@ -369,12 +382,12 @@ pub trait InstrumentMutex {
 #[macro_export]
 macro_rules! mutex {
     ($expr:expr) => {{
-        const MUTEX_ID: &'static str = concat!(file!(), ":", line!());
+        const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, None)
     }};
 
     ($expr:expr, label = $label:expr) => {{
-        const MUTEX_ID: &'static str = concat!(file!(), ":", line!());
+        const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, Some($label.to_string()))
     }};
 }

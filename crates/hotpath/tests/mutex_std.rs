@@ -69,6 +69,10 @@ pub mod tests {
         let all_expected = [
             "\"mutexes\"",
             "\"label\":\"counter\"",
+            // The deprecated wrap constructor registers via Location::caller();
+            // its auto label must keep the file:line form (the line must not be
+            // eaten by the registration key's column strip).
+            "\"label\":\"examples/basic_mutex_std.rs:",
             "\"count\":6",
             "\"wait_avg\"",
             "\"acquire_avg\"",

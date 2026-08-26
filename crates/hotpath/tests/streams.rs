@@ -367,4 +367,71 @@ pub mod tests {
 
         fs::remove_file(output_path).ok();
     }
+
+    // Two `stream!` invocations on one physical line (same item type) must
+    // register distinct entries: the registration key includes the column, so
+    // the second call site does not reuse the first one's id. The displayed
+    // source keeps the plain `file:line` form.
+    //
+    // cargo run -p test-streams --example same_line_streams --features hotpath
+    #[test]
+    fn test_same_line_call_sites_stay_distinct() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-streams",
+                "--example",
+                "same_line_streams",
+                "--features",
+                "hotpath",
+            ])
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Command failed with status: {}\nStderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let streams = parse_streams(&stdout);
+
+        let a = streams
+            .data
+            .iter()
+            .find(|s| s.label == "same-line-a")
+            .expect("same-line-a stream not found");
+        let b = streams
+            .data
+            .iter()
+            .find(|s| s.label == "same-line-b")
+            .expect("same-line-b stream not found");
+
+        assert_ne!(a.id, b.id, "same-line call sites must not share an entry");
+        assert_eq!(
+            a.items_yielded, 3,
+            "counts must not merge across call sites"
+        );
+        assert_eq!(
+            b.items_yielded, 7,
+            "counts must not merge across call sites"
+        );
+        assert_eq!(a.instances, 1);
+        assert_eq!(b.instances, 1);
+        assert_eq!(a.closed_instances, 1);
+        assert_eq!(b.closed_instances, 1);
+
+        // The displayed source is identical for both (same file:line) and the
+        // path contains no ':', so exactly one colon proves the column stays
+        // out of the display string.
+        assert_eq!(a.source, b.source, "one physical line renders one source");
+        assert_eq!(
+            a.source.matches(':').count(),
+            1,
+            "source must stay file:line"
+        );
+    }
 }
