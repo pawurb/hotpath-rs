@@ -63,6 +63,7 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 #[cfg(feature = "hotpath-cloud")]
 pub(crate) mod cloud;
+pub(crate) mod histograms;
 pub mod hotpath_guard;
 pub(crate) mod report;
 pub(crate) mod sampling;

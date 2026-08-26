@@ -116,6 +116,21 @@ impl MutexEntry {
     pub(crate) fn acquire_percentile_nanos(&self, p: f64) -> u64 {
         Self::percentile(&self.acquire_hist, self.sampled_count, p)
     }
+
+    fn encode_histogram(&self, hist: &Option<Histogram<u64>>) -> Option<String> {
+        if self.sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(hist.as_ref()?)
+    }
+
+    pub(crate) fn wait_histogram_base64(&self) -> Option<String> {
+        self.encode_histogram(&self.wait_hist)
+    }
+
+    pub(crate) fn acquire_histogram_base64(&self) -> Option<String> {
+        self.encode_histogram(&self.acquire_hist)
+    }
 }
 
 pub(crate) struct MutexesInternalState {
@@ -147,6 +162,7 @@ pub(crate) fn get_mutexes_json() -> crate::json::JsonMutexesList {
         &entries,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -390,4 +406,34 @@ macro_rules! mutex {
         const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, Some($label.to_string()))
     }};
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::mutexes::{placeholder_mutex_entry, MutexEntry};
+
+    #[test]
+    fn histograms_encode_sampled_acquisitions() {
+        let mut entry = placeholder_mutex_entry(1);
+        entry.count = 2;
+        entry.sampled_count = 2;
+        MutexEntry::record(&mut entry.wait_hist, 1_000);
+        MutexEntry::record(&mut entry.wait_hist, 2_000);
+        MutexEntry::record(&mut entry.acquire_hist, 500);
+        MutexEntry::record(&mut entry.acquire_hist, 700);
+
+        let wait = decode_histogram(&entry.wait_histogram_base64().unwrap());
+        assert_eq!(wait.len(), 2);
+        assert_eq!(wait.max(), 2_000);
+        let acquire = decode_histogram(&entry.acquire_histogram_base64().unwrap());
+        assert_eq!(acquire.max(), 700);
+    }
+
+    #[test]
+    fn histograms_absent_without_samples() {
+        let entry = placeholder_mutex_entry(1);
+        assert!(entry.wait_histogram_base64().is_none());
+        assert!(entry.acquire_histogram_base64().is_none());
+    }
 }

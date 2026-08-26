@@ -1127,6 +1127,7 @@ impl Drop for HotpathGuard {
                                 &channels_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1155,6 +1156,7 @@ impl Drop for HotpathGuard {
                                 &rw_locks_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1165,6 +1167,7 @@ impl Drop for HotpathGuard {
                                 &mutexes_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1179,6 +1182,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1194,6 +1198,7 @@ impl Drop for HotpathGuard {
                                 total_calls,
                                 reference_total,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1210,6 +1215,7 @@ impl Drop for HotpathGuard {
                                 reference_total,
                                 &percentiles,
                                 report::ServerColumns::from_state(),
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1220,6 +1226,7 @@ impl Drop for HotpathGuard {
                                 &io_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }

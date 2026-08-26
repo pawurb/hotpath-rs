@@ -149,6 +149,13 @@ impl IoOpStats {
             _ => 0,
         }
     }
+
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
+    }
 }
 
 /// Statistics for a single `io!` creation site (source location + concrete
@@ -228,6 +235,7 @@ pub(crate) fn get_io_json() -> crate::json::JsonIoList {
         &entries,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -559,4 +567,29 @@ macro_rules! io {
         const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::io::IoOpStats;
+
+    #[test]
+    fn histogram_encodes_sampled_operations() {
+        let mut stats = IoOpStats::new();
+        stats.record(64, Some(1_000));
+        stats.record(64, Some(2_000));
+        stats.record(64, None);
+
+        let hist = decode_histogram(&stats.histogram_base64().unwrap());
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.max(), 2_000);
+    }
+
+    #[test]
+    fn histogram_absent_without_sampled_operations() {
+        let mut stats = IoOpStats::new();
+        stats.record(64, None);
+        assert!(stats.histogram_base64().is_none());
+    }
 }

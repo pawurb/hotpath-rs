@@ -264,7 +264,27 @@ impl FunctionStats {
         if self.duration_sampled_count == 0 {
             return None;
         }
-        crate::lib_on::functions::histogram_base64(self.duration_hist.as_ref()?)
+        crate::lib_on::histograms::histogram_base64(self.duration_hist.as_ref()?)
+    }
+
+    /// Encodes the histogram backing the displayed alloc percentiles: bytes or
+    /// allocation counts per `HOTPATH_ALLOC_METRIC`. Bridge-backed async
+    /// functions report per-call totals and export normally; `None` mirrors
+    /// the report's "N/A" percentiles for `is_async` entries, i.e. ones with
+    /// measurements that carried no totals (cross-thread sync guard drops).
+    pub(crate) fn alloc_histogram_base64(&self) -> Option<String> {
+        if self.count == 0 || self.is_async {
+            return None;
+        }
+        let hist = match *crate::lib_on::functions::alloc::guard::ALLOC_METRIC {
+            crate::lib_on::functions::alloc::guard::AllocMetric::Bytes => {
+                self.bytes_total_hist.as_ref()?
+            }
+            crate::lib_on::functions::alloc::guard::AllocMetric::Count => {
+                self.count_total_hist.as_ref()?
+            }
+        };
+        crate::lib_on::histograms::histogram_base64(hist)
     }
 
     #[inline]
@@ -433,5 +453,51 @@ mod tests {
         assert_eq!(stats.count_total_percentile(50.0), 0);
         assert!(stats.bytes_total_percentile(100.0) >= 4096);
         assert_eq!(stats.count_total_percentile(100.0), 2);
+    }
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod histogram_tests {
+    use std::time::Duration;
+
+    use crate::lib_on::functions::alloc::state::FunctionStats;
+    use crate::lib_on::histograms::decode_histogram;
+
+    fn sync_entry() -> FunctionStats {
+        FunctionStats::new_alloc(
+            1,
+            "f",
+            Some(100),
+            Some(2),
+            Some(10),
+            Duration::ZERO,
+            false,
+            None,
+            None,
+        )
+    }
+
+    #[test]
+    fn alloc_histogram_encodes_selected_metric() {
+        let entry = sync_entry();
+        let hist = decode_histogram(&entry.alloc_histogram_base64().unwrap());
+        assert_eq!(hist.len(), 1);
+    }
+
+    #[test]
+    fn alloc_histogram_absent_for_async_entries() {
+        let entry = FunctionStats::new_alloc(
+            1,
+            "f",
+            None,
+            None,
+            Some(10),
+            Duration::ZERO,
+            false,
+            None,
+            None,
+        );
+        assert!(entry.is_async);
+        assert!(entry.alloc_histogram_base64().is_none());
     }
 }

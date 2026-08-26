@@ -16,3 +16,4 @@ reqwest = { version = "0.13", default-features = false }
 
 [features]
 hotpath = ["hotpath/hotpath"]
+hotpath-cloud = ["hotpath/hotpath-cloud"]

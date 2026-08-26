@@ -135,6 +135,13 @@ impl SqlEntry {
             _ => 0,
         }
     }
+
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
+    }
 }
 
 pub(crate) struct SqlInternalState {
@@ -186,6 +193,7 @@ pub(crate) fn get_sql_json() -> crate::json::JsonSqlList {
         total_calls,
         reference_total,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -334,4 +342,28 @@ pub(crate) fn compare_sql_entries(a: &SqlEntry, b: &SqlEntry) -> std::cmp::Order
         .cmp(&a.total_nanos)
         .then_with(|| b.count.cmp(&a.count))
         .then_with(|| a.id.cmp(&b.id))
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::sql::SqlEntry;
+
+    #[test]
+    fn histogram_encodes_recorded_queries() {
+        let mut entry = SqlEntry::new(1, "SELECT 1".to_string(), None, None);
+        entry.count = 2;
+        entry.record(1_000);
+        entry.record(2_000);
+
+        let hist = decode_histogram(&entry.histogram_base64().unwrap());
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.max(), 2_000);
+    }
+
+    #[test]
+    fn histogram_absent_without_queries() {
+        let entry = SqlEntry::new(1, "SELECT 1".to_string(), None, None);
+        assert!(entry.histogram_base64().is_none());
+    }
 }
