@@ -4,8 +4,6 @@ These public (unique, non-fork) GitHub repositories declare `hotpath` as a depen
 
 {{#adoption_chart}}
 
+Using `hotpath` in your project? It will show up here automatically once the dependency is public on GitHub. Inclusion does not imply endorsement of, or affiliation with, a project.
+
 {{#adoption}}
-
-Using hotpath in your project? It will show up here automatically once the dependency is public on GitHub.
-
-> This list is generated automatically by querying public GitHub projects whose `Cargo.toml` declares a `hotpath` dependency. Inclusion does not imply endorsement of, or affiliation with, a project.
