@@ -520,12 +520,34 @@ fn render_io_view(frame: &mut Frame, app: &mut App, area: Rect) {
         match app.io_sub_tab {
             IoSubTab::Sql => {
                 if let Some(ref inspected) = app.inspected_sql_log {
-                    io_inspect::render_sql_inspect_popup(inspected, area, frame);
+                    let selected = app
+                        .sql_table_state
+                        .selected()
+                        .and_then(|i| app.sql.data.get(i));
+                    let source = selected.and_then(|e| e.source.as_deref());
+                    let route = selected.and_then(|e| e.route.as_deref());
+                    io_inspect::render_sql_inspect_popup(inspected, source, route, area, frame);
                 }
             }
-            IoSubTab::Http | IoSubTab::Server => {
+            IoSubTab::Http => {
                 if let Some(ref inspected) = app.inspected_http_log {
-                    io_inspect::render_http_inspect_popup(inspected, area, frame);
+                    let selected = app
+                        .http_table_state
+                        .selected()
+                        .and_then(|i| app.http.data.get(i));
+                    let source = selected.and_then(|e| e.source.as_deref());
+                    let route = selected.and_then(|e| e.route.as_deref());
+                    io_inspect::render_http_inspect_popup(inspected, source, route, area, frame);
+                }
+            }
+            IoSubTab::Server => {
+                if let Some(ref inspected) = app.inspected_http_log {
+                    let route = app
+                        .server_table_state
+                        .selected()
+                        .and_then(|i| app.server.data.get(i))
+                        .map(|e| e.route.as_str());
+                    io_inspect::render_http_inspect_popup(inspected, None, route, area, frame);
                 }
             }
             IoSubTab::Bytes => {}

@@ -32,7 +32,29 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<Line<'static>> {
         .collect()
 }
 
-pub(crate) fn render_sql_inspect_popup(log: &JsonSqlLog, area: Rect, frame: &mut Frame) {
+fn header_lines(
+    details_text: &str,
+    source: Option<&str>,
+    route: Option<&str>,
+    max_width: usize,
+) -> Vec<Line<'static>> {
+    let mut lines = wrap_text(details_text, max_width);
+    if let Some(source) = source {
+        lines.extend(wrap_text(&format!("Source: {}", source), max_width));
+    }
+    if let Some(route) = route {
+        lines.extend(wrap_text(&format!("Route: {}", route), max_width));
+    }
+    lines
+}
+
+pub(crate) fn render_sql_inspect_popup(
+    log: &JsonSqlLog,
+    source: Option<&str>,
+    route: Option<&str>,
+    area: Rect,
+    frame: &mut Frame,
+) {
     let popup_width = (area.width as f32 * 0.8) as u16;
     let popup_height = (area.height as f32 * 0.8) as u16;
     let x = (area.width.saturating_sub(popup_width)) / 2;
@@ -54,25 +76,32 @@ pub(crate) fn render_sql_inspect_popup(log: &JsonSqlLog, area: Rect, frame: &mut
     let inner_area = block.inner(popup_area);
     frame.render_widget(block, popup_area);
 
+    let max_width = inner_area.width.saturating_sub(2) as usize;
     let details_text = format!("Time: {} | Executed: {}", log.duration, log.ago);
+    let details_lines = header_lines(&details_text, source, route, max_width);
 
     let [details_area, _, query_area] = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(details_lines.len() as u16),
         Constraint::Length(1),
         Constraint::Min(0),
     ])
     .areas(inner_area);
 
-    let details = Paragraph::new(details_text).wrap(Wrap { trim: false });
+    let details = Paragraph::new(details_lines).wrap(Wrap { trim: false });
     frame.render_widget(details, details_area);
 
-    let max_width = query_area.width.saturating_sub(2) as usize;
     let query_lines = wrap_text(&log.query, max_width);
     let query = Paragraph::new(query_lines).wrap(Wrap { trim: false });
     frame.render_widget(query, query_area);
 }
 
-pub(crate) fn render_http_inspect_popup(log: &JsonHttpLog, area: Rect, frame: &mut Frame) {
+pub(crate) fn render_http_inspect_popup(
+    log: &JsonHttpLog,
+    source: Option<&str>,
+    route: Option<&str>,
+    area: Rect,
+    frame: &mut Frame,
+) {
     let popup_width = (area.width as f32 * 0.8) as u16;
     let popup_height = (area.height as f32 * 0.8) as u16;
     let x = (area.width.saturating_sub(popup_width)) / 2;
@@ -94,19 +123,20 @@ pub(crate) fn render_http_inspect_popup(log: &JsonHttpLog, area: Rect, frame: &m
     let inner_area = block.inner(popup_area);
     frame.render_widget(block, popup_area);
 
+    let max_width = inner_area.width.saturating_sub(2) as usize;
     let details_text = format!("Time: {} | Executed: {}", log.duration, log.ago);
+    let details_lines = header_lines(&details_text, source, route, max_width);
 
     let [details_area, _, status_area] = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(details_lines.len() as u16),
         Constraint::Length(1),
         Constraint::Min(0),
     ])
     .areas(inner_area);
 
-    let details = Paragraph::new(details_text).wrap(Wrap { trim: false });
+    let details = Paragraph::new(details_lines).wrap(Wrap { trim: false });
     frame.render_widget(details, details_area);
 
-    let max_width = status_area.width.saturating_sub(2) as usize;
     let status_lines = wrap_text(&format!("Status: {}", log.status), max_width);
     let status = Paragraph::new(status_lines).wrap(Wrap { trim: false });
     frame.render_widget(status, status_area);

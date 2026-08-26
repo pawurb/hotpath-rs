@@ -138,7 +138,7 @@ Then launch your instrumented application (with `hotpath` feature enabled) in a 
   <source src="{{#asset-hash videos/hotpath-live-dashboard.mp4}}" type="video/mp4">
 </video>
 
-## Optional vs non-optional dependency
+## Optional vs non-optional
 
 `hotpath` can be added either as a regular dependency or as an `optional` one. Both work; they differ only in how much `cfg` gating the code needs.
 
