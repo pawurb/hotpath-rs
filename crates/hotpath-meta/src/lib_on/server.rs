@@ -160,6 +160,13 @@ impl ServerEntry {
             _ => 0,
         }
     }
+
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
+    }
 }
 
 #[derive(Default)]
@@ -211,6 +218,7 @@ pub(crate) fn get_server_json() -> crate::json::JsonServerList {
         reference_total,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
         crate::lib_on::report::ServerColumns::from_state(),
+        false,
     )
 }
 
@@ -424,5 +432,29 @@ mod tests {
         let unscoped = &state.stats["GET /missing"];
         assert_eq!(unscoped.sql_per_request(), None);
         assert_eq!(unscoped.http_per_request(), None);
+    }
+}
+
+#[cfg(all(test, feature = "hotpath-cloud-meta"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::server::ServerEntry;
+
+    #[test]
+    fn histogram_encodes_recorded_responses() {
+        let mut entry = ServerEntry::new(1, "GET /".to_string());
+        entry.count = 2;
+        entry.record(1_000);
+        entry.record(2_000);
+
+        let hist = decode_histogram(&entry.histogram_base64().unwrap());
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.max(), 2_000);
+    }
+
+    #[test]
+    fn histogram_absent_without_responses() {
+        let entry = ServerEntry::new(1, "GET /".to_string());
+        assert!(entry.histogram_base64().is_none());
     }
 }

@@ -35,6 +35,10 @@ pub(crate) enum RwLockKind {
 pub(crate) enum RwLockEvent {
     Created {
         id: u32,
+        /// Column-including call-site key (`file:line:column`); distinguishes
+        /// same-line invocations in the display-suffix scan. `source` is the
+        /// `file:line` shown to users.
+        key: &'static str,
         source: &'static str,
         label: Option<String>,
         type_name: &'static str,
@@ -55,6 +59,10 @@ pub(crate) enum RwLockEvent {
 #[derive(Debug, Clone)]
 pub(crate) struct RwLockEntry {
     pub(crate) id: u32,
+    /// Column-including call-site key (`file:line:column`); the identity used
+    /// by the display-suffix scan so same-line call sites do not cross-suffix.
+    pub(crate) key: &'static str,
+    /// The `file:line` form shown to users.
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) type_name: &'static str,
@@ -143,6 +151,29 @@ impl RwLockEntry {
         };
         Self::percentile(hist, self.sampled_count(kind), p)
     }
+
+    fn encode_histogram(&self, kind: RwLockKind, hist: &Option<Histogram<u64>>) -> Option<String> {
+        if self.sampled_count(kind) == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(hist.as_ref()?)
+    }
+
+    pub(crate) fn wait_histogram_base64(&self, kind: RwLockKind) -> Option<String> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_wait_hist,
+            RwLockKind::Write => &self.write_wait_hist,
+        };
+        self.encode_histogram(kind, hist)
+    }
+
+    pub(crate) fn acquire_histogram_base64(&self, kind: RwLockKind) -> Option<String> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_acquire_hist,
+            RwLockKind::Write => &self.write_acquire_hist,
+        };
+        self.encode_histogram(kind, hist)
+    }
 }
 
 pub(crate) struct RwLocksInternalState {
@@ -174,6 +205,7 @@ pub(crate) fn get_rw_locks_json() -> crate::json::JsonRwLocksList {
         &entries,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -221,6 +253,7 @@ pub(crate) fn stop_rw_lock_events() {
 fn placeholder_rw_lock_entry(id: u32) -> RwLockEntry {
     RwLockEntry {
         id,
+        key: "",
         source: "",
         label: None,
         type_name: "",
@@ -244,15 +277,17 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
     match event {
         RwLockEvent::Created {
             id,
+            key,
             source,
             label,
             type_name,
         } => {
-            let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
+            let iter = state.stats.values().filter(|s| s.key == key).count() as u32;
             let entry = state
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_rw_lock_entry(id));
+            entry.key = key;
             entry.source = source;
             entry.label = label;
             entry.type_name = type_name;
@@ -299,13 +334,15 @@ fn process_rw_lock_event(state: &mut RwLocksInternalState, event: RwLockEvent) {
 }
 
 /// Registers a new RwLock with the profiling subsystem.
-pub(crate) fn register_rw_lock<T>(source: &'static str, label: Option<String>) -> u32 {
+pub(crate) fn register_rw_lock<T>(key: &'static str, label: Option<String>) -> u32 {
     let type_name = std::any::type_name::<T>();
+    let source = crate::channels::display_source(key);
     init_rw_locks_state();
     let id = next_rw_lock_id();
 
     send_rw_lock_event(RwLockEvent::Created {
         id,
+        key,
         source,
         label,
         type_name,
@@ -428,12 +465,38 @@ pub trait InstrumentRwLock {
 #[macro_export]
 macro_rules! rw_lock {
     ($expr:expr) => {{
-        const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!());
+        const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, None)
     }};
 
     ($expr:expr, label = $label:expr) => {{
-        const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!());
+        const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, Some($label.to_string()))
     }};
+}
+
+#[cfg(all(test, feature = "hotpath-cloud-meta"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::rw_locks::{placeholder_rw_lock_entry, RwLockEntry, RwLockKind};
+
+    #[test]
+    fn histograms_encode_per_kind_samples() {
+        let mut entry = placeholder_rw_lock_entry(1);
+        entry.read_count = 2;
+        entry.read_sampled_count = 2;
+        RwLockEntry::record(&mut entry.read_wait_hist, 1_000);
+        RwLockEntry::record(&mut entry.read_wait_hist, 2_000);
+        RwLockEntry::record(&mut entry.read_acquire_hist, 500);
+        RwLockEntry::record(&mut entry.read_acquire_hist, 700);
+
+        let wait = decode_histogram(&entry.wait_histogram_base64(RwLockKind::Read).unwrap());
+        assert_eq!(wait.len(), 2);
+        assert_eq!(wait.max(), 2_000);
+        let acquire = decode_histogram(&entry.acquire_histogram_base64(RwLockKind::Read).unwrap());
+        assert_eq!(acquire.max(), 700);
+
+        assert!(entry.wait_histogram_base64(RwLockKind::Write).is_none());
+        assert!(entry.acquire_histogram_base64(RwLockKind::Write).is_none());
+    }
 }

@@ -145,7 +145,10 @@ pub(crate) fn build_functions_list_alloc(
                 percentiles,
                 total,
                 percent_total,
-                histogram: None,
+                histogram: config
+                    .histograms
+                    .then(|| s.alloc_histogram_base64())
+                    .flatten(),
             }
         })
         .collect();

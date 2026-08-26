@@ -40,7 +40,9 @@ pub(crate) enum ChannelType {
 /// Entries are keyed by creation site and message type, so channels created
 /// repeatedly at one `channel!` call (e.g. per handled request) share a single
 /// accumulating entry and state stays bounded by the number of call sites
-/// rather than the number of channels ever created.
+/// rather than the number of channels ever created. The site key includes the
+/// column (`file:line:column`), so two invocations on one physical line do
+/// not alias; the displayed source stays `file:line`.
 type ChannelSourceKey = (&'static str, &'static str);
 
 static CHANNEL_SOURCE_IDS: OnceLock<RwLock<HashMap<ChannelSourceKey, u32>>> = OnceLock::new();
@@ -55,12 +57,12 @@ static CHANNEL_SOURCE_IDS: OnceLock<RwLock<HashMap<ChannelSourceKey, u32>>> = On
 /// subsequent send/receive/close events. `T` is the message type carried by
 /// the channel and is used to record the type name and per-message byte size.
 pub(crate) fn register_channel<T>(
-    source: &'static str,
+    key: &'static str,
     label: Option<String>,
     channel_type: ChannelType,
     iter: bool,
 ) -> u32 {
-    register_channel_inner::<T>(source, label, channel_type, false, iter)
+    register_channel_inner::<T>(key, label, channel_type, false, iter)
 }
 
 /// Like [`register_channel`] but marks the channel as endpoint-wrapped
@@ -68,40 +70,42 @@ pub(crate) fn register_channel<T>(
 /// `wrapper/*_wrap.rs`.
 #[cfg_attr(not(feature = "crossbeam"), allow(dead_code))]
 pub(crate) fn register_channel_wrap<T>(
-    source: &'static str,
+    key: &'static str,
     label: Option<String>,
     channel_type: ChannelType,
     iter: bool,
 ) -> u32 {
-    register_channel_inner::<T>(source, label, channel_type, true, iter)
+    register_channel_inner::<T>(key, label, channel_type, true, iter)
 }
 
 fn register_channel_inner<T>(
-    source: &'static str,
+    key: &'static str,
     label: Option<String>,
     channel_type: ChannelType,
     wrap: bool,
     iter: bool,
 ) -> u32 {
     let type_name = std::any::type_name::<T>();
+    let source = display_source(key);
     init_channels_state();
 
     if !iter {
         let map = CHANNEL_SOURCE_IDS.get_or_init(|| RwLock::new(HashMap::new()));
-        if let Some(&id) = map.read().unwrap().get(&(source, type_name)) {
+        if let Some(&id) = map.read().unwrap().get(&(key, type_name)) {
             send_channel_event(ChannelEvent::Instance { id, wrap });
             return id;
         }
         let mut writer = map.write().unwrap();
-        if let Some(&id) = writer.get(&(source, type_name)) {
+        if let Some(&id) = writer.get(&(key, type_name)) {
             send_channel_event(ChannelEvent::Instance { id, wrap });
             return id;
         }
         let id = next_channel_id();
-        writer.insert((source, type_name), id);
+        writer.insert((key, type_name), id);
 
         send_channel_event(ChannelEvent::Created {
             id,
+            key,
             source,
             display_label: label,
             channel_type,
@@ -117,6 +121,7 @@ fn register_channel_inner<T>(
     let id = next_channel_id();
     send_channel_event(ChannelEvent::Created {
         id,
+        key,
         source,
         display_label: label,
         channel_type,
@@ -215,6 +220,10 @@ pub(crate) fn timestamp_nanos(timestamp: Instant) -> u64 {
 #[derive(Debug, Clone)]
 pub(crate) struct ChannelEntry {
     pub(crate) id: u32,
+    /// Column-including call-site key (`file:line:column`); the identity used
+    /// by the display-suffix scan so same-line call sites do not cross-suffix.
+    pub(crate) key: &'static str,
+    /// The `file:line` form shown to users.
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) channel_type: ChannelType,
@@ -273,6 +282,7 @@ pub(crate) fn channel_to_json(
     stats: &ChannelEntry,
     percentiles: &[f64],
     now_ns: u64,
+    histograms: bool,
 ) -> JsonChannelEntry {
     let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
@@ -317,6 +327,7 @@ pub(crate) fn channel_to_json(
         proc_avg,
         proc_percentiles,
         proc_sampled_count: stats.has_proc_hist().then_some(stats.proc_sampled_count),
+        proc_histogram: histograms.then(|| stats.proc_histogram_base64()).flatten(),
         iter: stats.iter,
     }
 }
@@ -325,6 +336,7 @@ impl ChannelEntry {
     #[allow(clippy::too_many_arguments)]
     fn new(
         id: u32,
+        key: &'static str,
         source: &'static str,
         label: Option<String>,
         channel_type: ChannelType,
@@ -335,6 +347,7 @@ impl ChannelEntry {
     ) -> Self {
         Self {
             id,
+            key,
             source,
             label,
             channel_type,
@@ -378,6 +391,13 @@ impl ChannelEntry {
 
     pub(crate) fn has_proc_hist(&self) -> bool {
         self.proc_hist.is_some()
+    }
+
+    pub(crate) fn proc_histogram_base64(&self) -> Option<String> {
+        if self.proc_sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(self.proc_hist.as_ref()?)
     }
 
     #[inline]
@@ -509,6 +529,10 @@ impl ChannelEntry {
 pub(crate) enum ChannelEvent {
     Created {
         id: u32,
+        /// Column-including call-site key (`file:line:column`); distinguishes
+        /// same-line invocations in the display-suffix scan. `source` is the
+        /// `file:line` shown to users.
+        key: &'static str,
         source: &'static str,
         display_label: Option<String>,
         channel_type: ChannelType,
@@ -584,13 +608,14 @@ pub(crate) use crate::lib_on::hotpath_guard::LOGS_LIMIT;
 /// `Created` backfills the metadata; `wrap` is inferred from the event variant
 /// so wrap-only stats (queue depth, processing histogram) record immediately.
 fn placeholder_channel_entry(id: u32, wrap: bool) -> ChannelEntry {
-    ChannelEntry::new(id, "", None, ChannelType::Pending, "", 0, wrap, 0)
+    ChannelEntry::new(id, "", "", None, ChannelType::Pending, "", 0, wrap, 0)
 }
 
 fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent) {
     match event {
         ChannelEvent::Created {
             id,
+            key,
             source,
             display_label,
             channel_type,
@@ -599,11 +624,11 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             wrap,
             iter_mode,
         } => {
-            // The O(n) same-source scan only has meaning for per-instance
-            // entries; default-mode entries are unique per source and keep
+            // The O(n) same-site scan only has meaning for per-instance
+            // entries; default-mode entries are unique per site key and keep
             // an unsuffixed label.
             let iter = if iter_mode {
-                state.stats.values().filter(|s| s.source == source).count() as u32
+                state.stats.values().filter(|s| s.key == key).count() as u32
             } else {
                 0
             };
@@ -611,6 +636,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_channel_entry(id, wrap));
+            entry.key = key;
             entry.source = source;
             entry.label = display_label;
             entry.channel_type = channel_type;
@@ -843,6 +869,13 @@ pub(crate) fn init_channels_state() -> &'static ChannelsState {
     })
 }
 
+/// Wrapper macros identify a call site as `file:line:column` so two
+/// invocations on one physical line cannot alias; this strips the column back
+/// to the `file:line` form shown to users.
+pub(crate) fn display_source(key: &'static str) -> &'static str {
+    key.rsplit_once(':').map_or(key, |(source, _)| source)
+}
+
 pub(crate) fn resolve_label(id: &'static str, provided: Option<&str>, iter: Option<u32>) -> String {
     let base_label = if let Some(l) = provided {
         l.to_string()
@@ -1028,7 +1061,7 @@ cfg_if::cfg_if! {
 macro_rules! channel {
     // Default: wrap mode. `channel!(expr)` -> endpoint-wrapping instrumentation.
     ($expr:expr) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, None, false)
     }};
 
@@ -1038,7 +1071,7 @@ macro_rules! channel {
     // `CHANNEL_ID` is captured once here so `file!()`/`line!()` resolve to the user's
     // call site.
     ($expr:expr, $($rest:tt)*) => {{
-        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!());
+        const CHANNEL_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::channel!(@munch CHANNEL_ID, $expr ; (None) (None) [nolog] [wrap] (false) ; $($rest)*)
     }};
 
@@ -1109,7 +1142,7 @@ pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
     let current_elapsed_ns = crate::lib_on::current_elapsed_ns();
     let data = get_sorted_channel_entries()
         .iter()
-        .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns))
+        .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns, false))
         .collect();
 
     crate::json::JsonChannelsList {
@@ -1154,6 +1187,7 @@ mod tests {
             &mut state,
             ChannelEvent::Created {
                 id,
+                key: "test",
                 source: "test",
                 display_label: None,
                 channel_type: ChannelType::Unbounded,
@@ -1220,6 +1254,7 @@ mod tests {
             &mut state,
             ChannelEvent::Created {
                 id,
+                key: "test",
                 source: "test",
                 display_label: None,
                 channel_type: ChannelType::Unbounded,
@@ -1264,6 +1299,7 @@ mod tests {
             &mut state,
             ChannelEvent::Created {
                 id,
+                key: "test",
                 source: "test",
                 display_label: None,
                 channel_type: ChannelType::Oneshot,
@@ -1308,6 +1344,7 @@ mod tests {
             &mut state,
             ChannelEvent::Created {
                 id,
+                key: "test",
                 source: "test",
                 display_label: None,
                 channel_type: ChannelType::Unbounded,
@@ -1339,6 +1376,7 @@ mod tests {
             &mut state,
             ChannelEvent::Created {
                 id,
+                key: "test",
                 source: "test",
                 display_label: None,
                 channel_type: ChannelType::Bounded(1),
@@ -1403,6 +1441,7 @@ mod tests {
             &mut state,
             ChannelEvent::Created {
                 id,
+                key: "test",
                 source: "test",
                 display_label: None,
                 channel_type: ChannelType::Unbounded,
@@ -1433,5 +1472,79 @@ mod tests {
         assert_eq!(entry.queue_size, Some(2), "combined in-flight depth");
         assert_eq!(entry.max_queue_size, Some(2), "peak combined depth");
         assert!(entry.queue_size <= entry.max_queue_size);
+    }
+
+    /// The iter display-suffix scan counts by the column-including key, so two
+    /// `iter = true` call sites on one physical line (same display source,
+    /// different columns) each start their own suffix sequence instead of the
+    /// second one rendering as a `-2` instance of the first.
+    #[test]
+    fn iter_suffix_scan_counts_by_column_key() {
+        let mut state = ChannelsInternalState {
+            stats: HashMap::new(),
+            logs: HashMap::new(),
+        };
+
+        let created = |id, key| ChannelEvent::Created {
+            id,
+            key,
+            source: "f.rs:1",
+            display_label: None,
+            channel_type: ChannelType::Unbounded,
+            type_name: "u8",
+            type_size: 1,
+            wrap: true,
+            iter_mode: true,
+        };
+
+        // Two distinct call sites sharing one physical line.
+        process_channel_event(&mut state, created(1, "f.rs:1:14"));
+        process_channel_event(&mut state, created(2, "f.rs:1:52"));
+        assert_eq!(state.stats[&1].iter, 0);
+        assert_eq!(
+            state.stats[&2].iter, 0,
+            "same-line site must not cross-suffix"
+        );
+
+        // A repeat instance at the first site still gets the -2 suffix.
+        process_channel_event(&mut state, created(3, "f.rs:1:14"));
+        assert_eq!(state.stats[&3].iter, 1);
+    }
+}
+
+#[cfg(all(test, feature = "hotpath-cloud-meta"))]
+mod histogram_tests {
+    use crate::channels::{ChannelEntry, ChannelType};
+    use crate::lib_on::histograms::decode_histogram;
+
+    fn entry(wrap: bool) -> ChannelEntry {
+        ChannelEntry::new(
+            1,
+            "key",
+            "src",
+            None,
+            ChannelType::Unbounded,
+            "u8",
+            1,
+            wrap,
+            0,
+        )
+    }
+
+    #[test]
+    fn histogram_encodes_sampled_receives() {
+        let mut e = entry(true);
+        e.record_proc(1_000);
+        e.record_proc(2_000);
+
+        let hist = decode_histogram(&e.proc_histogram_base64().unwrap());
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.max(), 2_000);
+    }
+
+    #[test]
+    fn histogram_absent_without_samples_or_for_proxy_channels() {
+        assert!(entry(true).proc_histogram_base64().is_none());
+        assert!(entry(false).proc_histogram_base64().is_none());
     }
 }

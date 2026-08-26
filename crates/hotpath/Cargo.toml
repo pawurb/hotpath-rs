@@ -41,6 +41,7 @@ hotpath = [
 ]
 hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/crossbeam"]
 hotpath-alloc-meta = ["hotpath-meta/hotpath-alloc-meta"]
+hotpath-cloud-meta = ["hotpath-meta/hotpath-cloud-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta", "hotpath-meta/axum-0-8"]
 hotpath-alloc = ["dep:tokio", "hotpath-meta?/hotpath-alloc", "hotpath-macros/hotpath-alloc"]
 hotpath-cloud = ["dep:ureq", "ureq/rustls", "ureq/json", "dep:serde", "dep:serde_json", "hdrhistogram/serialization", "dep:base64"]

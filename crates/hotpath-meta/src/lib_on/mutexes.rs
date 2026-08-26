@@ -31,6 +31,10 @@ fn next_mutex_id() -> u32 {
 pub(crate) enum MutexEvent {
     Created {
         id: u32,
+        /// Column-including call-site key (`file:line:column`); distinguishes
+        /// same-line invocations in the display-suffix scan. `source` is the
+        /// `file:line` shown to users.
+        key: &'static str,
         source: &'static str,
         label: Option<String>,
         type_name: &'static str,
@@ -50,6 +54,10 @@ pub(crate) enum MutexEvent {
 #[derive(Debug, Clone)]
 pub(crate) struct MutexEntry {
     pub(crate) id: u32,
+    /// Column-including call-site key (`file:line:column`); the identity used
+    /// by the display-suffix scan so same-line call sites do not cross-suffix.
+    pub(crate) key: &'static str,
+    /// The `file:line` form shown to users.
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) type_name: &'static str,
@@ -106,6 +114,21 @@ impl MutexEntry {
     pub(crate) fn acquire_percentile_nanos(&self, p: f64) -> u64 {
         Self::percentile(&self.acquire_hist, self.sampled_count, p)
     }
+
+    fn encode_histogram(&self, hist: &Option<Histogram<u64>>) -> Option<String> {
+        if self.sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(hist.as_ref()?)
+    }
+
+    pub(crate) fn wait_histogram_base64(&self) -> Option<String> {
+        self.encode_histogram(&self.wait_hist)
+    }
+
+    pub(crate) fn acquire_histogram_base64(&self) -> Option<String> {
+        self.encode_histogram(&self.acquire_hist)
+    }
 }
 
 pub(crate) struct MutexesInternalState {
@@ -137,6 +160,7 @@ pub(crate) fn get_mutexes_json() -> crate::json::JsonMutexesList {
         &entries,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -184,6 +208,7 @@ pub(crate) fn stop_mutex_events() {
 fn placeholder_mutex_entry(id: u32) -> MutexEntry {
     MutexEntry {
         id,
+        key: "",
         source: "",
         label: None,
         type_name: "",
@@ -201,15 +226,17 @@ fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
     match event {
         MutexEvent::Created {
             id,
+            key,
             source,
             label,
             type_name,
         } => {
-            let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
+            let iter = state.stats.values().filter(|s| s.key == key).count() as u32;
             let entry = state
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_mutex_entry(id));
+            entry.key = key;
             entry.source = source;
             entry.label = label;
             entry.type_name = type_name;
@@ -237,13 +264,15 @@ fn process_mutex_event(state: &mut MutexesInternalState, event: MutexEvent) {
 }
 
 /// Registers a new Mutex with the profiling subsystem.
-pub(crate) fn register_mutex<T>(source: &'static str, label: Option<String>) -> u32 {
+pub(crate) fn register_mutex<T>(key: &'static str, label: Option<String>) -> u32 {
     let type_name = std::any::type_name::<T>();
+    let source = crate::channels::display_source(key);
     init_mutexes_state();
     let id = next_mutex_id();
 
     send_mutex_event(MutexEvent::Created {
         id,
+        key,
         source,
         label,
         type_name,
@@ -357,12 +386,42 @@ pub trait InstrumentMutex {
 #[macro_export]
 macro_rules! mutex {
     ($expr:expr) => {{
-        const MUTEX_ID: &'static str = concat!(file!(), ":", line!());
+        const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, None)
     }};
 
     ($expr:expr, label = $label:expr) => {{
-        const MUTEX_ID: &'static str = concat!(file!(), ":", line!());
+        const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, Some($label.to_string()))
     }};
+}
+
+#[cfg(all(test, feature = "hotpath-cloud-meta"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::mutexes::{placeholder_mutex_entry, MutexEntry};
+
+    #[test]
+    fn histograms_encode_sampled_acquisitions() {
+        let mut entry = placeholder_mutex_entry(1);
+        entry.count = 2;
+        entry.sampled_count = 2;
+        MutexEntry::record(&mut entry.wait_hist, 1_000);
+        MutexEntry::record(&mut entry.wait_hist, 2_000);
+        MutexEntry::record(&mut entry.acquire_hist, 500);
+        MutexEntry::record(&mut entry.acquire_hist, 700);
+
+        let wait = decode_histogram(&entry.wait_histogram_base64().unwrap());
+        assert_eq!(wait.len(), 2);
+        assert_eq!(wait.max(), 2_000);
+        let acquire = decode_histogram(&entry.acquire_histogram_base64().unwrap());
+        assert_eq!(acquire.max(), 700);
+    }
+
+    #[test]
+    fn histograms_absent_without_samples() {
+        let entry = placeholder_mutex_entry(1);
+        assert!(entry.wait_histogram_base64().is_none());
+        assert!(entry.acquire_histogram_base64().is_none());
+    }
 }
