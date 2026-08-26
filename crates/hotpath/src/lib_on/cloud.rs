@@ -52,11 +52,16 @@ pub(crate) fn validate_benchmark_name(name: &str) -> Result<(), String> {
 }
 
 pub(crate) fn benchmark_name() -> Result<String, String> {
-    let name = std::env::var("HOTPATH_BENCHMARK")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "default".to_string());
+    let name = match std::env::var("HOTPATH_BENCHMARK") {
+        Ok(s) => s.trim().to_string(),
+        Err(std::env::VarError::NotPresent) => String::new(),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err("invalid HOTPATH_BENCHMARK: value is not valid UTF-8".to_string())
+        }
+    };
+    if name.is_empty() {
+        return Ok("default".to_string());
+    }
     validate_benchmark_name(&name)?;
     Ok(name)
 }
@@ -256,6 +261,13 @@ mod tests {
         assert_eq!(benchmark_name(), Ok("ci".to_string()));
         std::env::set_var(var, "a/b");
         assert!(benchmark_name().is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            std::env::set_var(var, std::ffi::OsStr::from_bytes(b"\xFF\xFE"));
+            let err = benchmark_name().unwrap_err();
+            assert!(err.contains("not valid UTF-8"), "{err}");
+        }
         std::env::remove_var(var);
     }
 
