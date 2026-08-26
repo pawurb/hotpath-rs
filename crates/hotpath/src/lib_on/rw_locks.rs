@@ -145,6 +145,29 @@ impl RwLockEntry {
         };
         Self::percentile(hist, self.sampled_count(kind), p)
     }
+
+    fn encode_histogram(&self, kind: RwLockKind, hist: &Option<Histogram<u64>>) -> Option<String> {
+        if self.sampled_count(kind) == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(hist.as_ref()?)
+    }
+
+    pub(crate) fn wait_histogram_base64(&self, kind: RwLockKind) -> Option<String> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_wait_hist,
+            RwLockKind::Write => &self.write_wait_hist,
+        };
+        self.encode_histogram(kind, hist)
+    }
+
+    pub(crate) fn acquire_histogram_base64(&self, kind: RwLockKind) -> Option<String> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_acquire_hist,
+            RwLockKind::Write => &self.write_acquire_hist,
+        };
+        self.encode_histogram(kind, hist)
+    }
 }
 
 pub(crate) struct RwLocksInternalState {
@@ -176,6 +199,7 @@ pub(crate) fn get_rw_locks_json() -> crate::json::JsonRwLocksList {
         &entries,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -442,4 +466,30 @@ macro_rules! rw_lock {
         const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!());
         $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, Some($label.to_string()))
     }};
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::rw_locks::{placeholder_rw_lock_entry, RwLockEntry, RwLockKind};
+
+    #[test]
+    fn histograms_encode_per_kind_samples() {
+        let mut entry = placeholder_rw_lock_entry(1);
+        entry.read_count = 2;
+        entry.read_sampled_count = 2;
+        RwLockEntry::record(&mut entry.read_wait_hist, 1_000);
+        RwLockEntry::record(&mut entry.read_wait_hist, 2_000);
+        RwLockEntry::record(&mut entry.read_acquire_hist, 500);
+        RwLockEntry::record(&mut entry.read_acquire_hist, 700);
+
+        let wait = decode_histogram(&entry.wait_histogram_base64(RwLockKind::Read).unwrap());
+        assert_eq!(wait.len(), 2);
+        assert_eq!(wait.max(), 2_000);
+        let acquire = decode_histogram(&entry.acquire_histogram_base64(RwLockKind::Read).unwrap());
+        assert_eq!(acquire.max(), 700);
+
+        assert!(entry.wait_histogram_base64(RwLockKind::Write).is_none());
+        assert!(entry.acquire_histogram_base64(RwLockKind::Write).is_none());
+    }
 }

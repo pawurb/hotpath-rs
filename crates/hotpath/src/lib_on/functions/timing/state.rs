@@ -141,7 +141,7 @@ impl FunctionStats {
         if self.sampled_count == 0 {
             return None;
         }
-        crate::lib_on::functions::histogram_base64(self.hist.as_ref()?)
+        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
     }
 }
 

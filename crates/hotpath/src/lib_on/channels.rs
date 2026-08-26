@@ -278,6 +278,7 @@ pub(crate) fn channel_to_json(
     stats: &ChannelEntry,
     percentiles: &[f64],
     now_ns: u64,
+    histograms: bool,
 ) -> JsonChannelEntry {
     let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
@@ -322,6 +323,7 @@ pub(crate) fn channel_to_json(
         proc_avg,
         proc_percentiles,
         proc_sampled_count: stats.has_proc_hist().then_some(stats.proc_sampled_count),
+        proc_histogram: histograms.then(|| stats.proc_histogram_base64()).flatten(),
         iter: stats.iter,
     }
 }
@@ -384,6 +386,13 @@ impl ChannelEntry {
 
     pub(crate) fn has_proc_hist(&self) -> bool {
         self.proc_hist.is_some()
+    }
+
+    pub(crate) fn proc_histogram_base64(&self) -> Option<String> {
+        if self.proc_sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(self.proc_hist.as_ref()?)
     }
 
     #[inline]
@@ -1125,7 +1134,7 @@ pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
     let current_elapsed_ns = crate::lib_on::current_elapsed_ns();
     let data = get_sorted_channel_entries()
         .iter()
-        .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns))
+        .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns, false))
         .collect();
 
     crate::json::JsonChannelsList {
@@ -1450,5 +1459,32 @@ mod tests {
         assert_eq!(entry.queue_size, Some(2), "combined in-flight depth");
         assert_eq!(entry.max_queue_size, Some(2), "peak combined depth");
         assert!(entry.queue_size <= entry.max_queue_size);
+    }
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod histogram_tests {
+    use crate::channels::{ChannelEntry, ChannelType};
+    use crate::lib_on::histograms::decode_histogram;
+
+    fn entry(wrap: bool) -> ChannelEntry {
+        ChannelEntry::new(1, "src", None, ChannelType::Unbounded, "u8", 1, wrap, 0)
+    }
+
+    #[test]
+    fn histogram_encodes_sampled_receives() {
+        let mut e = entry(true);
+        e.record_proc(1_000);
+        e.record_proc(2_000);
+
+        let hist = decode_histogram(&e.proc_histogram_base64().unwrap());
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.max(), 2_000);
+    }
+
+    #[test]
+    fn histogram_absent_without_samples_or_for_proxy_channels() {
+        assert!(entry(true).proc_histogram_base64().is_none());
+        assert!(entry(false).proc_histogram_base64().is_none());
     }
 }

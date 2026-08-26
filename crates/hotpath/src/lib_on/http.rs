@@ -197,6 +197,13 @@ impl HttpEntry {
             _ => 0,
         }
     }
+
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
+    }
 }
 
 pub(crate) struct HttpInternalState {
@@ -247,6 +254,7 @@ pub(crate) fn get_http_json() -> crate::json::JsonHttpList {
         total_calls,
         reference_total,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -444,4 +452,28 @@ macro_rules! http {
         $crate::http::init_http_state();
         $crate::InstrumentHttpClient::instrument_http($client, Some($label.to_string()))
     }};
+}
+
+#[cfg(all(test, feature = "hotpath-cloud"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::http::HttpEntry;
+
+    #[test]
+    fn histogram_encodes_recorded_requests() {
+        let mut entry = HttpEntry::new(1, "example.com".to_string(), None, None);
+        entry.count = 2;
+        entry.record(1_000);
+        entry.record(2_000);
+
+        let hist = decode_histogram(&entry.histogram_base64().unwrap());
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.max(), 2_000);
+    }
+
+    #[test]
+    fn histogram_absent_without_requests() {
+        let entry = HttpEntry::new(1, "example.com".to_string(), None, None);
+        assert!(entry.histogram_base64().is_none());
+    }
 }

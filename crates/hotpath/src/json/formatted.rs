@@ -74,7 +74,9 @@ pub struct JsonFunctionEntry {
     pub total: String,
     pub percent_total: String,
     /// Base64 HdrHistogram V2 (deflate) of sampled call durations in ns.
-    /// Present only in static reports with `hotpath-cloud` upload enabled.
+    /// Present only in static reports with `hotpath-cloud` upload enabled;
+    /// same convention for the `*histogram` fields on the other entry types
+    /// (see AGENTS.md).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub histogram: Option<String>,
 }
@@ -343,6 +345,8 @@ pub struct JsonChannelEntry {
     pub proc_percentiles: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proc_sampled_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proc_histogram: Option<String>,
     pub iter: u32,
 }
 
@@ -374,6 +378,14 @@ pub struct JsonRwLockEntry {
     pub write_wait_percentiles: HashMap<String, String>,
     pub read_acquire_percentiles: HashMap<String, String>,
     pub write_acquire_percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_wait_histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_wait_histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_acquire_histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_acquire_histogram: Option<String>,
     pub iter: u32,
 }
 
@@ -398,6 +410,10 @@ pub struct JsonMutexEntry {
     pub acquire_avg: String,
     pub wait_percentiles: HashMap<String, String>,
     pub acquire_percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wait_histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acquire_histogram: Option<String>,
     pub iter: u32,
 }
 
@@ -430,6 +446,8 @@ pub struct JsonSqlEntry {
     pub total: String,
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -496,6 +514,8 @@ pub struct JsonHttpEntry {
     pub total: String,
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -569,6 +589,8 @@ pub struct JsonServerEntry {
     pub total: String,
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -613,6 +635,8 @@ pub struct JsonIoOpStats {
     pub throughput: Option<String>,
     pub total_ns: u64,
     pub percentiles: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
