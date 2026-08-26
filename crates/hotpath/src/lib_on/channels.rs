@@ -1535,7 +1535,7 @@ mod histogram_tests {
     use crate::lib_on::histograms::decode_histogram;
 
     fn entry(wrap: bool) -> ChannelEntry {
-        ChannelEntry::new(1, "src", None, ChannelType::Unbounded, "u8", 1, wrap, 0)
+        ChannelEntry::new(1, "key", "src", None, ChannelType::Unbounded, "u8", 1, wrap, 0)
     }
 
     #[test]
