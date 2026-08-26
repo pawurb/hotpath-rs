@@ -922,17 +922,26 @@ impl Drop for HotpathGuard {
         if let Some(v) = parse_usize_env("HOTPATH_META_THREADS_LIMIT") {
             self.threads_limit = v;
         }
-        let mut writer = match output.writer() {
+        #[cfg(feature = "hotpath-cloud-meta")]
+        let cloud_enabled = crate::lib_on::cloud::enabled();
+        #[cfg(not(feature = "hotpath-cloud-meta"))]
+        let cloud_enabled = false;
+
+        // An unusable local output must not block the cloud upload.
+        let mut writer: Box<dyn Write> = match output.writer() {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Failed to create output writer: {}", e);
-                return;
+                if !cloud_enabled {
+                    return;
+                }
+                Box::new(std::io::sink())
             }
         };
 
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
 
-        if is_json {
+        if is_json || cloud_enabled {
             let mut report = JsonReport {
                 label: std::env::var("HOTPATH_META_REPORT_LABEL")
                     .ok()
@@ -948,8 +957,11 @@ impl Drop for HotpathGuard {
                             if let Ok(state_guard) = state.read() {
                                 let total_elapsed = end_time.duration_since(state_guard.start_time);
                                 let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                let config =
-                                    make_functions_config(&state_guard, total_elapsed, false);
+                                let config = make_functions_config(
+                                    &state_guard,
+                                    total_elapsed,
+                                    cloud_enabled,
+                                );
                                 report.functions_timing =
                                     Some(build_timing_list(stats, &config, elapsed_ns));
                             }
@@ -962,7 +974,7 @@ impl Drop for HotpathGuard {
                                     if let Ok(state_guard) = state.read() {
                                         let total_elapsed = end_time.duration_since(state_guard.start_time);
                                         let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                        let config = make_functions_config(&state_guard, total_elapsed, false);
+                                        let config = make_functions_config(&state_guard, total_elapsed, cloud_enabled);
                                         report.functions_alloc = Some(
                                             build_functions_list_alloc(stats, &config, elapsed_ns),
                                         );
@@ -980,8 +992,11 @@ impl Drop for HotpathGuard {
                                     let total_elapsed =
                                         end_time.duration_since(state_guard.start_time);
                                     let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                    let config =
-                                        make_functions_config(&state_guard, total_elapsed, false);
+                                    let config = make_functions_config(
+                                        &state_guard,
+                                        total_elapsed,
+                                        cloud_enabled,
+                                    );
                                     let list = crate::functions::cpu::build_cpu_json(
                                         cpu,
                                         total_elapsed,
@@ -1007,6 +1022,7 @@ impl Drop for HotpathGuard {
                                 &channels_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1035,6 +1051,7 @@ impl Drop for HotpathGuard {
                                 &rw_locks_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1045,6 +1062,7 @@ impl Drop for HotpathGuard {
                                 &mutexes_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1057,6 +1075,7 @@ impl Drop for HotpathGuard {
                                 elapsed,
                                 reference_total,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1070,6 +1089,7 @@ impl Drop for HotpathGuard {
                                 elapsed,
                                 reference_total,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1086,6 +1106,7 @@ impl Drop for HotpathGuard {
                                 reference_total,
                                 &percentiles,
                                 report::ServerColumns::from_state(),
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1096,6 +1117,7 @@ impl Drop for HotpathGuard {
                                 &io_data[..limit],
                                 elapsed,
                                 &percentiles,
+                                cloud_enabled,
                             ));
                         }
                     }
@@ -1140,7 +1162,14 @@ impl Drop for HotpathGuard {
                 }
                 _ => {}
             }
-        } else {
+
+            #[cfg(feature = "hotpath-cloud-meta")]
+            if cloud_enabled {
+                crate::lib_on::cloud::upload(&report);
+            }
+        }
+
+        if !is_json {
             let baseline_ns = cpu_baseline.as_ref().map(|b| b.avg_ns);
             let label = std::env::var("HOTPATH_META_REPORT_LABEL")
                 .ok()

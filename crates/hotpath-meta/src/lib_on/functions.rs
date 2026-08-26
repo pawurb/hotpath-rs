@@ -50,12 +50,6 @@ pub(crate) struct FunctionStatsConfig {
     pub(crate) histograms: bool,
 }
 
-/// HdrHistogram V2 deflate payload, base64-encoded. Only the main crate's
-/// `hotpath-cloud` feature produces it; the meta crate has no cloud upload.
-pub(crate) fn histogram_base64(_hist: &hdrhistogram::Histogram<u64>) -> Option<String> {
-    None
-}
-
 pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 pub(crate) fn next_function_id() -> u32 {

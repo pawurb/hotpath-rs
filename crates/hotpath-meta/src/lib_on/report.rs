@@ -200,6 +200,7 @@ pub(crate) fn collect_channels_json(
     channels: &[ChannelEntry],
     elapsed: std::time::Duration,
     percentiles: &[f64],
+    histograms: bool,
 ) -> JsonChannelsList {
     let current_elapsed_ns = elapsed.as_nanos() as u64;
     JsonChannelsList {
@@ -207,7 +208,7 @@ pub(crate) fn collect_channels_json(
         percentiles: percentiles.to_vec(),
         data: channels
             .iter()
-            .map(|entry| channel_to_json(entry, percentiles, current_elapsed_ns))
+            .map(|entry| channel_to_json(entry, percentiles, current_elapsed_ns, histograms))
             .collect(),
     }
 }
@@ -323,7 +324,11 @@ fn report_rw_locks_subtable(
     let _ = writeln!(writer);
 }
 
-fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntry {
+fn rw_lock_to_json(
+    rw_lock: &RwLockEntry,
+    percentiles: &[f64],
+    histograms: bool,
+) -> JsonRwLockEntry {
     let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
 
     let fmt = |kind: RwLockKind, nanos: u64| {
@@ -389,6 +394,18 @@ fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64]) -> JsonRwLockEntr
         write_wait_percentiles,
         read_acquire_percentiles,
         write_acquire_percentiles,
+        read_wait_histogram: histograms
+            .then(|| rw_lock.wait_histogram_base64(RwLockKind::Read))
+            .flatten(),
+        write_wait_histogram: histograms
+            .then(|| rw_lock.wait_histogram_base64(RwLockKind::Write))
+            .flatten(),
+        read_acquire_histogram: histograms
+            .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Read))
+            .flatten(),
+        write_acquire_histogram: histograms
+            .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Write))
+            .flatten(),
         iter: rw_lock.iter,
     }
 }
@@ -397,13 +414,14 @@ pub(crate) fn collect_rw_locks_json(
     rw_locks: &[RwLockEntry],
     elapsed: std::time::Duration,
     percentiles: &[f64],
+    histograms: bool,
 ) -> JsonRwLocksList {
     JsonRwLocksList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         percentiles: percentiles.to_vec(),
         data: rw_locks
             .iter()
-            .map(|rw_lock| rw_lock_to_json(rw_lock, percentiles))
+            .map(|rw_lock| rw_lock_to_json(rw_lock, percentiles, histograms))
             .collect(),
     }
 }
@@ -498,7 +516,7 @@ pub(crate) fn report_mutexes_table(
     let _ = writeln!(writer);
 }
 
-fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64]) -> JsonMutexEntry {
+fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], histograms: bool) -> JsonMutexEntry {
     let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
 
     let fmt = |nanos: u64| format_sampled_duration(nanos, mutex.sampled_count, mutex.count);
@@ -522,6 +540,10 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64]) -> JsonMutexEntry {
         acquire_avg: fmt(mutex.acquire_avg_nanos()),
         wait_percentiles,
         acquire_percentiles,
+        wait_histogram: histograms.then(|| mutex.wait_histogram_base64()).flatten(),
+        acquire_histogram: histograms
+            .then(|| mutex.acquire_histogram_base64())
+            .flatten(),
         iter: mutex.iter,
     }
 }
@@ -530,13 +552,14 @@ pub(crate) fn collect_mutexes_json(
     mutexes: &[MutexEntry],
     elapsed: std::time::Duration,
     percentiles: &[f64],
+    histograms: bool,
 ) -> JsonMutexesList {
     JsonMutexesList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         percentiles: percentiles.to_vec(),
         data: mutexes
             .iter()
-            .map(|mutex| mutex_to_json(mutex, percentiles))
+            .map(|mutex| mutex_to_json(mutex, percentiles, histograms))
             .collect(),
     }
 }
@@ -656,7 +679,12 @@ fn format_sql_percent(total_nanos: u64, reference_total: u64) -> String {
     format!("{:.2}%", percentage)
 }
 
-fn sql_to_json(entry: &SqlEntry, reference_total: u64, percentiles: &[f64]) -> JsonSqlEntry {
+fn sql_to_json(
+    entry: &SqlEntry,
+    reference_total: u64,
+    percentiles: &[f64],
+    histograms: bool,
+) -> JsonSqlEntry {
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
         percentile_map.insert(
@@ -675,6 +703,7 @@ fn sql_to_json(entry: &SqlEntry, reference_total: u64, percentiles: &[f64]) -> J
         total: format_duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
+        histogram: histograms.then(|| entry.histogram_base64()).flatten(),
     }
 }
 
@@ -683,6 +712,7 @@ pub(crate) fn collect_sql_json(
     elapsed: std::time::Duration,
     reference_total: u64,
     percentiles: &[f64],
+    histograms: bool,
 ) -> JsonSqlList {
     JsonSqlList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
@@ -690,7 +720,7 @@ pub(crate) fn collect_sql_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| sql_to_json(entry, reference_total, percentiles))
+            .map(|entry| sql_to_json(entry, reference_total, percentiles, histograms))
             .collect(),
     }
 }
@@ -788,7 +818,12 @@ pub(crate) fn report_http_table(
     let _ = writeln!(writer);
 }
 
-fn http_to_json(entry: &HttpEntry, reference_total: u64, percentiles: &[f64]) -> JsonHttpEntry {
+fn http_to_json(
+    entry: &HttpEntry,
+    reference_total: u64,
+    percentiles: &[f64],
+    histograms: bool,
+) -> JsonHttpEntry {
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
         percentile_map.insert(
@@ -808,6 +843,7 @@ fn http_to_json(entry: &HttpEntry, reference_total: u64, percentiles: &[f64]) ->
         total: format_duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
+        histogram: histograms.then(|| entry.histogram_base64()).flatten(),
     }
 }
 
@@ -816,6 +852,7 @@ pub(crate) fn collect_http_json(
     elapsed: std::time::Duration,
     reference_total: u64,
     percentiles: &[f64],
+    histograms: bool,
 ) -> JsonHttpList {
     JsonHttpList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
@@ -823,7 +860,7 @@ pub(crate) fn collect_http_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| http_to_json(entry, reference_total, percentiles))
+            .map(|entry| http_to_json(entry, reference_total, percentiles, histograms))
             .collect(),
     }
 }
@@ -959,6 +996,7 @@ fn server_to_json(
     reference_total: u64,
     percentiles: &[f64],
     columns: ServerColumns,
+    histograms: bool,
 ) -> JsonServerEntry {
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
@@ -980,6 +1018,7 @@ fn server_to_json(
         total: format_duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
+        histogram: histograms.then(|| entry.histogram_base64()).flatten(),
     }
 }
 
@@ -990,6 +1029,7 @@ pub(crate) fn collect_server_json(
     reference_total: u64,
     percentiles: &[f64],
     columns: ServerColumns,
+    histograms: bool,
 ) -> JsonServerList {
     JsonServerList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
@@ -998,7 +1038,7 @@ pub(crate) fn collect_server_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| server_to_json(entry, reference_total, percentiles, columns))
+            .map(|entry| server_to_json(entry, reference_total, percentiles, columns, histograms))
             .collect(),
     }
 }
@@ -1131,7 +1171,7 @@ fn report_io_subtable(
     let _ = writeln!(writer);
 }
 
-fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64]) -> JsonIoOpStats {
+fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64], histograms: bool) -> JsonIoOpStats {
     let fmt = |nanos: u64| format_sampled_duration(nanos, stats.sampled_count, stats.count);
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
@@ -1150,10 +1190,11 @@ fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64]) -> JsonIoOpStats 
             .map(|rate| format_throughput(Some(rate))),
         total_ns: stats.total_nanos,
         percentiles: percentile_map,
+        histogram: histograms.then(|| stats.histogram_base64()).flatten(),
     }
 }
 
-fn io_to_json(entry: &IoEntry, percentiles: &[f64]) -> JsonIoEntry {
+fn io_to_json(entry: &IoEntry, percentiles: &[f64], histograms: bool) -> JsonIoEntry {
     let label = resolve_label(entry.source, entry.label.as_deref(), Some(entry.iter));
 
     JsonIoEntry {
@@ -1162,10 +1203,10 @@ fn io_to_json(entry: &IoEntry, percentiles: &[f64]) -> JsonIoEntry {
         label,
         has_custom_label: entry.label.is_some(),
         type_name: entry.type_name.to_string(),
-        read: io_op_stats_to_json(&entry.read, percentiles),
-        write: io_op_stats_to_json(&entry.write, percentiles),
-        flush: io_op_stats_to_json(&entry.flush, percentiles),
-        shutdown: io_op_stats_to_json(&entry.shutdown, percentiles),
+        read: io_op_stats_to_json(&entry.read, percentiles, histograms),
+        write: io_op_stats_to_json(&entry.write, percentiles, histograms),
+        flush: io_op_stats_to_json(&entry.flush, percentiles, histograms),
+        shutdown: io_op_stats_to_json(&entry.shutdown, percentiles, histograms),
         instances: entry.instances,
         iter: entry.iter,
     }
@@ -1175,13 +1216,14 @@ pub(crate) fn collect_io_json(
     entries: &[IoEntry],
     elapsed: std::time::Duration,
     percentiles: &[f64],
+    histograms: bool,
 ) -> JsonIoList {
     JsonIoList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| io_to_json(entry, percentiles))
+            .map(|entry| io_to_json(entry, percentiles, histograms))
             .collect(),
     }
 }

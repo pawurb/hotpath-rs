@@ -32,6 +32,7 @@ hotpath-meta = [
   "dep:libc",
 ]
 hotpath-alloc-meta = ["dep:tokio"]
+hotpath-cloud-meta = ["dep:ureq", "ureq/rustls", "ureq/json", "dep:serde", "dep:serde_json", "hdrhistogram/serialization", "dep:base64"]
 hotpath-alloc = []
 hotpath-off-meta = ["hotpath-macros-meta/hotpath-off-meta"]
 hotpath-cpu-meta = ["dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]

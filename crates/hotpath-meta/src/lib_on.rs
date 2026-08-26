@@ -55,6 +55,9 @@ pub use rw_locks::InstrumentRwLock;
 pub use server::AxumLayer;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
+#[cfg(feature = "hotpath-cloud-meta")]
+pub(crate) mod cloud;
+pub(crate) mod histograms;
 pub mod hotpath_guard;
 pub(crate) mod report;
 pub(crate) mod sampling;

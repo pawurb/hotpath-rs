@@ -18,14 +18,14 @@ pub struct RwLock<T> {
 
 impl<T> RwLock<T> {
     /// Drop-in constructor for the `hotpath_meta::wrap` prefix migration. Captures the
-    /// caller location as the registered source.
+    /// caller location as the column-including registration key.
     #[track_caller]
     #[deprecated(note = "construct via the hotpath_meta::rw_lock! macro instead of new()")]
     pub fn new(value: T) -> Self {
         let loc = std::panic::Location::caller();
-        let source: &'static str =
-            Box::leak(format!("{}:{}", loc.file(), loc.line()).into_boxed_str());
-        Self::__new_instrumented(StdRwLock::new(value), source, None)
+        let key: &'static str =
+            Box::leak(format!("{}:{}:{}", loc.file(), loc.line(), loc.column()).into_boxed_str());
+        Self::__new_instrumented(StdRwLock::new(value), key, None)
     }
 
     #[doc(hidden)]

@@ -54,6 +54,10 @@ impl IoOpKind {
 pub(crate) enum IoEvent {
     Created {
         id: u32,
+        /// Column-including call-site key (`file:line:column`); distinguishes
+        /// same-line invocations in the display-suffix scan. `source` is the
+        /// `file:line` shown to users.
+        key: &'static str,
         source: &'static str,
         label: Option<String>,
         type_name: &'static str,
@@ -145,6 +149,13 @@ impl IoOpStats {
             _ => 0,
         }
     }
+
+    pub(crate) fn histogram_base64(&self) -> Option<String> {
+        if self.sampled_count == 0 {
+            return None;
+        }
+        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
+    }
 }
 
 /// Statistics for a single `io!` creation site (source location + concrete
@@ -152,6 +163,10 @@ impl IoOpStats {
 #[derive(Debug, Clone)]
 pub(crate) struct IoEntry {
     pub(crate) id: u32,
+    /// Column-including call-site key (`file:line:column`); the identity used
+    /// by the display-suffix scan so same-line call sites do not cross-suffix.
+    pub(crate) key: &'static str,
+    /// The `file:line` form shown to users.
     pub(crate) source: &'static str,
     pub(crate) label: Option<String>,
     pub(crate) type_name: &'static str,
@@ -220,6 +235,7 @@ pub(crate) fn get_io_json() -> crate::json::JsonIoList {
         &entries,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
+        false,
     )
 }
 
@@ -270,6 +286,7 @@ pub(crate) fn stop_io_events() {
 fn placeholder_io_entry(id: u32) -> IoEntry {
     IoEntry {
         id,
+        key: "",
         source: "",
         label: None,
         type_name: "",
@@ -286,15 +303,21 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
     match event {
         IoEvent::Created {
             id,
+            key,
             source,
             label,
             type_name,
         } => {
-            let iter = state.stats.values().filter(|s| s.source == source).count() as u32;
+            let iter = state
+                .stats
+                .values()
+                .filter(|s| s.key == key && s.label == label)
+                .count() as u32;
             let entry = state
                 .stats
                 .entry(id)
                 .or_insert_with(|| placeholder_io_entry(id));
+            entry.key = key;
             entry.source = source;
             entry.label = label;
             entry.type_name = type_name;
@@ -333,7 +356,9 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
 /// Entries are keyed by creation site and concrete type, so wrappers created
 /// repeatedly at one `io!` call (e.g. per accepted connection in a server)
 /// share a single accumulating entry and state stays bounded by the number of
-/// call sites rather than the number of values ever wrapped.
+/// call sites rather than the number of values ever wrapped. The site key
+/// includes the column (`file:line:column`), so two invocations on one
+/// physical line do not alias; the displayed source stays `file:line`.
 type IoSourceKey = (&'static str, &'static str);
 
 static IO_SOURCE_IDS: OnceLock<StdRwLock<HashMap<IoSourceKey, u32>>> = OnceLock::new();
@@ -342,26 +367,28 @@ static IO_SOURCE_IDS: OnceLock<StdRwLock<HashMap<IoSourceKey, u32>>> = OnceLock:
 /// wrappers from the same call site and type is reused (only the first
 /// registration emits `Created`, so its `label` wins); with `iter` every
 /// instance gets its own entry, distinguished by the entry's `iter` number.
-pub(crate) fn register_io<T>(source: &'static str, label: Option<String>, iter: bool) -> u32 {
+pub(crate) fn register_io<T>(key: &'static str, label: Option<String>, iter: bool) -> u32 {
     let type_name = std::any::type_name::<T>();
+    let source = crate::channels::display_source(key);
     init_io_state();
 
     if !iter {
         let map = IO_SOURCE_IDS.get_or_init(|| StdRwLock::new(HashMap::new()));
-        if let Some(&id) = map.read().unwrap().get(&(source, type_name)) {
+        if let Some(&id) = map.read().unwrap().get(&(key, type_name)) {
             send_io_event(IoEvent::Instance { id });
             return id;
         }
         let mut writer = map.write().unwrap();
-        if let Some(&id) = writer.get(&(source, type_name)) {
+        if let Some(&id) = writer.get(&(key, type_name)) {
             send_io_event(IoEvent::Instance { id });
             return id;
         }
         let id = next_io_id();
-        writer.insert((source, type_name), id);
+        writer.insert((key, type_name), id);
 
         send_io_event(IoEvent::Created {
             id,
+            key,
             source,
             label,
             type_name,
@@ -373,6 +400,7 @@ pub(crate) fn register_io<T>(source: &'static str, label: Option<String>, iter: 
     let id = next_io_id();
     send_io_event(IoEvent::Created {
         id,
+        key,
         source,
         label,
         type_name,
@@ -507,12 +535,12 @@ pub(crate) fn compare_io_entries(a: &IoEntry, b: &IoEntry) -> std::cmp::Ordering
 #[macro_export]
 macro_rules! io {
     ($expr:expr) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, None, false)
     }};
 
     ($expr:expr, label = $label:expr) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented(
             $expr,
             IO_ID,
@@ -522,17 +550,42 @@ macro_rules! io {
     }};
 
     ($expr:expr, iter = true) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, None, true)
     }};
 
     ($expr:expr, label = $label:expr, iter = true) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
 
     ($expr:expr, iter = true, label = $label:expr) => {{
-        const IO_ID: &'static str = concat!(file!(), ":", line!());
+        const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
+}
+
+#[cfg(all(test, feature = "hotpath-cloud-meta"))]
+mod histogram_tests {
+    use crate::lib_on::histograms::decode_histogram;
+    use crate::lib_on::io::IoOpStats;
+
+    #[test]
+    fn histogram_encodes_sampled_operations() {
+        let mut stats = IoOpStats::new();
+        stats.record(64, Some(1_000));
+        stats.record(64, Some(2_000));
+        stats.record(64, None);
+
+        let hist = decode_histogram(&stats.histogram_base64().unwrap());
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.max(), 2_000);
+    }
+
+    #[test]
+    fn histogram_absent_without_sampled_operations() {
+        let mut stats = IoOpStats::new();
+        stats.record(64, None);
+        assert!(stats.histogram_base64().is_none());
+    }
 }
