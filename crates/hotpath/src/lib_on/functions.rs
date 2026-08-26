@@ -85,13 +85,22 @@ fn is_focused(name: &str) -> bool {
 pub(crate) static EXCLUDE_WRAPPER: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_EXCLUDE_WRAPPER"));
 
+/// Single per-call skip decision: `HOTPATH_FOCUS` exclusion or event sampling.
+/// The wrapper guard is exempt - its exact total is the `%` denominator.
+/// `is_focused` runs first so focused-out calls do not consume a sampling tick.
+/// Must be evaluated exactly once per function call.
+#[inline]
+fn skip_call(name: &str, wrapper: bool) -> bool {
+    !wrapper && (!is_focused(name) || !crate::lib_on::sampling::functions_should_emit())
+}
+
 #[doc(hidden)]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 pub fn build_measurement_guard_sync(
     measurement_name: &'static str,
     wrapper: bool,
 ) -> MeasurementGuardSync {
-    let skipped = !wrapper && !is_focused(measurement_name);
+    let skipped = skip_call(measurement_name, wrapper);
     MeasurementGuardSync::new_caller_scoped(measurement_name, wrapper, skipped)
 }
 
@@ -106,7 +115,7 @@ pub fn build_measurement_guard_block(
     measurement_name: &'static str,
     wrapper: bool,
 ) -> MeasurementGuardSync {
-    let skipped = !wrapper && !is_focused(measurement_name);
+    let skipped = skip_call(measurement_name, wrapper);
     MeasurementGuardSync::new(measurement_name, wrapper, skipped)
 }
 
@@ -116,7 +125,7 @@ pub fn build_measurement_guard_async(
     measurement_name: &'static str,
     wrapper: bool,
 ) -> MeasurementGuardAsync {
-    let skipped = !wrapper && !is_focused(measurement_name);
+    let skipped = skip_call(measurement_name, wrapper);
     cfg_if::cfg_if! {
         if #[cfg(feature = "hotpath-alloc")] {
             MeasurementGuardAsync::new(measurement_name, wrapper, skipped, None)
@@ -138,15 +147,17 @@ fn make_alloc_bridge(skipped: bool) -> Option<std::sync::Arc<AsyncAllocBridge>> 
     }
 }
 
+/// `skipped` must be the caller's single `skip_call` decision for this call,
+/// so the guard and the per-poll caller scope agree.
 #[inline]
 fn build_measurement_guard_async_with_bridge(
     measurement_name: &'static str,
     wrapper: bool,
+    skipped: bool,
 ) -> (
     MeasurementGuardAsync,
     Option<std::sync::Arc<AsyncAllocBridge>>,
 ) {
-    let skipped = !wrapper && !is_focused(measurement_name);
     let alloc_bridge = make_alloc_bridge(skipped);
 
     cfg_if::cfg_if! {
@@ -170,7 +181,7 @@ fn build_measurement_guard_sync_with_log(
     measurement_name: &'static str,
     wrapper: bool,
 ) -> MeasurementGuardSyncWithLog {
-    let skipped = !wrapper && !is_focused(measurement_name);
+    let skipped = skip_call(measurement_name, wrapper);
     MeasurementGuardSyncWithLog::new_caller_scoped(measurement_name, wrapper, skipped)
 }
 
@@ -179,20 +190,22 @@ fn build_measurement_guard_sync_with_log(
 fn build_measurement_guard_async_with_log(
     measurement_name: &'static str,
     wrapper: bool,
+    skipped: bool,
 ) -> MeasurementGuardAsyncWithLog {
-    let skipped = !wrapper && !is_focused(measurement_name);
     MeasurementGuardAsyncWithLog::new(measurement_name, wrapper, skipped)
 }
 
+/// `skipped` must be the caller's single `skip_call` decision for this call,
+/// so the guard and the per-poll caller scope agree.
 #[inline]
 fn build_measurement_guard_async_with_log_bridge(
     measurement_name: &'static str,
     wrapper: bool,
+    skipped: bool,
 ) -> (
     MeasurementGuardAsyncWithLog,
     Option<std::sync::Arc<AsyncAllocBridge>>,
 ) {
-    let skipped = !wrapper && !is_focused(measurement_name);
     let alloc_bridge = make_alloc_bridge(skipped);
 
     cfg_if::cfg_if! {
@@ -241,40 +254,47 @@ pub async fn measure_async_log<T: std::fmt::Debug, Fut>(
 where
     Fut: Future<Output = T>,
 {
+    let skipped = skip_call(measurement_loc, false);
     cfg_if::cfg_if! {
         if #[cfg(feature = "hotpath-alloc")] {
-            let (guard, alloc_bridge) = build_measurement_guard_async_with_log_bridge(measurement_loc, false);
+            let (guard, alloc_bridge) = build_measurement_guard_async_with_log_bridge(measurement_loc, false, skipped);
             let result = crate::futures::wrapper::InstrumentedFuture::new(
                 fut,
                 measurement_loc,
                 None,
                 alloc_bridge,
                 false,
-                async_caller_scope(measurement_loc),
+                async_caller_scope(measurement_loc, skipped),
             )
             .await;
             guard.finish_with_result(&result);
             result
         } else {
-            let guard = build_measurement_guard_async_with_log(measurement_loc, false);
-            let result = await_with_caller_scope(measurement_loc, fut).await;
+            let guard = build_measurement_guard_async_with_log(measurement_loc, false, skipped);
+            let result = await_with_caller_scope(measurement_loc, skipped, fut).await;
             guard.finish_with_result(&result);
             result
         }
     }
 }
 
-/// Caller scope for a measured async body: `None` when `HOTPATH_FOCUS`
-/// excludes the function, matching the sync guards' skipped behavior.
-fn async_caller_scope(measurement_loc: &'static str) -> Option<&'static str> {
-    is_focused(measurement_loc).then_some(measurement_loc)
+/// Caller scope for a measured async body: `None` for skipped calls
+/// (`HOTPATH_FOCUS` exclusion or event sampling), matching the sync guards'
+/// skipped behavior. `skipped` must be the same `skip_call` decision the
+/// guard was built with, so a call pushes caller scope iff it is tracked.
+fn async_caller_scope(measurement_loc: &'static str, skipped: bool) -> Option<&'static str> {
+    (!skipped).then_some(measurement_loc)
 }
 
 /// Runs a measured async body with its function name registered on the
 /// thread-local caller stack around every poll (SQL/HTTP source attribution).
 /// Awaits the future unwrapped when no SQL/HTTP front-end feature is enabled.
 #[cfg(not(feature = "hotpath-alloc"))]
-async fn await_with_caller_scope<T, Fut>(measurement_loc: &'static str, fut: Fut) -> T
+async fn await_with_caller_scope<T, Fut>(
+    measurement_loc: &'static str,
+    skipped: bool,
+    fut: Fut,
+) -> T
 where
     Fut: Future<Output = T>,
 {
@@ -293,11 +313,11 @@ where
                 None,
                 None,
                 false,
-                async_caller_scope(measurement_loc),
+                async_caller_scope(measurement_loc, skipped),
             )
             .await
         } else {
-            let _ = measurement_loc;
+            let _ = (measurement_loc, skipped);
             fut.await
         }
     }
@@ -312,22 +332,23 @@ pub async fn measure_async<T, Fut>(measurement_loc: &'static str, fut: Fut) -> T
 where
     Fut: Future<Output = T>,
 {
+    let skipped = skip_call(measurement_loc, false);
     cfg_if::cfg_if! {
         if #[cfg(feature = "hotpath-alloc")] {
             let (_guard, alloc_bridge) =
-                build_measurement_guard_async_with_bridge(measurement_loc, false);
+                build_measurement_guard_async_with_bridge(measurement_loc, false, skipped);
             crate::futures::wrapper::InstrumentedFuture::new(
                 fut,
                 measurement_loc,
                 None,
                 alloc_bridge,
                 false,
-                async_caller_scope(measurement_loc),
+                async_caller_scope(measurement_loc, skipped),
             )
             .await
         } else {
-            let _guard = build_measurement_guard_async(measurement_loc, false);
-            await_with_caller_scope(measurement_loc, fut).await
+            let _guard = MeasurementGuardAsync::new(measurement_loc, false, skipped);
+            await_with_caller_scope(measurement_loc, skipped, fut).await
         }
     }
 }
@@ -344,14 +365,16 @@ where
 {
     crate::futures::init_futures_state();
 
-    let (_guard, alloc_bridge) = build_measurement_guard_async_with_bridge(measurement_loc, false);
+    let skipped = skip_call(measurement_loc, false);
+    let (_guard, alloc_bridge) =
+        build_measurement_guard_async_with_bridge(measurement_loc, false, skipped);
     crate::futures::wrapper::InstrumentedFuture::new(
         fut,
         measurement_loc,
         None,
         alloc_bridge,
         true,
-        async_caller_scope(measurement_loc),
+        async_caller_scope(measurement_loc, skipped),
     )
     .await
 }
@@ -369,15 +392,16 @@ where
 {
     crate::futures::init_futures_state();
 
+    let skipped = skip_call(measurement_loc, false);
     let (guard, alloc_bridge) =
-        build_measurement_guard_async_with_log_bridge(measurement_loc, false);
+        build_measurement_guard_async_with_log_bridge(measurement_loc, false, skipped);
     let result = crate::futures::wrapper::InstrumentedFutureLog::new(
         fut,
         measurement_loc,
         None,
         alloc_bridge,
         true,
-        async_caller_scope(measurement_loc),
+        async_caller_scope(measurement_loc, skipped),
     )
     .await;
     guard.finish_with_result(&result);

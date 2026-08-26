@@ -59,6 +59,10 @@ pub(crate) struct FunctionStats {
     pub(crate) name: &'static str,
     pub(crate) count: u64,
     pub(crate) duration_sampled_count: u64,
+    /// Event-sampling keep-rate at entry creation: kept calls are a 1-in-k
+    /// subset, so report counts and totals are multiplied back by `k`.
+    /// `1` for wrapper entries (never sampled) and when event sampling is off.
+    pub(crate) event_sample_k: u64,
     bytes_total_hist: Option<Histogram<u64>>,
     count_total_hist: Option<Histogram<u64>>,
     duration_hist: Option<Histogram<u64>>,
@@ -122,6 +126,11 @@ impl FunctionStats {
             name,
             count: 1,
             duration_sampled_count: 0,
+            event_sample_k: if wrapper {
+                1
+            } else {
+                crate::lib_on::sampling::functions_event_sample_k()
+            },
             bytes_total_hist: Some(bytes_total_hist),
             count_total_hist: Some(count_total_hist),
             duration_hist: Some(duration_hist),
@@ -226,21 +235,11 @@ impl FunctionStats {
     }
 
     #[inline]
-    pub fn total_bytes(&self) -> u64 {
-        self.total_bytes_sum
-    }
-
-    #[inline]
     pub fn avg_bytes(&self) -> u64 {
         if self.count == 0 {
             return 0;
         }
         self.total_bytes_sum / self.count
-    }
-
-    #[inline]
-    pub fn total_count(&self) -> u64 {
-        self.total_count_sum
     }
 
     #[inline]
@@ -302,6 +301,35 @@ impl FunctionStats {
         } else {
             self.avg_duration_ns() * self.count
         }
+    }
+
+    /// Kept calls scaled back up by the event-sampling keep-rate. Entries with
+    /// fewer calls than `k` per thread over-report (the always-kept first call
+    /// shows as `k`) - same bias time sampling has on avg.
+    #[inline]
+    pub fn scaled_count(&self) -> u64 {
+        self.count * self.event_sample_k
+    }
+
+    /// [`display_total_duration_ns`](Self::display_total_duration_ns) scaled
+    /// back up by the event-sampling keep-rate.
+    #[inline]
+    pub fn scaled_total_duration_ns(&self) -> u64 {
+        self.display_total_duration_ns() * self.event_sample_k
+    }
+
+    /// Total allocated bytes scaled back up by the event-sampling keep-rate;
+    /// per-call avg and percentiles stay unscaled.
+    #[inline]
+    pub fn scaled_bytes_total(&self) -> u64 {
+        self.total_bytes_sum * self.event_sample_k
+    }
+
+    /// Total allocation count scaled back up by the event-sampling keep-rate;
+    /// per-call avg and percentiles stay unscaled.
+    #[inline]
+    pub fn scaled_count_total(&self) -> u64 {
+        self.total_count_sum * self.event_sample_k
     }
 }
 

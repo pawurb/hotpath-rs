@@ -330,6 +330,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn functions_event_sampling_rate(self, _rate: f64) -> Self {
+        self
+    }
+
     pub fn output_path(self, _path: impl AsRef<std::path::Path>) -> Self {
         self
     }

@@ -53,6 +53,10 @@ pub(crate) struct FunctionStats {
     pub(crate) total_duration_ns: u64,
     pub(crate) count: u64,
     pub(crate) sampled_count: u64,
+    /// Event-sampling keep-rate at entry creation: kept calls are a 1-in-k
+    /// subset, so report counts and totals are multiplied back by `k`.
+    /// `1` for wrapper entries (never sampled) and when event sampling is off.
+    pub(crate) event_sample_k: u64,
     hist: Option<Histogram<u64>>,
     pub(crate) has_data: bool,
     pub(crate) wrapper: bool,
@@ -74,6 +78,11 @@ impl FunctionStats {
             total_duration_ns: 0,
             count: 0,
             sampled_count: 0,
+            event_sample_k: if wrapper {
+                1
+            } else {
+                crate::lib_on::sampling::functions_event_sample_k()
+            },
             hist: Some(hist),
             has_data: false,
             wrapper,
@@ -125,6 +134,19 @@ impl FunctionStats {
         } else {
             self.avg_duration_ns() * self.count
         }
+    }
+
+    /// Kept calls scaled back up by the event-sampling keep-rate. Entries with
+    /// fewer calls than `k` per thread over-report (the always-kept first call
+    /// shows as `k`) - same bias time sampling has on avg.
+    pub fn scaled_count(&self) -> u64 {
+        self.count * self.event_sample_k
+    }
+
+    /// [`display_total_ns`](Self::display_total_ns) scaled back up by the
+    /// event-sampling keep-rate; avg and percentiles stay per-call.
+    pub fn scaled_total_ns(&self) -> u64 {
+        self.display_total_ns() * self.event_sample_k
     }
 
     #[inline]

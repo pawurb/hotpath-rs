@@ -109,3 +109,22 @@ For a skipped call, the sampler cuts the **two `Instant::now()` calls** that bra
 - **`0.0` is count-only mode** - no durations at all, and the timing clock reads are skipped entirely.
 
 Sampling rates like `0.01`-`0.1` retain statistically useful latency distributions for high-frequency operations while removing most of the measurement cost. For low-frequency operations there is no reason to sample - the default (measure everything) gives exact numbers for free.
+
+## Reducing overhead further: event sampling
+
+Time sampling still emits an event for every call - the count bookkeeping, thread id lookup, and queue push remain. **Event sampling** goes further: it skips the whole measurement for all but 1-in-k calls of `#[measure]` functions. A skipped call does no clock read, no thread id lookup, no queue push, and no worker aggregation - the remaining per-call cost is the focus check plus one thread-local counter tick.
+
+```bash
+# record 1 in 100 calls
+HOTPATH_FUNCTIONS_EVENT_SAMPLING_RATE=0.01 cargo run --features hotpath
+```
+
+Also available via `HotpathGuardBuilder::functions_event_sampling_rate`; the env var takes precedence. The difference from time sampling:
+
+- **Time sampling keeps counts exact** and samples only durations.
+- **Event sampling keeps nothing for skipped calls** - the report scales `Calls` and `Total` back up by the keep-rate `k` (marked with a `~` prefix in the table and an `event_sampled` flag in JSON), while avg and percentiles reflect the recorded subset. Functions with fewer than `k` calls per thread over-report, since the first call on each thread is always kept and shows as `k`.
+- **`0.0` skips every call** - no function entries at all (the top-level wrapper stays measured).
+
+Both modes compose: event sampling decides whether a call is recorded at all, then time sampling decides whether the recorded call reads the clock.
+
+Event sampling applies to functions only. Channels, locks, futures, and I/O carry state (queue sizes, held/wait transitions, byte counts) that cannot be extrapolated from a subset of events, so they stay on time sampling. Note for SQL/HTTP source attribution: a query issued inside a skipped call is attributed to the nearest recorded outer instrumented caller.

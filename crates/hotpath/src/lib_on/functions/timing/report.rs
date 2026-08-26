@@ -18,10 +18,11 @@ pub(crate) fn build_functions_list(
         stats
             .values()
             .filter(|s| !s.wrapper && s.has_data)
-            .map(|s| s.display_total_ns())
+            .map(|s| s.scaled_total_ns())
             .sum::<u64>()
     } else {
-        // The wrapper guard is exempt from time sampling, so its total is exact.
+        // The wrapper guard is exempt from both sampling modes, so its total
+        // is exact.
         let wrapper_total = stats
             .values()
             .find(|s| s.wrapper)
@@ -35,8 +36,8 @@ pub(crate) fn build_functions_list(
         .collect();
 
     entries.sort_by(|a, b| {
-        b.display_total_ns()
-            .cmp(&a.display_total_ns())
+        b.scaled_total_ns()
+            .cmp(&a.scaled_total_ns())
             .then_with(|| a.name.cmp(b.name))
     });
 
@@ -55,7 +56,7 @@ pub(crate) fn build_functions_list(
         .into_iter()
         .map(|s| {
             let count_only = s.sampled_count == 0 && s.count > 0;
-            let display_total = s.display_total_ns();
+            let display_total = s.scaled_total_ns();
             let percentage = if reference_total > 0 {
                 (display_total as f64 / reference_total as f64) * 100.0
             } else {
@@ -75,8 +76,9 @@ pub(crate) fn build_functions_list(
             JsonFunctionEntry {
                 id: s.id,
                 name: s.name.to_string(),
-                calls: s.count,
+                calls: s.scaled_count(),
                 sampled_calls: s.sampled_count,
+                event_sampled: s.event_sample_k > 1,
                 avg: if count_only {
                     "-".to_string()
                 } else {

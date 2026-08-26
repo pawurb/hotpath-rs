@@ -20,21 +20,25 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
         .map(|ns| format!(" (CPU baseline avg: {})", format_duration(ns)))
         .unwrap_or_default();
     let label_str = label.map(|l| format!(" | {}", l)).unwrap_or_default();
+    let format_rates = |rates: std::collections::HashMap<String, f64>, label: &str| {
+        let mut parts: Vec<String> = rates
+            .iter()
+            .map(|(name, rate)| format!("{}={}", name, rate))
+            .collect();
+        parts.sort();
+        format!(" | {}: {}", label, parts.join(", "))
+    };
     let sampling_str = crate::lib_on::sampling::active_rates()
-        .map(|rates| {
-            let mut parts: Vec<String> = rates
-                .iter()
-                .map(|(name, rate)| format!("{}={}", name, rate))
-                .collect();
-            parts.sort();
-            format!(" | time sampling: {}", parts.join(", "))
-        })
+        .map(|rates| format_rates(rates, "time sampling"))
+        .unwrap_or_default();
+    let event_sampling_str = crate::lib_on::sampling::active_event_rates()
+        .map(|rates| format_rates(rates, "event sampling"))
         .unwrap_or_default();
 
     let _ = writeln!(
         writer,
-        "[hotpath] {:.2?} | {}{}{}{}",
-        elapsed, sections_str, baseline_str, label_str, sampling_str,
+        "[hotpath] {:.2?} | {}{}{}{}{}",
+        elapsed, sections_str, baseline_str, label_str, sampling_str, event_sampling_str,
     );
     let _ = writeln!(writer);
 }
@@ -90,7 +94,13 @@ pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFu
 
         let short_name = shorten_function_name(&entry.name);
         row_cells.push(Cell::new(&short_name));
-        row_cells.push(Cell::new(&entry.calls.to_string()));
+        // `~` marks values scaled back up from an event-sampled 1-in-k subset.
+        let calls = if entry.event_sampled {
+            format!("~{}", entry.calls)
+        } else {
+            entry.calls.to_string()
+        };
+        row_cells.push(Cell::new(&calls));
         row_cells.push(Cell::new(&entry.avg));
 
         for &p in &list.percentiles {
@@ -103,7 +113,12 @@ pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFu
             row_cells.push(Cell::new(value));
         }
 
-        row_cells.push(Cell::new(&entry.total));
+        let total = if entry.event_sampled && entry.total != "-" && entry.total != "N/A" {
+            format!("~{}", entry.total)
+        } else {
+            entry.total.clone()
+        };
+        row_cells.push(Cell::new(&total));
         row_cells.push(Cell::new(&entry.percent_total));
 
         table.add_row(Row::new(row_cells));

@@ -68,6 +68,11 @@ pub struct JsonFunctionEntry {
     pub calls: u64,
     #[serde(default)]
     pub sampled_calls: u64,
+    /// `true` when event sampling scaled `calls` and `total` back up from a
+    /// 1-in-k subset of recorded calls (`sampled_calls` stays the raw kept
+    /// count that was timed); consumers should mark them as estimates.
+    #[serde(default)]
+    pub event_sampled: bool,
     pub avg: String,
     #[serde(flatten)]
     pub percentiles: HashMap<String, String>,
@@ -1046,6 +1051,8 @@ pub struct JsonReport {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_sampling: Option<HashMap<String, f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_sampling: Option<HashMap<String, f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub functions_timing: Option<JsonFunctionsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1085,6 +1092,7 @@ impl Default for JsonReport {
             version: env!("CARGO_PKG_VERSION").to_string(),
             label: None,
             time_sampling: None,
+            event_sampling: None,
             functions_timing: None,
             functions_alloc: None,
             functions_cpu: None,

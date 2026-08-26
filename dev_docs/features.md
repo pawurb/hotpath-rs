@@ -41,6 +41,7 @@ Env vars:
 - `HOTPATH_ALLOC_METRIC` panics on values other than `bytes`/`count`. `HOTPATH_ALLOC_CUMULATIVE` produces invalid results for recursive functions.
 - `HOTPATH_SQL_RAW_LOGS` is off by default so bound literals (potentially sensitive) never reach the logs.
 - `HOTPATH_TIME_SAMPLING_RATE=0.0` gives count-only mode (durations and io `Rate` show `-`). Per-resource `HOTPATH_<RESOURCE>_TIME_SAMPLING_RATE` variants take precedence.
+- `HOTPATH_FUNCTIONS_EVENT_SAMPLING_RATE` (functions only, no global variant): skips the whole measurement for all but 1-in-k `#[measure]` calls; report Calls/Total are scaled back up by `k` (`~` prefix in the table, `event_sampled` in JSON) while avg/percentiles reflect the kept subset. Composes with time sampling (event decides existence, time decides the clock read). Impl in `lib_on/sampling.rs` (`FUNCTIONS_EVENT_SAMPLING`) + `skip_call` in `lib_on/functions.rs`; scale factor `event_sample_k` lives on both `FunctionStats` structs. Docs: `docs/src/profiling_overhead.md`.
 - CPU report has no dedicated limit var - it uses `HOTPATH_FUNCTIONS_LIMIT` (fallback `HOTPATH_LIMIT`); wrapper `caller_name` is exempt.
 
 ## GitHub CI Integration

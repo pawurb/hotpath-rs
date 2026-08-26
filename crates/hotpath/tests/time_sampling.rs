@@ -24,6 +24,7 @@ pub mod tests {
             "HOTPATH_RW_LOCKS_TIME_SAMPLING_RATE",
             "HOTPATH_FUTURES_TIME_SAMPLING_RATE",
             "HOTPATH_CHANNELS_TIME_SAMPLING_RATE",
+            "HOTPATH_FUNCTIONS_EVENT_SAMPLING_RATE",
         ] {
             cmd.env_remove(name);
         }

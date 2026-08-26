@@ -159,6 +159,7 @@ pub struct HotpathGuardBuilder {
     sections_mode: Option<SectionsMode>,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
     time_sampling: crate::lib_on::sampling::TimeSamplingConfig,
+    event_sampling: crate::lib_on::sampling::EventSamplingConfig,
 }
 
 impl HotpathGuardBuilder {
@@ -201,6 +202,7 @@ impl HotpathGuardBuilder {
             sections_mode: None,
             before_shutdown: None,
             time_sampling: crate::lib_on::sampling::TimeSamplingConfig::default(),
+            event_sampling: crate::lib_on::sampling::EventSamplingConfig::default(),
         }
     }
 
@@ -353,6 +355,17 @@ impl HotpathGuardBuilder {
         self
     }
 
+    /// Fraction of `#[measure]` calls that are recorded at all, in `[0.0, 1.0]`
+    /// (e.g. `0.1` records 1 in 10 calls). Unlike time sampling, a skipped call
+    /// does no measurement work whatsoever - no clock read, no event - and the
+    /// report scales counts and totals back up by the keep-rate. Applies to
+    /// functions only. The `HOTPATH_FUNCTIONS_EVENT_SAMPLING_RATE` env var
+    /// takes precedence.
+    pub fn functions_event_sampling_rate(mut self, rate: f64) -> Self {
+        self.event_sampling.functions = Some(rate);
+        self
+    }
+
     /// Sets the output format. Overridden at runtime by `HOTPATH_OUTPUT_FORMAT` env var.
     pub fn format(mut self, format: Format) -> Self {
         self.format = format;
@@ -419,6 +432,7 @@ impl HotpathGuardBuilder {
         crate::dev_logging::init_logging();
 
         crate::lib_on::sampling::init_time_sampling_rate(&self.time_sampling);
+        crate::lib_on::sampling::init_event_sampling_rate(&self.event_sampling);
 
         #[cfg(feature = "axum-0-8")]
         {
@@ -1052,6 +1066,7 @@ impl Drop for HotpathGuard {
                     .ok()
                     .filter(|s| !s.is_empty()),
                 time_sampling: crate::lib_on::sampling::active_rates(),
+                event_sampling: crate::lib_on::sampling::active_event_rates(),
                 ..Default::default()
             };
 

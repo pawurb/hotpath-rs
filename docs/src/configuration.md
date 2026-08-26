@@ -47,6 +47,7 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 | `HOTPATH_FUTURES_TIME_SAMPLING_RATE` | Sampling rate for future poll timings. (default: unset) |
 | `HOTPATH_CHANNELS_TIME_SAMPLING_RATE` | Sampling rate for channel send/receive latency timings. (default: unset) |
 | `HOTPATH_IO_TIME_SAMPLING_RATE` | Sampling rate for byte-level I/O operation timings. (default: unset) |
+| `HOTPATH_FUNCTIONS_EVENT_SAMPLING_RATE` | Fraction of `#[measure]` calls recorded at all; skipped calls do no measurement work and report counts/totals are scaled back up. (default: unset) |
 
 ## CPU Sampling
 

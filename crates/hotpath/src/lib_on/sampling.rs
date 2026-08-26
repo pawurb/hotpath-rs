@@ -1,10 +1,17 @@
-//! Time-sampling support: measure durations for only a fraction of calls while
+//! Sampling support.
+//!
+//! Time sampling: measure durations for only a fraction of calls while
 //! keeping every event flowing (counts, states, queue sizes stay exact).
 //!
-//! Rates are fractions in `[0.0, 1.0]`: `0.1` times 1 in 10 calls, `0.0` is
-//! count-only mode (no durations at all), `1.0` or unset measures everything.
-//! Resolution happens once at guard build; events emitted before the guard
-//! exists are measured at 100%.
+//! Event sampling (functions only): skip the whole measurement for all but
+//! 1-in-k calls - no clock read, no tid lookup, no queue push. Report counts
+//! and totals are scaled back up by `k`.
+//!
+//! Rates are fractions in `[0.0, 1.0]`: `0.1` keeps 1 in 10 calls, `0.0` is
+//! count-only mode for time sampling (no durations at all) and skip-everything
+//! for event sampling, `1.0` or unset measures everything. Resolution happens
+//! once at guard build; events emitted before the guard exists are measured
+//! at 100%.
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -87,6 +94,7 @@ impl ResourceSampling {
 }
 
 pub(crate) static FUNCTIONS_SAMPLING: ResourceSampling = ResourceSampling::new();
+pub(crate) static FUNCTIONS_EVENT_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static MUTEXES_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static RW_LOCKS_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static FUTURES_SAMPLING: ResourceSampling = ResourceSampling::new();
@@ -95,6 +103,7 @@ pub(crate) static IO_SAMPLING: ResourceSampling = ResourceSampling::new();
 
 thread_local! {
     static FUNCTIONS_COUNTER: Cell<u64> = const { Cell::new(0) };
+    static FUNCTIONS_EVENT_COUNTER: Cell<u64> = const { Cell::new(0) };
     static MUTEXES_COUNTER: Cell<u64> = const { Cell::new(0) };
     static RW_LOCKS_COUNTER: Cell<u64> = const { Cell::new(0) };
     static FUTURES_COUNTER: Cell<u64> = const { Cell::new(0) };
@@ -110,7 +119,7 @@ thread_local! {
 /// thread is always sampled. `try_with` because guards can drop during thread
 /// teardown when the thread-local is already destroyed.
 #[inline]
-fn should_time(
+fn should_sample(
     sampling: &ResourceSampling,
     counter: &'static std::thread::LocalKey<Cell<u64>>,
 ) -> bool {
@@ -126,7 +135,7 @@ fn should_time(
 
 /// Rolls back the last decision after a failed try-acquisition, so the rate
 /// applies to acquisitions rather than attempts. Only `OneIn` consumes a
-/// counter tick in `should_time`, so only then is there anything to undo.
+/// counter tick in `should_sample`, so only then is there anything to undo.
 #[inline]
 fn untime(sampling: &ResourceSampling, counter: &'static std::thread::LocalKey<Cell<u64>>) {
     if matches!(sampling.sampler(), Some(Sampler::OneIn(_))) {
@@ -136,12 +145,30 @@ fn untime(sampling: &ResourceSampling, counter: &'static std::thread::LocalKey<C
 
 #[inline]
 pub(crate) fn functions_should_time() -> bool {
-    should_time(&FUNCTIONS_SAMPLING, &FUNCTIONS_COUNTER)
+    should_sample(&FUNCTIONS_SAMPLING, &FUNCTIONS_COUNTER)
+}
+
+/// Event-sampling decision for function calls: `false` means the whole
+/// measurement is skipped (no clock read, no tid lookup, no queue push).
+#[inline]
+pub(crate) fn functions_should_emit() -> bool {
+    should_sample(&FUNCTIONS_EVENT_SAMPLING, &FUNCTIONS_EVENT_COUNTER)
+}
+
+/// Scale factor for function report counts/totals under event sampling. `1`
+/// when event sampling is off; `Never` (rate 0) also returns `1` because no
+/// non-wrapper entries exist to scale.
+#[inline]
+pub(crate) fn functions_event_sample_k() -> u64 {
+    match FUNCTIONS_EVENT_SAMPLING.sampler() {
+        Some(Sampler::OneIn(k)) => k,
+        _ => 1,
+    }
 }
 
 #[inline]
 pub(crate) fn mutexes_should_time() -> bool {
-    should_time(&MUTEXES_SAMPLING, &MUTEXES_COUNTER)
+    should_sample(&MUTEXES_SAMPLING, &MUTEXES_COUNTER)
 }
 
 #[inline]
@@ -151,7 +178,7 @@ pub(crate) fn mutexes_untime() {
 
 #[inline]
 pub(crate) fn rw_locks_should_time() -> bool {
-    should_time(&RW_LOCKS_SAMPLING, &RW_LOCKS_COUNTER)
+    should_sample(&RW_LOCKS_SAMPLING, &RW_LOCKS_COUNTER)
 }
 
 #[inline]
@@ -161,7 +188,7 @@ pub(crate) fn rw_locks_untime() {
 
 #[inline]
 pub(crate) fn futures_should_time() -> bool {
-    should_time(&FUTURES_SAMPLING, &FUTURES_COUNTER)
+    should_sample(&FUTURES_SAMPLING, &FUTURES_COUNTER)
 }
 
 #[inline]
@@ -250,6 +277,26 @@ pub(crate) fn init_time_sampling_rate(config: &TimeSamplingConfig) {
     IO_SAMPLING.set(resolve("HOTPATH_IO_TIME_SAMPLING_RATE", config.io));
 }
 
+/// Builder-provided event-sampling rates, resolved against env vars at guard
+/// build. Functions only: other resources carry state (queue sizes, held/wait
+/// transitions, byte counts) that cannot be extrapolated from a subset of
+/// events.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct EventSamplingConfig {
+    pub(crate) functions: Option<f64>,
+}
+
+/// Resolves and locks in the per-resource event samplers. Precedence:
+/// per-resource env > builder. There is no global event-sampling env var since
+/// functions are the only resource.
+pub(crate) fn init_event_sampling_rate(config: &EventSamplingConfig) {
+    FUNCTIONS_EVENT_SAMPLING.set(
+        parse_rate_env("HOTPATH_FUNCTIONS_EVENT_SAMPLING_RATE")
+            .or(config.functions)
+            .and_then(Sampler::from_rate),
+    );
+}
+
 /// Effective per-resource rates for the report header / JSON, `None` when no
 /// sampler is active.
 pub(crate) fn active_rates() -> Option<HashMap<String, f64>> {
@@ -265,6 +312,16 @@ pub(crate) fn active_rates() -> Option<HashMap<String, f64>> {
         if let Some(sampler) = sampling.sampler() {
             rates.insert(name.to_string(), sampler.effective_rate());
         }
+    }
+    (!rates.is_empty()).then_some(rates)
+}
+
+/// Effective per-resource event-sampling rates for the report header / JSON,
+/// `None` when no event sampler is active.
+pub(crate) fn active_event_rates() -> Option<HashMap<String, f64>> {
+    let mut rates = HashMap::new();
+    if let Some(sampler) = FUNCTIONS_EVENT_SAMPLING.sampler() {
+        rates.insert("functions".to_string(), sampler.effective_rate());
     }
     (!rates.is_empty()).then_some(rates)
 }
