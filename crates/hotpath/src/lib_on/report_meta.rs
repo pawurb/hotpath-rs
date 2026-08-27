@@ -26,18 +26,33 @@ fn git_info() -> Option<crate::json::JsonGitInfo> {
     }
 }
 
-/// Current directory relative to the enclosing git root: the prefix to
-/// prepend to relative `location.file` values ("" when the process runs from
-/// the repo root). `HOTPATH_SOURCE_ROOT` overrides (for CI jobs using
-/// `working-directory:`); `None` when no git root is found.
+/// Build workspace root relative to the enclosing git root: the prefix to
+/// prepend to relative `location.file` values ("" when the workspace root is
+/// the repo root). `HOTPATH_SOURCE_ROOT` overrides; `None` when no git root
+/// is found.
 fn source_root() -> Option<String> {
     if let Ok(v) = std::env::var("HOTPATH_SOURCE_ROOT") {
         return Some(v);
     }
     let cwd = std::env::current_dir().ok()?;
-    let root = find_git_root(&cwd)?;
-    let rel = cwd.strip_prefix(&root).ok()?;
+    let git_root = find_git_root(&cwd)?;
+    let workspace_root = workspace_root_from(&cwd).unwrap_or(cwd);
+    let rel = workspace_root.strip_prefix(&git_root).ok()?;
     Some(rel.to_string_lossy().replace('\\', "/"))
+}
+
+/// Relative `file!()` paths are relative to the directory cargo invoked rustc
+/// from (the build workspace root), not the runtime working directory - a
+/// binary launched from a repository subdirectory must not prefix them with
+/// that subdirectory. Locate the workspace root as the nearest ancestor of
+/// the working directory that actually contains one of the registered
+/// relative source files; `None` when nothing relative is registered or no
+/// ancestor matches (deleted sources, run outside the checkout).
+fn workspace_root_from(cwd: &Path) -> Option<PathBuf> {
+    let probe = crate::lib_on::locations::any_relative_file()?;
+    cwd.ancestors()
+        .find(|dir| dir.join(probe).is_file())
+        .map(Path::to_path_buf)
 }
 
 /// Nearest ancestor containing `.git` - a directory for regular checkouts, a

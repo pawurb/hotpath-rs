@@ -43,6 +43,18 @@ pub(crate) fn lookup_location(name: &str) -> Option<JsonLocation> {
     })
 }
 
+/// First registered file path that is workspace-relative; used to locate the
+/// build workspace root at report time (`report_meta::source_root`). Any
+/// relative file works: they are all relative to the same workspace root.
+pub(crate) fn any_relative_file() -> Option<&'static str> {
+    let map = LOCATIONS.get()?;
+    let guard = map.read().ok()?;
+    guard
+        .values()
+        .map(|location| location.file)
+        .find(|file| !is_absolute_path(file))
+}
+
 /// `file!()` is workspace-root-relative for workspace members and absolute
 /// for registry dependencies. Relative paths pass through; absolute paths
 /// under a cargo registry checkout are rewritten to
@@ -50,19 +62,29 @@ pub(crate) fn lookup_location(name: &str) -> Option<JsonLocation> {
 /// strips `$HOME`); other absolute paths pass through - the server refuses to
 /// link them.
 fn normalize_file_path(file: &str) -> String {
-    if !std::path::Path::new(file).is_absolute() {
+    if !is_absolute_path(file) {
         return file.to_string();
     }
-    if let Some(pos) = file.find("/registry/src/") {
-        let rest = &file[pos + "/registry/src/".len()..];
-        // rest = "<index>/<crate>-<version>/<path>"
-        if let Some((_index, crate_path)) = rest.split_once('/') {
-            if !crate_path.is_empty() {
-                return format!("<external>/{}", crate_path);
+    for marker in ["/registry/src/", "\\registry\\src\\"] {
+        if let Some(pos) = file.find(marker) {
+            let rest = &file[pos + marker.len()..];
+            // rest = "<index>/<crate>-<version>/<path>"
+            let separator = if marker.starts_with('/') { '/' } else { '\\' };
+            if let Some((_index, crate_path)) = rest.split_once(separator) {
+                if !crate_path.is_empty() {
+                    return format!("<external>/{}", crate_path.replace('\\', "/"));
+                }
             }
         }
     }
     file.to_string()
+}
+
+/// String-based check instead of `Path::is_absolute`, which is
+/// platform-dependent: normalization must treat a path the same way
+/// regardless of the OS the report is generated on.
+fn is_absolute_path(file: &str) -> bool {
+    file.starts_with('/') || file.starts_with('\\') || file.as_bytes().get(1) == Some(&b':')
 }
 
 #[cfg(test)]
@@ -87,6 +109,12 @@ mod tests {
             ),
             "<external>/tokio-1.47.1/src/lib.rs"
         );
+        assert_eq!(
+            normalize_file_path(
+                "C:\\Users\\u\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.47.1\\src\\lib.rs"
+            ),
+            "<external>/tokio-1.47.1/src/lib.rs"
+        );
     }
 
     #[test]
@@ -94,6 +122,10 @@ mod tests {
         assert_eq!(
             normalize_file_path("/home/u/project/src/main.rs"),
             "/home/u/project/src/main.rs"
+        );
+        assert_eq!(
+            normalize_file_path("C:\\project\\src\\main.rs"),
+            "C:\\project\\src\\main.rs"
         );
     }
 

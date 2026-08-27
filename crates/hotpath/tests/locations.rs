@@ -133,10 +133,12 @@ mod tests {
             "future source must stay file:line"
         );
 
-        // meta: environment info plus a source_root derived from the git
-        // root. The child inherits this test's working directory (the crate
-        // dir), so the derived prefix is the crate dir relative to the repo
-        // root.
+        // meta: environment info plus a source_root that maps relative
+        // location files to repo-relative paths. The child runs from this
+        // test's working directory (the crate dir), but source_root must
+        // reflect the build workspace root - the repo root here - not the
+        // runtime directory, so joining source_root and location.file yields
+        // a path that exists.
         let meta = report.meta.expect("meta object");
         assert!(!meta.rustc.is_empty(), "rustc version");
         assert!(meta.os.contains('-'), "os is <os>-<arch>: {}", meta.os);
@@ -145,7 +147,7 @@ mod tests {
             "created_at is RFC 3339 UTC: {}",
             meta.created_at
         );
-        assert_eq!(meta.source_root.as_deref(), Some("crates/hotpath"));
+        assert_eq!(meta.source_root.as_deref(), Some(""));
     }
 
     #[test]
