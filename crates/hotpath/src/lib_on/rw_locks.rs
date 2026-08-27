@@ -472,11 +472,13 @@ pub trait InstrumentRwLock {
 macro_rules! rw_lock {
     ($expr:expr) => {{
         const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(RW_LOCK_ID);
         $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, None)
     }};
 
     ($expr:expr, label = $label:expr) => {{
         const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(RW_LOCK_ID);
         $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, Some($label.to_string()))
     }};
 }

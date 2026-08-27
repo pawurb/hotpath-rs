@@ -540,11 +540,13 @@ pub(crate) fn compare_io_entries(a: &IoEntry, b: &IoEntry) -> std::cmp::Ordering
 macro_rules! io {
     ($expr:expr) => {{
         const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(IO_ID);
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, None, false)
     }};
 
     ($expr:expr, label = $label:expr) => {{
         const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(IO_ID);
         $crate::io::InstrumentedIo::__new_instrumented(
             $expr,
             IO_ID,
@@ -555,16 +557,19 @@ macro_rules! io {
 
     ($expr:expr, iter = true) => {{
         const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(IO_ID);
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, None, true)
     }};
 
     ($expr:expr, label = $label:expr, iter = true) => {{
         const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(IO_ID);
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
 
     ($expr:expr, iter = true, label = $label:expr) => {{
         const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(IO_ID);
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
 }

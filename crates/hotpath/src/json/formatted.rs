@@ -61,6 +61,31 @@ pub fn parse_bytes_signed(s: &str) -> Option<i64> {
     }
 }
 
+/// Structured source location of an instrumented item, joined from the
+/// call-site registry at report-build time (`lib_on/locations.rs`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonLocation {
+    /// As captured by `file!()`: workspace-root-relative for workspace
+    /// members, `<external>/<crate>-<version>/...` for registry dependencies.
+    pub file: String,
+    pub line: u32,
+    pub column: u32,
+}
+
+/// Joins an identity string (function name, resource id, caller name) against
+/// the location registry; `None` in builds without the profiling runtime.
+fn lookup_location(name: &str) -> Option<JsonLocation> {
+    #[cfg(feature = "hotpath")]
+    {
+        crate::lib_on::locations::lookup_location(name)
+    }
+    #[cfg(not(feature = "hotpath"))]
+    {
+        let _ = name;
+        None
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionEntry {
     pub id: u32,
@@ -79,6 +104,8 @@ pub struct JsonFunctionEntry {
     /// (see AGENTS.md).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,6 +212,8 @@ pub struct JsonFunctionTimingLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionTimingLogsList {
     pub function_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
     pub total_invocations: usize,
     pub logs: Vec<JsonFunctionTimingLog>,
 }
@@ -205,6 +234,7 @@ impl JsonFunctionTimingLogsList {
             .collect();
 
         JsonFunctionTimingLogsList {
+            location: lookup_location(&json.function_name),
             function_name: json.function_name.clone(),
             total_invocations: total,
             logs,
@@ -249,6 +279,8 @@ pub struct JsonFunctionAllocLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionAllocLogsList {
     pub function_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
     pub total_invocations: usize,
     pub logs: Vec<JsonFunctionAllocLog>,
 }
@@ -269,6 +301,7 @@ impl JsonFunctionAllocLogsList {
             .collect();
 
         JsonFunctionAllocLogsList {
+            location: lookup_location(&json.function_name),
             function_name: json.function_name.clone(),
             total_invocations: total,
             logs,
@@ -347,6 +380,8 @@ pub struct JsonChannelEntry {
     pub proc_sampled_count: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proc_histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
     pub iter: u32,
 }
 
@@ -386,6 +421,8 @@ pub struct JsonRwLockEntry {
     pub read_acquire_histogram: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub write_acquire_histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
     pub iter: u32,
 }
 
@@ -414,6 +451,8 @@ pub struct JsonMutexEntry {
     pub wait_histogram: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acquire_histogram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
     pub iter: u32,
 }
 
@@ -448,6 +487,9 @@ pub struct JsonSqlEntry {
     pub percentiles: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub histogram: Option<String>,
+    /// Location of the instrumented caller named in `source`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -516,6 +558,9 @@ pub struct JsonHttpEntry {
     pub percentiles: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub histogram: Option<String>,
+    /// Location of the instrumented caller named in `source`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -614,6 +659,8 @@ pub struct JsonIoEntry {
     /// Number of wrapper instances aggregated into this call-site entry.
     #[serde(default)]
     pub instances: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
     pub iter: u32,
 }
 
@@ -753,6 +800,8 @@ pub struct JsonStreamEntry {
     pub items_yielded: u64,
     pub type_name: String,
     pub type_size: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
     pub iter: u32,
 }
 
@@ -794,6 +843,8 @@ pub struct JsonFutureEntry {
     pub total_poll_duration_ns: u64,
     pub total_poll_alloc_bytes: Option<u64>,
     pub total_poll_alloc_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -946,6 +997,8 @@ pub struct JsonDebugEntry {
     pub expression: String,
     pub log_count: u64,
     pub last_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<JsonLocation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1034,6 +1087,41 @@ fn default_report_type() -> String {
     "hotpath_report".to_string()
 }
 
+/// Build/runtime environment of a static report, plus the git and source-root
+/// data the server needs to render clickable source links from `location`
+/// fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonMeta {
+    /// Compiler version, e.g. `1.89.0`; empty when `rustc --version` failed
+    /// at build time.
+    pub rustc: String,
+    /// `<os>-<arch>`, e.g. `macos-aarch64`.
+    pub os: String,
+    /// RFC 3339 UTC timestamp of report generation.
+    pub created_at: String,
+    /// Working directory relative to the enclosing git root: the prefix to
+    /// prepend to relative `location.file` values ("" when the process ran
+    /// from the repo root). `HOTPATH_SOURCE_ROOT` overrides; omitted when no
+    /// git root was found.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_root: Option<String>,
+    /// Only present with the `hotpath-cloud` feature; read straight from the
+    /// `.git` directory, no git binary involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git: Option<JsonGitInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonGitInfo {
+    pub sha: String,
+    /// Full ref name (`refs/heads/main`); `None` on a detached HEAD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#ref: Option<String>,
+    /// Never set today; reserved for a future working-tree cleanliness check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dirty: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonReport {
     #[serde(default = "default_report_type")]
@@ -1042,6 +1130,8 @@ pub struct JsonReport {
     /// report written before the field existed.
     #[serde(default)]
     pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonMeta>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1083,6 +1173,7 @@ impl Default for JsonReport {
         Self {
             r#type: default_report_type(),
             version: env!("CARGO_PKG_VERSION").to_string(),
+            meta: None,
             label: None,
             time_sampling: None,
             functions_timing: None,
