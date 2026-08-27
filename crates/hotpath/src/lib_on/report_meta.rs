@@ -5,11 +5,27 @@
 use std::path::{Path, PathBuf};
 
 pub(crate) fn build_meta() -> crate::json::JsonMeta {
+    let source_root = source_root();
+
+    // Fail loudly on upload runs: broken source links would otherwise only
+    // surface as dead links on the server.
+    #[cfg(feature = "hotpath-cloud")]
+    if source_root.is_none()
+        && crate::lib_on::cloud::enabled()
+        && crate::lib_on::locations::any_relative_file().is_some()
+    {
+        eprintln!(
+            "hotpath: could not resolve the source checkout from the working directory; \
+             set HOTPATH_SOURCE_ROOT to the workspace path relative to the repo root \
+             (source links will be unavailable in this report)"
+        );
+    }
+
     crate::json::JsonMeta {
         rustc: env!("HOTPATH_RUSTC_VERSION").to_string(),
         os: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
         created_at: format_rfc3339_utc(std::time::SystemTime::now()),
-        source_root: source_root(),
+        source_root,
         git: git_info(),
     }
 }
@@ -17,9 +33,16 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
 fn git_info() -> Option<crate::json::JsonGitInfo> {
     cfg_if::cfg_if! {
         if #[cfg(feature = "hotpath-cloud")] {
-            let cwd = std::env::current_dir().ok()?;
-            let root = find_git_root(&cwd)?;
-            crate::lib_on::git_info::read_git_info_at(&root)
+            // A `HOTPATH_SOURCE_ROOT` override asserts the runtime checkout
+            // is the source checkout, so its git identity is trusted even
+            // when checkout resolution fails.
+            let git_root = if std::env::var("HOTPATH_SOURCE_ROOT").is_ok() {
+                let cwd = std::env::current_dir().ok()?;
+                find_git_root(&cwd)?
+            } else {
+                resolve_checkout()?.git_root
+            };
+            crate::lib_on::git_info::read_git_info_at(&git_root)
         } else {
             None
         }
@@ -28,31 +51,50 @@ fn git_info() -> Option<crate::json::JsonGitInfo> {
 
 /// Build workspace root relative to the enclosing git root: the prefix to
 /// prepend to relative `location.file` values ("" when the workspace root is
-/// the repo root). `HOTPATH_SOURCE_ROOT` overrides; `None` when no git root
-/// is found.
+/// the repo root). `HOTPATH_SOURCE_ROOT` overrides; `None` when the checkout
+/// cannot be resolved - an unverified value would produce broken links, so
+/// the field is omitted instead of guessed.
 fn source_root() -> Option<String> {
     if let Ok(v) = std::env::var("HOTPATH_SOURCE_ROOT") {
         return Some(v);
     }
-    let cwd = std::env::current_dir().ok()?;
-    let git_root = find_git_root(&cwd)?;
-    let workspace_root = workspace_root_from(&cwd).unwrap_or(cwd);
-    let rel = workspace_root.strip_prefix(&git_root).ok()?;
+    let checkout = resolve_checkout()?;
+    let rel = checkout
+        .workspace_root
+        .strip_prefix(&checkout.git_root)
+        .ok()?;
     Some(rel.to_string_lossy().replace('\\', "/"))
 }
 
+/// The checkout the report's relative `location.file` values were compiled
+/// from, verified against the filesystem rather than guessed from the
+/// runtime working directory.
+struct ResolvedCheckout {
+    git_root: PathBuf,
+    workspace_root: PathBuf,
+}
+
 /// Relative `file!()` paths are relative to the directory cargo invoked rustc
-/// from (the build workspace root), not the runtime working directory - a
-/// binary launched from a repository subdirectory must not prefix them with
-/// that subdirectory. Locate the workspace root as the nearest ancestor of
-/// the working directory that actually contains one of the registered
-/// relative source files; `None` when nothing relative is registered or no
-/// ancestor matches (deleted sources, run outside the checkout).
-fn workspace_root_from(cwd: &Path) -> Option<PathBuf> {
+/// from (the build workspace root), not the runtime working directory. The
+/// workspace root is located as the nearest ancestor of the working directory
+/// that actually contains one of the registered relative source files, and
+/// the git root as its enclosing checkout - so both are verified to belong to
+/// the sources in the report. `None` when nothing relative is registered or
+/// no ancestor matches (a nested workspace launched from above it, running
+/// outside the checkout, deleted sources); `HOTPATH_SOURCE_ROOT` is the
+/// escape hatch for those layouts.
+fn resolve_checkout() -> Option<ResolvedCheckout> {
+    let cwd = std::env::current_dir().ok()?;
     let probe = crate::lib_on::locations::any_relative_file()?;
-    cwd.ancestors()
+    let workspace_root = cwd
+        .ancestors()
         .find(|dir| dir.join(probe).is_file())
-        .map(Path::to_path_buf)
+        .map(Path::to_path_buf)?;
+    let git_root = find_git_root(&workspace_root)?;
+    Some(ResolvedCheckout {
+        git_root,
+        workspace_root,
+    })
 }
 
 /// Nearest ancestor containing `.git` - a directory for regular checkouts, a
