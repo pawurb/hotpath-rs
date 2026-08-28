@@ -92,7 +92,9 @@ use crate::output_on::{
     display_functions_table_to, display_no_measurements_message_to, write_report_header,
 };
 
-use crate::functions::{FunctionsQuery, Measurement, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
+use crate::functions::{
+    FunctionsQuery, Measurement, RawFunctionTiming, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE,
+};
 use crate::lib_on::report;
 use crate::shared::{Section, SectionsMode};
 
@@ -638,6 +640,32 @@ impl HotpathGuard {
                                         }
                                         let _ = response_tx.send(formatted);
                                     }
+                                    FunctionsQuery::TimingRaw(response_tx) => {
+                                        let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
+                                        let ladder = crate::prometheus_server::FAST_LADDER_NS;
+                                        let mut raw: Vec<RawFunctionTiming> = local_stats
+                                            .values()
+                                            .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
+                                            .map(|s| {
+                                                cfg_if::cfg_if! {
+                                                    if #[cfg(feature = "hotpath-alloc")] {
+                                                        let sampled_count = s.duration_sampled_count;
+                                                    } else {
+                                                        let sampled_count = s.sampled_count;
+                                                    }
+                                                }
+                                                RawFunctionTiming {
+                                                    name: s.name,
+                                                    count: s.count,
+                                                    sampled_count,
+                                                    total_duration_ns: s.total_duration_ns,
+                                                    bucket_counts: s.duration_bucket_counts(ladder),
+                                                }
+                                            })
+                                            .collect();
+                                        raw.sort_by(|a, b| a.name.cmp(b.name));
+                                        let _ = response_tx.send(raw);
+                                    }
                                     #[cfg(feature = "hotpath-cpu")]
                                     FunctionsQuery::NamesAndIds(response_tx) => {
                                         let map: HashMap<&'static str, u32> =
@@ -729,6 +757,8 @@ impl HotpathGuard {
         crate::lib_on::START_TIME.get_or_init(Instant::now);
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
+
+        crate::prometheus_server::start_prometheus_server_once();
 
         #[cfg(feature = "hotpath-mcp")]
         crate::mcp_server::start_mcp_server_once();

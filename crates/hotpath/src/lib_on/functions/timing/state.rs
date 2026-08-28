@@ -143,6 +143,18 @@ impl FunctionStats {
         }
         crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
     }
+
+    /// Cumulative counts of sampled durations at or below each boundary (ns),
+    /// aligned with `boundaries`. Accurate to the histogram's 0.1% resolution.
+    pub(crate) fn duration_bucket_counts(&self, boundaries: &[u64]) -> Vec<u64> {
+        match self.hist.as_ref().filter(|_| self.sampled_count > 0) {
+            Some(hist) => boundaries
+                .iter()
+                .map(|&b| hist.count_between(0, b))
+                .collect(),
+            None => vec![0; boundaries.len()],
+        }
+    }
 }
 
 pub(crate) struct FunctionsState {
