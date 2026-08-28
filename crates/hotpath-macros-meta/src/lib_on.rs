@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::parse::Parser;
 use syn::{parse_macro_input, ImplItem, Item, ItemFn, Lit, LitInt, LitStr, Path};
 
@@ -303,9 +303,18 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         None => quote! {},
     };
 
+    let main_loc_fields = quote_spanned! { fn_name.span() =>
+        file: file!(),
+        line: line!(),
+        column: column!(),
+    };
     let caller_name_init = quote! {
         let caller_name: &'static str =
             concat!(module_path!(), "::", stringify!(#fn_name));
+        {
+            static __HOTPATH_LOC: hotpath_meta::Location = hotpath_meta::Location { #main_loc_fields };
+            hotpath_meta::register_location(caller_name, &__HOTPATH_LOC);
+        }
     };
 
     let global_limit_call = match global_limit {
@@ -530,6 +539,23 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         (None, None) => quote! { concat!(module_path!(), "::", stringify!(#fn_ident)) },
     };
 
+    // Spanning the `file!()`/`line!()`/`column!()` tokens to the fn name makes
+    // the registered location point at the `fn` item rather than the attribute.
+    let loc_fields = quote_spanned! { fn_ident.span() =>
+        file: file!(),
+        line: line!(),
+        column: column!(),
+    };
+    let loc_register = quote! {
+        {
+            static __HOTPATH_LOC: hotpath_meta::Location = hotpath_meta::Location { #loc_fields };
+            static __HOTPATH_LOC_ONCE: ::std::sync::Once = ::std::sync::Once::new();
+            __HOTPATH_LOC_ONCE.call_once(|| {
+                hotpath_meta::register_location(#measurement_loc, &__HOTPATH_LOC);
+            });
+        }
+    };
+
     let cpu_alias_register = if label.is_some() {
         let symbol_loc = match &impl_type {
             Some(ty) => {
@@ -584,6 +610,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[allow(unused_braces)]
         #vis #sig {
             #cpu_alias_register
+            #loc_register
             #wrapped_body
         }
     };
@@ -667,11 +694,27 @@ pub fn future_fn_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let fn_name = &sig.ident;
 
+    let loc_fields = quote_spanned! { fn_name.span() =>
+        file: file!(),
+        line: line!(),
+        column: column!(),
+    };
+    let loc_register = quote! {
+        {
+            static __HOTPATH_LOC: hotpath_meta::Location = hotpath_meta::Location { #loc_fields };
+            static __HOTPATH_LOC_ONCE: ::std::sync::Once = ::std::sync::Once::new();
+            __HOTPATH_LOC_ONCE.call_once(|| {
+                hotpath_meta::register_location(FUTURE_LOC, &__HOTPATH_LOC);
+            });
+        }
+    };
+
     // Generate the wrapped body using the future! macro pattern
     let wrapped_body = if log_result {
         quote! {
             {
                 const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
+                #loc_register
                 hotpath_meta::futures::init_futures_state();
                 hotpath_meta::InstrumentFutureLog::instrument_future_log(
                     async #block,
@@ -684,6 +727,7 @@ pub fn future_fn_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {
             {
                 const FUTURE_LOC: &'static str = concat!(module_path!(), "::", stringify!(#fn_name));
+                #loc_register
                 hotpath_meta::futures::init_futures_state();
                 hotpath_meta::InstrumentFuture::instrument_future(
                     async #block,

@@ -145,14 +145,16 @@ fn truncate_source_path(source: &str) -> String {
 
 impl From<&GaugeEntry> for JsonDebugEntry {
     fn from(stats: &GaugeEntry) -> Self {
+        let source = crate::channels::display_source(stats.source);
         JsonDebugEntry {
             id: stats.id,
             entry_type: crate::json::DebugEntryType::Gauge,
-            source: stats.source.to_string(),
-            source_display: truncate_source_path(stats.source),
+            source: source.to_string(),
+            source_display: truncate_source_path(source),
             expression: stats.key.to_string(),
             log_count: stats.update_count,
             last_value: Some(format!("{}", stats.current_value)),
+            location: crate::lib_on::locations::lookup_location(stats.source),
         }
     }
 }

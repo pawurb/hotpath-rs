@@ -94,14 +94,16 @@ fn truncate_source_path(source: &str) -> String {
 impl From<&DbgEntry> for JsonDebugEntry {
     fn from(stats: &DbgEntry) -> Self {
         let last_value = stats.logs.back().map(|e| e.value.clone());
+        let source = crate::channels::display_source(stats.source);
         JsonDebugEntry {
             id: stats.id,
             entry_type: crate::json::DebugEntryType::Dbg,
-            source: stats.source.to_string(),
-            source_display: truncate_source_path(stats.source),
+            source: source.to_string(),
+            source_display: truncate_source_path(source),
             expression: stats.expression.to_string(),
             log_count: stats.log_count,
             last_value,
+            location: crate::lib_on::locations::lookup_location(stats.source),
         }
     }
 }
@@ -109,7 +111,7 @@ impl From<&DbgEntry> for JsonDebugEntry {
 impl JsonDebugDbgLogs {
     pub(crate) fn from_stats(stats: &DbgEntry, current_elapsed_ns: u64) -> Self {
         JsonDebugDbgLogs {
-            source: truncate_source_path(stats.source),
+            source: truncate_source_path(crate::channels::display_source(stats.source)),
             expression: stats.expression.to_string(),
             total_logs: stats.log_count,
             logs: stats

@@ -149,6 +149,7 @@ pub(crate) fn build_functions_list_alloc(
                     .histograms
                     .then(|| s.alloc_histogram_base64())
                     .flatten(),
+                location: crate::lib_on::locations::lookup_location(s.name),
             }
         })
         .collect();
@@ -280,6 +281,7 @@ pub(crate) fn build_functions_list_timing(
                 } else {
                     None
                 },
+                location: crate::lib_on::locations::lookup_location(s.name),
             }
         })
         .collect();
