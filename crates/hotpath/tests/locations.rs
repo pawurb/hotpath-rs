@@ -92,6 +92,16 @@ mod tests {
         assert_example_location(location, "measure_block");
         assert_eq!(location.line, example_line_of("measure_block!"));
 
+        // One measure_block! call site producing two distinct labels: both
+        // entries must resolve to that call site, not just the first label
+        // registered.
+        for name in ["block_a", "block_b"] {
+            let block = entry(name);
+            let location = block.location.as_ref().expect(name);
+            assert_example_location(location, name);
+            assert_eq!(location.line, example_line_of("block_a"), "{name}");
+        }
+
         let main_entry = entry("locations::main");
         let location = main_entry.location.as_ref().expect("main location");
         assert_example_location(location, "main");

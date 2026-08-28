@@ -36,6 +36,12 @@ async fn main() {
         std::thread::sleep(Duration::from_millis(1));
     });
 
+    for flag in [true, false] {
+        hotpath::measure_block!(if flag { "block_a" } else { "block_b" }, {
+            std::thread::sleep(Duration::from_millis(1));
+        });
+    }
+
     let lock = hotpath::mutex!(std::sync::Mutex::new(0u32));
     *lock.lock().unwrap() += 1;
 

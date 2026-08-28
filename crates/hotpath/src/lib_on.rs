@@ -177,7 +177,28 @@ impl Drop for SuspendAllocTracking {
 macro_rules! measure_block {
     ($label:expr, $expr:expr) => {{
         let __hotpath_label: &'static str = $label;
-        $crate::__register_location!(__hotpath_label);
+        {
+            static __HOTPATH_LOC: $crate::Location = $crate::Location {
+                file: file!(),
+                line: line!(),
+                column: column!(),
+            };
+            // The label is a runtime expression, so one call site can produce
+            // several distinct labels; re-register whenever the value changes
+            // (tracked by pointer) instead of only once, so every label
+            // resolves to this location while the common fixed-label case
+            // stays one relaxed load per execution.
+            static __HOTPATH_LAST_LABEL: std::sync::atomic::AtomicPtr<u8> =
+                std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+            let __hotpath_label_ptr = __hotpath_label.as_ptr() as *mut u8;
+            if __HOTPATH_LAST_LABEL.load(std::sync::atomic::Ordering::Relaxed)
+                != __hotpath_label_ptr
+            {
+                $crate::register_location(__hotpath_label, &__HOTPATH_LOC);
+                __HOTPATH_LAST_LABEL
+                    .store(__hotpath_label_ptr, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         let _guard = $crate::functions::build_measurement_guard_block(__hotpath_label, false);
 
         $expr
