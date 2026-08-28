@@ -328,6 +328,7 @@ pub(crate) fn channel_to_json(
         proc_percentiles,
         proc_sampled_count: stats.has_proc_hist().then_some(stats.proc_sampled_count),
         proc_histogram: histograms.then(|| stats.proc_histogram_base64()).flatten(),
+        location: crate::lib_on::locations::location_for_key(stats.key),
         iter: stats.iter,
     }
 }
@@ -1062,6 +1063,7 @@ macro_rules! channel {
     // Default: wrap mode. `channel!(expr)` -> endpoint-wrapping instrumentation.
     ($expr:expr) => {{
         const CHANNEL_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(CHANNEL_ID);
         $crate::InstrumentChannelWrap::instrument_wrap($expr, CHANNEL_ID, None, None, false)
     }};
 
@@ -1072,6 +1074,7 @@ macro_rules! channel {
     // call site.
     ($expr:expr, $($rest:tt)*) => {{
         const CHANNEL_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(CHANNEL_ID);
         $crate::channel!(@munch CHANNEL_ID, $expr ; (None) (None) [nolog] [wrap] (false) ; $($rest)*)
     }};
 

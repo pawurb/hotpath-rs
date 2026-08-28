@@ -387,11 +387,13 @@ pub trait InstrumentMutex {
 macro_rules! mutex {
     ($expr:expr) => {{
         const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(MUTEX_ID);
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, None)
     }};
 
     ($expr:expr, label = $label:expr) => {{
         const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(MUTEX_ID);
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, Some($label.to_string()))
     }};
 }

@@ -32,6 +32,7 @@ pub mod debug;
 pub mod futures;
 pub mod http;
 pub mod io;
+pub mod locations;
 pub mod mutexes;
 pub mod rw_locks;
 pub mod server;
@@ -57,10 +58,15 @@ pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 #[cfg(feature = "hotpath-cloud-meta")]
 pub(crate) mod cloud;
+#[cfg(feature = "hotpath-cloud-meta")]
+pub(crate) mod git_info;
 pub(crate) mod histograms;
 pub mod hotpath_guard;
 pub(crate) mod report;
+pub(crate) mod report_meta;
 pub(crate) mod sampling;
+
+pub use locations::{register_location, Location};
 
 pub use functions::allocator::CountingAllocator;
 pub use functions::{
@@ -135,9 +141,50 @@ impl Drop for SuspendAllocTracking {
 #[macro_export]
 macro_rules! measure_block {
     ($label:expr, $expr:expr) => {{
-        let _guard = $crate::functions::build_measurement_guard_block($label, false);
+        let __hotpath_label: &'static str = $label;
+        {
+            static __HOTPATH_LOC: $crate::Location = $crate::Location {
+                file: file!(),
+                line: line!(),
+                column: column!(),
+            };
+            // The label is a runtime expression, so one call site can produce
+            // several distinct labels; re-register whenever the value changes
+            // (tracked by pointer) instead of only once, so every label
+            // resolves to this location while the common fixed-label case
+            // stays one relaxed load per execution.
+            static __HOTPATH_LAST_LABEL: std::sync::atomic::AtomicPtr<u8> =
+                std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+            let __hotpath_label_ptr = __hotpath_label.as_ptr() as *mut u8;
+            if __HOTPATH_LAST_LABEL.load(std::sync::atomic::Ordering::Relaxed)
+                != __hotpath_label_ptr
+            {
+                $crate::register_location(__hotpath_label, &__HOTPATH_LOC);
+                __HOTPATH_LAST_LABEL
+                    .store(__hotpath_label_ptr, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        let _guard = $crate::functions::build_measurement_guard_block(__hotpath_label, false);
 
         $expr
+    }};
+}
+
+/// Registers the call site's structured [`Location`] under the identity
+/// string used for stats aggregation. `file!()`/`line!()`/`column!()` here
+/// resolve to the user's call site because macro expansion attributes them to
+/// the outermost invocation.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __register_location {
+    ($id:expr) => {{
+        static __HOTPATH_LOC: $crate::Location = $crate::Location {
+            file: file!(),
+            line: line!(),
+            column: column!(),
+        };
+        static __HOTPATH_LOC_ONCE: std::sync::Once = std::sync::Once::new();
+        __HOTPATH_LOC_ONCE.call_once(|| $crate::register_location($id, &__HOTPATH_LOC));
     }};
 }
 
@@ -171,8 +218,9 @@ macro_rules! dbg {
         let id = *DBG_ID.get_or_init(|| {
             $crate::debug::DEBUG_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         });
-        const DBG_LOC: &'static str = concat!(file!(), ":", line!());
+        const DBG_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
         const DBG_EXPR: &'static str = stringify!($val);
+        $crate::__register_location!(DBG_LOC);
         match $val {
             tmp => {
                 $crate::debug::dbg::log_dbg(id, DBG_LOC, DBG_EXPR, &tmp);
@@ -209,7 +257,8 @@ macro_rules! dbg {
 #[macro_export]
 macro_rules! val {
     ($key:expr) => {{
-        const VAL_LOC: &'static str = concat!(file!(), ":", line!());
+        const VAL_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(VAL_LOC);
         $crate::debug::val::ValHandle::new($key, VAL_LOC)
     }};
 }
@@ -238,7 +287,8 @@ macro_rules! val {
 #[macro_export]
 macro_rules! gauge {
     ($key:expr) => {{
-        const GAUGE_LOC: &'static str = concat!(file!(), ":", line!());
+        const GAUGE_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(GAUGE_LOC);
         $crate::debug::gauge::GaugeHandle::new($key, GAUGE_LOC)
     }};
 }
