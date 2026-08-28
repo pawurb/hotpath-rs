@@ -63,6 +63,14 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 | `HOTPATH_METRICS_SERVER_OFF` | Set to `true` or `1` to disable the HTTP metrics server entirely. (default: `false`) |
 | `HOTPATH_METRICS_AUTH_TOKEN` | When set, every request must send this exact token as the `Authorization` header value (no `Bearer` prefix) or it gets `401`. Any printable ASCII characters without whitespace; anything else panics at startup. The token travels in plaintext: the server still binds to `localhost` only, so this guards against other local processes and accidental exposure through tunnels, not a substitute for TLS. (default: `''`) |
 
+## Prometheus Server
+
+| Variable | Description |
+|----------|-------------|
+| `HOTPATH_PROMETHEUS` | Set to `true` or `1` to start the Prometheus exporter server. Serves `GET /metrics` in text exposition format and binds to `localhost` only. (default: `false`) |
+| `HOTPATH_PROMETHEUS_PORT` | Port for the Prometheus exporter server. (default: `6772`) |
+| `HOTPATH_PROMETHEUS_AUTH_TOKEN` | Auth token for the Prometheus server; same character rules and plaintext caveats as `HOTPATH_METRICS_AUTH_TOKEN`. Accepted both as the exact `Authorization` header value and with a `Bearer ` prefix, so Prometheus's `authorization` scrape config works as-is. (default: `''`) |
+
 ## MCP Server
 
 | Variable | Description |

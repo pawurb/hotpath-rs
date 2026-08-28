@@ -148,10 +148,7 @@ impl FunctionStats {
     /// aligned with `boundaries`. Accurate to the histogram's 0.1% resolution.
     pub(crate) fn duration_bucket_counts(&self, boundaries: &[u64]) -> Vec<u64> {
         match self.hist.as_ref().filter(|_| self.sampled_count > 0) {
-            Some(hist) => boundaries
-                .iter()
-                .map(|&b| hist.count_between(0, b))
-                .collect(),
+            Some(hist) => crate::lib_on::histograms::cumulative_bucket_counts(hist, boundaries),
             None => vec![0; boundaries.len()],
         }
     }

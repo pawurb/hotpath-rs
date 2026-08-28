@@ -15,6 +15,32 @@ pub(crate) fn histogram_base64(_hist: &hdrhistogram::Histogram<u64>) -> Option<S
     None
 }
 
+/// Cumulative counts of recorded values at or below each of the ascending
+/// `boundaries`, in one ordered traversal of the non-empty bins. Matches
+/// `count_between(0, b)` per boundary: a bin straddling a boundary counts
+/// toward it in full (the histogram's 0.1% resolution).
+pub(crate) fn cumulative_bucket_counts(
+    hist: &hdrhistogram::Histogram<u64>,
+    boundaries: &[u64],
+) -> Vec<u64> {
+    let mut counts = Vec::with_capacity(boundaries.len());
+    let mut cumulative: u64 = 0;
+    for v in hist.iter_recorded() {
+        let bin_low = hist.lowest_equivalent(v.value_iterated_to());
+        while counts.len() < boundaries.len() && bin_low > boundaries[counts.len()] {
+            counts.push(cumulative);
+        }
+        if counts.len() == boundaries.len() {
+            break;
+        }
+        cumulative += v.count_since_last_iteration();
+    }
+    while counts.len() < boundaries.len() {
+        counts.push(cumulative);
+    }
+    counts
+}
+
 #[cfg(all(test, feature = "hotpath-cloud"))]
 pub(crate) fn decode_histogram(b64: &str) -> hdrhistogram::Histogram<u64> {
     use base64::Engine;
@@ -24,6 +50,48 @@ pub(crate) fn decode_histogram(b64: &str) -> hdrhistogram::Histogram<u64> {
         .decode(b64)
         .unwrap();
     Deserializer::new().deserialize(&mut &bytes[..]).unwrap()
+}
+
+#[cfg(test)]
+mod bucket_counts_tests {
+    use hdrhistogram::Histogram;
+
+    use crate::lib_on::histograms::cumulative_bucket_counts;
+
+    #[test]
+    fn matches_count_between_per_boundary() {
+        let boundaries = [
+            250u64,
+            1_000,
+            25_000,
+            1_000_000,
+            500_000_000,
+            10_000_000_000,
+        ];
+        let mut hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap();
+        let mut x: u64 = 42;
+        for _ in 0..10_000 {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            hist.record(200 + x % 2_000_000_000).unwrap();
+        }
+        // exercise the straddling-bin edge: values equivalent to a boundary
+        hist.record(1_000).unwrap();
+        hist.record(25_010).unwrap();
+
+        let expected: Vec<u64> = boundaries
+            .iter()
+            .map(|&b| hist.count_between(0, b))
+            .collect();
+        assert_eq!(cumulative_bucket_counts(&hist, &boundaries), expected);
+    }
+
+    #[test]
+    fn empty_histogram_yields_zeroes() {
+        let hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap();
+        assert_eq!(cumulative_bucket_counts(&hist, &[100, 1_000]), vec![0, 0]);
+    }
 }
 
 #[cfg(all(test, feature = "hotpath-cloud"))]

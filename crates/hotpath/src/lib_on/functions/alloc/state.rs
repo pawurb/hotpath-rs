@@ -275,10 +275,7 @@ impl FunctionStats {
             .as_ref()
             .filter(|_| self.duration_sampled_count > 0)
         {
-            Some(hist) => boundaries
-                .iter()
-                .map(|&b| hist.count_between(0, b))
-                .collect(),
+            Some(hist) => crate::lib_on::histograms::cumulative_bucket_counts(hist, boundaries),
             None => vec![0; boundaries.len()],
         }
     }
