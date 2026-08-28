@@ -333,7 +333,7 @@ pub(crate) fn channel_to_json(
         proc_percentiles,
         proc_sampled_count: stats.has_proc_hist().then_some(stats.proc_sampled_count),
         proc_histogram: histograms.then(|| stats.proc_histogram_base64()).flatten(),
-        location: crate::lib_on::locations::lookup_location(stats.key),
+        location: crate::lib_on::locations::location_for_key(stats.key),
         iter: stats.iter,
     }
 }

@@ -31,6 +31,26 @@ pub fn register_location(name: &'static str, location: &'static Location) {
     }
 }
 
+/// Registers a location captured at runtime by the deprecated
+/// `wrap::*::new()` constructors (`#[track_caller]`). The `Location` is
+/// heap-allocated and leaked, but only for a key not registered yet, so
+/// repeat constructions at one call site do not accumulate.
+pub(crate) fn register_caller_location(
+    key: &'static str,
+    caller: &'static std::panic::Location<'static>,
+) {
+    let map = LOCATIONS.get_or_init(|| crate::lib_on::meta_rw_lock!("locations", HashMap::new()));
+    if let Ok(mut w) = map.write() {
+        w.entry(key).or_insert_with(|| {
+            &*Box::leak(Box::new(Location {
+                file: caller.file(),
+                line: caller.line(),
+                column: caller.column(),
+            }))
+        });
+    }
+}
+
 /// Joins an entry's identity string against the registry, normalizing the
 /// file path for shipping in a report.
 pub(crate) fn lookup_location(name: &str) -> Option<JsonLocation> {
@@ -40,6 +60,31 @@ pub(crate) fn lookup_location(name: &str) -> Option<JsonLocation> {
         file: normalize_file_path(location.file),
         line: location.line,
         column: location.column,
+    })
+}
+
+/// Location for a resource entry, whose `key` is a `file:line:column`
+/// call-site id that always has a registration. The parse fallback keeps
+/// this total if the registry is ever unavailable (poisoned lock).
+pub(crate) fn location_for_key(key: &str) -> JsonLocation {
+    lookup_location(key).unwrap_or_else(|| {
+        let mut parts = key.rsplitn(3, ':');
+        match (
+            parts.next().and_then(|c| c.parse().ok()),
+            parts.next().and_then(|l| l.parse().ok()),
+            parts.next(),
+        ) {
+            (Some(column), Some(line), Some(file)) => JsonLocation {
+                file: normalize_file_path(file),
+                line,
+                column,
+            },
+            _ => JsonLocation {
+                file: key.to_string(),
+                line: 0,
+                column: 0,
+            },
+        }
     })
 }
 

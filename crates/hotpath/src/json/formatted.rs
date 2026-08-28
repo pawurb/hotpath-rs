@@ -380,8 +380,7 @@ pub struct JsonChannelEntry {
     pub proc_sampled_count: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proc_histogram: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<JsonLocation>,
+    pub location: JsonLocation,
     pub iter: u32,
 }
 
@@ -421,8 +420,7 @@ pub struct JsonRwLockEntry {
     pub read_acquire_histogram: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub write_acquire_histogram: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<JsonLocation>,
+    pub location: JsonLocation,
     pub iter: u32,
 }
 
@@ -451,8 +449,7 @@ pub struct JsonMutexEntry {
     pub wait_histogram: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acquire_histogram: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<JsonLocation>,
+    pub location: JsonLocation,
     pub iter: u32,
 }
 
@@ -659,8 +656,7 @@ pub struct JsonIoEntry {
     /// Number of wrapper instances aggregated into this call-site entry.
     #[serde(default)]
     pub instances: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<JsonLocation>,
+    pub location: JsonLocation,
     pub iter: u32,
 }
 
@@ -800,8 +796,7 @@ pub struct JsonStreamEntry {
     pub items_yielded: u64,
     pub type_name: String,
     pub type_size: usize,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<JsonLocation>,
+    pub location: JsonLocation,
     pub iter: u32,
 }
 
@@ -843,8 +838,7 @@ pub struct JsonFutureEntry {
     pub total_poll_duration_ns: u64,
     pub total_poll_alloc_bytes: Option<u64>,
     pub total_poll_alloc_count: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<JsonLocation>,
+    pub location: JsonLocation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -100,7 +100,7 @@ mod tests {
         // string stays the `file:line` form (identity regression guard).
         let mutexes = report.mutexes.expect("mutexes section");
         let mutex = &mutexes.data[0];
-        let location = mutex.location.as_ref().expect("mutex location");
+        let location = &mutex.location;
         assert_example_location(location, "mutex");
         assert_eq!(location.line, example_line_of("hotpath::mutex!"));
         assert_eq!(
@@ -111,7 +111,7 @@ mod tests {
 
         let channels = report.channels.expect("channels section");
         let channel = &channels.data[0];
-        let location = channel.location.as_ref().expect("channel location");
+        let location = &channel.location;
         assert_example_location(location, "channel");
         assert_eq!(location.line, example_line_of("hotpath::channel!"));
         assert_eq!(
@@ -124,7 +124,7 @@ mod tests {
         // the displayed source strips the column back to `file:line`.
         let futures = report.futures.expect("futures section");
         let future = &futures.data[0];
-        let location = future.location.as_ref().expect("future location");
+        let location = &future.location;
         assert_example_location(location, "future");
         assert_eq!(location.line, example_line_of("hotpath::future!"));
         assert_eq!(

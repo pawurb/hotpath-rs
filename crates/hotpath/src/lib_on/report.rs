@@ -407,7 +407,7 @@ fn rw_lock_to_json(
         write_acquire_histogram: histograms
             .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Write))
             .flatten(),
-        location: crate::lib_on::locations::lookup_location(rw_lock.key),
+        location: crate::lib_on::locations::location_for_key(rw_lock.key),
         iter: rw_lock.iter,
     }
 }
@@ -546,7 +546,7 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], histograms: bool) -> J
         acquire_histogram: histograms
             .then(|| mutex.acquire_histogram_base64())
             .flatten(),
-        location: crate::lib_on::locations::lookup_location(mutex.key),
+        location: crate::lib_on::locations::location_for_key(mutex.key),
         iter: mutex.iter,
     }
 }
@@ -1225,7 +1225,7 @@ fn io_to_json(entry: &IoEntry, percentiles: &[f64], histograms: bool) -> JsonIoE
         flush: io_op_stats_to_json(&entry.flush, percentiles, histograms),
         shutdown: io_op_stats_to_json(&entry.shutdown, percentiles, histograms),
         instances: entry.instances,
-        location: crate::lib_on::locations::lookup_location(entry.key),
+        location: crate::lib_on::locations::location_for_key(entry.key),
         iter: entry.iter,
     }
 }

@@ -187,7 +187,7 @@ impl From<&StreamStats> for JsonStreamEntry {
             items_yielded: stats.items_yielded,
             type_name: stats.type_name.to_string(),
             type_size: stats.type_size,
-            location: crate::lib_on::locations::lookup_location(stats.key),
+            location: crate::lib_on::locations::location_for_key(stats.key),
             iter: stats.iter,
         }
     }

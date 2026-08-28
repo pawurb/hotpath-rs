@@ -187,7 +187,7 @@ impl From<&FutureEntry> for JsonFutureEntry {
             total_poll_duration_ns: stats.display_total_poll_duration_ns(),
             total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
             total_poll_alloc_count: stats.total_poll_alloc_count(),
-            location: crate::lib_on::locations::lookup_location(stats.source),
+            location: crate::lib_on::locations::location_for_key(stats.source),
         }
     }
 }
