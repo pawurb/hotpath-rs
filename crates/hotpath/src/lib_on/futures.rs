@@ -152,13 +152,33 @@ pub(crate) struct FuturesInternalState {
     pub(crate) logs: HashMap<u32, FutureEntryLogs>,
 }
 
+/// `future!` ids are `file:line:column` so same-line invocations cannot
+/// alias; this strips the column back to the `file:line` form shown to users.
+/// Name-based ids (`#[future_fn]`, `#[measure(future = true)]`) pass through:
+/// their trailing segments are never both numeric.
+pub(crate) fn display_source(id: &'static str) -> &'static str {
+    let mut parts = id.rsplitn(3, ':');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(column), Some(line), Some(_path))
+            if !column.is_empty()
+                && !line.is_empty()
+                && column.bytes().all(|b| b.is_ascii_digit())
+                && line.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            &id[..id.len() - column.len() - 1]
+        }
+        _ => id,
+    }
+}
+
 impl From<&FutureEntry> for JsonFutureEntry {
     fn from(stats: &FutureEntry) -> Self {
-        let label = resolve_label(stats.source, stats.label.as_deref(), None);
+        let source = display_source(stats.source);
+        let label = resolve_label(source, stats.label.as_deref(), None);
 
         JsonFutureEntry {
             id: stats.id,
-            source: stats.source.to_string(),
+            source: source.to_string(),
             label,
             has_custom_label: stats.label.is_some(),
             call_count: stats.logs_count,
@@ -167,6 +187,7 @@ impl From<&FutureEntry> for JsonFutureEntry {
             total_poll_duration_ns: stats.display_total_poll_duration_ns(),
             total_poll_alloc_bytes: stats.total_poll_alloc_bytes(),
             total_poll_alloc_count: stats.total_poll_alloc_count(),
+            location: crate::lib_on::locations::location_for_key(stats.source),
         }
     }
 }
@@ -575,25 +596,29 @@ pub(crate) fn get_future_logs_list(future_id: u32) -> Option<FutureLogsList> {
 #[macro_export]
 macro_rules! future {
     ($fut:expr) => {{
-        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(FUTURE_LOC);
         $crate::futures::init_futures_state();
         $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC, None)
     }};
 
     ($fut:expr, label = $label:expr) => {{
-        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(FUTURE_LOC);
         $crate::futures::init_futures_state();
         $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC, Some($label.to_string()))
     }};
 
     ($fut:expr, log = true) => {{
-        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(FUTURE_LOC);
         $crate::futures::init_futures_state();
         $crate::InstrumentFutureLog::instrument_future_log($fut, FUTURE_LOC, None)
     }};
 
     ($fut:expr, label = $label:expr, log = true) => {{
-        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(FUTURE_LOC);
         $crate::futures::init_futures_state();
         $crate::InstrumentFutureLog::instrument_future_log(
             $fut,
@@ -603,7 +628,8 @@ macro_rules! future {
     }};
 
     ($fut:expr, log = true, label = $label:expr) => {{
-        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!());
+        const FUTURE_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(FUTURE_LOC);
         $crate::futures::init_futures_state();
         $crate::InstrumentFutureLog::instrument_future_log(
             $fut,
@@ -615,6 +641,14 @@ macro_rules! future {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn display_source_strips_column_from_call_site_ids() {
+        let strip = crate::futures::display_source;
+        assert_eq!(strip("src/main.rs:12:34"), "src/main.rs:12");
+        assert_eq!(strip("my_module::my_future_fn"), "my_module::my_future_fn");
+        assert_eq!(strip("app::handlers::fetch2"), "app::handlers::fetch2");
+    }
+
     #[test]
     fn ready_future_state_is_terminal() {
         let mut call = crate::json::FutureLog::new(1, 1);

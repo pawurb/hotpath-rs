@@ -26,6 +26,7 @@ impl<T> RwLock<T> {
         let loc = std::panic::Location::caller();
         let key: &'static str =
             Box::leak(format!("{}:{}:{}", loc.file(), loc.line(), loc.column()).into_boxed_str());
+        crate::lib_on::locations::register_caller_location(key, loc);
         Self::__new_instrumented(StdRwLock::new(value), key, None)
     }
 

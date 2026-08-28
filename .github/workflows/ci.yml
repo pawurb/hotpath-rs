@@ -107,6 +107,9 @@ jobs:
       - name: Run functions_alloc tests
         run: |
           cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
+      - name: Run locations tests
+        run: |
+          cargo test --features hotpath --test locations -- --nocapture --test-threads=1
       - name: Run cloud_histograms tests
         run: |
           cargo test --lib --features hotpath,hotpath-cloud

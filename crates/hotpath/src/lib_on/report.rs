@@ -407,6 +407,7 @@ fn rw_lock_to_json(
         write_acquire_histogram: histograms
             .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Write))
             .flatten(),
+        location: crate::lib_on::locations::location_for_key(rw_lock.key),
         iter: rw_lock.iter,
     }
 }
@@ -545,6 +546,7 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], histograms: bool) -> J
         acquire_histogram: histograms
             .then(|| mutex.acquire_histogram_base64())
             .flatten(),
+        location: crate::lib_on::locations::location_for_key(mutex.key),
         iter: mutex.iter,
     }
 }
@@ -707,6 +709,9 @@ fn sql_to_json(
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
         histogram: histograms.then(|| entry.histogram_base64()).flatten(),
+        location: entry
+            .source
+            .and_then(crate::lib_on::locations::lookup_location),
     }
 }
 
@@ -851,6 +856,9 @@ fn http_to_json(
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
         histogram: histograms.then(|| entry.histogram_base64()).flatten(),
+        location: entry
+            .source
+            .and_then(crate::lib_on::locations::lookup_location),
     }
 }
 
@@ -1217,6 +1225,7 @@ fn io_to_json(entry: &IoEntry, percentiles: &[f64], histograms: bool) -> JsonIoE
         flush: io_op_stats_to_json(&entry.flush, percentiles, histograms),
         shutdown: io_op_stats_to_json(&entry.shutdown, percentiles, histograms),
         instances: entry.instances,
+        location: crate::lib_on::locations::location_for_key(entry.key),
         iter: entry.iter,
     }
 }
@@ -1373,7 +1382,11 @@ pub(crate) fn report_futures_table(
     ]));
 
     for future_stats in futures {
-        let label = resolve_label(future_stats.source, future_stats.label.as_deref(), None);
+        let label = resolve_label(
+            crate::futures::display_source(future_stats.source),
+            future_stats.label.as_deref(),
+            None,
+        );
         let total_calls = future_stats.logs_count;
         let total_polls = future_stats.total_polls();
         let total_poll_dur = future_stats.display_total_poll_duration_ns();

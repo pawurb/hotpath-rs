@@ -98,6 +98,7 @@ pub(crate) fn build_functions_list(
                 } else {
                     None
                 },
+                location: crate::lib_on::locations::lookup_location(s.name),
             }
         })
         .collect();

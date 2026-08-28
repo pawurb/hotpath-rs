@@ -187,6 +187,7 @@ impl From<&StreamStats> for JsonStreamEntry {
             items_yielded: stats.items_yielded,
             type_name: stats.type_name.to_string(),
             type_size: stats.type_size,
+            location: crate::lib_on::locations::location_for_key(stats.key),
             iter: stats.iter,
         }
     }
@@ -505,6 +506,7 @@ where
 macro_rules! stream {
     ($expr:expr) => {{
         const STREAM_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(STREAM_ID);
         $crate::InstrumentStream::instrument_stream($expr, STREAM_ID, None, false)
     }};
 
@@ -514,6 +516,7 @@ macro_rules! stream {
     // captured once here so `file!()`/`line!()` resolve to the user's call site.
     ($expr:expr, $($rest:tt)*) => {{
         const STREAM_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
+        $crate::__register_location!(STREAM_ID);
         $crate::stream!(@munch STREAM_ID, $expr ; (None) [nolog] (false) ; $($rest)*)
     }};
 
