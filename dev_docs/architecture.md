@@ -10,6 +10,10 @@ Each subsystem spawns a dedicated worker thread named `hp-<subsystem>` from its 
 
 tiny_http server, localhost-only, port 6770 by default (`HOTPATH_METRICS_PORT`; disable with `HOTPATH_METRICS_SERVER_OFF`). Optional shared-secret auth: `HOTPATH_METRICS_AUTH_TOKEN` (read once into a `LazyLock`) must be sent as-is in the `Authorization` header on every route, else `401`; the constant-time comparison lives in `crates/hotpath/src/auth.rs` and is shared with the MCP server. The TUI sends it from the same env var or `--metrics-auth-token`. Feeds the TUI. Implementation: `crates/hotpath/src/metrics_server.rs`; the route table is the `Route` enum in `crates/hotpath/src/json.rs` - read that enum for the current endpoint list (per-section metrics as JSON plus `/{id}/logs` sub-routes and the CPU snapshot trigger).
 
+## Prometheus Exporter
+
+`crates/hotpath/src/prometheus_server.rs`, behind the `hotpath-prometheus` feature (which pulls `prost`); no env var switch. Own tiny_http server on `hp-prometheus`, port 6772 (`HOTPATH_PROMETHEUS_PORT`), bind address `HOTPATH_PROMETHEUS_HOST` (loopback by default). One `GET /metrics` endpoint, body negotiated via `Accept`: protobuf (`prometheus_server/protobuf.rs`, hand-declared prost mirror of `io.prometheus.client`) with native histograms at `NATIVE_SCHEMA` plus classic buckets, or text exposition with classic buckets only. Both derive from one worker-side sparse representation (`FunctionsQuery::TimingRaw` -> `RawFunctionTiming.native_buckets`); the hdr -> exponential conversion lives in `lib_on/native_histograms.rs`. Auth: `HOTPATH_PROMETHEUS_AUTH_TOKEN`, accepted bare or `Bearer `-prefixed. A query timeout returns `503`, never an empty body (empty scrapes fabricate counter resets).
+
 ## MCP Server
 
 `crates/hotpath/src/mcp_server.rs`, behind the `hotpath-mcp` feature. Port 6771 (`HOTPATH_MCP_PORT`), endpoint `POST /mcp` (Streamable HTTP). The tool list is the set of `#[tool(...)]` methods in that file - roughly one tool per metrics endpoint plus log variants. Auth: `HOTPATH_MCP_AUTH_TOKEN` sets the expected value; clients must send it verbatim in the `Authorization` header (no `Bearer` prefix handling).

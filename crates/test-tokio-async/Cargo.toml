@@ -22,6 +22,7 @@ tikv-jemallocator = { version = "0.6", optional = true }
 [features]
 default = []
 hotpath = ["hotpath/hotpath"]
+hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
 hotpath-cpu = ["hotpath/hotpath-cpu"]
 hotpath-meta = ["hotpath/hotpath-meta"]

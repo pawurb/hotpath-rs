@@ -1,4 +1,4 @@
-#[cfg(all(test, feature = "hotpath"))]
+#[cfg(all(test, feature = "hotpath-prometheus"))]
 pub mod tests {
     use std::collections::HashMap;
     use std::process::Command;
@@ -81,7 +81,7 @@ pub mod tests {
         labels[start..].split('"').next().unwrap().to_string()
     }
 
-    // cargo run -p test-tokio-async --example basic --features hotpath
+    // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-prometheus
     #[test]
     fn test_prometheus_endpoint() {
         let mut child = Command::new("cargo")
@@ -92,10 +92,9 @@ pub mod tests {
                 "--example",
                 "basic",
                 "--features",
-                "hotpath",
+                "hotpath,hotpath-prometheus",
             ])
             .env("HOTPATH_METRICS_PORT", METRICS_PORT)
-            .env("HOTPATH_PROMETHEUS", "true")
             .env("HOTPATH_PROMETHEUS_PORT", PROMETHEUS_PORT)
             .env("HOTPATH_PROMETHEUS_AUTH_TOKEN", TOKEN)
             .env("TEST_SLEEP_SECONDS", "15")

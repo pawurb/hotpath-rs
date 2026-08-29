@@ -92,9 +92,9 @@ use crate::output_on::{
     display_functions_table_to, display_no_measurements_message_to, write_report_header,
 };
 
-use crate::functions::{
-    FunctionsQuery, Measurement, RawFunctionTiming, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE,
-};
+#[cfg(feature = "hotpath-prometheus")]
+use crate::functions::RawFunctionTiming;
+use crate::functions::{FunctionsQuery, Measurement, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
 use crate::lib_on::report;
 use crate::shared::{Section, SectionsMode};
 
@@ -640,9 +640,10 @@ impl HotpathGuard {
                                         }
                                         let _ = response_tx.send(formatted);
                                     }
+                                    #[cfg(feature = "hotpath-prometheus")]
                                     FunctionsQuery::TimingRaw(response_tx) => {
                                         let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
-                                        let ladder = crate::prometheus_server::FAST_LADDER_NS;
+                                        let schema = crate::prometheus_server::NATIVE_SCHEMA;
                                         let mut raw: Vec<RawFunctionTiming> = local_stats
                                             .values()
                                             .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
@@ -659,7 +660,7 @@ impl HotpathGuard {
                                                     count: s.count,
                                                     sampled_count,
                                                     total_duration_ns: s.total_duration_ns,
-                                                    bucket_counts: s.duration_bucket_counts(ladder),
+                                                    native_buckets: s.native_duration_buckets(schema),
                                                 }
                                             })
                                             .collect();
@@ -758,6 +759,7 @@ impl HotpathGuard {
 
         crate::metrics_server::start_metrics_server_once(*METRICS_SERVER_PORT);
 
+        #[cfg(feature = "hotpath-prometheus")]
         crate::prometheus_server::start_prometheus_server_once();
 
         #[cfg(feature = "hotpath-mcp")]

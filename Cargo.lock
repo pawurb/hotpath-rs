@@ -1630,6 +1630,7 @@ dependencies = [
  "parking_lot",
  "pin-project-lite",
  "prettytable-rs",
+ "prost",
  "quanta",
  "ratatui 0.30.1",
  "regex",

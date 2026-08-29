@@ -144,12 +144,13 @@ impl FunctionStats {
         crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
     }
 
-    /// Cumulative counts of sampled durations at or below each boundary (ns),
-    /// aligned with `boundaries`. Accurate to the histogram's 0.1% resolution.
-    pub(crate) fn duration_bucket_counts(&self, boundaries: &[u64]) -> Vec<u64> {
+    /// Sparse native-histogram buckets of sampled durations, `(index, count)`
+    /// at `schema`, for the Prometheus exporter.
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn native_duration_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
         match self.hist.as_ref().filter(|_| self.sampled_count > 0) {
-            Some(hist) => crate::lib_on::histograms::cumulative_bucket_counts(hist, boundaries),
-            None => vec![0; boundaries.len()],
+            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(hist, schema),
+            None => Vec::new(),
         }
     }
 }

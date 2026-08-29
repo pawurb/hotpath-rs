@@ -1,6 +1,6 @@
 {
-  "title": "hotpath functions",
-  "uid": "hotpath-functions",
+  "title": "hotpath functions legacy",
+  "uid": "hotpath-functions-legacy",
   "schemaVersion": 39,
   "refresh": "5s",
   "time": { "from": "now-15m", "to": "now" },
@@ -10,7 +10,7 @@
         "name": "function",
         "label": "function",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+        "datasource": { "type": "prometheus", "uid": "hotpath-prom-legacy" },
         "query": "label_values(hotpath_function_calls_total, function)",
         "refresh": 2,
         "sort": 1,
@@ -23,8 +23,8 @@
     {
       "id": 1,
       "type": "timeseries",
-      "title": "Function p99 latency (1m window)",
-      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "title": "Function p99 latency (classic buckets, 1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom-legacy" },
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
@@ -39,7 +39,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Function call rate (1m window)",
-      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom-legacy" },
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
       "targets": [
@@ -54,7 +54,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Function average latency (1m window)",
-      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom-legacy" },
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
@@ -68,8 +68,8 @@
     {
       "id": 4,
       "type": "heatmap",
-      "title": "Latency distribution: $function",
-      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "title": "Latency distribution (classic buckets): $function",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom-legacy" },
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
       "options": { "calculate": false, "yAxis": { "unit": "s" } },
       "targets": [
@@ -77,21 +77,6 @@
           "expr": "sum by (le) (rate(hotpath_function_duration_seconds_bucket{function=~\"$function\"}[1m]))",
           "format": "heatmap",
           "legendFormat": "{{le}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Function p99 latency (native histograms, 1m window)",
-      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.99, sum by (function) (rate(hotpath_function_duration_seconds[1m])))",
-          "legendFormat": "{{function}}",
           "refId": "A"
         }
       ]
