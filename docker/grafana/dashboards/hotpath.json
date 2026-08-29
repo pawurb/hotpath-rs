@@ -1,0 +1,70 @@
+{
+  "title": "hotpath functions",
+  "uid": "hotpath-functions",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Function p99 latency (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, function) (rate(hotpath_function_duration_seconds_bucket[1m])))",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Function call rate (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_function_calls_total[1m])",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Function average latency (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_function_duration_seconds_sum[1m]) / rate(hotpath_function_duration_seconds_count[1m])",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "heatmap",
+      "title": "Latency distribution (all functions)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "options": { "calculate": false, "yAxis": { "unit": "s" } },
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(hotpath_function_duration_seconds_bucket[1m]))",
+          "format": "heatmap",
+          "legendFormat": "{{le}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

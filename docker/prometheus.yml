@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: hotpath
+    # Matches HOTPATH_PROMETHEUS_AUTH_TOKEN in the `just demo` recipe, so the
+    # exporter stays protected even when bound beyond loopback.
+    authorization:
+      credentials: hotpath-demo
+    static_configs:
+      # The hotpath Prometheus server runs on the host machine, reachable from
+      # inside the container via host.docker.internal. On Docker Desktop
+      # (macOS/Windows) the default loopback bind works; on native Linux
+      # host.docker.internal resolves to the bridge gateway, which cannot reach
+      # a loopback-only listener, so run the exporter with
+      # HOTPATH_PROMETHEUS_HOST=0.0.0.0.
+      - targets: ["host.docker.internal:6772"]
