@@ -3,6 +3,10 @@ global:
 
 scrape_configs:
   - job_name: hotpath
+    # Matches HOTPATH_PROMETHEUS_AUTH_TOKEN in the `just demo` recipe, so the
+    # exporter stays protected even when bound beyond loopback.
+    authorization:
+      credentials: hotpath-demo
     static_configs:
       # The hotpath Prometheus server runs on the host machine, reachable from
       # inside the container via host.docker.internal. On Docker Desktop

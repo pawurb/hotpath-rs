@@ -65,9 +65,10 @@ test_all:
 # Scrape it with `docker compose up -d prometheus grafana`:
 # Grafana http://localhost:3009 (dashboard auto-provisioned), Prometheus http://localhost:9099.
 # On native Linux add HOTPATH_PROMETHEUS_HOST=0.0.0.0 so the Prometheus
-# container can reach the exporter through the Docker bridge gateway.
+# container can reach the exporter through the Docker bridge gateway; the auth
+# token (matched by docker/prometheus.yml) keeps the exporter protected there.
 demo:
-    HOTPATH_PROMETHEUS=true cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,demo -- console
+    HOTPATH_PROMETHEUS=true HOTPATH_PROMETHEUS_AUTH_TOKEN=hotpath-demo cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,demo -- console
 
 # Serve the mdbook docs locally with live reload (http://localhost:3000).
 # The production server + deploy live in the private hotpath-backend repo.
