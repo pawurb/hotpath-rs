@@ -91,7 +91,6 @@ pub struct JsonFunctionEntry {
     pub id: u32,
     pub name: String,
     pub calls: u64,
-    #[serde(default)]
     pub sampled_calls: u64,
     pub avg: String,
     #[serde(flatten)]
@@ -336,7 +335,6 @@ fn format_alloc_log_entry(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonChannelsList {
     pub current_elapsed_ns: u64,
-    #[serde(default)]
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonChannelEntry>,
 }
@@ -353,10 +351,8 @@ pub struct JsonChannelEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
     /// Number of channel instances aggregated into this call-site entry.
-    #[serde(default)]
     pub instances: u64,
     /// Number of aggregated instances that have closed.
-    #[serde(default)]
     pub closed_instances: u64,
     pub sent_count: u64,
     pub received_count: u64,
@@ -366,7 +362,6 @@ pub struct JsonChannelEntry {
     pub received_per_sec: Option<f64>,
     pub type_name: String,
     pub type_size: usize,
-    #[serde(default)]
     pub wrap: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queue_size: Option<usize>,
@@ -400,9 +395,7 @@ pub struct JsonRwLockEntry {
     pub type_name: String,
     pub read_count: u64,
     pub write_count: u64,
-    #[serde(default)]
     pub read_sampled_count: u64,
-    #[serde(default)]
     pub write_sampled_count: u64,
     pub read_wait_avg: String,
     pub write_wait_avg: String,
@@ -439,7 +432,6 @@ pub struct JsonMutexEntry {
     pub has_custom_label: bool,
     pub type_name: String,
     pub count: u64,
-    #[serde(default)]
     pub sampled_count: u64,
     pub wait_avg: String,
     pub acquire_avg: String,
@@ -459,7 +451,6 @@ pub struct JsonSqlList {
     pub total_ns: u64,
     /// Total number of detected calls across all entries, including ones
     /// truncated from `data` by the display limit.
-    #[serde(default)]
     pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonSqlEntry>,
@@ -529,7 +520,6 @@ pub struct JsonHttpList {
     pub total_ns: u64,
     /// Total number of detected calls across all entries, including ones
     /// truncated from `data` by the display limit.
-    #[serde(default)]
     pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonHttpEntry>,
@@ -603,7 +593,6 @@ pub struct JsonServerList {
     pub total_ns: u64,
     /// Total number of served requests across all entries, including ones
     /// truncated from `data` by the display limit.
-    #[serde(default)]
     pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonServerEntry>,
@@ -654,7 +643,6 @@ pub struct JsonIoEntry {
     pub flush: JsonIoOpStats,
     pub shutdown: JsonIoOpStats,
     /// Number of wrapper instances aggregated into this call-site entry.
-    #[serde(default)]
     pub instances: u32,
     pub location: JsonLocation,
     pub iter: u32,
@@ -667,10 +655,8 @@ pub struct JsonIoEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonIoOpStats {
     pub count: u64,
-    #[serde(default)]
     pub sampled_count: u64,
     pub bytes: u64,
-    #[serde(default)]
     pub sampled_bytes: u64,
     pub errors: u64,
     pub avg: String,
@@ -788,10 +774,8 @@ pub struct JsonStreamEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
     /// Number of stream instances aggregated into this call-site entry.
-    #[serde(default)]
     pub instances: u64,
     /// Number of aggregated instances that have completed.
-    #[serde(default)]
     pub closed_instances: u64,
     pub items_yielded: u64,
     pub type_name: String,
@@ -833,7 +817,6 @@ pub struct JsonFutureEntry {
     pub has_custom_label: bool,
     pub call_count: u64,
     pub total_polls: u64,
-    #[serde(default)]
     pub sampled_polls: u64,
     pub total_poll_duration_ns: u64,
     pub total_poll_alloc_bytes: Option<u64>,
@@ -847,7 +830,6 @@ pub struct JsonFutureLog {
     pub future_id: u32,
     pub state: String,
     pub poll_count: u64,
-    #[serde(default)]
     pub sampled_polls: u64,
     pub total_poll_duration_ns: u64,
     pub max_poll_duration_ns: u64,
@@ -984,7 +966,6 @@ pub struct JsonDebugList {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonDebugEntry {
     pub id: u32,
-    #[serde(default)]
     pub entry_type: DebugEntryType,
     pub source: String,
     pub source_display: String,
@@ -1084,7 +1065,7 @@ fn default_report_type() -> String {
 /// Build/runtime environment of a static report, plus the git and source-root
 /// data the server needs to render clickable source links from `location`
 /// fields.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct JsonMeta {
     /// Compiler version, e.g. `1.89.0`; empty when `rustc --version` failed
     /// at build time.
@@ -1111,21 +1092,14 @@ pub struct JsonGitInfo {
     /// Full ref name (`refs/heads/main`); `None` on a detached HEAD.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
-    /// Never set today; reserved for a future working-tree cleanliness check.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dirty: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonReport {
-    #[serde(default = "default_report_type")]
     pub r#type: String,
-    /// hotpath crate version that produced the report; empty when read from a
-    /// report written before the field existed.
-    #[serde(default)]
+    /// hotpath crate version that produced the report.
     pub version: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub meta: Option<JsonMeta>,
+    pub meta: JsonMeta,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1167,7 +1141,7 @@ impl Default for JsonReport {
         Self {
             r#type: default_report_type(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            meta: None,
+            meta: JsonMeta::default(),
             label: None,
             time_sampling: None,
             functions_timing: None,

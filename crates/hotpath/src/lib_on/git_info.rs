@@ -1,7 +1,7 @@
 //! Reads `sha` and `ref` for the report `meta.git` object straight from the
 //! `.git` directory - never shells out to git. In CI the server trusts OIDC
 //! claims over this data; it mainly serves local repo-token uploads and
-//! offline reports. `dirty` stays unset - computing it needs the index.
+//! offline reports.
 
 use std::path::{Path, PathBuf};
 
@@ -15,14 +15,12 @@ pub(crate) fn read_git_info_at(root: &Path) -> Option<crate::json::JsonGitInfo> 
         Some(crate::json::JsonGitInfo {
             sha,
             r#ref: Some(ref_name),
-            dirty: None,
         })
     } else if is_sha(head) {
         // Detached HEAD holds the commit directly.
         Some(crate::json::JsonGitInfo {
             sha: head.to_string(),
             r#ref: None,
-            dirty: None,
         })
     } else {
         None
@@ -116,7 +114,6 @@ mod tests {
         let info = read_git_info_at(&root).unwrap();
         assert_eq!(info.sha, SHA);
         assert_eq!(info.r#ref.as_deref(), Some("refs/heads/main"));
-        assert_eq!(info.dirty, None);
         let _ = std::fs::remove_dir_all(&root);
     }
 
