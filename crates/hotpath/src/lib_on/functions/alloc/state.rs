@@ -267,6 +267,19 @@ impl FunctionStats {
         crate::lib_on::histograms::histogram_base64(self.duration_hist.as_ref()?)
     }
 
+    /// Cumulative counts of sampled durations at or below each boundary (ns),
+    /// aligned with `boundaries`. Accurate to the histogram's 0.1% resolution.
+    pub(crate) fn duration_bucket_counts(&self, boundaries: &[u64]) -> Vec<u64> {
+        match self
+            .duration_hist
+            .as_ref()
+            .filter(|_| self.duration_sampled_count > 0)
+        {
+            Some(hist) => crate::lib_on::histograms::cumulative_bucket_counts(hist, boundaries),
+            None => vec![0; boundaries.len()],
+        }
+    }
+
     /// Encodes the histogram backing the displayed alloc percentiles: bytes or
     /// allocation counts per `HOTPATH_ALLOC_METRIC`. Bridge-backed async
     /// functions report per-call totals and export normally; `None` mirrors
