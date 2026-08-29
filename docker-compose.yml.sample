@@ -27,8 +27,9 @@ services:
   prometheus:
     image: prom/prometheus:v3.5.0
     ports:
-      # Non-default host port so a system-wide prometheus on 9090 doesn't collide.
-      - "9099:9090"
+      # Loopback-only, non-default host port so a system-wide prometheus on 9090
+      # doesn't collide and network peers cannot query the scraped data.
+      - "127.0.0.1:9099:9090"
     volumes:
       - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     extra_hosts:
@@ -38,8 +39,8 @@ services:
   grafana:
     image: grafana/grafana:12.2.0
     ports:
-      # Non-default host port: 3000 is taken by `just docs`.
-      - "3009:3000"
+      # Loopback-only (anonymous Admin access): 3000 is taken by `just docs`.
+      - "127.0.0.1:3009:3000"
     environment:
       # Local-only demo stack, skip the login screen.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
