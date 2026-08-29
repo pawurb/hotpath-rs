@@ -15,7 +15,7 @@ use std::thread;
 
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::lib_on::native_histograms::{classic_from_native, to_spans};
+use crate::lib_on::native_histograms::to_spans;
 
 pub(crate) static PROMETHEUS_PORT: LazyLock<u16> = LazyLock::new(|| {
     std::env::var("HOTPATH_PROMETHEUS_PORT")
@@ -231,8 +231,7 @@ fn render() -> Option<String> {
         );
         for f in &functions {
             let function = escape_label_value(f.name);
-            let classic = classic_from_native(&f.native_buckets, NATIVE_SCHEMA, FAST_LADDER_NS);
-            for (&boundary_ns, &cumulative) in FAST_LADDER_NS.iter().zip(&classic) {
+            for (&boundary_ns, &cumulative) in FAST_LADDER_NS.iter().zip(&f.bucket_counts) {
                 let _ = writeln!(
                     out,
                     "hotpath_function_duration_seconds_bucket{{function=\"{}\",le=\"{}\"}} {}",
@@ -324,8 +323,6 @@ fn render_protobuf() -> Option<Vec<u8>> {
                 .iter()
                 .map(|f| {
                     let (spans, deltas) = to_spans(&f.native_buckets);
-                    let classic =
-                        classic_from_native(&f.native_buckets, NATIVE_SCHEMA, FAST_LADDER_NS);
                     Metric {
                         label: vec![label("function", f.name)],
                         histogram: Some(Histogram {
@@ -335,7 +332,7 @@ fn render_protobuf() -> Option<Vec<u8>> {
                             // it from sample_count.
                             bucket: FAST_LADDER_NS
                                 .iter()
-                                .zip(&classic)
+                                .zip(&f.bucket_counts)
                                 .map(|(&boundary_ns, &cumulative)| Bucket {
                                     cumulative_count: Some(cumulative),
                                     upper_bound: Some(seconds(boundary_ns)),

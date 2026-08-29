@@ -412,10 +412,13 @@ pub(crate) fn get_cpu_label_aliases() -> HashMap<&'static str, &'static str> {
 }
 
 /// Raw timing snapshot entry for the Prometheus exporter - numeric fields
-/// only, sparse native-histogram buckets pre-computed worker-side at
-/// `crate::prometheus_server::NATIVE_SCHEMA` so no histogram crosses the
-/// channel. `total_duration_ns` covers only sampled calls, matching the
-/// histogram's population.
+/// only, both bucket projections pre-computed worker-side (native at
+/// `crate::prometheus_server::NATIVE_SCHEMA`, classic on
+/// `crate::prometheus_server::FAST_LADDER_NS`) so no histogram crosses the
+/// channel. Classic counts come straight from the hdr histogram, not from the
+/// coarser native buckets, so boundary-adjacent observations stay in the
+/// correct `le` bucket. `total_duration_ns` covers only sampled calls,
+/// matching the histograms' population.
 #[cfg(feature = "hotpath-prometheus")]
 #[derive(Debug)]
 pub(crate) struct RawFunctionTiming {
@@ -424,6 +427,7 @@ pub(crate) struct RawFunctionTiming {
     pub(crate) sampled_count: u64,
     pub(crate) total_duration_ns: u64,
     pub(crate) native_buckets: Vec<(i32, u64)>,
+    pub(crate) bucket_counts: Vec<u64>,
 }
 
 /// Query request sent from TUI HTTP server to profiler worker thread

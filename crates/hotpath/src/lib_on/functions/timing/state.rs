@@ -153,6 +153,18 @@ impl FunctionStats {
             None => Vec::new(),
         }
     }
+
+    /// Cumulative classic-bucket counts of sampled durations at or below each
+    /// boundary (ns), exact to the histogram's 0.1% resolution.
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn classic_duration_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        match self.hist.as_ref().filter(|_| self.sampled_count > 0) {
+            Some(hist) => {
+                crate::lib_on::native_histograms::cumulative_bucket_counts(hist, boundaries)
+            }
+            None => vec![0; boundaries.len()],
+        }
+    }
 }
 
 pub(crate) struct FunctionsState {

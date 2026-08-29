@@ -661,6 +661,9 @@ impl HotpathGuard {
                                                     sampled_count,
                                                     total_duration_ns: s.total_duration_ns,
                                                     native_buckets: s.native_duration_buckets(schema),
+                                                    bucket_counts: s.classic_duration_buckets(
+                                                        crate::prometheus_server::FAST_LADDER_NS,
+                                                    ),
                                                 }
                                             })
                                             .collect();

@@ -54,24 +54,30 @@ pub(crate) fn to_spans(sparse: &[(i32, u64)]) -> (Vec<(i32, u32)>, Vec<i64>) {
     (spans, deltas)
 }
 
-/// Coarse classic buckets for the fallback path: each native bucket's count
-/// goes to the ladder bucket containing the native bucket's upper bound
-/// (first boundary `>= 2^(idx/2^schema)` seconds), then counts are cumulated.
-/// A native bucket above the top boundary lands only in the implicit `+Inf`.
-pub(crate) fn classic_from_native(
-    sparse: &[(i32, u64)],
-    schema: i32,
-    ladder_ns: &[u64],
+/// Cumulative counts of recorded values at or below each of the ascending
+/// classic `boundaries` (ns), in one ordered traversal of the non-empty hdr
+/// bins. Matches `count_between(0, b)` per boundary: a bin straddling a
+/// boundary counts toward it in full (the histogram's 0.1% resolution).
+/// Computed straight from the hdr histogram, never from the coarser native
+/// buckets, so boundary-adjacent observations land in the correct bucket.
+pub(crate) fn cumulative_bucket_counts(
+    hist: &hdrhistogram::Histogram<u64>,
+    boundaries: &[u64],
 ) -> Vec<u64> {
-    let mut counts = vec![0u64; ladder_ns.len()];
-    for &(idx, count) in sparse {
-        let upper_ns = 2f64.powf(idx as f64 / (1i64 << schema) as f64) * 1e9;
-        if let Some(pos) = ladder_ns.iter().position(|&b| b as f64 >= upper_ns) {
-            counts[pos] += count;
+    let mut counts = Vec::with_capacity(boundaries.len());
+    let mut cumulative: u64 = 0;
+    for v in hist.iter_recorded() {
+        let bin_low = hist.lowest_equivalent(v.value_iterated_to());
+        while counts.len() < boundaries.len() && bin_low > boundaries[counts.len()] {
+            counts.push(cumulative);
         }
+        if counts.len() == boundaries.len() {
+            break;
+        }
+        cumulative += v.count_since_last_iteration();
     }
-    for i in 1..counts.len() {
-        counts[i] += counts[i - 1];
+    while counts.len() < boundaries.len() {
+        counts.push(cumulative);
     }
     counts
 }
@@ -81,7 +87,7 @@ mod tests {
     use hdrhistogram::Histogram;
 
     use crate::lib_on::native_histograms::{
-        classic_from_native, native_bucket_counts, native_bucket_index, to_spans,
+        cumulative_bucket_counts, native_bucket_counts, native_bucket_index, to_spans,
     };
 
     fn upper_bound(idx: i32, schema: i32) -> f64 {
@@ -158,17 +164,48 @@ mod tests {
     }
 
     #[test]
-    fn classic_from_native_is_cumulative_and_conserving() {
-        let ladder: &[u64] = &[1_000, 1_000_000, 1_000_000_000];
-        let sparse = vec![
-            (native_bucket_index(500e-9, 3), 10u64), // ~500ns -> 1us bucket
-            (native_bucket_index(0.5e-3, 3), 20),    // ~0.5ms -> 1ms bucket
-            (native_bucket_index(0.9, 3), 30),       // ~0.9s -> 1s bucket
-            (native_bucket_index(5.0, 3), 40),       // 5s -> +Inf only
+    fn cumulative_counts_match_count_between_per_boundary() {
+        let boundaries = [
+            250u64,
+            1_000,
+            25_000,
+            1_000_000,
+            500_000_000,
+            10_000_000_000,
         ];
-        let counts = classic_from_native(&sparse, 3, ladder);
-        assert_eq!(counts, vec![10, 30, 60]);
-        assert!(counts.windows(2).all(|w| w[0] <= w[1]));
-        assert!(counts.last().unwrap() <= &100);
+        let mut hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap();
+        let mut x: u64 = 42;
+        for _ in 0..10_000 {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            hist.record(200 + x % 2_000_000_000).unwrap();
+        }
+        // boundary-exact observations must count toward their own boundary
+        hist.record(250).unwrap();
+        hist.record(1_000).unwrap();
+
+        let expected: Vec<u64> = boundaries
+            .iter()
+            .map(|&b| hist.count_between(0, b))
+            .collect();
+        assert_eq!(cumulative_bucket_counts(&hist, &boundaries), expected);
+    }
+
+    #[test]
+    fn boundary_exact_value_lands_in_its_bucket() {
+        // The regression from deriving classic counts out of native buckets: a
+        // 250ns observation sits in the native bucket ending at ~260.7ns, so a
+        // native-derived le="250ns" bucket reported 0. Direct hdr counting
+        // must report 1.
+        let mut hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap();
+        hist.record(250).unwrap();
+        assert_eq!(cumulative_bucket_counts(&hist, &[250, 1_000]), vec![1, 1]);
+    }
+
+    #[test]
+    fn empty_histogram_yields_zeroes() {
+        let hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap();
+        assert_eq!(cumulative_bucket_counts(&hist, &[100, 1_000]), vec![0, 0]);
     }
 }
