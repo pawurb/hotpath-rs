@@ -24,3 +24,29 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      # Non-default host port so a system-wide prometheus on 9090 doesn't collide.
+      - "9099:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      # Reach the hotpath exporter on the host from inside the container (needed
+      # on Linux; Docker Desktop provides host.docker.internal out of the box).
+      - "host.docker.internal:host-gateway"
+  grafana:
+    image: grafana/grafana:12.2.0
+    ports:
+      # Non-default host port: 3000 is taken by `just docs`.
+      - "3009:3000"
+    environment:
+      # Local-only demo stack, skip the login screen.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

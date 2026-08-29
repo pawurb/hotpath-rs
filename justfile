@@ -61,6 +61,12 @@ test_all:
     cargo test --features hotpath --test toasty_pg -- --nocapture --test-threads=1
     cargo test --features hotpath --test debug -- --nocapture --test-threads=1
 
+# Run the TUI in demo mode with the Prometheus exporter on port 6772.
+# Scrape it with `docker compose up -d prometheus grafana`:
+# Grafana http://localhost:3009 (dashboard auto-provisioned), Prometheus http://localhost:9099.
+demo:
+    HOTPATH_PROMETHEUS=true cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,demo -- console
+
 # Serve the mdbook docs locally with live reload (http://localhost:3000).
 # The production server + deploy live in the private hotpath-backend repo.
 docs:

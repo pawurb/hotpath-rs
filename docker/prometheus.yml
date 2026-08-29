@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: hotpath
+    static_configs:
+      # The hotpath Prometheus server binds to localhost on the host machine,
+      # reachable from inside the container via host.docker.internal.
+      - targets: ["host.docker.internal:6772"]
