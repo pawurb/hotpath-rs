@@ -1,6 +1,6 @@
 //! Prometheus text-exposition endpoint, served from its own tiny_http server.
 //! Opt-in via `HOTPATH_PROMETHEUS=true`, independent of the JSON metrics
-//! server: separate bind address (`HOTPATH_PROMETHEUS_ADDR`), port
+//! server: separate bind address (`HOTPATH_PROMETHEUS_HOST`), port
 //! (`HOTPATH_PROMETHEUS_PORT`) and auth token
 //! (`HOTPATH_PROMETHEUS_AUTH_TOKEN`).
 
@@ -23,8 +23,8 @@ pub(crate) static PROMETHEUS_PORT: LazyLock<u16> = LazyLock::new(|| {
 /// Bind address for the exporter. Defaults to loopback; set to e.g. `0.0.0.0`
 /// when a Prometheus container must reach the exporter through the Docker
 /// bridge gateway (`host.docker.internal` on native Linux).
-pub(crate) static PROMETHEUS_ADDR: LazyLock<String> = LazyLock::new(|| {
-    std::env::var("HOTPATH_PROMETHEUS_ADDR").unwrap_or_else(|_| "127.0.0.1".to_string())
+pub(crate) static PROMETHEUS_HOST: LazyLock<String> = LazyLock::new(|| {
+    std::env::var("HOTPATH_PROMETHEUS_HOST").unwrap_or_else(|_| "127.0.0.1".to_string())
 });
 
 static PROMETHEUS_AUTH_TOKEN: LazyLock<Option<String>> =
@@ -80,7 +80,7 @@ fn start_prometheus_server(port: u16) {
         .name("hp-prometheus".into())
         .spawn(move || {
             let _suspend = crate::lib_on::SuspendAllocTracking::new();
-            let addr = format!("{}:{}", *PROMETHEUS_ADDR, port);
+            let addr = format!("{}:{}", *PROMETHEUS_HOST, port);
             let server = match Server::http(&addr) {
                 Ok(s) => s,
                 Err(e) => {

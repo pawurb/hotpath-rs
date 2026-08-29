@@ -64,7 +64,7 @@ test_all:
 # Run the TUI in demo mode with the Prometheus exporter on port 6772.
 # Scrape it with `docker compose up -d prometheus grafana`:
 # Grafana http://localhost:3009 (dashboard auto-provisioned), Prometheus http://localhost:9099.
-# On native Linux add HOTPATH_PROMETHEUS_ADDR=0.0.0.0 so the Prometheus
+# On native Linux add HOTPATH_PROMETHEUS_HOST=0.0.0.0 so the Prometheus
 # container can reach the exporter through the Docker bridge gateway.
 demo:
     HOTPATH_PROMETHEUS=true cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,demo -- console

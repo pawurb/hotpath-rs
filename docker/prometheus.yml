@@ -9,5 +9,5 @@ scrape_configs:
       # (macOS/Windows) the default loopback bind works; on native Linux
       # host.docker.internal resolves to the bridge gateway, which cannot reach
       # a loopback-only listener, so run the exporter with
-      # HOTPATH_PROMETHEUS_ADDR=0.0.0.0.
+      # HOTPATH_PROMETHEUS_HOST=0.0.0.0.
       - targets: ["host.docker.internal:6772"]

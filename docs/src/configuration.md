@@ -69,7 +69,7 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 |----------|-------------|
 | `HOTPATH_PROMETHEUS` | Set to `true` or `1` to start the Prometheus exporter server. Serves `GET /metrics` in text exposition format and binds to `localhost` by default. (default: `false`) |
 | `HOTPATH_PROMETHEUS_PORT` | Port for the Prometheus exporter server. (default: `6772`) |
-| `HOTPATH_PROMETHEUS_ADDR` | Bind address for the Prometheus exporter server. Set to `0.0.0.0` when a containerized Prometheus must scrape the exporter through the Docker bridge gateway (`host.docker.internal` on native Linux resolves to the bridge gateway, which cannot reach a loopback-only listener). Binding beyond loopback exposes the endpoint to the network, so pair it with `HOTPATH_PROMETHEUS_AUTH_TOKEN`. (default: `127.0.0.1`) |
+| `HOTPATH_PROMETHEUS_HOST` | Bind address for the Prometheus exporter server. Set to `0.0.0.0` when a containerized Prometheus must scrape the exporter through the Docker bridge gateway (`host.docker.internal` on native Linux resolves to the bridge gateway, which cannot reach a loopback-only listener). Binding beyond loopback exposes the endpoint to the network, so pair it with `HOTPATH_PROMETHEUS_AUTH_TOKEN`. (default: `127.0.0.1`) |
 | `HOTPATH_PROMETHEUS_AUTH_TOKEN` | Auth token for the Prometheus server; same character rules and plaintext caveats as `HOTPATH_METRICS_AUTH_TOKEN`. Accepted both as the exact `Authorization` header value and with a `Bearer ` prefix, so Prometheus's `authorization` scrape config works as-is. (default: `''`) |
 
 ## MCP Server
