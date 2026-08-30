@@ -14,6 +14,15 @@
 ))]
 compile_error!("the `hotpath-cpu-meta` feature is only supported on macOS and Linux");
 
+#[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-meta")))]
+compile_error!("the `hotpath-alloc-meta` feature requires the `hotpath-meta` feature");
+
+#[cfg(all(feature = "hotpath-cpu-meta", not(feature = "hotpath-meta")))]
+compile_error!("the `hotpath-cpu-meta` feature requires the `hotpath-meta` feature");
+
+#[cfg(all(feature = "hotpath-prometheus-meta", not(feature = "hotpath-meta")))]
+compile_error!("the `hotpath-prometheus-meta` feature requires the `hotpath-meta` feature");
+
 #[cfg(feature = "hotpath-meta")]
 #[doc(inline)]
 pub use lib_on::*;
