@@ -62,6 +62,7 @@ test_all:
     cargo test --features hotpath --test debug -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
+    cargo test --features hotpath,hotpath-prometheus --test prometheus_subsystems -- --nocapture --test-threads=1
 
 # Run the TUI in demo mode with the Prometheus exporter on port 6772.
 # Scrape it with `docker compose up -d prometheus grafana`:

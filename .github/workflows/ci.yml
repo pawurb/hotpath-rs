@@ -133,6 +133,7 @@ jobs:
         run: |
           cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
           cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_subsystems -- --nocapture --test-threads=1
       - name: Run channels crossbeam tests
         run: |
           cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
