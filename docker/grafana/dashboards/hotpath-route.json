@@ -315,6 +315,182 @@
           }
         }
       ]
+    },
+    {
+      "id": 10,
+      "type": "piechart",
+      "title": "Share of SQL time by query: $route (since start)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (query) (hotpath_sql_duration_seconds_sum{route=~\"$route\"})",
+          "legendFormat": "{{query}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "% of SQL time by query: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (query) (rate(hotpath_sql_duration_seconds_sum{route=~\"$route\"}[1m])) / on() group_left() sum(rate(hotpath_sql_duration_seconds_sum{route=~\"$route\"}[1m]))",
+          "legendFormat": "{{query}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "piechart",
+      "title": "Share of HTTP time by endpoint: $route (since start)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (hotpath_http_duration_seconds_sum{route=~\"$route\"})",
+          "legendFormat": "{{endpoint}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "% of HTTP time by endpoint: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (endpoint) (rate(hotpath_http_duration_seconds_sum{route=~\"$route\"}[1m])) / on() group_left() sum(rate(hotpath_http_duration_seconds_sum{route=~\"$route\"}[1m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

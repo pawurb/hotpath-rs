@@ -254,6 +254,182 @@
           }
         }
       ]
+    },
+    {
+      "id": 9,
+      "type": "piechart",
+      "title": "Share of total SQL time by query (since start)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (query) (hotpath_sql_duration_seconds_sum)",
+          "legendFormat": "{{query}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "% of total SQL time by query (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (query) (rate(hotpath_sql_duration_seconds_sum[1m])) / on() group_left() sum(rate(hotpath_sql_duration_seconds_sum[1m]))",
+          "legendFormat": "{{query}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "piechart",
+      "title": "Share of total HTTP time by endpoint (since start)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (hotpath_http_duration_seconds_sum)",
+          "legendFormat": "{{endpoint}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "% of total HTTP time by endpoint (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (endpoint) (rate(hotpath_http_duration_seconds_sum[1m])) / on() group_left() sum(rate(hotpath_http_duration_seconds_sum[1m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }
