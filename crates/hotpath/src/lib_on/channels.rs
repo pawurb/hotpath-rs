@@ -378,7 +378,7 @@ impl ChannelEntry {
     }
 
     const LOW_NS: u64 = 1;
-    const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
+    const HIGH_NS: u64 = crate::lib_on::MAX_DURATION_NS;
     const SIGFIGS: u8 = 3;
 
     fn new_histogram() -> Histogram<u64> {
