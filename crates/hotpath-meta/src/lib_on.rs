@@ -77,23 +77,42 @@ pub use functions::{
 };
 pub use hotpath_guard::{HotpathGuard, HotpathGuardBuilder};
 
+// Suspend/resume callbacks into the host profiler's alloc tracking, so that
+// allocations made inside meta-internal sections (measurement transport,
+// per-thread queue registration) are not attributed to the host's user-level
+// measurements. Registered by the host when its alloc profiling is enabled.
+type HostSuspendFn = fn() -> bool;
+type HostResumeFn = fn(bool);
+
+static HOST_ALLOC_HOOKS: OnceLock<(HostSuspendFn, HostResumeFn)> = OnceLock::new();
+
+#[doc(hidden)]
+pub fn set_host_alloc_suspend_hooks(suspend: HostSuspendFn, resume: HostResumeFn) {
+    let _ = HOST_ALLOC_HOOKS.set((suspend, resume));
+}
+
 #[must_use = "guard is dropped immediately without suspending tracking"]
 pub(crate) struct SuspendAllocTracking {
-    #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
+    #[cfg(feature = "hotpath-alloc-meta")]
     previous_enabled: bool,
+    host_previous: Option<bool>,
 }
 
 impl SuspendAllocTracking {
     #[inline]
     pub(crate) fn new() -> Self {
-        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
+        let host_previous = HOST_ALLOC_HOOKS.get().map(|(suspend, _)| suspend());
+        #[cfg(feature = "hotpath-alloc-meta")]
         {
             let previous_enabled = functions::alloc::core::suspend_alloc_tracking();
-            Self { previous_enabled }
+            Self {
+                previous_enabled,
+                host_previous,
+            }
         }
-        #[cfg(not(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc"))))]
+        #[cfg(not(feature = "hotpath-alloc-meta"))]
         {
-            Self {}
+            Self { host_previous }
         }
     }
 }
@@ -101,8 +120,13 @@ impl SuspendAllocTracking {
 impl Drop for SuspendAllocTracking {
     #[inline]
     fn drop(&mut self) {
-        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
+        #[cfg(feature = "hotpath-alloc-meta")]
         functions::alloc::core::resume_alloc_tracking(self.previous_enabled);
+        if let Some(host_previous) = self.host_previous {
+            if let Some((_, resume)) = HOST_ALLOC_HOOKS.get() {
+                resume(host_previous);
+            }
+        }
     }
 }
 

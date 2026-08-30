@@ -95,6 +95,51 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 6,
+      "type": "piechart",
+      "title": "Share of total function time (since start)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "displayLabels": ["percent"],
+        "legend": { "displayMode": "table", "placement": "right", "values": ["percent", "value"] },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "hotpath_function_duration_seconds_sum",
+          "legendFormat": "{{function}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "% of total function time (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 27 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "fillOpacity": 30, "stacking": { "mode": "normal" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * rate(hotpath_function_duration_seconds_sum[1m]) / on() group_left() sum(rate(hotpath_function_duration_seconds_sum[1m]))",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }
