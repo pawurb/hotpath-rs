@@ -70,7 +70,7 @@ test_all:
 # container can reach the exporter through the Docker bridge gateway; the auth
 # token (matched by docker/prometheus.yml) keeps the exporter protected there.
 demo:
-    HOTPATH_PROMETHEUS_AUTH_TOKEN=hotpath-demo cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,demo,dev -- console
+    HOTPATH_PROMETHEUS_AUTH_TOKEN=hotpath-demo cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,hotpath-prometheus,demo,dev,hotpath-meta,hotpath-prometheus-meta -- console
 
 # Open the demo Grafana dashboard fed by the native-histogram Prometheus.
 grafana:
@@ -87,6 +87,28 @@ prometheus:
 # Open the legacy Prometheus 2.x UI (started with `docker compose up -d prometheus-legacy`).
 prometheus-legacy:
     open "http://localhost:9098" 2>/dev/null || xdg-open "http://localhost:9098"
+
+# Open the Grafana dashboard fed by the native-histogram Prometheus scraping
+# the hotpath-meta exporter (port 6782). Start the stack with
+# `docker compose up -d prometheus-meta grafana`; the meta exporter itself
+# starts from any run built with the hotpath-prometheus-meta feature.
+grafana-meta:
+    open "http://localhost:3009/d/hotpath-functions-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-functions-meta"
+
+# Open the Grafana dashboard fed by the legacy (classic buckets only)
+# Prometheus scraping the hotpath-meta exporter.
+grafana-legacy-meta:
+    open "http://localhost:3009/d/hotpath-functions-legacy-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-functions-legacy-meta"
+
+# Open the native-histogram Prometheus UI scraping the hotpath-meta exporter
+# (started with `docker compose up -d prometheus-meta`).
+prometheus-meta:
+    open "http://localhost:9097" 2>/dev/null || xdg-open "http://localhost:9097"
+
+# Open the legacy Prometheus 2.x UI scraping the hotpath-meta exporter
+# (started with `docker compose up -d prometheus-legacy-meta`).
+prometheus-legacy-meta:
+    open "http://localhost:9096" 2>/dev/null || xdg-open "http://localhost:9096"
 
 # Serve the mdbook docs locally with live reload (http://localhost:3000).
 # The production server + deploy live in the private hotpath-backend repo.

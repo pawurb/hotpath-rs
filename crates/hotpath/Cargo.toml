@@ -43,6 +43,7 @@ hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/c
 hotpath-alloc-meta = ["hotpath-meta/hotpath-alloc-meta"]
 hotpath-cloud-meta = ["hotpath-meta/hotpath-cloud-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta", "hotpath-meta/axum-0-8"]
+hotpath-prometheus-meta = ["hotpath-meta/hotpath-prometheus-meta"]
 hotpath-alloc = ["dep:tokio", "hotpath-meta?/hotpath-alloc", "hotpath-macros/hotpath-alloc"]
 hotpath-cloud = ["dep:ureq", "ureq/rustls", "ureq/json", "dep:serde", "dep:serde_json", "hdrhistogram/serialization", "dep:base64"]
 utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
