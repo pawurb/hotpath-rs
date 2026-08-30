@@ -284,7 +284,7 @@ fn collect_mutexes(families: &mut Vec<Family>) {
     let labels = |e: &crate::lib_on::mutexes::MutexEntry| {
         vec![
             ("source", e.source.to_string()),
-            ("label", e.label.clone().unwrap_or_default()),
+            ("label", iter_label(e.label.as_deref(), e.iter)),
         ]
     };
 
@@ -359,7 +359,7 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
     let labels = |e: &crate::lib_on::rw_locks::RwLockEntry, op: &str| {
         vec![
             ("source", e.source.to_string()),
-            ("label", e.label.clone().unwrap_or_default()),
+            ("label", iter_label(e.label.as_deref(), e.iter)),
             ("op", op.to_string()),
         ]
     };
@@ -436,7 +436,7 @@ fn collect_channels(families: &mut Vec<Family>) {
     let labels = |e: &crate::lib_on::channels::ChannelEntry| {
         vec![
             ("source", e.source.to_string()),
-            ("label", e.label.clone().unwrap_or_default()),
+            ("label", iter_label(e.label.as_deref(), e.iter)),
             ("type", e.channel_type.to_string()),
         ]
     };
@@ -565,7 +565,7 @@ fn collect_streams(families: &mut Vec<Family>) {
     let labels = |e: &crate::lib_on::streams::StreamStats| {
         vec![
             ("source", e.source.to_string()),
-            ("label", e.label.clone().unwrap_or_default()),
+            ("label", iter_label(e.label.as_deref(), e.iter)),
         ]
     };
 
@@ -845,6 +845,20 @@ fn collect_server(families: &mut Vec<Family>) {
     });
 }
 
+/// Label value carrying the entry's instantiation suffix, matching the
+/// report's display identity (`resolve_label`): a call site instantiated more
+/// than once produces one entry per instantiation, distinguished only by
+/// `iter`, so without the suffix same-site entries would collapse into
+/// duplicate series and invalidate the scrape.
+fn iter_label(label: Option<&str>, iter: u32) -> String {
+    let base = label.unwrap_or_default();
+    if iter > 0 {
+        format!("{}-{}", base, iter + 1)
+    } else {
+        base.to_string()
+    }
+}
+
 /// Ladder boundaries (ns) zipped with their cumulative counts into the
 /// `(upper bound seconds, count)` pairs the family model stores.
 fn classic_pairs(ladder: &[u64], counts: Vec<u64>) -> Vec<(f64, u64)> {
@@ -888,6 +902,15 @@ mod tests {
     use crate::prometheus_server::{
         accepts_protobuf, check_auth_with_bearer, query_label, seconds,
     };
+
+    #[test]
+    fn iter_label_appends_instantiation_suffix() {
+        use crate::prometheus_server::iter_label;
+        assert_eq!(iter_label(Some("counter"), 0), "counter");
+        assert_eq!(iter_label(Some("counter"), 1), "counter-2");
+        assert_eq!(iter_label(None, 0), "");
+        assert_eq!(iter_label(None, 2), "-3");
+    }
 
     #[test]
     fn query_label_truncation_stays_unique() {
