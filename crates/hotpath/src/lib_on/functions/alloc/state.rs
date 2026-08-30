@@ -77,7 +77,7 @@ impl FunctionStats {
     const LOW_COUNT: u64 = 1;
     const HIGH_COUNT: u64 = 1_000_000_000;
     const LOW_DURATION_NS: u64 = 1;
-    const HIGH_DURATION_NS: u64 = 3_600_000_000_000; // 1 hour in nanoseconds
+    const HIGH_DURATION_NS: u64 = crate::lib_on::MAX_DURATION_NS;
     const SIGFIGS: u8 = 3;
 
     #[allow(clippy::too_many_arguments)]

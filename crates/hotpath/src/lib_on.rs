@@ -7,6 +7,10 @@ use crate::instant::Instant;
 
 pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
 
+/// Upper bound shared by every duration histogram; longer measurements are
+/// clamped to this value.
+pub(crate) const MAX_DURATION_NS: u64 = 1_000_000_000_000; // 1000s
+
 #[inline]
 pub(crate) fn elapsed_since_start_ns(end: Instant) -> u64 {
     START_TIME
