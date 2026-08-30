@@ -70,7 +70,7 @@ test_all:
 # container can reach the exporter through the Docker bridge gateway; the auth
 # token (matched by docker/prometheus.yml) keeps the exporter protected there.
 demo:
-    HOTPATH_PROMETHEUS_AUTH_TOKEN=hotpath-demo HOTPATH_META_PROMETHEUS_AUTH_TOKEN=hotpath-demo cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,hotpath-prometheus,demo,dev,hotpath-meta,hotpath-prometheus-meta -- console
+    HOTPATH_PROMETHEUS_AUTH_TOKEN=hotpath-demo HOTPATH_META_PROMETHEUS_AUTH_TOKEN=hotpath-demo cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,hotpath-prometheus,demo,dev,hotpath-meta,hotpath-alloc-meta,hotpath-prometheus-meta -- console
 
 # Open the demo Grafana dashboard fed by the native-histogram Prometheus.
 grafana:

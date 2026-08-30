@@ -793,6 +793,16 @@ impl HotpathGuard {
             crate::functions::cpu::autospawn::start();
         }
 
+        // Meta-internal sections (measurement transport, queue registration)
+        // allocate while user-level tracking may be live; these hooks let the
+        // meta profiler suspend our alloc tracking around them so those bytes
+        // are not attributed to user functions.
+        #[cfg(all(feature = "hotpath-meta", feature = "hotpath-alloc"))]
+        hotpath_meta::set_host_alloc_suspend_hooks(
+            crate::functions::alloc::core::suspend_alloc_tracking,
+            crate::functions::alloc::core::resume_alloc_tracking,
+        );
+
         #[cfg(feature = "hotpath-meta")]
         let _meta_guard = {
             let builder = hotpath_meta::HotpathGuardBuilder::new("hotpath-meta")

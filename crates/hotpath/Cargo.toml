@@ -40,7 +40,7 @@ hotpath = [
   "dep:libc",
 ]
 hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/crossbeam"]
-hotpath-alloc-meta = ["hotpath-meta", "hotpath-meta/hotpath-alloc-meta", "hotpath-macros/hotpath-alloc-meta"]
+hotpath-alloc-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/crossbeam", "hotpath-meta/hotpath-alloc-meta", "hotpath-macros/hotpath-alloc-meta"]
 hotpath-cloud-meta = ["hotpath-meta/hotpath-cloud-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta", "hotpath-meta/axum-0-8"]
 hotpath-prometheus-meta = ["hotpath-meta/hotpath-prometheus-meta"]
