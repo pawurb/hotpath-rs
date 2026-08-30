@@ -50,7 +50,7 @@ impl Format {
 /// * `threads_limit` - Maximum number of threads shown in the report. Overrides `limit` for threads.
 /// * `output_path` - File path for the report. Defaults to stdout. Overridden by `HOTPATH_OUTPUT_PATH` env var.
 /// * `report` - Report sections spec: `"all"`, `"auto"`, an exact list like `"channels,sql"`, or auto with exclusions like `"auto,-threads"`. Default: auto (function and thread sections plus every instrumented section with data). Overridden by `HOTPATH_REPORT` env var.
-/// * `allocator` - Optional allocator used when `hotpath-alloc` is enabled. The path must
+/// * `allocator` - Optional allocator used when `hotpath-alloc` or `hotpath-alloc-meta` is enabled. The path must
 ///   name a unit struct implementing `GlobalAlloc` (e.g. `mimalloc::MiMalloc`); it is used
 ///   both as the type and the value of the inner allocator. Defaults to `std::alloc::System`.
 ///
@@ -390,11 +390,32 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|path| quote! { #path })
         .unwrap_or_else(|| quote! { ::std::alloc::System });
 
-    let allocator_item = if cfg!(feature = "hotpath-alloc") {
+    // With both alloc features enabled the counting allocators are nested, so
+    // a single #[global_allocator] static feeds both the user-level and the
+    // meta tracking hooks.
+    let allocator_item = if cfg!(all(
+        feature = "hotpath-alloc",
+        feature = "hotpath-alloc-meta"
+    )) {
+        quote! {
+            #[global_allocator]
+            static __HOTPATH_GLOBAL_ALLOCATOR: hotpath::CountingAllocator<
+                hotpath::hotpath_meta::CountingAllocator<#allocator_path>,
+            > = hotpath::CountingAllocator::with(hotpath::hotpath_meta::CountingAllocator::with(
+                #allocator_path,
+            ));
+        }
+    } else if cfg!(feature = "hotpath-alloc") {
         quote! {
             #[global_allocator]
             static __HOTPATH_GLOBAL_ALLOCATOR: hotpath::CountingAllocator<#allocator_path> =
                 hotpath::CountingAllocator::with(#allocator_path);
+        }
+    } else if cfg!(feature = "hotpath-alloc-meta") {
+        quote! {
+            #[global_allocator]
+            static __HOTPATH_GLOBAL_ALLOCATOR: hotpath::hotpath_meta::CountingAllocator<#allocator_path> =
+                hotpath::hotpath_meta::CountingAllocator::with(#allocator_path);
         }
     } else {
         quote! {}

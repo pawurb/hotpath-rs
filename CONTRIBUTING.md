@@ -207,6 +207,7 @@ cargo check --features "hotpath,hotpath-alloc"
 cargo check --features "hotpath,hotpath-mcp"
 cargo check --features "hotpath,hotpath-prometheus"
 cargo check --features "hotpath,hotpath-alloc-meta,hotpath-meta"
+cargo check --features "hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta"
 cargo check -p hotpath --bin hotpath --features=tui
 cargo check --features='tui,hotpath,hotpath-meta,hotpath-alloc-meta,hotpath-mcp,hotpath-mcp-meta,dev' --bin hotpath
 cargo check -p hotpath --bin hotpath-utils --features=utils

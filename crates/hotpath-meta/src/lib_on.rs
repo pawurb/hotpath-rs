@@ -79,19 +79,19 @@ pub use hotpath_guard::{HotpathGuard, HotpathGuardBuilder};
 
 #[must_use = "guard is dropped immediately without suspending tracking"]
 pub(crate) struct SuspendAllocTracking {
-    #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
+    #[cfg(feature = "hotpath-alloc-meta")]
     previous_enabled: bool,
 }
 
 impl SuspendAllocTracking {
     #[inline]
     pub(crate) fn new() -> Self {
-        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
+        #[cfg(feature = "hotpath-alloc-meta")]
         {
             let previous_enabled = functions::alloc::core::suspend_alloc_tracking();
             Self { previous_enabled }
         }
-        #[cfg(not(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc"))))]
+        #[cfg(not(feature = "hotpath-alloc-meta"))]
         {
             Self {}
         }
@@ -101,7 +101,7 @@ impl SuspendAllocTracking {
 impl Drop for SuspendAllocTracking {
     #[inline]
     fn drop(&mut self) {
-        #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-alloc")))]
+        #[cfg(feature = "hotpath-alloc-meta")]
         functions::alloc::core::resume_alloc_tracking(self.previous_enabled);
     }
 }

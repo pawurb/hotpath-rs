@@ -10,6 +10,12 @@
 ))]
 compile_error!("the `hotpath-cpu` feature is only supported on macOS and Linux");
 
+// Referenced by the #[hotpath::main] expansion when the meta allocator layer
+// is enabled, so user crates can name hotpath_meta without depending on it.
+#[cfg(feature = "hotpath-meta")]
+#[doc(hidden)]
+pub use hotpath_meta;
+
 #[cfg(feature = "hotpath")]
 #[doc(inline)]
 pub use lib_on::*;
