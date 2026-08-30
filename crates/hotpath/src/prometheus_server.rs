@@ -266,8 +266,347 @@ fn collect_families() -> Option<Vec<Family>> {
     collect_sql(&mut families);
     collect_http(&mut families);
     collect_server(&mut families);
+    collect_mutexes(&mut families);
+    collect_rw_locks(&mut families);
+    collect_channels(&mut families);
+    collect_streams(&mut families);
 
     Some(families)
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_mutexes(families: &mut Vec<Family>) {
+    let entries = crate::lib_on::mutexes::get_sorted_mutex_entries();
+    if entries.is_empty() {
+        return;
+    }
+
+    let labels = |e: &crate::lib_on::mutexes::MutexEntry| {
+        vec![
+            ("source", e.source.to_string()),
+            ("label", e.label.clone().unwrap_or_default()),
+        ]
+    };
+
+    families.push(Family {
+        name: "hotpath_mutex_acquisitions_total",
+        help: "Total lock acquisitions per mutex call site, including acquisitions skipped by time sampling.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.count as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_mutex_wait_seconds",
+        help: "Time sampled acquisitions spent waiting to acquire the mutex.",
+        kind: FamilyKind::Histogram,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Histogram(HistogramValue {
+                    sample_count: e.sampled_count,
+                    sum: seconds(e.wait_total_nanos),
+                    classic_buckets: classic_pairs(
+                        FAST_LADDER_NS,
+                        e.classic_wait_buckets(FAST_LADDER_NS),
+                    ),
+                    native_buckets: e.native_wait_buckets(NATIVE_SCHEMA),
+                }),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_mutex_acquire_seconds",
+        help: "Time sampled acquisitions held the mutex.",
+        kind: FamilyKind::Histogram,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Histogram(HistogramValue {
+                    sample_count: e.sampled_count,
+                    sum: seconds(e.acquire_total_nanos),
+                    classic_buckets: classic_pairs(
+                        FAST_LADDER_NS,
+                        e.classic_acquire_buckets(FAST_LADDER_NS),
+                    ),
+                    native_buckets: e.native_acquire_buckets(NATIVE_SCHEMA),
+                }),
+            })
+            .collect(),
+    });
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_rw_locks(families: &mut Vec<Family>) {
+    use crate::lib_on::rw_locks::RwLockKind;
+
+    let entries = crate::lib_on::rw_locks::get_sorted_rw_lock_entries();
+    if entries.is_empty() {
+        return;
+    }
+
+    const KINDS: [(RwLockKind, &str); 2] =
+        [(RwLockKind::Read, "read"), (RwLockKind::Write, "write")];
+
+    let labels = |e: &crate::lib_on::rw_locks::RwLockEntry, op: &str| {
+        vec![
+            ("source", e.source.to_string()),
+            ("label", e.label.clone().unwrap_or_default()),
+            ("op", op.to_string()),
+        ]
+    };
+
+    families.push(Family {
+        name: "hotpath_rwlock_acquisitions_total",
+        help: "Total lock acquisitions per rwlock call site and side, including acquisitions skipped by time sampling.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .flat_map(|e| {
+                KINDS.map(|(kind, op)| Sample {
+                    labels: labels(e, op),
+                    value: SampleValue::Scalar(e.count(kind) as f64),
+                })
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_rwlock_wait_seconds",
+        help: "Time sampled acquisitions spent waiting to acquire the rwlock, per side.",
+        kind: FamilyKind::Histogram,
+        samples: entries
+            .iter()
+            .flat_map(|e| {
+                KINDS.map(|(kind, op)| Sample {
+                    labels: labels(e, op),
+                    value: SampleValue::Histogram(HistogramValue {
+                        sample_count: e.sampled_count(kind),
+                        sum: seconds(e.wait_total_nanos(kind)),
+                        classic_buckets: classic_pairs(
+                            FAST_LADDER_NS,
+                            e.classic_wait_buckets(kind, FAST_LADDER_NS),
+                        ),
+                        native_buckets: e.native_wait_buckets(kind, NATIVE_SCHEMA),
+                    }),
+                })
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_rwlock_acquire_seconds",
+        help: "Time sampled acquisitions held the rwlock, per side.",
+        kind: FamilyKind::Histogram,
+        samples: entries
+            .iter()
+            .flat_map(|e| {
+                KINDS.map(|(kind, op)| Sample {
+                    labels: labels(e, op),
+                    value: SampleValue::Histogram(HistogramValue {
+                        sample_count: e.sampled_count(kind),
+                        sum: seconds(e.acquire_total_nanos(kind)),
+                        classic_buckets: classic_pairs(
+                            FAST_LADDER_NS,
+                            e.classic_acquire_buckets(kind, FAST_LADDER_NS),
+                        ),
+                        native_buckets: e.native_acquire_buckets(kind, NATIVE_SCHEMA),
+                    }),
+                })
+            })
+            .collect(),
+    });
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_channels(families: &mut Vec<Family>) {
+    let entries = crate::lib_on::channels::get_sorted_channel_entries();
+    if entries.is_empty() {
+        return;
+    }
+
+    let labels = |e: &crate::lib_on::channels::ChannelEntry| {
+        vec![
+            ("source", e.source.to_string()),
+            ("label", e.label.clone().unwrap_or_default()),
+            ("type", e.channel_type.to_string()),
+        ]
+    };
+
+    families.push(Family {
+        name: "hotpath_channel_sent_total",
+        help: "Messages sent per channel call site.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.sent_count as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_channel_received_total",
+        help: "Messages received per channel call site.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.received_count as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_channel_instances",
+        help: "Channel instances created at this call site since start.",
+        kind: FamilyKind::Gauge,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.instances as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_channel_closed_instances",
+        help: "Channel instances created at this call site that have closed.",
+        kind: FamilyKind::Gauge,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.closed_instances as f64),
+            })
+            .collect(),
+    });
+
+    let queue_sizes: Vec<Sample> = entries
+        .iter()
+        .filter_map(|e| {
+            e.queue_size.map(|size| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(size as f64),
+            })
+        })
+        .collect();
+    if !queue_sizes.is_empty() {
+        families.push(Family {
+            name: "hotpath_channel_queue_size",
+            help: "Messages currently sent but not yet received.",
+            kind: FamilyKind::Gauge,
+            samples: queue_sizes,
+        });
+    }
+
+    let max_queue_sizes: Vec<Sample> = entries
+        .iter()
+        .filter_map(|e| {
+            e.max_queue_size.map(|size| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(size as f64),
+            })
+        })
+        .collect();
+    if !max_queue_sizes.is_empty() {
+        families.push(Family {
+            name: "hotpath_channel_max_queue_size",
+            help: "Since-start high-water mark of the queue size, not a windowed maximum.",
+            kind: FamilyKind::Gauge,
+            samples: max_queue_sizes,
+        });
+    }
+
+    let proc: Vec<Sample> = entries
+        .iter()
+        .filter(|e| e.has_proc_hist())
+        .map(|e| Sample {
+            labels: labels(e),
+            value: SampleValue::Histogram(HistogramValue {
+                sample_count: e.proc_sampled_count,
+                sum: seconds(e.proc_total_nanos),
+                classic_buckets: classic_pairs(
+                    FAST_LADDER_NS,
+                    e.classic_proc_buckets(FAST_LADDER_NS),
+                ),
+                native_buckets: e.native_proc_buckets(NATIVE_SCHEMA),
+            }),
+        })
+        .collect();
+    if !proc.is_empty() {
+        families.push(Family {
+            name: "hotpath_channel_proc_seconds",
+            help: "Delay between send and sampled receive of a message (wrap mode only).",
+            kind: FamilyKind::Histogram,
+            samples: proc,
+        });
+    }
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_streams(families: &mut Vec<Family>) {
+    let entries = crate::lib_on::streams::get_sorted_stream_stats();
+    if entries.is_empty() {
+        return;
+    }
+
+    let labels = |e: &crate::lib_on::streams::StreamStats| {
+        vec![
+            ("source", e.source.to_string()),
+            ("label", e.label.clone().unwrap_or_default()),
+        ]
+    };
+
+    families.push(Family {
+        name: "hotpath_stream_items_total",
+        help: "Items yielded per stream call site.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.items_yielded as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_stream_instances",
+        help: "Stream instances created at this call site since start.",
+        kind: FamilyKind::Gauge,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.instances as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_stream_closed_instances",
+        help: "Stream instances created at this call site that have closed.",
+        kind: FamilyKind::Gauge,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.closed_instances as f64),
+            })
+            .collect(),
+    });
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

@@ -54,6 +54,33 @@ pub(crate) fn to_spans(sparse: &[(i32, u64)]) -> (Vec<(i32, u32)>, Vec<i64>) {
     (spans, deltas)
 }
 
+/// [`native_bucket_counts`] over an optional histogram: `None` or
+/// `populated == false` (the caller's "anything sampled?" check) yields no
+/// buckets.
+pub(crate) fn native_buckets_opt(
+    hist: Option<&hdrhistogram::Histogram<u64>>,
+    populated: bool,
+    schema: i32,
+) -> Vec<(i32, u64)> {
+    match hist.filter(|_| populated) {
+        Some(hist) => native_bucket_counts(hist, schema),
+        None => Vec::new(),
+    }
+}
+
+/// [`cumulative_bucket_counts`] over an optional histogram: `None` or
+/// `populated == false` yields all-zero buckets.
+pub(crate) fn classic_buckets_opt(
+    hist: Option<&hdrhistogram::Histogram<u64>>,
+    populated: bool,
+    boundaries: &[u64],
+) -> Vec<u64> {
+    match hist.filter(|_| populated) {
+        Some(hist) => cumulative_bucket_counts(hist, boundaries),
+        None => vec![0; boundaries.len()],
+    }
+}
+
 /// Cumulative counts of recorded values at or below each of the ascending
 /// classic `boundaries` (ns), in one ordered traversal of the non-empty hdr
 /// bins. Matches `count_between(0, b)` per boundary: a bin straddling a
