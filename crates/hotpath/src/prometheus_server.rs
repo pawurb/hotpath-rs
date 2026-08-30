@@ -435,9 +435,13 @@ fn collect_channels(families: &mut Vec<Family>) {
         return;
     }
 
+    // Default-mode entries are keyed by call site plus payload type, so the
+    // payload is part of the identity: a generic helper creating channels for
+    // two payload types from one site yields two entries.
     let labels = |e: &crate::lib_on::channels::ChannelEntry| {
         let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
         labels.push(("type", e.channel_type.to_string()));
+        labels.push(("payload", e.type_name.to_string()));
         labels
     };
 
@@ -563,8 +567,12 @@ fn collect_streams(families: &mut Vec<Family>) {
         return;
     }
 
+    // Stream entries are keyed by call site plus item type - same identity
+    // rule as channels.
     let labels = |e: &crate::lib_on::streams::StreamStats| {
-        call_site_labels(e.key, e.source, e.label.as_deref(), e.iter)
+        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        labels.push(("payload", e.type_name.to_string()));
+        labels
     };
 
     families.push(Family {
@@ -843,26 +851,14 @@ fn collect_server(families: &mut Vec<Family>) {
     });
 }
 
-/// Label value carrying the entry's instantiation suffix, matching the
-/// report's display identity (`resolve_label`): a call site instantiated more
-/// than once produces one entry per instantiation, distinguished only by
-/// `iter`, so without the suffix same-site entries would collapse into
-/// duplicate series and invalidate the scrape.
-fn iter_label(label: Option<&str>, iter: u32) -> String {
-    let base = label.unwrap_or_default();
-    if iter > 0 {
-        format!("{}-{}", base, iter + 1)
-    } else {
-        base.to_string()
-    }
-}
-
 /// Shared call-site identity labels for entries keyed by wrapper macro call
-/// site (locks, channels, streams). `source` is the user-facing `file:line`;
-/// `col` is the call-site column from the full key, kept as its own label
-/// because two invocations on one physical line share `source` and each start
-/// their own `iter` sequence - without it they would collapse into duplicate
-/// series. Dashboards aggregate it away with `sum by (source, label)`.
+/// site (locks, channels, streams) - a field-for-field mirror of the store's
+/// entry identity, so distinct entries can never collapse into duplicate
+/// series. `source` is the user-facing `file:line`; `col` is the call-site
+/// column (two invocations on one physical line share `source`); `iter` is
+/// the instantiation index for call sites that produce one entry per
+/// instantiation; `label` is the user's label verbatim. Dashboards aggregate
+/// the discriminators away with `sum by (source, label)`.
 fn call_site_labels(
     key: &str,
     source: &str,
@@ -871,11 +867,12 @@ fn call_site_labels(
 ) -> Vec<(&'static str, String)> {
     vec![
         ("source", source.to_string()),
-        ("label", iter_label(label, iter)),
+        ("label", label.unwrap_or_default().to_string()),
         (
             "col",
             key.rsplit(':').next().unwrap_or_default().to_string(),
         ),
+        ("iter", iter.to_string()),
     ]
 }
 
@@ -924,22 +921,22 @@ mod tests {
     };
 
     #[test]
-    fn iter_label_appends_instantiation_suffix() {
-        use crate::prometheus_server::iter_label;
-        assert_eq!(iter_label(Some("counter"), 0), "counter");
-        assert_eq!(iter_label(Some("counter"), 1), "counter-2");
-        assert_eq!(iter_label(None, 0), "");
-        assert_eq!(iter_label(None, 2), "-3");
-    }
-
-    #[test]
-    fn call_site_labels_disambiguate_same_line_sites() {
+    fn call_site_labels_mirror_entry_identity() {
         use crate::prometheus_server::call_site_labels;
         let a = call_site_labels("src/app.rs:10:5", "src/app.rs:10", None, 0);
-        let b = call_site_labels("src/app.rs:10:30", "src/app.rs:10", None, 0);
         assert_eq!(a[0], ("source", "src/app.rs:10".to_string()));
         assert_eq!(a[2], ("col", "5".to_string()));
-        assert_ne!(a, b, "same-line call sites must stay distinct label sets");
+        assert_eq!(a[3], ("iter", "0".to_string()));
+
+        // Same-line call sites differ by column, repeated instantiations by
+        // iter, and the user label stays verbatim (no suffix encoding that
+        // could alias two entries).
+        let b = call_site_labels("src/app.rs:10:30", "src/app.rs:10", None, 0);
+        assert_ne!(a, b);
+        let worker_2 = call_site_labels("src/app.rs:10:5", "src/app.rs:10", Some("worker-2"), 0);
+        let worker_iter = call_site_labels("src/app.rs:10:5", "src/app.rs:10", Some("worker"), 1);
+        assert_ne!(worker_2, worker_iter);
+        assert_eq!(worker_iter[1], ("label", "worker".to_string()));
     }
 
     #[test]

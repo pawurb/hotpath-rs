@@ -94,21 +94,22 @@ Exported metric families (all prefixed `hotpath_`, durations in seconds):
 | `server_duration_seconds` | histogram | `route` |
 | `server_scoped_requests_total` | counter | `route`; denominator for per-request SQL/HTTP rates |
 | `server_sql_calls_total` / `server_http_calls_total` | counter | `route`; divide by `server_scoped_requests_total` for per-request averages |
-| `mutex_acquisitions_total` | counter | `source`, `label`, `col`; includes acquisitions skipped by time sampling |
-| `mutex_wait_seconds` / `mutex_acquire_seconds` | histogram | `source`, `label`, `col`; sampled acquisitions only (wait = time blocked acquiring, acquire = time held) |
-| `rwlock_acquisitions_total` | counter | `source`, `label`, `col`, `op` (`read`/`write`) |
-| `rwlock_wait_seconds` / `rwlock_acquire_seconds` | histogram | `source`, `label`, `col`, `op`; sampled acquisitions only |
-| `channel_sent_total` / `channel_received_total` | counter | `source`, `label`, `col`, `type` |
-| `channel_instances` / `channel_closed_instances` | gauge | `source`, `label`, `col`, `type`; instances created / closed since start |
-| `channel_queue_size` / `channel_max_queue_size` | gauge | `source`, `label`, `col`, `type`; max is a since-start high-water mark, not a windowed maximum |
-| `channel_proc_seconds` | histogram | `source`, `label`, `col`, `type`; send-to-receive delay of sampled receives, wrap mode only |
-| `stream_items_total` | counter | `source`, `label`, `col` |
-| `stream_instances` / `stream_closed_instances` | gauge | `source`, `label`, `col` |
+| `mutex_acquisitions_total` | counter | `source`, `label`, `col`, `iter`; includes acquisitions skipped by time sampling |
+| `mutex_wait_seconds` / `mutex_acquire_seconds` | histogram | `source`, `label`, `col`, `iter`; sampled acquisitions only (wait = time blocked acquiring, acquire = time held) |
+| `rwlock_acquisitions_total` | counter | `source`, `label`, `col`, `iter`, `op` (`read`/`write`) |
+| `rwlock_wait_seconds` / `rwlock_acquire_seconds` | histogram | `source`, `label`, `col`, `iter`, `op`; sampled acquisitions only |
+| `channel_sent_total` / `channel_received_total` | counter | `source`, `label`, `col`, `iter`, `type`, `payload` |
+| `channel_instances` / `channel_closed_instances` | gauge | `source`, `label`, `col`, `iter`, `type`, `payload`; instances created / closed since start |
+| `channel_queue_size` / `channel_max_queue_size` | gauge | `source`, `label`, `col`, `iter`, `type`, `payload`; max is a since-start high-water mark, not a windowed maximum |
+| `channel_proc_seconds` | histogram | `source`, `label`, `col`, `iter`, `type`, `payload`; send-to-receive delay of sampled receives, wrap mode only |
+| `stream_items_total` | counter | `source`, `label`, `col`, `iter`, `payload` |
+| `stream_instances` / `stream_closed_instances` | gauge | `source`, `label`, `col`, `iter`, `payload` |
 
-On the call-site-keyed families (`mutex_*`, `rwlock_*`, `channel_*`, `stream_*`): `label`
-carries a `-<n>` suffix when one call site is instantiated more than once, and `col` is
-the call-site column, which keeps two invocations on the same source line distinct;
-aggregate it away with `sum by (source, label)`.
+The call-site-keyed families (`mutex_*`, `rwlock_*`, `channel_*`, `stream_*`) mirror the
+profiler's entry identity as labels: `col` is the call-site column (keeps two
+invocations on one source line distinct), `iter` the instantiation index (call sites
+that produce one entry per instantiation), and `payload` the channel/stream item type.
+Aggregate the discriminators away with `sum by (source, label)`.
 
 ## MCP Server
 
