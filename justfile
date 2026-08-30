@@ -60,6 +60,8 @@ test_all:
     cargo test --features hotpath --test toasty_sqlite -- --nocapture --test-threads=1
     cargo test --features hotpath --test toasty_pg -- --nocapture --test-threads=1
     cargo test --features hotpath --test debug -- --nocapture --test-threads=1
+    cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
+    cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
 
 # Run the TUI in demo mode with the Prometheus exporter on port 6772.
 # Scrape it with `docker compose up -d prometheus grafana`:
@@ -68,15 +70,23 @@ test_all:
 # container can reach the exporter through the Docker bridge gateway; the auth
 # token (matched by docker/prometheus.yml) keeps the exporter protected there.
 demo:
-    HOTPATH_PROMETHEUS=true HOTPATH_PROMETHEUS_AUTH_TOKEN=hotpath-demo cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,demo -- console
+    HOTPATH_PROMETHEUS_AUTH_TOKEN=hotpath-demo cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,demo,dev -- console
 
-# Open the demo Grafana dashboard (started with `docker compose up -d grafana`).
+# Open the demo Grafana dashboard fed by the native-histogram Prometheus.
 grafana:
     open "http://localhost:3009/d/hotpath-functions" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-functions"
 
-# Open the demo Prometheus UI (started with `docker compose up -d prometheus`).
+# Open the demo Grafana dashboard fed by the legacy (classic buckets only) Prometheus.
+grafana-legacy:
+    open "http://localhost:3009/d/hotpath-functions-legacy" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-functions-legacy"
+
+# Open the native-histogram Prometheus UI (started with `docker compose up -d prometheus`).
 prometheus:
     open "http://localhost:9099" 2>/dev/null || xdg-open "http://localhost:9099"
+
+# Open the legacy Prometheus 2.x UI (started with `docker compose up -d prometheus-legacy`).
+prometheus-legacy:
+    open "http://localhost:9098" 2>/dev/null || xdg-open "http://localhost:9098"
 
 # Serve the mdbook docs locally with live reload (http://localhost:3000).
 # The production server + deploy live in the private hotpath-backend repo.

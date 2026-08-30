@@ -44,7 +44,7 @@ pub(crate) mod auth;
 #[cfg(feature = "hotpath")]
 pub(crate) mod metrics_server;
 
-#[cfg(feature = "hotpath")]
+#[cfg(feature = "hotpath-prometheus")]
 pub(crate) mod prometheus_server;
 
 #[cfg(feature = "hotpath-mcp")]

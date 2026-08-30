@@ -205,6 +205,7 @@ cargo check --all-features
 cargo check --features hotpath
 cargo check --features "hotpath,hotpath-alloc"
 cargo check --features "hotpath,hotpath-mcp"
+cargo check --features "hotpath,hotpath-prometheus"
 cargo check --features "hotpath,hotpath-alloc-meta,hotpath-meta"
 cargo check -p hotpath --bin hotpath --features=tui
 cargo check --features='tui,hotpath,hotpath-meta,hotpath-alloc-meta,hotpath-mcp,hotpath-mcp-meta,dev' --bin hotpath
@@ -232,6 +233,8 @@ cargo test --features hotpath --test functions_alloc -- --nocapture --test-threa
 cargo test --features hotpath --test locations -- --nocapture --test-threads=1
 cargo test --features hotpath --test functions_cpu -- --nocapture --test-threads=1
 cargo test --features hotpath --test streams -- --nocapture --test-threads=1
+cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
+cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_ftc -- --nocapture --test-threads=1
 cargo test --features hotpath --test channels_asc -- --nocapture --test-threads=1

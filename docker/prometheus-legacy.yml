@@ -3,12 +3,8 @@ global:
 
 scrape_configs:
   - job_name: hotpath
-    # Negotiate the protobuf scrape format and ingest the native histograms
-    # (the exporter's high-resolution path)...
-    scrape_native_histograms: true
-    # ...while also keeping the classic bucket series, so both query shapes
-    # work side by side in the demo.
-    always_scrape_classic_histograms: true
+    # No native-histogram scraping here: this instance negotiates the text
+    # format, so it only ever ingests the classic fallback buckets.
     # Matches HOTPATH_PROMETHEUS_AUTH_TOKEN in the `just demo` recipe, so the
     # exporter stays protected even when bound beyond loopback.
     authorization:

@@ -7,3 +7,9 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
+  - name: Prometheus Legacy
+    uid: hotpath-prom-legacy
+    type: prometheus
+    access: proxy
+    url: http://prometheus-legacy:9090
+    isDefault: false

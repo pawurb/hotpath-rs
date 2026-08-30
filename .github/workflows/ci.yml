@@ -71,6 +71,9 @@ jobs:
       - name: Check hotpath-mcp
         run: |
           cargo check --features "hotpath,hotpath-mcp"
+      - name: Check hotpath-prometheus feature
+        run: |
+          cargo check --features "hotpath,hotpath-prometheus"
       - name: Check hotpath-meta
         run: |
           cargo check --features "hotpath,hotpath-alloc-meta,hotpath-meta"
@@ -126,6 +129,10 @@ jobs:
       - name: Run streams tests
         run: |
           cargo test --features hotpath --test streams -- --nocapture --test-threads=1
+      - name: Run prometheus tests
+        run: |
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
       - name: Run channels crossbeam tests
         run: |
           cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1

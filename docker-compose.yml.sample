@@ -25,7 +25,7 @@ services:
       timeout: 2s
       retries: 15
   prometheus:
-    image: prom/prometheus:v3.5.0
+    image: prom/prometheus:v3.14.0
     ports:
       # Loopback-only, non-default host port so a system-wide prometheus on 9090
       # doesn't collide and network peers cannot query the scraped data.
@@ -35,6 +35,17 @@ services:
     extra_hosts:
       # Reach the hotpath exporter on the host from inside the container (needed
       # on Linux; Docker Desktop provides host.docker.internal out of the box).
+      - "host.docker.internal:host-gateway"
+  prometheus-legacy:
+    # Prometheus 2.x has no native-histogram support: it scrapes the text
+    # format and ingests only the classic fallback buckets, for comparing the
+    # two representations side by side.
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9098:9090"
+    volumes:
+      - ./docker/prometheus-legacy.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
       - "host.docker.internal:host-gateway"
   grafana:
     image: grafana/grafana:12.2.0
