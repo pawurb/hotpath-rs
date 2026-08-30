@@ -74,7 +74,7 @@ docker exec -it hotpath-linux bash
 
 ```bash
 docker exec -it hotpath-linux bash -lc '
-  cargo build -p hotpath --bin hotpath-samply --features hotpath-cpu --profile profiling &&
+  cargo build -p hotpath --bin hotpath-samply --features hotpath,hotpath-cpu --profile profiling &&
   HOTPATH_SAMPLY_WRAPPER_BIN=/work/target-linux/profiling/hotpath-samply \
     cargo run -p test-tokio-async --example cpu_basic \
       --features "hotpath,hotpath-cpu" --profile profiling

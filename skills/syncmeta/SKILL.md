@@ -14,7 +14,7 @@ The meta crates are copies of the main crates used to profile the profiler itsel
 
 **DO NOT copy entire files from hotpath to hotpath-meta and then sed-replace.** This approach fails because the meta crates have many naming differences beyond simple `hotpath::` → `hotpath_meta::` substitution:
 
-- Feature flags: `hotpath` → `hotpath-meta`, `hotpath-alloc` → `hotpath-alloc-meta`, `hotpath-off` → `hotpath-off-meta`
+- Feature flags: `hotpath` → `hotpath-meta`, `hotpath-alloc` → `hotpath-alloc-meta`
 - Crate imports: `hotpath_macros` → `hotpath_macros_meta`
 - Environment variables: `HOTPATH_FOCUS` → `HOTPATH_META_FOCUS`, `HOTPATH_EXCLUDE_WRAPPER` → `HOTPATH_META_EXCLUDE_WRAPPER`, `HOTPATH_OUTPUT_PATH` → `HOTPATH_META_OUTPUT_PATH`
 - Self-instrumentation: lines like `#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]` exist in hotpath but must NOT exist in hotpath-meta
@@ -49,8 +49,7 @@ git diff HEAD~N..HEAD -- crates/hotpath/src/path/to/file.rs
 ```
 cargo check -p hotpath-meta --features hotpath-meta
 cargo check -p hotpath-macros-meta --features hotpath-meta
-cargo check -p hotpath-meta --features hotpath-alloc-meta
-cargo check -p hotpath-meta --features hotpath-off-meta
+cargo check -p hotpath-meta --features hotpath-meta,hotpath-alloc-meta
 ```
 
 5. Report a summary of what was synced.
@@ -62,4 +61,4 @@ cargo check -p hotpath-meta --features hotpath-off-meta
 - NEVER copy entire files and do bulk find-and-replace. Always apply diffs to existing meta files.
 - Preserve ALL meta-specific naming conventions (feature flags, env vars, crate names, self-instrumentation removal).
 - Lines with `#[cfg_attr(feature = "hotpath-meta", hotpath_meta::...)]` in hotpath are self-instrumentation and must NOT be copied to meta crates.
-- The meta feature flags are `hotpath-meta`, `hotpath-alloc-meta`, `hotpath-off-meta` (NOT `hotpath`, `hotpath-alloc`, `hotpath-off`).
+- The meta feature flags are `hotpath-meta`, `hotpath-alloc-meta` (NOT `hotpath`, `hotpath-alloc`).
