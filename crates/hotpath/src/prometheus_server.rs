@@ -7,15 +7,17 @@
 //! Prometheus ingests is decided by its own scrape config
 //! (`scrape_native_histograms`), never here.
 
+pub(crate) mod families;
 pub(crate) mod protobuf;
 
-use std::fmt::Write;
 use std::sync::{LazyLock, OnceLock};
 use std::thread;
 
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::lib_on::native_histograms::to_spans;
+use crate::prometheus_server::families::{
+    to_protobuf, to_text, Family, FamilyKind, HistogramValue, Sample, SampleValue,
+};
 
 pub(crate) static PROMETHEUS_PORT: LazyLock<u16> = LazyLock::new(|| {
     std::env::var("HOTPATH_PROMETHEUS_PORT")
@@ -152,11 +154,13 @@ fn handle_request(request: Request) {
         .unwrap_or_default();
 
     let protobuf = accepts_protobuf(&accept);
-    let body = if protobuf {
-        render_protobuf().map(|body| (body, PROTOBUF_CONTENT_TYPE))
-    } else {
-        render().map(|body| (body.into_bytes(), TEXT_CONTENT_TYPE))
-    };
+    let body = collect_families().and_then(|families| {
+        if protobuf {
+            to_protobuf(&families).map(|body| (body, PROTOBUF_CONTENT_TYPE))
+        } else {
+            Some((to_text(&families).into_bytes(), TEXT_CONTENT_TYPE))
+        }
+    });
 
     match body {
         Some((body, content_type)) => {
@@ -178,214 +182,78 @@ fn handle_request(request: Request) {
     }
 }
 
+/// Builds every metric family for the current scrape. `None` when the
+/// functions snapshot cannot be fetched (worker not started or timed out) -
+/// the caller responds 503 instead of serving an empty scrape.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn render() -> Option<String> {
-    let functions = crate::functions::get_functions_raw()?;
-    let mut out = String::with_capacity(16 * 1024);
-
-    push_family(
-        &mut out,
-        "hotpath_build_info",
-        "gauge",
-        "hotpath version info, value is always 1.",
-    );
-    let _ = writeln!(
-        out,
-        "hotpath_build_info{{version=\"{}\"}} 1",
-        escape_label_value(env!("CARGO_PKG_VERSION"))
-    );
-
-    push_family(
-        &mut out,
-        "hotpath_uptime_seconds",
-        "gauge",
-        "Seconds since profiling started.",
-    );
-    let _ = writeln!(
-        out,
-        "hotpath_uptime_seconds {}",
-        seconds(crate::lib_on::current_elapsed_ns())
-    );
-
-    if !functions.is_empty() {
-        push_family(
-            &mut out,
-            "hotpath_function_calls_total",
-            "counter",
-            "Total calls of each instrumented function, including calls skipped by time sampling.",
-        );
-        for f in &functions {
-            let _ = writeln!(
-                out,
-                "hotpath_function_calls_total{{function=\"{}\"}} {}",
-                escape_label_value(f.name),
-                f.count
-            );
-        }
-
-        push_family(
-            &mut out,
-            "hotpath_function_duration_seconds",
-            "histogram",
-            "Duration of sampled calls of each instrumented function.",
-        );
-        for f in &functions {
-            let function = escape_label_value(f.name);
-            for (&boundary_ns, &cumulative) in FAST_LADDER_NS.iter().zip(&f.bucket_counts) {
-                let _ = writeln!(
-                    out,
-                    "hotpath_function_duration_seconds_bucket{{function=\"{}\",le=\"{}\"}} {}",
-                    function,
-                    seconds(boundary_ns),
-                    cumulative
-                );
-            }
-            let _ = writeln!(
-                out,
-                "hotpath_function_duration_seconds_bucket{{function=\"{}\",le=\"+Inf\"}} {}",
-                function, f.sampled_count
-            );
-            let _ = writeln!(
-                out,
-                "hotpath_function_duration_seconds_sum{{function=\"{}\"}} {}",
-                function,
-                seconds(f.total_duration_ns)
-            );
-            let _ = writeln!(
-                out,
-                "hotpath_function_duration_seconds_count{{function=\"{}\"}} {}",
-                function, f.sampled_count
-            );
-        }
-    }
-
-    Some(out)
-}
-
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn render_protobuf() -> Option<Vec<u8>> {
-    use crate::prometheus_server::protobuf::{
-        label, Bucket, BucketSpan, Counter, Gauge, Histogram, Metric, MetricFamily, MetricType,
-    };
-    use prost::Message;
-
+fn collect_families() -> Option<Vec<Family>> {
     let functions = crate::functions::get_functions_raw()?;
 
     let mut families = vec![
-        MetricFamily {
-            name: Some("hotpath_build_info".into()),
-            help: Some("hotpath version info, value is always 1.".into()),
-            r#type: Some(MetricType::Gauge as i32),
-            metric: vec![Metric {
-                label: vec![label("version", env!("CARGO_PKG_VERSION"))],
-                gauge: Some(Gauge { value: Some(1.0) }),
-                ..Default::default()
+        Family {
+            name: "hotpath_build_info",
+            help: "hotpath version info, value is always 1.",
+            kind: FamilyKind::Gauge,
+            samples: vec![Sample {
+                labels: vec![("version", env!("CARGO_PKG_VERSION").to_string())],
+                value: SampleValue::Scalar(1.0),
             }],
         },
-        MetricFamily {
-            name: Some("hotpath_uptime_seconds".into()),
-            help: Some("Seconds since profiling started.".into()),
-            r#type: Some(MetricType::Gauge as i32),
-            metric: vec![Metric {
-                gauge: Some(Gauge {
-                    value: Some(seconds(crate::lib_on::current_elapsed_ns())),
-                }),
-                ..Default::default()
+        Family {
+            name: "hotpath_uptime_seconds",
+            help: "Seconds since profiling started.",
+            kind: FamilyKind::Gauge,
+            samples: vec![Sample {
+                labels: vec![],
+                value: SampleValue::Scalar(seconds(crate::lib_on::current_elapsed_ns())),
             }],
         },
     ];
 
     if !functions.is_empty() {
-        families.push(MetricFamily {
-            name: Some("hotpath_function_calls_total".into()),
-            help: Some(
-                "Total calls of each instrumented function, including calls skipped by time sampling."
-                    .into(),
-            ),
-            r#type: Some(MetricType::Counter as i32),
-            metric: functions
+        families.push(Family {
+            name: "hotpath_function_calls_total",
+            help: "Total calls of each instrumented function, including calls skipped by time sampling.",
+            kind: FamilyKind::Counter,
+            samples: functions
                 .iter()
-                .map(|f| Metric {
-                    label: vec![label("function", f.name)],
-                    counter: Some(Counter {
-                        value: Some(f.count as f64),
+                .map(|f| Sample {
+                    labels: vec![("function", f.name.to_string())],
+                    value: SampleValue::Scalar(f.count as f64),
+                })
+                .collect(),
+        });
+
+        families.push(Family {
+            name: "hotpath_function_duration_seconds",
+            help: "Duration of sampled calls of each instrumented function.",
+            kind: FamilyKind::Histogram,
+            samples: functions
+                .into_iter()
+                .map(|f| Sample {
+                    labels: vec![("function", f.name.to_string())],
+                    value: SampleValue::Histogram(HistogramValue {
+                        sample_count: f.sampled_count,
+                        sum: seconds(f.total_duration_ns),
+                        classic_buckets: FAST_LADDER_NS
+                            .iter()
+                            .zip(&f.bucket_counts)
+                            .map(|(&boundary_ns, &cumulative)| (seconds(boundary_ns), cumulative))
+                            .collect(),
+                        native_buckets: f.native_buckets,
                     }),
-                    ..Default::default()
-                })
-                .collect(),
-        });
-
-        families.push(MetricFamily {
-            name: Some("hotpath_function_duration_seconds".into()),
-            help: Some("Duration of sampled calls of each instrumented function.".into()),
-            r#type: Some(MetricType::Histogram as i32),
-            metric: functions
-                .iter()
-                .map(|f| {
-                    let (spans, deltas) = to_spans(&f.native_buckets);
-                    Metric {
-                        label: vec![label("function", f.name)],
-                        histogram: Some(Histogram {
-                            sample_count: Some(f.sampled_count),
-                            sample_sum: Some(seconds(f.total_duration_ns)),
-                            // +Inf is implicit in protobuf: the scraper derives
-                            // it from sample_count.
-                            bucket: FAST_LADDER_NS
-                                .iter()
-                                .zip(&f.bucket_counts)
-                                .map(|(&boundary_ns, &cumulative)| Bucket {
-                                    cumulative_count: Some(cumulative),
-                                    upper_bound: Some(seconds(boundary_ns)),
-                                })
-                                .collect(),
-                            schema: Some(NATIVE_SCHEMA),
-                            zero_threshold: Some(0.0),
-                            zero_count: Some(0),
-                            positive_span: spans
-                                .into_iter()
-                                .map(|(offset, length)| BucketSpan {
-                                    offset: Some(offset),
-                                    length: Some(length),
-                                })
-                                .collect(),
-                            positive_delta: deltas,
-                        }),
-                        ..Default::default()
-                    }
                 })
                 .collect(),
         });
     }
 
-    let mut out = Vec::with_capacity(16 * 1024);
-    for family in &families {
-        family.encode_length_delimited(&mut out).ok()?;
-    }
-    Some(out)
-}
-
-fn push_family(out: &mut String, name: &str, kind: &str, help: &str) {
-    let _ = writeln!(out, "# HELP {} {}", name, help);
-    let _ = writeln!(out, "# TYPE {} {}", name, kind);
+    Some(families)
 }
 
 /// f64 `Display` never uses scientific notation, which the exposition format
 /// tolerates but some parsers of `le` label values do not.
 fn seconds(ns: u64) -> f64 {
     ns as f64 / 1e9
-}
-
-fn escape_label_value(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
-    for c in value.chars() {
-        match c {
-            '\\' => escaped.push_str("\\\\"),
-            '"' => escaped.push_str("\\\""),
-            '\n' => escaped.push_str("\\n"),
-            _ => escaped.push(c),
-        }
-    }
-    escaped
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -412,16 +280,7 @@ fn respond_text(request: Request, code: u16, msg: &str) {
 
 #[cfg(test)]
 mod tests {
-    use crate::prometheus_server::{
-        accepts_protobuf, check_auth_with_bearer, escape_label_value, seconds,
-    };
-
-    #[test]
-    fn escapes_label_values() {
-        assert_eq!(escape_label_value(r#"a\b"c"#), r#"a\\b\"c"#);
-        assert_eq!(escape_label_value("a\nb"), r"a\nb");
-        assert_eq!(escape_label_value("plain"), "plain");
-    }
+    use crate::prometheus_server::{accepts_protobuf, check_auth_with_bearer, seconds};
 
     #[test]
     fn seconds_formats_without_exponent() {
