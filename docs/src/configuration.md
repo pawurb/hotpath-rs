@@ -77,6 +77,24 @@ exposition format with classic buckets only.
 | `HOTPATH_PROMETHEUS_HOST` | Bind address for the Prometheus exporter server. Set to `0.0.0.0` when a containerized Prometheus must scrape the exporter through the Docker bridge gateway (`host.docker.internal` on native Linux resolves to the bridge gateway, which cannot reach a loopback-only listener). Binding beyond loopback exposes the endpoint to the network, so pair it with `HOTPATH_PROMETHEUS_AUTH_TOKEN`. (default: `127.0.0.1`) |
 | `HOTPATH_PROMETHEUS_AUTH_TOKEN` | Auth token for the Prometheus server; same character rules and plaintext caveats as `HOTPATH_METRICS_AUTH_TOKEN`. Accepted both as the exact `Authorization` header value and with a `Bearer ` prefix, so Prometheus's `authorization` scrape config works as-is. (default: `''`) |
 
+Exported metric families (all prefixed `hotpath_`, durations in seconds):
+
+| Family | Type | Labels |
+|--------|------|--------|
+| `build_info` | gauge | `version`; value is always 1 |
+| `uptime_seconds` | gauge | - |
+| `function_calls_total` | counter | `function`; includes calls skipped by time sampling |
+| `function_duration_seconds` | histogram | `function`; sampled calls only, so `_count` can be below `function_calls_total` |
+| `sql_queries_total` | counter | `query`, `source`, `route` |
+| `sql_duration_seconds` | histogram | `query`, `source`, `route`; `query` is the normalized statement text (literals stripped), so series aggregate correctly across processes and restarts. Text over `HOTPATH_MAX_LOG_LEN` chars is truncated with a hash suffix. Distinct entries are bounded by `HOTPATH_ENTRIES_LIMIT` |
+| `http_requests_total` / `http_errors_total` | counter | `endpoint`, `source`, `route`; aggregate with `sum by (endpoint)` for the per-endpoint view |
+| `http_duration_seconds` | histogram | `endpoint`, `source`, `route` |
+| `server_requests_total` | counter | `route` |
+| `server_responses_total` | counter | `route`, `class` (`4xx`/`5xx`) |
+| `server_duration_seconds` | histogram | `route` |
+| `server_scoped_requests_total` | counter | `route`; denominator for per-request SQL/HTTP rates |
+| `server_sql_calls_total` / `server_http_calls_total` | counter | `route`; divide by `server_scoped_requests_total` for per-request averages |
+
 ## MCP Server
 
 | Variable | Description |

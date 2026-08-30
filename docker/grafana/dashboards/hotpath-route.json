@@ -1,0 +1,496 @@
+{
+  "title": "hotpath per-route",
+  "uid": "hotpath-route",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "route",
+        "label": "route",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "hotpath-prom"
+        },
+        "query": "label_values(hotpath_server_requests_total, route)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Route p99 latency: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, route) (rate(hotpath_server_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Route request / error rate: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hotpath_server_requests_total{route=~\"$route\"}[1m])",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(hotpath_server_responses_total{route=~\"$route\"}[1m]) > 0",
+          "legendFormat": "{{route}} {{class}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "SQL avg latency by query: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "(sum by (query) (rate(hotpath_sql_duration_seconds_sum{route=~\"$route\"}[1m])) / sum by (query) (rate(hotpath_sql_duration_seconds_count{route=~\"$route\"}[1m])))",
+          "legendFormat": "{{query}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "SQL query rate: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (query) (rate(hotpath_sql_queries_total{route=~\"$route\"}[1m]))",
+          "legendFormat": "{{query}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "SQL time spent: $route (top 20, 5m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "topk(20, sum by (query) (rate(hotpath_sql_duration_seconds_sum{route=~\"$route\"}[5m])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "SQL p99 latency by query: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, query) (rate(hotpath_sql_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "{{query}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "HTTP p99 latency by endpoint: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, endpoint) (rate(hotpath_http_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "HTTP request / error rate by endpoint: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (rate(hotpath_http_requests_total{route=~\"$route\"}[1m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (endpoint) (rate(hotpath_http_errors_total{route=~\"$route\"}[1m])) > 0",
+          "legendFormat": "{{endpoint}} errors",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "HTTP time spent: $route (top 20, 5m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "topk(20, sum by (endpoint) (rate(hotpath_http_duration_seconds_sum{route=~\"$route\"}[5m])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "piechart",
+      "title": "Share of SQL time by query: $route (since start)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (query) (hotpath_sql_duration_seconds_sum{route=~\"$route\"})",
+          "legendFormat": "{{query}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "% of SQL time by query: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (query) (rate(hotpath_sql_duration_seconds_sum{route=~\"$route\"}[1m])) / on() group_left() sum(rate(hotpath_sql_duration_seconds_sum{route=~\"$route\"}[1m]))",
+          "legendFormat": "{{query}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "piechart",
+      "title": "Share of HTTP time by endpoint: $route (since start)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (hotpath_http_duration_seconds_sum{route=~\"$route\"})",
+          "legendFormat": "{{endpoint}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "% of HTTP time by endpoint: $route (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (endpoint) (rate(hotpath_http_duration_seconds_sum{route=~\"$route\"}[1m])) / on() group_left() sum(rate(hotpath_http_duration_seconds_sum{route=~\"$route\"}[1m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
