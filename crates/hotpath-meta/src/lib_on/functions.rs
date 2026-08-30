@@ -363,11 +363,33 @@ pub(crate) fn get_cpu_label_aliases() -> HashMap<&'static str, &'static str> {
         .unwrap_or_default()
 }
 
+/// Raw timing snapshot entry for the Prometheus exporter - numeric fields
+/// only, both bucket projections pre-computed worker-side (native at
+/// `crate::prometheus_server::NATIVE_SCHEMA`, classic on
+/// `crate::prometheus_server::FAST_LADDER_NS`) so no histogram crosses the
+/// channel. Classic counts come straight from the hdr histogram, not from the
+/// coarser native buckets, so boundary-adjacent observations stay in the
+/// correct `le` bucket. `total_duration_ns` covers only sampled calls,
+/// matching the histograms' population.
+#[cfg(feature = "hotpath-prometheus-meta")]
+#[derive(Debug)]
+pub(crate) struct RawFunctionTiming {
+    pub(crate) name: &'static str,
+    pub(crate) count: u64,
+    pub(crate) sampled_count: u64,
+    pub(crate) total_duration_ns: u64,
+    pub(crate) native_buckets: Vec<(i32, u64)>,
+    pub(crate) bucket_counts: Vec<u64>,
+}
+
 /// Query request sent from TUI HTTP server to profiler worker thread
 #[derive(Debug)]
 pub(crate) enum FunctionsQuery {
     /// Request timing metrics snapshot
     Timing(Sender<JsonFunctionsList>),
+    /// Request raw numeric timing snapshot (Prometheus exporter)
+    #[cfg(feature = "hotpath-prometheus-meta")]
+    TimingRaw(Sender<Vec<RawFunctionTiming>>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc-meta not enabled
     Alloc(Sender<Option<JsonFunctionsList>>),
     /// Request the names + worker-assigned ids of functions that have been registered
@@ -410,6 +432,11 @@ pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
     }
 
     JsonFunctionsList::empty_fallback(get_current_elapsed_ns())
+}
+
+#[cfg(feature = "hotpath-prometheus-meta")]
+pub(crate) fn get_functions_raw() -> Option<Vec<RawFunctionTiming>> {
+    query_functions_state(FunctionsQuery::TimingRaw)
 }
 
 pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsList> {
