@@ -60,7 +60,7 @@ services:
   prometheus-legacy-meta:
     image: prom/prometheus:v2.53.0
     ports:
-      - "9096:9090"
+      - "127.0.0.1:9096:9090"
     volumes:
       - ./docker/prometheus-legacy-meta.yml:/etc/prometheus/prometheus.yml:ro
     extra_hosts:
