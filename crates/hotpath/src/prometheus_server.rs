@@ -276,16 +276,18 @@ fn collect_families() -> Option<Vec<Family>> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_mutexes(families: &mut Vec<Family>) {
-    let entries = crate::lib_on::mutexes::get_sorted_mutex_entries();
+    // An empty key marks a placeholder whose `Created` event has not been
+    // processed yet: no identity labels, so exporting it would fabricate
+    // series (and duplicates, given several placeholders). Its counts appear
+    // once registration lands, at worst one sweep later.
+    let mut entries = crate::lib_on::mutexes::get_sorted_mutex_entries();
+    entries.retain(|e| !e.key.is_empty());
     if entries.is_empty() {
         return;
     }
 
     let labels = |e: &crate::lib_on::mutexes::MutexEntry| {
-        vec![
-            ("source", e.source.to_string()),
-            ("label", iter_label(e.label.as_deref(), e.iter)),
-        ]
+        call_site_labels(e.key, e.source, e.label.as_deref(), e.iter)
     };
 
     families.push(Family {
@@ -348,7 +350,8 @@ fn collect_mutexes(families: &mut Vec<Family>) {
 fn collect_rw_locks(families: &mut Vec<Family>) {
     use crate::lib_on::rw_locks::RwLockKind;
 
-    let entries = crate::lib_on::rw_locks::get_sorted_rw_lock_entries();
+    let mut entries = crate::lib_on::rw_locks::get_sorted_rw_lock_entries();
+    entries.retain(|e| !e.key.is_empty());
     if entries.is_empty() {
         return;
     }
@@ -357,11 +360,9 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
         [(RwLockKind::Read, "read"), (RwLockKind::Write, "write")];
 
     let labels = |e: &crate::lib_on::rw_locks::RwLockEntry, op: &str| {
-        vec![
-            ("source", e.source.to_string()),
-            ("label", iter_label(e.label.as_deref(), e.iter)),
-            ("op", op.to_string()),
-        ]
+        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        labels.push(("op", op.to_string()));
+        labels
     };
 
     families.push(Family {
@@ -428,17 +429,16 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_channels(families: &mut Vec<Family>) {
-    let entries = crate::lib_on::channels::get_sorted_channel_entries();
+    let mut entries = crate::lib_on::channels::get_sorted_channel_entries();
+    entries.retain(|e| !e.key.is_empty());
     if entries.is_empty() {
         return;
     }
 
     let labels = |e: &crate::lib_on::channels::ChannelEntry| {
-        vec![
-            ("source", e.source.to_string()),
-            ("label", iter_label(e.label.as_deref(), e.iter)),
-            ("type", e.channel_type.to_string()),
-        ]
+        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        labels.push(("type", e.channel_type.to_string()));
+        labels
     };
 
     families.push(Family {
@@ -557,16 +557,14 @@ fn collect_channels(families: &mut Vec<Family>) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_streams(families: &mut Vec<Family>) {
-    let entries = crate::lib_on::streams::get_sorted_stream_stats();
+    let mut entries = crate::lib_on::streams::get_sorted_stream_stats();
+    entries.retain(|e| !e.key.is_empty());
     if entries.is_empty() {
         return;
     }
 
     let labels = |e: &crate::lib_on::streams::StreamStats| {
-        vec![
-            ("source", e.source.to_string()),
-            ("label", iter_label(e.label.as_deref(), e.iter)),
-        ]
+        call_site_labels(e.key, e.source, e.label.as_deref(), e.iter)
     };
 
     families.push(Family {
@@ -859,6 +857,28 @@ fn iter_label(label: Option<&str>, iter: u32) -> String {
     }
 }
 
+/// Shared call-site identity labels for entries keyed by wrapper macro call
+/// site (locks, channels, streams). `source` is the user-facing `file:line`;
+/// `col` is the call-site column from the full key, kept as its own label
+/// because two invocations on one physical line share `source` and each start
+/// their own `iter` sequence - without it they would collapse into duplicate
+/// series. Dashboards aggregate it away with `sum by (source, label)`.
+fn call_site_labels(
+    key: &str,
+    source: &str,
+    label: Option<&str>,
+    iter: u32,
+) -> Vec<(&'static str, String)> {
+    vec![
+        ("source", source.to_string()),
+        ("label", iter_label(label, iter)),
+        (
+            "col",
+            key.rsplit(':').next().unwrap_or_default().to_string(),
+        ),
+    ]
+}
+
 /// Ladder boundaries (ns) zipped with their cumulative counts into the
 /// `(upper bound seconds, count)` pairs the family model stores.
 fn classic_pairs(ladder: &[u64], counts: Vec<u64>) -> Vec<(f64, u64)> {
@@ -910,6 +930,16 @@ mod tests {
         assert_eq!(iter_label(Some("counter"), 1), "counter-2");
         assert_eq!(iter_label(None, 0), "");
         assert_eq!(iter_label(None, 2), "-3");
+    }
+
+    #[test]
+    fn call_site_labels_disambiguate_same_line_sites() {
+        use crate::prometheus_server::call_site_labels;
+        let a = call_site_labels("src/app.rs:10:5", "src/app.rs:10", None, 0);
+        let b = call_site_labels("src/app.rs:10:30", "src/app.rs:10", None, 0);
+        assert_eq!(a[0], ("source", "src/app.rs:10".to_string()));
+        assert_eq!(a[2], ("col", "5".to_string()));
+        assert_ne!(a, b, "same-line call sites must stay distinct label sets");
     }
 
     #[test]
