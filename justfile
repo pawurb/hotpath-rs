@@ -80,6 +80,22 @@ grafana:
 grafana-legacy:
     open "http://localhost:3009/d/hotpath-functions-legacy" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-functions-legacy"
 
+# Open the sql / http / server Grafana dashboard fed by the native-histogram Prometheus.
+grafana-web:
+    open "http://localhost:3009/d/hotpath-web" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-web"
+
+# Open the sql / http / server Grafana dashboard fed by the legacy (classic buckets only) Prometheus.
+grafana-web-legacy:
+    open "http://localhost:3009/d/hotpath-web-legacy" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-web-legacy"
+
+# Open the per-route (sql / http drilldown) Grafana dashboard fed by the native-histogram Prometheus.
+grafana-route:
+    open "http://localhost:3009/d/hotpath-route" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-route"
+
+# Open the per-route (sql / http drilldown) Grafana dashboard fed by the legacy (classic buckets only) Prometheus.
+grafana-route-legacy:
+    open "http://localhost:3009/d/hotpath-route-legacy" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-route-legacy"
+
 # Open the native-histogram Prometheus UI (started with `docker compose up -d prometheus`).
 prometheus:
     open "http://localhost:9099" 2>/dev/null || xdg-open "http://localhost:9099"
@@ -109,6 +125,17 @@ prometheus-meta:
 # (started with `docker compose up -d prometheus-legacy-meta`).
 prometheus-legacy-meta:
     open "http://localhost:9096" 2>/dev/null || xdg-open "http://localhost:9096"
+
+# The TSDB lives in the containers' writable layer, so recreating them clears it.
+# Wipe the gathered Prometheus data (native-histogram and legacy instances).
+clean-prometheus:
+    docker compose rm -sf prometheus prometheus-legacy
+    docker compose up -d prometheus prometheus-legacy
+
+# Wipe the gathered Prometheus data of the meta instances (native-histogram and legacy).
+clean-prometheus-meta:
+    docker compose rm -sf prometheus-meta prometheus-legacy-meta
+    docker compose up -d prometheus-meta prometheus-legacy-meta
 
 # Serve the mdbook docs locally with live reload (http://localhost:3000).
 # The production server + deploy live in the private hotpath-backend repo.
