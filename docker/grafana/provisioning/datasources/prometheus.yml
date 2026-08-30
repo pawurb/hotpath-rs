@@ -13,3 +13,15 @@ datasources:
     access: proxy
     url: http://prometheus-legacy:9090
     isDefault: false
+  - name: Prometheus Meta
+    uid: hotpath-prom-meta
+    type: prometheus
+    access: proxy
+    url: http://prometheus-meta:9090
+    isDefault: false
+  - name: Prometheus Legacy Meta
+    uid: hotpath-prom-legacy-meta
+    type: prometheus
+    access: proxy
+    url: http://prometheus-legacy-meta:9090
+    isDefault: false

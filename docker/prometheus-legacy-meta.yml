@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: hotpath-meta
+    # No native-histogram scraping here: this instance negotiates the text
+    # format, so it only ever ingests the classic fallback buckets.
+    # Matches HOTPATH_META_PROMETHEUS_AUTH_TOKEN when the meta exporter runs
+    # with one, so it stays protected even when bound beyond loopback.
+    authorization:
+      credentials: hotpath-demo
+    static_configs:
+      # The hotpath-meta Prometheus server runs on the host machine, reachable
+      # from inside the container via host.docker.internal. On Docker Desktop
+      # (macOS/Windows) the default loopback bind works; on native Linux
+      # host.docker.internal resolves to the bridge gateway, which cannot reach
+      # a loopback-only listener, so run the exporter with
+      # HOTPATH_META_PROMETHEUS_HOST=0.0.0.0.
+      - targets: ["host.docker.internal:6782"]
