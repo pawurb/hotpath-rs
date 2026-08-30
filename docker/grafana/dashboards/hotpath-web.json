@@ -185,7 +185,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le, query_id) (rate(hotpath_sql_duration_seconds_bucket[1m]))) * on(query_id) group_left(query) hotpath_sql_query_info",
+          "expr": "histogram_quantile(0.99, sum by (le, query) (rate(hotpath_sql_duration_seconds_bucket[1m])))",
           "legendFormat": "{{query}}",
           "refId": "A"
         }
@@ -213,7 +213,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (query_id) (rate(hotpath_sql_queries_total[1m])) * on(query_id) group_left(query) hotpath_sql_query_info",
+          "expr": "sum by (query) (rate(hotpath_sql_queries_total[1m]))",
           "legendFormat": "{{query}}",
           "refId": "A"
         }
@@ -235,7 +235,7 @@
       },
       "targets": [
         {
-          "expr": "hotpath_sql_queries_total * on(query_id) group_left(query) hotpath_sql_query_info",
+          "expr": "hotpath_sql_queries_total",
           "format": "table",
           "instant": true,
           "refId": "A"

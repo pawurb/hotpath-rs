@@ -277,13 +277,14 @@ fn collect_sql(families: &mut Vec<Family>) {
         return;
     }
 
-    // Entries are keyed (route, source, normalized query), so the route and
-    // source labels expose the store's native granularity without adding
-    // series; the query text itself is unbounded and lives only in the info
-    // metric, joined on query_id.
+    // Entries are keyed (route, source, normalized query), so these labels
+    // expose the store's native granularity without adding series. The
+    // normalized text itself is the query's identity - unlike the per-process
+    // entry id it aggregates correctly across instances and restarts.
+    let query_cap = *crate::output::MAX_LOG_LEN;
     let labels = |e: &crate::lib_on::sql::SqlEntry| {
         vec![
-            ("query_id", e.id.to_string()),
+            ("query", query_label(&e.query, query_cap)),
             ("source", e.source.unwrap_or_default().to_string()),
             ("route", e.route.unwrap_or_default().to_string()),
         ]
@@ -304,7 +305,7 @@ fn collect_sql(families: &mut Vec<Family>) {
 
     families.push(Family {
         name: "hotpath_sql_duration_seconds",
-        help: "Duration of each tracked SQL query; join hotpath_sql_query_info on query_id for the query text.",
+        help: "Duration of each tracked SQL query, labeled by its normalized text.",
         kind: FamilyKind::Histogram,
         samples: entries
             .iter()
@@ -313,29 +314,32 @@ fn collect_sql(families: &mut Vec<Family>) {
                 value: SampleValue::Histogram(HistogramValue {
                     sample_count: e.count,
                     sum: seconds(e.total_nanos),
-                    classic_buckets: classic_pairs(SLOW_LADDER_NS, e.classic_buckets(SLOW_LADDER_NS)),
+                    classic_buckets: classic_pairs(
+                        SLOW_LADDER_NS,
+                        e.classic_buckets(SLOW_LADDER_NS),
+                    ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
                 }),
             })
             .collect(),
     });
+}
 
-    let query_cap = *crate::output::MAX_LOG_LEN;
-    families.push(Family {
-        name: "hotpath_sql_query_info",
-        help: "Maps each query_id to its normalized query text; ids are stable within a run, not across restarts. Value is always 1.",
-        kind: FamilyKind::Gauge,
-        samples: entries
-            .iter()
-            .map(|e| Sample {
-                labels: vec![
-                    ("query_id", e.id.to_string()),
-                    ("query", e.query.chars().take(query_cap).collect()),
-                ],
-                value: SampleValue::Scalar(1.0),
-            })
-            .collect(),
-    });
+/// Normalized query text as a label value. Text over `cap` chars is truncated
+/// with an FNV-1a hash of the full text appended, so two long queries sharing
+/// a prefix cannot collapse into one series (duplicate label sets are invalid
+/// exposition).
+fn query_label(query: &str, cap: usize) -> String {
+    if query.chars().count() <= cap {
+        return query.to_string();
+    }
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in query.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    let truncated: String = query.chars().take(cap).collect();
+    format!("{}...{:016x}", truncated, hash)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -542,7 +546,20 @@ fn respond_text(request: Request, code: u16, msg: &str) {
 
 #[cfg(test)]
 mod tests {
-    use crate::prometheus_server::{accepts_protobuf, check_auth_with_bearer, seconds};
+    use crate::prometheus_server::{
+        accepts_protobuf, check_auth_with_bearer, query_label, seconds,
+    };
+
+    #[test]
+    fn query_label_truncation_stays_unique() {
+        assert_eq!(query_label("SELECT 1", 100), "SELECT 1");
+
+        let a = query_label(&format!("SELECT {}", "a".repeat(200)), 50);
+        let b = query_label(&format!("SELECT {}", "a".repeat(201)), 50);
+        assert_eq!(a.chars().count(), 50 + 3 + 16);
+        assert_ne!(a, b, "shared-prefix long queries must stay distinct");
+        assert_eq!(a[..50], b[..50]);
+    }
 
     #[test]
     fn seconds_formats_without_exponent() {

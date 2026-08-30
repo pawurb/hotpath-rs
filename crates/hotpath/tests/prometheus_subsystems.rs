@@ -137,7 +137,6 @@ pub mod tests {
             for family in [
                 "hotpath_sql_queries_total",
                 "hotpath_sql_duration_seconds",
-                "hotpath_sql_query_info",
                 "hotpath_http_requests_total",
                 "hotpath_http_errors_total",
                 "hotpath_http_duration_seconds",
@@ -174,25 +173,15 @@ pub mod tests {
                 assert_histogram_family(&body, family);
             }
 
-            // The query text lives only in the info metric, joined on
-            // query_id; route/source are direct labels on the real series.
-            let info_line = body
-                .lines()
-                .find(|l| {
-                    l.starts_with("hotpath_sql_query_info{")
-                        && l.contains("query=\"SELECT COUNT(*) FROM users\"")
-                })
-                .expect("info metric for COUNT query missing");
-            let (_, labels, value) = parse_line(info_line).unwrap();
-            assert_eq!(value, "1");
-            let query_id = label_value(labels, "query_id");
+            // SQL series are identified by normalized query text plus the
+            // route/source attribution.
             let duration_count = body
                 .lines()
                 .find(|l| {
                     l.starts_with("hotpath_sql_duration_seconds_count{")
-                        && l.contains(&format!("query_id=\"{query_id}\""))
+                        && l.contains("query=\"SELECT COUNT(*) FROM users\"")
                 })
-                .unwrap_or_else(|| panic!("duration series for query_id {query_id} missing"));
+                .expect("duration series for COUNT query missing");
             let (_, labels, _) = parse_line(duration_count).unwrap();
             assert_eq!(label_value(labels, "route"), "GET /profiles/{id}");
             assert_eq!(label_value(labels, "source"), "route_scope::count_users");

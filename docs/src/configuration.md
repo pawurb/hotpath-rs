@@ -85,9 +85,8 @@ Exported metric families (all prefixed `hotpath_`, durations in seconds):
 | `uptime_seconds` | gauge | - |
 | `function_calls_total` | counter | `function`; includes calls skipped by time sampling |
 | `function_duration_seconds` | histogram | `function`; sampled calls only, so `_count` can be below `function_calls_total` |
-| `sql_queries_total` | counter | `query_id`, `source`, `route` |
-| `sql_duration_seconds` | histogram | `query_id`, `source`, `route` |
-| `sql_query_info` | gauge | `query_id`, `query`; value is always 1. Join on `query_id` for the query text, e.g. `hotpath_sql_duration_seconds_count * on(query_id) group_left(query) hotpath_sql_query_info`. Ids are stable within a run, not across restarts |
+| `sql_queries_total` | counter | `query`, `source`, `route` |
+| `sql_duration_seconds` | histogram | `query`, `source`, `route`; `query` is the normalized statement text (literals stripped), so series aggregate correctly across processes and restarts. Text over `HOTPATH_MAX_LOG_LEN` chars is truncated with a hash suffix. Distinct entries are bounded by `HOTPATH_ENTRIES_LIMIT` |
 | `http_requests_total` / `http_errors_total` | counter | `endpoint`, `source`, `route`; aggregate with `sum by (endpoint)` for the per-endpoint view |
 | `http_duration_seconds` | histogram | `endpoint`, `source`, `route` |
 | `server_requests_total` | counter | `route` |
