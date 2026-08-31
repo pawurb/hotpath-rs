@@ -372,7 +372,7 @@ impl ChannelEntry {
     }
 
     const LOW_NS: u64 = 1;
-    const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
+    const HIGH_NS: u64 = crate::lib_on::MAX_DURATION_NS;
     const SIGFIGS: u8 = 3;
 
     fn new_histogram() -> Histogram<u64> {
@@ -399,6 +399,27 @@ impl ChannelEntry {
             return None;
         }
         crate::lib_on::histograms::histogram_base64(self.proc_hist.as_ref()?)
+    }
+
+    /// Bucket projections of the sampled processing delays for the Prometheus
+    /// exporter (wrap mode only; empty without a proc histogram).
+    #[cfg(feature = "hotpath-prometheus-meta")]
+    pub(crate) fn native_proc_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+        crate::lib_on::native_histograms::native_buckets_opt(
+            self.proc_hist.as_ref(),
+            self.proc_sampled_count > 0,
+            schema,
+            crate::lib_on::native_histograms::NANOS_SCALE,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus-meta")]
+    pub(crate) fn classic_proc_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        crate::lib_on::native_histograms::classic_buckets_opt(
+            self.proc_hist.as_ref(),
+            self.proc_sampled_count > 0,
+            boundaries,
+        )
     }
 
     #[inline]

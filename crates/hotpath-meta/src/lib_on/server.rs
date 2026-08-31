@@ -2,11 +2,13 @@
 //! route (`GET /users/{id}`).
 //!
 //! Entries are keyed by `METHOD route-template`, so the router's own path
-//! template does the bucketing; requests that never matched a route
-//! (fallbacks, `nest_service` targets) fall back to the raw path normalized
-//! by [`crate::lib_on::http::normalize`]. Distinct keys are capped at
-//! `HOTPATH_META_ENTRIES_LIMIT`; beyond that new keys land in the `<other>` bucket
-//! (see [`crate::lib_on::hotpath_guard::bounded_key`]).
+//! template does the bucketing. Requests that never matched a route split on
+//! their status: error responses collapse into a per-method `<unmatched>`
+//! bucket (scanner probes like `GET /.env` would otherwise create one series
+//! each), while successful ones (fallbacks, `nest_service` targets) keep the
+//! raw path normalized by [`crate::lib_on::http::normalize`]. Distinct keys
+//! are capped at `HOTPATH_META_ENTRIES_LIMIT`; beyond that new keys land in
+//! the `<other>` bucket (see [`crate::lib_on::hotpath_guard::bounded_key`]).
 //!
 //! The write path (worker, events) is driven by the tower [`AxumLayer`]
 //! (attached via the `axum!` macro or `Router::layer`), gated behind the
@@ -24,7 +26,9 @@ use crate::batch::{EventProducer, EventQueueRegistry};
 use crate::instant::Instant;
 use crate::json::{HttpLogEntry, HttpLogs};
 use crate::lib_on::caller_stack::RequestCalls;
-use crate::lib_on::hotpath_guard::{bounded_key, DRAIN_INTERVAL_MS, LOGS_LIMIT, OVERFLOW_ENTRY};
+use crate::lib_on::hotpath_guard::{
+    bounded_key, DRAIN_INTERVAL_MS, LOGS_LIMIT, OVERFLOW_ENTRY, UNMATCHED_ENTRY,
+};
 use crate::lib_on::http::normalize::normalize_endpoint;
 use crate::lib_on::START_TIME;
 use crate::metrics_server::METRICS_SERVER_PORT;
@@ -69,7 +73,8 @@ pub(crate) enum ServerEvent {
     /// Emitted when the response head is produced for a request. `route` is
     /// `METHOD template` when the router matched a route; otherwise it is
     /// `METHOD raw-path` and `matched` is `false`, which makes the worker
-    /// normalize id-like segments before bucketing. `timestamp_ns` is the
+    /// collapse error responses into the `<unmatched>` bucket and normalize
+    /// id-like segments of successful ones. `timestamp_ns` is the
     /// completion time in ns since profiler start. `calls` holds the SQL
     /// queries and outbound HTTP requests issued under the request's route
     /// scope, `None` when the request had no scope (unmatched route, route
@@ -167,6 +172,32 @@ impl ServerEntry {
         }
         crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
     }
+
+    /// Sparse native-histogram buckets of recorded durations, `(index, count)`
+    /// at `schema`, for the Prometheus exporter.
+    #[cfg(feature = "hotpath-prometheus-meta")]
+    pub(crate) fn native_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+        match self.hist.as_ref().filter(|_| self.count > 0) {
+            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(
+                hist,
+                schema,
+                crate::lib_on::native_histograms::NANOS_SCALE,
+            ),
+            None => Vec::new(),
+        }
+    }
+
+    /// Cumulative classic-bucket counts of recorded durations at or below each
+    /// boundary (ns), exact to the histogram's 0.1% resolution.
+    #[cfg(feature = "hotpath-prometheus-meta")]
+    pub(crate) fn classic_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        match self.hist.as_ref().filter(|_| self.count > 0) {
+            Some(hist) => {
+                crate::lib_on::native_histograms::cumulative_bucket_counts(hist, boundaries)
+            }
+            None => vec![0; boundaries.len()],
+        }
+    }
 }
 
 #[derive(Default)]
@@ -244,6 +275,16 @@ pub(crate) fn stop_server_events() {
     crate::lib_on::caller_stack::set_route_scope(false);
 }
 
+/// Bucket key for an unmatched request that ended in an error status: the
+/// method prefix of the `METHOD path` route key is kept, the path is replaced
+/// by [`UNMATCHED_ENTRY`] (`GET /.env` -> `GET <unmatched>`).
+fn unmatched_key(route: &str) -> String {
+    match route.split_once(' ') {
+        Some((method, _path)) => format!("{method} {UNMATCHED_ENTRY}"),
+        None => UNMATCHED_ENTRY.to_string(),
+    }
+}
+
 fn process_server_event(state: &mut ServerInternalState, event: ServerEvent) {
     let ServerEvent::Completed {
         route,
@@ -254,8 +295,15 @@ fn process_server_event(state: &mut ServerInternalState, event: ServerEvent) {
         calls,
     } = event;
 
+    // Scanner spam is by definition unmatched + error status; collapsing only
+    // that combination keeps per-page stats for legit fallback-served 2xx/3xx
+    // pages (docs `ServeDir`, `nest_service` blog posts) while making probe
+    // volume a single visible series. The status is only known at completion,
+    // which is exactly where this worker runs.
     let key = if matched {
         route.to_string()
+    } else if status >= 400 {
+        unmatched_key(&route)
     } else {
         normalize_endpoint(&route)
     };
@@ -432,6 +480,46 @@ mod tests {
         let unscoped = &state.stats["GET /missing"];
         assert_eq!(unscoped.sql_per_request(), None);
         assert_eq!(unscoped.http_per_request(), None);
+    }
+
+    fn unmatched(route: &str, status: u16) -> ServerEvent {
+        ServerEvent::Completed {
+            route: Arc::from(route),
+            matched: false,
+            duration_nanos: 1_000,
+            status,
+            timestamp_ns: 0,
+            calls: None,
+        }
+    }
+
+    #[test]
+    fn unmatched_error_requests_collapse_per_method() {
+        let mut state = ServerInternalState::default();
+        process_server_event(&mut state, unmatched("GET /.env", 404));
+        process_server_event(&mut state, unmatched("GET /wp-login.php", 404));
+        process_server_event(&mut state, unmatched("POST /xmlrpc.php", 500));
+
+        assert_eq!(state.stats.len(), 2);
+        let get_bucket = &state.stats["GET <unmatched>"];
+        assert_eq!(get_bucket.count, 2);
+        assert_eq!(get_bucket.status_4xx, 2);
+        let post_bucket = &state.stats["POST <unmatched>"];
+        assert_eq!(post_bucket.count, 1);
+        assert_eq!(post_bucket.status_5xx, 1);
+    }
+
+    #[test]
+    fn unmatched_success_requests_keep_normalized_path() {
+        let mut state = ServerInternalState::default();
+        process_server_event(&mut state, unmatched("GET /blog/1234", 200));
+        process_server_event(&mut state, unmatched("GET /pages/about", 301));
+
+        let blog = &state.stats["GET /blog/{id}"];
+        assert_eq!(blog.count, 1);
+        let about = &state.stats["GET /pages/about"];
+        assert_eq!(about.count, 1);
+        assert!(!state.stats.keys().any(|k| k.contains("<unmatched>")));
     }
 }
 

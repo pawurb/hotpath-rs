@@ -49,6 +49,11 @@ pub(crate) static ENTRIES_LIMIT: LazyLock<usize> = LazyLock::new(|| {
 /// Name of the bucket that absorbs entries beyond [`ENTRIES_LIMIT`].
 pub(crate) const OVERFLOW_ENTRY: &str = "<other>";
 
+/// Path part of the server-route bucket that absorbs unmatched requests
+/// ending in an error status (internet-scanner probes like `GET /.env`);
+/// the method prefix is preserved, e.g. `GET <unmatched>`.
+pub(crate) const UNMATCHED_ENTRY: &str = "<unmatched>";
+
 /// Returns `key` when `map` already holds it or still has room under
 /// [`ENTRIES_LIMIT`]; otherwise returns the overflow key from `overflow`. One
 /// slot is reserved for the overflow bucket, so the map never exceeds the
@@ -596,6 +601,28 @@ impl HotpathGuard {
                                             .collect();
                                         raw.sort_by(|a, b| a.name.cmp(b.name));
                                         let _ = response_tx.send(raw);
+                                    }
+                                    #[cfg(feature = "hotpath-prometheus-meta")]
+                                    FunctionsQuery::AllocRaw(response_tx) => {
+                                        cfg_if::cfg_if! {
+                                            if #[cfg(feature = "hotpath-alloc-meta")] {
+                                                let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
+                                                let schema = crate::prometheus_server::NATIVE_SCHEMA;
+                                                let mut raw: Vec<crate::functions::RawFunctionAlloc> = local_stats
+                                                    .values()
+                                                    .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
+                                                    .map(|s| s.to_raw_alloc(
+                                                        schema,
+                                                        crate::prometheus_server::ALLOC_LADDER_BYTES,
+                                                        crate::prometheus_server::ALLOC_LADDER_COUNT,
+                                                    ))
+                                                    .collect();
+                                                raw.sort_by(|a, b| a.name.cmp(b.name));
+                                                let _ = response_tx.send(Some(raw));
+                                            } else {
+                                                let _ = response_tx.send(None);
+                                            }
+                                        }
                                     }
                                     #[cfg(feature = "hotpath-cpu-meta")]
                                     FunctionsQuery::NamesAndIds(response_tx) => {
