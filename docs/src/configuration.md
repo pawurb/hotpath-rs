@@ -63,68 +63,6 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 | `HOTPATH_METRICS_SERVER_OFF` | Set to `true` or `1` to disable the HTTP metrics server entirely. (default: `false`) |
 | `HOTPATH_METRICS_AUTH_TOKEN` | When set, every request must send this exact token as the `Authorization` header value (no `Bearer` prefix) or it gets `401`. Any printable ASCII characters without whitespace; anything else panics at startup. The token travels in plaintext: the server still binds to `localhost` only, so this guards against other local processes and accidental exposure through tunnels, not a substitute for TLS. (default: `''`) |
 
-## Prometheus Server
-
-Enabled by the `hotpath-prometheus` cargo feature (no env var switch). The exporter
-serves `GET /metrics` and negotiates the body via the `Accept` header: scrapers asking
-for the protobuf format (Prometheus with `scrape_native_histograms: true` in the scrape
-config) get native histograms plus classic buckets, everyone else gets the text
-exposition format with classic buckets only.
-
-| Variable | Description |
-|----------|-------------|
-| `HOTPATH_PROMETHEUS_PORT` | Port for the Prometheus exporter server. (default: `6772`) |
-| `HOTPATH_PROMETHEUS_HOST` | Bind address for the Prometheus exporter server. Set to `0.0.0.0` when a containerized Prometheus must scrape the exporter through the Docker bridge gateway (`host.docker.internal` on native Linux resolves to the bridge gateway, which cannot reach a loopback-only listener). Binding beyond loopback exposes the endpoint to the network, so pair it with `HOTPATH_PROMETHEUS_AUTH_TOKEN`. (default: `127.0.0.1`) |
-| `HOTPATH_PROMETHEUS_AUTH_TOKEN` | Auth token for the Prometheus server; same character rules and plaintext caveats as `HOTPATH_METRICS_AUTH_TOKEN`. Accepted both as the exact `Authorization` header value and with a `Bearer ` prefix, so Prometheus's `authorization` scrape config works as-is. (default: `''`) |
-
-Exported metric families (all prefixed `hotpath_`, durations in seconds):
-
-| Family | Type | Labels |
-|--------|------|--------|
-| `build_info` | gauge | `version`; value is always 1 |
-| `uptime_seconds` | gauge | - |
-| `function_calls_total` | counter | `function`; includes calls skipped by time sampling |
-| `function_duration_seconds` | histogram | `function`; sampled calls only, so `_count` can be below `function_calls_total` |
-| `sql_queries_total` | counter | `query`, `source`, `route` |
-| `sql_duration_seconds` | histogram | `query`, `source`, `route`; `query` is the normalized statement text (literals stripped), so series aggregate correctly across processes and restarts. Text over `HOTPATH_MAX_LOG_LEN` chars is truncated with a hash suffix. Distinct entries are bounded by `HOTPATH_ENTRIES_LIMIT` |
-| `http_requests_total` / `http_errors_total` | counter | `endpoint`, `source`, `route`; aggregate with `sum by (endpoint)` for the per-endpoint view |
-| `http_duration_seconds` | histogram | `endpoint`, `source`, `route` |
-| `server_requests_total` | counter | `route` |
-| `server_responses_total` | counter | `route`, `class` (`4xx`/`5xx`) |
-| `server_duration_seconds` | histogram | `route` |
-| `server_scoped_requests_total` | counter | `route`; denominator for per-request SQL/HTTP rates |
-| `server_sql_calls_total` / `server_http_calls_total` | counter | `route`; divide by `server_scoped_requests_total` for per-request averages |
-| `mutex_acquisitions_total` | counter | `source`, `label`, `iter`; includes acquisitions skipped by time sampling |
-| `mutex_wait_seconds` / `mutex_acquire_seconds` | histogram | `source`, `label`, `iter`; sampled acquisitions only (wait = time blocked acquiring, acquire = time held) |
-| `rwlock_acquisitions_total` | counter | `source`, `label`, `iter`, `op` (`read`/`write`) |
-| `rwlock_wait_seconds` / `rwlock_acquire_seconds` | histogram | `source`, `label`, `iter`, `op`; sampled acquisitions only |
-| `channel_sent_total` / `channel_received_total` | counter | `source`, `label`, `iter`, `type`, `payload` |
-| `channel_instances` / `channel_closed_instances` | gauge | `source`, `label`, `iter`, `type`, `payload`; instances created / closed since start |
-| `channel_queue_size` / `channel_max_queue_size` | gauge | `source`, `label`, `iter`, `type`, `payload`; max is a since-start high-water mark, not a windowed maximum |
-| `channel_proc_seconds` | histogram | `source`, `label`, `iter`, `type`, `payload`; send-to-receive delay of sampled receives, wrap mode only |
-| `stream_items_total` | counter | `source`, `label`, `iter`, `payload` |
-| `stream_instances` / `stream_closed_instances` | gauge | `source`, `label`, `iter`, `payload` |
-| `io_ops_total` | counter | `source`, `label`, `iter`, `type`, `op` (`read`/`write`/`flush`/`shutdown`); includes ops skipped by time sampling. Op kinds a wrapper never touched are omitted |
-| `io_bytes_total` | counter | same; all transferred bytes (volume) |
-| `io_sampled_bytes_total` | counter | same; bytes of timed ops - `rate(io_sampled_bytes_total) / rate(io_op_seconds_sum)` is the throughput that stays correct under sampling |
-| `io_errors_total` | counter | same |
-| `io_op_seconds` | histogram | same; sampled ops only |
-| `future_polls_total` | counter | `source`, `label`; all polls |
-| `future_sampled_polls_total` | counter | same; denominator for the average poll: `rate(future_poll_seconds_total) / rate(future_sampled_polls_total)` |
-| `future_poll_seconds_total` | counter | same; time in timed polls |
-| `future_poll_alloc_bytes_total` / `future_poll_allocs_total` | counter | same; only with `hotpath-alloc` |
-| `function_alloc_bytes_total` / `function_allocs_total` | counter | `function`; exact totals, present for every entry (requires `hotpath-alloc`) |
-| `function_alloc_bytes` | histogram | `function`; bytes allocated per call, values clamp at 1GB. Async entries without per-call totals export the counters only |
-| `function_allocs` | histogram | `function`; allocations per call |
-
-The call-site-keyed families (`mutex_*`, `rwlock_*`, `channel_*`, `stream_*`, `io_*`,
-`future_*`) mirror the profiler's entry identity as labels: `source` is the
-column-including `file:line:column` call site (the column keeps two invocations on one
-source line distinct; name-based future ids like `#[future_fn]` appear as the function
-path), `iter` the instantiation index (call sites that produce one entry per
-instantiation), and `payload` the channel/stream item type. Aggregate the
-discriminators away with `sum by (source, label)`.
-
 ## MCP Server
 
 | Variable | Description |
