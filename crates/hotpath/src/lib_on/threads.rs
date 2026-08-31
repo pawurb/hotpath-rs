@@ -255,7 +255,9 @@ pub(crate) struct ThreadsRaw {
     /// Threads in the most recent monitor sample - the first `live_count`
     /// rows of `metrics`. The rows after them are joined in from the
     /// allocation registry (exited or unsampled threads) so allocation totals
-    /// are never lost, and must not count toward a live-thread gauge.
+    /// are never lost, and must not count toward a live-thread gauge. Only
+    /// the Prometheus exporter distinguishes the two spans.
+    #[cfg_attr(not(feature = "hotpath-prometheus"), allow(dead_code))]
     pub(crate) live_count: usize,
     pub(crate) rss_bytes: Option<u64>,
     pub(crate) current_elapsed_ns: u64,
