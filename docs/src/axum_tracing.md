@@ -44,7 +44,10 @@ Layer order matters: middleware added later runs *outside* middleware added earl
 
 Requests are keyed by `METHOD template`, where the template is the axum route pattern that matched (`axum::extract::MatchedPath`), so `GET /users/1?verbose=true` and `GET /users/42` both land in `GET /users/{id}`. Nested routers report the full path including the nest prefix. Query strings and raw path parameters never reach the report.
 
-Requests that match no route - the router's fallback, or services mounted with `nest_service` - carry no `MatchedPath`. Those are bucketed by their raw path with id-like segments (all-digit, UUID, 16+ hex chars) collapsed to `{id}`, the same normalization used for [outgoing HTTP requests](http_tracing.md#normalizing-endpoints), so cardinality stays bounded.
+Requests that match no route - the router's fallback, or services mounted with `nest_service` - carry no `MatchedPath`. What happens next depends on the response status:
+
+- Unmatched requests that end in an error status (>= 400) collapse into a single per-method `<unmatched>` bucket (`GET <unmatched>`). Internet scanners probing `GET /.env`, `/wp-login.php` and friends are by definition unmatched and rejected, so their volume stays visible as one row instead of one row per probed path.
+- Unmatched requests served successfully (a fallback `ServeDir`, a `nest_service` target like `/blog/first-post`) are bucketed by their raw path with id-like segments (all-digit, UUID, 16+ hex chars) collapsed to `{id}`, the same normalization used for [outgoing HTTP requests](http_tracing.md#normalizing-endpoints), so per-page stats are kept while cardinality stays bounded.
 
 ## Error tracking
 
@@ -78,7 +81,7 @@ server - HTTP server response time statistics per route.
 +--------------------+-------+-----+-----+---------+----------+-----------+-----------+
 | GET /profiles/{id} | 3     | 0   | 0   | 2.0     | 1.0      | 530.60 µs | 830.46 µs |
 | GET /users/{id}    | 5     | 0   | 0   | 1.0     | 0.0      | 49.41 µs  | 92.09 µs  |
-| GET /missing       | 1     | 1   | 0   | -       | -        | 4.54 µs   | 4.54 µs   |
+| GET <unmatched>    | 1     | 1   | 0   | -       | -        | 4.54 µs   | 4.54 µs   |
 +--------------------+-------+-----+-----+---------+----------+-----------+-----------+
 ```
 
