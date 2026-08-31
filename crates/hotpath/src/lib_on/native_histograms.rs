@@ -1,30 +1,42 @@
 //! hdrhistogram -> Prometheus native-histogram conversion for the
 //! `hotpath-prometheus` exporter. Native bucket `i` covers
-//! `(2^((i-1)/2^schema), 2^(i/2^schema)]`, values in seconds.
+//! `(2^((i-1)/2^schema), 2^(i/2^schema)]`, values in the metric's base unit.
+
+/// Divisor turning stored nanosecond values into the exported base unit
+/// (seconds). Byte- and count-valued histograms are already in base units and
+/// use [`UNIT_SCALE`].
+pub(crate) const NANOS_SCALE: f64 = 1e9;
+/// Identity scale for histograms whose stored values are already base units.
+/// Only the alloc snapshot uses it today.
+#[cfg_attr(not(feature = "hotpath-alloc"), allow(dead_code))]
+pub(crate) const UNIT_SCALE: f64 = 1.0;
 
 /// Smallest native-histogram bucket index `i` such that `2^(i / 2^schema) >= v`,
-/// for `v` in seconds. Uses a frexp-style decomposition so exact powers of two
-/// index exactly (fraction 0.5 gives `log2 == -1.0` with no rounding); the
+/// for `v` in base units. Uses a frexp-style decomposition so exact powers of
+/// two index exactly (fraction 0.5 gives `log2 == -1.0` with no rounding); the
 /// other boundaries are irrational, so a value can never sit exactly on one.
-fn native_bucket_index(v_seconds: f64, schema: i32) -> i32 {
-    let bits = v_seconds.to_bits();
+fn native_bucket_index(v: f64, schema: i32) -> i32 {
+    let bits = v.to_bits();
     let exp = ((bits >> 52) & 0x7ff) as i32 - 1022;
     let frac = f64::from_bits((bits & 0x800f_ffff_ffff_ffff) | (1022u64 << 52));
     exp * (1 << schema) + (frac.log2() * (1i64 << schema) as f64).ceil() as i32
 }
 
 /// One ascending pass over the recorded hdr bins -> sparse native-histogram
-/// buckets `(index, count)` at `schema`, indices sorted. hdr resolves 0.1%,
+/// buckets `(index, count)` at `schema`, indices sorted. Stored values are
+/// divided by `scale` to reach the exported base unit, so the buckets line up
+/// with the family's `sample_sum` and classic bounds. hdr resolves 0.1%,
 /// finer than schema 3's 9% buckets, so adjacent bins usually collapse into
 /// one native bucket. Bins are indexed by their upper edge, matching the `le`
 /// convention.
 pub(crate) fn native_bucket_counts(
     hist: &hdrhistogram::Histogram<u64>,
     schema: i32,
+    scale: f64,
 ) -> Vec<(i32, u64)> {
     let mut out: Vec<(i32, u64)> = Vec::new();
     for v in hist.iter_recorded() {
-        let idx = native_bucket_index(v.value_iterated_to() as f64 / 1e9, schema);
+        let idx = native_bucket_index(v.value_iterated_to() as f64 / scale, schema);
         match out.last_mut() {
             Some((last, count)) if *last == idx => *count += v.count_since_last_iteration(),
             _ => out.push((idx, v.count_since_last_iteration())),
@@ -61,9 +73,10 @@ pub(crate) fn native_buckets_opt(
     hist: Option<&hdrhistogram::Histogram<u64>>,
     populated: bool,
     schema: i32,
+    scale: f64,
 ) -> Vec<(i32, u64)> {
     match hist.filter(|_| populated) {
-        Some(hist) => native_bucket_counts(hist, schema),
+        Some(hist) => native_bucket_counts(hist, schema, scale),
         None => Vec::new(),
     }
 }
@@ -114,7 +127,7 @@ mod tests {
     use hdrhistogram::Histogram;
 
     use crate::lib_on::native_histograms::{
-        cumulative_bucket_counts, native_bucket_counts, native_bucket_index, to_spans,
+        cumulative_bucket_counts, native_bucket_counts, native_bucket_index, to_spans, NANOS_SCALE,
     };
 
     fn upper_bound(idx: i32, schema: i32) -> f64 {
@@ -164,7 +177,7 @@ mod tests {
                 .wrapping_add(1442695040888963407);
             hist.record(250 + x % 2_000_000_000).unwrap();
         }
-        let sparse = native_bucket_counts(&hist, 3);
+        let sparse = native_bucket_counts(&hist, 3, NANOS_SCALE);
         assert_eq!(sparse.iter().map(|&(_, c)| c).sum::<u64>(), hist.len());
         assert!(sparse.windows(2).all(|w| w[0].0 < w[1].0));
     }

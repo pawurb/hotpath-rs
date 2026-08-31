@@ -149,7 +149,11 @@ impl FunctionStats {
     #[cfg(feature = "hotpath-prometheus")]
     pub(crate) fn native_duration_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
         match self.hist.as_ref().filter(|_| self.sampled_count > 0) {
-            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(hist, schema),
+            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(
+                hist,
+                schema,
+                crate::lib_on::native_histograms::NANOS_SCALE,
+            ),
             None => Vec::new(),
         }
     }

@@ -104,6 +104,18 @@ Exported metric families (all prefixed `hotpath_`, durations in seconds):
 | `channel_proc_seconds` | histogram | `source`, `label`, `col`, `iter`, `type`, `payload`; send-to-receive delay of sampled receives, wrap mode only |
 | `stream_items_total` | counter | `source`, `label`, `col`, `iter`, `payload` |
 | `stream_instances` / `stream_closed_instances` | gauge | `source`, `label`, `col`, `iter`, `payload` |
+| `io_ops_total` | counter | `source`, `label`, `col`, `iter`, `type`, `op` (`read`/`write`/`flush`/`shutdown`); includes ops skipped by time sampling. Op kinds a wrapper never touched are omitted |
+| `io_bytes_total` | counter | same; all transferred bytes (volume) |
+| `io_sampled_bytes_total` | counter | same; bytes of timed ops - `rate(io_sampled_bytes_total) / rate(io_op_seconds_sum)` is the throughput that stays correct under sampling |
+| `io_errors_total` | counter | same |
+| `io_op_seconds` | histogram | same; sampled ops only |
+| `future_polls_total` | counter | `source`, `label`; all polls |
+| `future_sampled_polls_total` | counter | `source`, `label`; denominator for the average poll: `rate(future_poll_seconds_total) / rate(future_sampled_polls_total)` |
+| `future_poll_seconds_total` | counter | `source`, `label`; time in timed polls |
+| `future_poll_alloc_bytes_total` / `future_poll_allocs_total` | counter | `source`, `label`; only with `hotpath-alloc` |
+| `function_alloc_bytes_total` / `function_allocs_total` | counter | `function`; exact totals, present for every entry (requires `hotpath-alloc`) |
+| `function_alloc_bytes` | histogram | `function`; bytes allocated per call, values clamp at 1GB. Async entries without per-call totals export the counters only |
+| `function_allocs` | histogram | `function`; allocations per call |
 
 The call-site-keyed families (`mutex_*`, `rwlock_*`, `channel_*`, `stream_*`) mirror the
 profiler's entry identity as labels: `col` is the call-site column (keeps two

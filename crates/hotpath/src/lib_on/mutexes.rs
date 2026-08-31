@@ -141,6 +141,7 @@ impl MutexEntry {
             self.wait_hist.as_ref(),
             self.sampled_count > 0,
             schema,
+            crate::lib_on::native_histograms::NANOS_SCALE,
         )
     }
 
@@ -159,6 +160,7 @@ impl MutexEntry {
             self.acquire_hist.as_ref(),
             self.sampled_count > 0,
             schema,
+            crate::lib_on::native_histograms::NANOS_SCALE,
         )
     }
 

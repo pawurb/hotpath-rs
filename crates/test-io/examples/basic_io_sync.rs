@@ -103,5 +103,12 @@ fn main() {
     }
 
     std::fs::remove_file(&path).ok();
+
+    if let Ok(secs) = std::env::var("TEST_SLEEP_SECONDS") {
+        if let Ok(secs) = secs.parse::<u64>() {
+            std::thread::sleep(std::time::Duration::from_secs(secs));
+        }
+    }
+
     println!("Sync io example completed!");
 }

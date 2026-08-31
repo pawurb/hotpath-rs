@@ -1,8 +1,9 @@
-//! Deterministic channels + locks + streams workload for the Prometheus
-//! exporter integration test: 50 messages through a wrapped bounded channel,
-//! 20 mutex acquisitions, 15 rwlock reads + 5 writes, a 7-item stream. Set
-//! TEST_SLEEP_SECONDS to keep the process (and the exporter) alive after the
-//! workload completes.
+//! Deterministic channels + locks + streams + futures + alloc workload for
+//! the Prometheus exporter integration tests: 50 messages through a wrapped
+//! bounded channel, 20 mutex acquisitions, 15 rwlock reads + 5 writes, a
+//! 7-item stream, 20 wrapped futures, 50 calls of a measured allocating
+//! function. Set TEST_SLEEP_SECONDS to keep the process (and the exporter)
+//! alive after the workload completes.
 //!
 //! Run with:
 //!   cargo run -p test-all-features --example prometheus_flow --features hotpath,hotpath-prometheus
@@ -10,6 +11,11 @@
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
+
+#[hotpath::measure]
+fn allocate_chunk(i: u64) -> Vec<u64> {
+    vec![i; 128]
+}
 
 #[tokio::main(flavor = "current_thread")]
 #[hotpath::main]
@@ -59,6 +65,15 @@ async fn main() {
         let stream = hotpath::stream!(futures::stream::iter(1..=7), label = "number-stream");
         let numbers: Vec<i32> = stream.collect().await;
         std::hint::black_box(numbers);
+
+        for i in 0..20u64 {
+            let v = hotpath::future!(async move { i * 2 }, label = "doubler").await;
+            std::hint::black_box(v);
+        }
+
+        for i in 0..50u64 {
+            std::hint::black_box(allocate_chunk(i));
+        }
     }
 
     if let Ok(secs) = std::env::var("TEST_SLEEP_SECONDS") {

@@ -276,7 +276,11 @@ impl FunctionStats {
             .as_ref()
             .filter(|_| self.duration_sampled_count > 0)
         {
-            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(hist, schema),
+            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(
+                hist,
+                schema,
+                crate::lib_on::native_histograms::NANOS_SCALE,
+            ),
             None => Vec::new(),
         }
     }
@@ -294,6 +298,37 @@ impl FunctionStats {
                 crate::lib_on::native_histograms::cumulative_bucket_counts(hist, boundaries)
             }
             None => vec![0; boundaries.len()],
+        }
+    }
+
+    /// Raw allocation snapshot for the Prometheus exporter, both bucket
+    /// projections computed here so no histogram crosses the query channel.
+    /// `is_async` entries carry no per-call totals (cross-thread sync guard
+    /// drops - the report's N/A percentiles), so they export running totals
+    /// only, with empty histogram projections.
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn to_raw_alloc(
+        &self,
+        schema: i32,
+        bytes_boundaries: &[u64],
+        allocs_boundaries: &[u64],
+    ) -> crate::lib_on::functions::RawFunctionAlloc {
+        use crate::lib_on::native_histograms::{
+            classic_buckets_opt, native_buckets_opt, UNIT_SCALE,
+        };
+
+        let bytes_hist = self.bytes_total_hist.as_ref().filter(|_| !self.is_async);
+        let count_hist = self.count_total_hist.as_ref().filter(|_| !self.is_async);
+        crate::lib_on::functions::RawFunctionAlloc {
+            name: self.name,
+            total_bytes: self.total_bytes_sum,
+            total_allocs: self.total_count_sum,
+            bytes_sample_count: bytes_hist.map_or(0, |h| h.len()),
+            allocs_sample_count: count_hist.map_or(0, |h| h.len()),
+            bytes_native: native_buckets_opt(bytes_hist, true, schema, UNIT_SCALE),
+            bytes_classic: classic_buckets_opt(bytes_hist, true, bytes_boundaries),
+            allocs_native: native_buckets_opt(count_hist, true, schema, UNIT_SCALE),
+            allocs_classic: classic_buckets_opt(count_hist, true, allocs_boundaries),
         }
     }
 

@@ -430,6 +430,26 @@ pub(crate) struct RawFunctionTiming {
     pub(crate) bucket_counts: Vec<u64>,
 }
 
+/// Raw allocation snapshot entry for the Prometheus exporter - numeric fields
+/// only, bucket projections pre-computed worker-side so no histogram crosses
+/// the channel. `bytes_sample_count` / `allocs_sample_count` are the exact
+/// histogram populations (`hist.len()`); both are 0 for `is_async` entries
+/// whose measurements carried no per-call totals (the report's N/A
+/// percentiles), which export only the running totals.
+#[cfg(feature = "hotpath-prometheus")]
+#[derive(Debug)]
+pub(crate) struct RawFunctionAlloc {
+    pub(crate) name: &'static str,
+    pub(crate) total_bytes: u64,
+    pub(crate) total_allocs: u64,
+    pub(crate) bytes_sample_count: u64,
+    pub(crate) allocs_sample_count: u64,
+    pub(crate) bytes_native: Vec<(i32, u64)>,
+    pub(crate) bytes_classic: Vec<u64>,
+    pub(crate) allocs_native: Vec<(i32, u64)>,
+    pub(crate) allocs_classic: Vec<u64>,
+}
+
 /// Query request sent from TUI HTTP server to profiler worker thread
 #[derive(Debug)]
 pub(crate) enum FunctionsQuery {
@@ -438,6 +458,10 @@ pub(crate) enum FunctionsQuery {
     /// Request raw numeric timing snapshot (Prometheus exporter)
     #[cfg(feature = "hotpath-prometheus")]
     TimingRaw(Sender<Vec<RawFunctionTiming>>),
+    /// Request raw numeric allocation snapshot (Prometheus exporter) - `None`
+    /// if hotpath-alloc is not enabled
+    #[cfg(feature = "hotpath-prometheus")]
+    AllocRaw(Sender<Option<Vec<RawFunctionAlloc>>>),
     /// Request full metrics snapshot (allocation metrics) - returns None if hotpath-alloc not enabled
     Alloc(Sender<Option<JsonFunctionsList>>),
     /// Request the names + worker-assigned ids of functions that have been registered
@@ -489,6 +513,13 @@ pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_functions_raw() -> Option<Vec<RawFunctionTiming>> {
     query_functions_state(FunctionsQuery::TimingRaw)
+}
+
+/// Outer `None`: worker unreachable; inner `None`: hotpath-alloc not enabled.
+#[cfg(feature = "hotpath-prometheus")]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn get_functions_alloc_raw() -> Option<Vec<RawFunctionAlloc>> {
+    query_functions_state(FunctionsQuery::AllocRaw).flatten()
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]

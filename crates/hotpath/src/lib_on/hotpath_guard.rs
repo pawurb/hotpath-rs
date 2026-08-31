@@ -675,6 +675,28 @@ impl HotpathGuard {
                                         raw.sort_by(|a, b| a.name.cmp(b.name));
                                         let _ = response_tx.send(raw);
                                     }
+                                    #[cfg(feature = "hotpath-prometheus")]
+                                    FunctionsQuery::AllocRaw(response_tx) => {
+                                        cfg_if::cfg_if! {
+                                            if #[cfg(feature = "hotpath-alloc")] {
+                                                let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
+                                                let schema = crate::prometheus_server::NATIVE_SCHEMA;
+                                                let mut raw: Vec<crate::functions::RawFunctionAlloc> = local_stats
+                                                    .values()
+                                                    .filter(|s| s.has_data && !(exclude_wrapper && s.wrapper))
+                                                    .map(|s| s.to_raw_alloc(
+                                                        schema,
+                                                        crate::prometheus_server::ALLOC_LADDER_BYTES,
+                                                        crate::prometheus_server::ALLOC_LADDER_COUNT,
+                                                    ))
+                                                    .collect();
+                                                raw.sort_by(|a, b| a.name.cmp(b.name));
+                                                let _ = response_tx.send(Some(raw));
+                                            } else {
+                                                let _ = response_tx.send(None);
+                                            }
+                                        }
+                                    }
                                     #[cfg(feature = "hotpath-cpu")]
                                     FunctionsQuery::NamesAndIds(response_tx) => {
                                         let map: HashMap<&'static str, u32> =

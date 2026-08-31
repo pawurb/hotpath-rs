@@ -200,6 +200,7 @@ impl RwLockEntry {
             hist.as_ref(),
             self.sampled_count(kind) > 0,
             schema,
+            crate::lib_on::native_histograms::NANOS_SCALE,
         )
     }
 
@@ -226,6 +227,7 @@ impl RwLockEntry {
             hist.as_ref(),
             self.sampled_count(kind) > 0,
             schema,
+            crate::lib_on::native_histograms::NANOS_SCALE,
         )
     }
 
