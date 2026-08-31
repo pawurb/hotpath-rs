@@ -8,7 +8,8 @@ pub(crate) const MAX_DEPTH: usize = 64;
 /// Fixed registry capacity; slots are intentionally never reclaimed so that
 /// exited threads stay reportable. After this many unique allocating threads,
 /// new threads lose per-thread attribution (function-level alloc stats are
-/// unaffected).
+/// unaffected); their bytes still count toward the process-wide overflow
+/// totals.
 const MAX_THREADS: usize = 256;
 const SLOT_UNSET: u32 = u32::MAX;
 const THREAD_NAME_LEN: usize = 64;
@@ -73,6 +74,11 @@ static THREAD_ALLOC_STATS: [ThreadAllocStats; MAX_THREADS] = {
 };
 
 static THREAD_TRACKING_ENABLED: AtomicU64 = AtomicU64::new(0);
+
+/// Bytes allocated/deallocated by threads that never got a registry slot
+/// (registry full). Keeps process-wide totals accurate past `MAX_THREADS`.
+static OVERFLOW_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);
+static OVERFLOW_DEALLOC_BYTES: AtomicU64 = AtomicU64::new(0);
 
 /// Initialize the thread allocation tracking system
 #[cfg_attr(not(feature = "threads"), allow(dead_code))]
@@ -202,6 +208,15 @@ pub(crate) fn get_registered_thread_name(os_tid: u64) -> Option<String> {
     None
 }
 
+/// `(alloc_bytes, dealloc_bytes)` from threads that never got a registry slot.
+#[cfg_attr(not(feature = "threads"), allow(dead_code))]
+pub(crate) fn get_overflow_alloc_stats() -> (u64, u64) {
+    (
+        OVERFLOW_ALLOC_BYTES.load(Ordering::Relaxed),
+        OVERFLOW_DEALLOC_BYTES.load(Ordering::Relaxed),
+    )
+}
+
 /// Snapshot of every registered per-thread allocation slot:
 /// `(tid, alloc_bytes, dealloc_bytes, name)`. Slots outlive their threads, so
 /// this includes threads that already exited.
@@ -275,8 +290,13 @@ pub(crate) fn track_alloc(size: usize) {
     }
 
     if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) != 0 {
-        if let Some(slot) = get_or_create_slot_cached() {
-            slot.alloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        match get_or_create_slot_cached() {
+            Some(slot) => {
+                slot.alloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+            }
+            None => {
+                OVERFLOW_ALLOC_BYTES.fetch_add(size as u64, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -289,8 +309,13 @@ pub(crate) fn track_dealloc(size: usize) {
     }
 
     if THREAD_TRACKING_ENABLED.load(Ordering::Relaxed) != 0 {
-        if let Some(slot) = get_or_create_slot_cached() {
-            slot.dealloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        match get_or_create_slot_cached() {
+            Some(slot) => {
+                slot.dealloc_bytes.fetch_add(size as u64, Ordering::Relaxed);
+            }
+            None => {
+                OVERFLOW_DEALLOC_BYTES.fetch_add(size as u64, Ordering::Relaxed);
+            }
         }
     }
 }

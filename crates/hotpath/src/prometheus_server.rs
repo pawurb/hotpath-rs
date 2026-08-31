@@ -298,6 +298,7 @@ fn collect_families() -> Option<Vec<Family>> {
     collect_streams(&mut families);
     collect_io(&mut families);
     collect_futures(&mut families);
+    #[cfg(feature = "threads")]
     collect_threads(&mut families);
     #[cfg(feature = "tokio")]
     collect_tokio_runtime(&mut families);
@@ -1158,6 +1159,7 @@ fn collect_server(families: &mut Vec<Family>) {
     });
 }
 
+#[cfg(feature = "threads")]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_threads(families: &mut Vec<Family>) {
     let Some(threads) = crate::lib_on::threads::get_threads_raw() else {
@@ -1280,20 +1282,24 @@ fn collect_threads(families: &mut Vec<Family>) {
         });
     }
 
-    // Process-level totals span every thread ever tracked, exited included:
-    // one bounded series preserving the bytes that leave the per-thread view
-    // when a thread's series goes stale.
-    let (total_alloc, total_dealloc, has_alloc_data) =
-        threads
-            .metrics
-            .iter()
-            .fold((0u64, 0u64, false), |(alloc, dealloc, has), m| {
-                (
-                    alloc + m.alloc_bytes.unwrap_or(0),
-                    dealloc + m.dealloc_bytes.unwrap_or(0),
-                    has || m.alloc_bytes.is_some(),
-                )
-            });
+    // Process-level totals span every thread ever tracked, exited included,
+    // plus the overflow bytes from threads the capped registry could not
+    // slot: one bounded series preserving the bytes that leave the
+    // per-thread view when a thread's series goes stale.
+    let (total_alloc, total_dealloc, has_alloc_data) = threads.metrics.iter().fold(
+        (
+            threads.overflow_alloc_bytes,
+            threads.overflow_dealloc_bytes,
+            false,
+        ),
+        |(alloc, dealloc, has), m| {
+            (
+                alloc + m.alloc_bytes.unwrap_or(0),
+                dealloc + m.dealloc_bytes.unwrap_or(0),
+                has || m.alloc_bytes.is_some(),
+            )
+        },
+    );
     if has_alloc_data {
         families.push(Family {
             name: "hotpath_alloc_bytes_total",
@@ -1511,9 +1517,10 @@ fn collect_gauges(families: &mut Vec<Family>) {
         return;
     }
 
-    let labels = |e: &crate::lib_on::debug::gauge::GaugeEntry| {
-        vec![("key", e.key.to_string()), ("source", e.source.to_string())]
-    };
+    // Gauge identity is the key alone (`source` is whichever call site
+    // created the entry first, so it would churn series across runs when one
+    // key is updated from several locations).
+    let labels = |e: &crate::lib_on::debug::gauge::GaugeEntry| vec![("key", e.key.to_string())];
 
     families.push(Family {
         name: "hotpath_gauge",

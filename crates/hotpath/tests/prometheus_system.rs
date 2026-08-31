@@ -57,14 +57,17 @@ pub mod tests {
             .spawn()
             .expect("Failed to spawn command");
 
-        // Wait for one tokio runtime sample (1s interval), a thread monitor
-        // sample covering the named busy thread, and the gauges.
+        // Wait for one tokio runtime sample (1s interval), two thread monitor
+        // samples (cpu_percent needs a delta between samples, so the
+        // cpu_percent families are absent from the first one) covering the
+        // named busy thread, and the gauges.
         let mut scrape = None;
         for _attempt in 0..80 {
             sleep(Duration::from_millis(750));
             if let Ok((200, body)) = get("/metrics") {
                 if body.contains("hotpath_tokio_workers")
                     && body.contains("name=\"hp-busy-worker\"")
+                    && body.contains("hotpath_thread_cpu_percent_max")
                     && body.contains("hotpath_gauge{")
                 {
                     scrape = Some(body);
