@@ -288,7 +288,7 @@ fn collect_families() -> Option<Vec<Family>> {
         });
     }
 
-    collect_functions_alloc(&mut families);
+    collect_functions_alloc(&mut families)?;
     collect_sql(&mut families);
     collect_http(&mut families);
     collect_server(&mut families);
@@ -303,12 +303,17 @@ fn collect_families() -> Option<Vec<Family>> {
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn collect_functions_alloc(families: &mut Vec<Family>) {
-    let Some(functions) = crate::functions::get_functions_alloc_raw() else {
-        return;
+/// `None` aborts the scrape (worker unreachable or timed out - serving 200
+/// with the alloc series missing would make Prometheus mark them stale and
+/// fabricate resets); a reachable worker without hotpath-alloc just omits the
+/// families.
+fn collect_functions_alloc(families: &mut Vec<Family>) -> Option<()> {
+    let alloc = crate::functions::get_functions_alloc_raw()?;
+    let Some(functions) = alloc else {
+        return Some(());
     };
     if functions.is_empty() {
-        return;
+        return Some(());
     }
 
     let labels = |f: &crate::functions::RawFunctionAlloc| vec![("function", f.name.to_string())];
@@ -386,6 +391,8 @@ fn collect_functions_alloc(families: &mut Vec<Family>) {
             samples: allocs_samples,
         });
     }
+
+    Some(())
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
