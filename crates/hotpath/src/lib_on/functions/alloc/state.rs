@@ -329,6 +329,8 @@ impl FunctionStats {
             bytes_classic: classic_buckets_opt(bytes_hist, true, bytes_boundaries),
             allocs_native: native_buckets_opt(count_hist, true, schema, UNIT_SCALE),
             allocs_classic: classic_buckets_opt(count_hist, true, allocs_boundaries),
+            bytes_zero_count: bytes_hist.map_or(0, |h| h.count_at(0)),
+            allocs_zero_count: count_hist.map_or(0, |h| h.count_at(0)),
         }
     }
 

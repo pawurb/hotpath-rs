@@ -448,6 +448,10 @@ pub(crate) struct RawFunctionAlloc {
     pub(crate) bytes_classic: Vec<u64>,
     pub(crate) allocs_native: Vec<(i32, u64)>,
     pub(crate) allocs_classic: Vec<u64>,
+    /// Calls that allocated nothing - recorded as literal zeros, which the
+    /// native format carries in zero_count rather than a log-scale bucket.
+    pub(crate) bytes_zero_count: u64,
+    pub(crate) allocs_zero_count: u64,
 }
 
 /// Query request sent from TUI HTTP server to profiler worker thread

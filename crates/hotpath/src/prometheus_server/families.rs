@@ -36,8 +36,14 @@ pub(crate) struct HistogramValue {
     /// `(upper bound in base units, cumulative count)` per classic bucket,
     /// ascending; `+Inf` is appended by the encoders, never stored.
     pub(crate) classic_buckets: Vec<(f64, u64)>,
-    /// Sparse native buckets `(index, count)` at `NATIVE_SCHEMA`, ascending.
+    /// Sparse native buckets `(index, count)` at `NATIVE_SCHEMA`, ascending,
+    /// zero-valued observations excluded.
     pub(crate) native_buckets: Vec<(i32, u64)>,
+    /// Observations exactly at zero, exported via the native histogram's
+    /// zero_count - zero has no finite log-scale bucket. Classic buckets
+    /// include them cumulatively as usual. Only the alloc histograms record
+    /// zeros today (non-allocating calls).
+    pub(crate) zero_count: u64,
 }
 
 #[derive(Debug)]
@@ -176,7 +182,7 @@ pub(crate) fn to_protobuf(families: &[Family]) -> Option<Vec<u8>> {
                                     .collect(),
                                 schema: Some(NATIVE_SCHEMA),
                                 zero_threshold: Some(0.0),
-                                zero_count: Some(0),
+                                zero_count: Some(hist.zero_count),
                                 positive_span: spans
                                     .into_iter()
                                     .map(|(offset, length)| BucketSpan {
@@ -272,6 +278,7 @@ mod tests {
                         sum: 0.5,
                         classic_buckets: vec![(0.00025, 2), (0.001, 5)],
                         native_buckets: vec![(-96, 2), (-95, 5)],
+                        zero_count: 1,
                     }),
                 }],
             },
@@ -326,6 +333,7 @@ hotpath_duration_seconds_count{function=\"app::run\"} 7
         let hist = decoded[2].metric[0].histogram.as_ref().unwrap();
         assert_eq!(hist.sample_count, Some(7));
         assert_eq!(hist.sample_sum, Some(0.5));
+        assert_eq!(hist.zero_count, Some(1));
         assert_eq!(hist.bucket.len(), 2);
         assert_eq!(hist.bucket[1].cumulative_count, Some(5));
         assert_eq!(hist.positive_span.len(), 1);

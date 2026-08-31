@@ -281,6 +281,7 @@ fn collect_families() -> Option<Vec<Family>> {
                         sum: seconds(f.total_duration_ns),
                         classic_buckets: classic_pairs(FAST_LADDER_NS, f.bucket_counts),
                         native_buckets: f.native_buckets,
+                        zero_count: 0,
                     }),
                 })
                 .collect(),
@@ -350,6 +351,7 @@ fn collect_functions_alloc(families: &mut Vec<Family>) {
                 sum: f.total_bytes as f64,
                 classic_buckets: classic_pairs_units(ALLOC_LADDER_BYTES, f.bytes_classic.clone()),
                 native_buckets: f.bytes_native.clone(),
+                zero_count: 0,
             }),
         })
         .collect();
@@ -372,6 +374,7 @@ fn collect_functions_alloc(families: &mut Vec<Family>) {
                 sum: f.total_allocs as f64,
                 classic_buckets: classic_pairs_units(ALLOC_LADDER_COUNT, f.allocs_classic.clone()),
                 native_buckets: f.allocs_native.clone(),
+                zero_count: 0,
             }),
         })
         .collect();
@@ -467,6 +470,7 @@ fn collect_io(families: &mut Vec<Family>) {
                 sum: seconds(s.total_nanos),
                 classic_buckets: classic_pairs(FAST_LADDER_NS, s.classic_buckets(FAST_LADDER_NS)),
                 native_buckets: s.native_buckets(NATIVE_SCHEMA),
+                zero_count: 0,
             })
         }),
     });
@@ -610,6 +614,7 @@ fn collect_mutexes(families: &mut Vec<Family>) {
                         e.classic_wait_buckets(FAST_LADDER_NS),
                     ),
                     native_buckets: e.native_wait_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -631,6 +636,7 @@ fn collect_mutexes(families: &mut Vec<Family>) {
                         e.classic_acquire_buckets(FAST_LADDER_NS),
                     ),
                     native_buckets: e.native_acquire_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -688,6 +694,7 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
                             e.classic_wait_buckets(kind, FAST_LADDER_NS),
                         ),
                         native_buckets: e.native_wait_buckets(kind, NATIVE_SCHEMA),
+                        zero_count: 0,
                     }),
                 })
             })
@@ -711,6 +718,7 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
                             e.classic_acquire_buckets(kind, FAST_LADDER_NS),
                         ),
                         native_buckets: e.native_acquire_buckets(kind, NATIVE_SCHEMA),
+                        zero_count: 0,
                     }),
                 })
             })
@@ -837,6 +845,7 @@ fn collect_channels(families: &mut Vec<Family>) {
                     e.classic_proc_buckets(FAST_LADDER_NS),
                 ),
                 native_buckets: e.native_proc_buckets(NATIVE_SCHEMA),
+                zero_count: 0,
             }),
         })
         .collect();
@@ -955,6 +964,7 @@ fn collect_sql(families: &mut Vec<Family>) {
                         e.classic_buckets(SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -1038,6 +1048,7 @@ fn collect_http(families: &mut Vec<Family>) {
                         e.classic_buckets(SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -1097,6 +1108,7 @@ fn collect_server(families: &mut Vec<Family>) {
                         e.classic_buckets(SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),

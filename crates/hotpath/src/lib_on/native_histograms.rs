@@ -36,6 +36,12 @@ pub(crate) fn native_bucket_counts(
 ) -> Vec<(i32, u64)> {
     let mut out: Vec<(i32, u64)> = Vec::new();
     for v in hist.iter_recorded() {
+        // Zero has no finite log-scale bucket; it belongs in the native
+        // histogram's zero_count (the alloc histograms record literal zeros
+        // for non-allocating calls).
+        if v.value_iterated_to() == 0 {
+            continue;
+        }
         let idx = native_bucket_index(v.value_iterated_to() as f64 / scale, schema);
         match out.last_mut() {
             Some((last, count)) if *last == idx => *count += v.count_since_last_iteration(),
@@ -165,6 +171,19 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn zero_values_stay_out_of_native_buckets() {
+        // Alloc histograms record literal zeros for non-allocating calls;
+        // those belong in the native zero_count, never in a log-scale bucket.
+        let mut hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000, 3).unwrap();
+        hist.record(0).unwrap();
+        hist.record(0).unwrap();
+        hist.record(1024).unwrap();
+        let sparse = native_bucket_counts(&hist, 3, 1.0);
+        assert_eq!(sparse.iter().map(|&(_, c)| c).sum::<u64>(), 1);
+        assert_eq!(hist.count_at(0), 2);
     }
 
     #[test]
