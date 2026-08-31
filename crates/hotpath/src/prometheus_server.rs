@@ -483,15 +483,8 @@ fn collect_futures(families: &mut Vec<Family>) {
         return;
     }
 
-    let labels = |e: &crate::lib_on::futures::FutureEntry| {
-        vec![
-            (
-                "source",
-                crate::lib_on::futures::display_source(e.source).to_string(),
-            ),
-            ("label", e.label.clone().unwrap_or_default()),
-        ]
-    };
+    let labels =
+        |e: &crate::lib_on::futures::FutureEntry| future_labels(e.source, e.label.as_deref());
 
     families.push(Family {
         name: "hotpath_future_polls_total",
@@ -1154,6 +1147,21 @@ fn collect_server(families: &mut Vec<Family>) {
     });
 }
 
+/// Futures mirror [`call_site_labels`] minus `iter` (one entry per id, never
+/// per instantiation): `future!` ids are `file:line:column`, so the column
+/// that `display_source` strips rides its own `col` label and keeps same-line
+/// invocations distinct; name-based ids (`#[future_fn]`) pass through with an
+/// empty `col`.
+fn future_labels(id: &'static str, label: Option<&str>) -> Vec<(&'static str, String)> {
+    let source = crate::lib_on::futures::display_source(id);
+    let col = id[source.len()..].trim_start_matches(':');
+    vec![
+        ("source", source.to_string()),
+        ("label", label.unwrap_or_default().to_string()),
+        ("col", col.to_string()),
+    ]
+}
+
 /// Shared call-site identity labels for entries keyed by wrapper macro call
 /// site (locks, channels, streams) - a field-for-field mirror of the store's
 /// entry identity, so distinct entries can never collapse into duplicate
@@ -1232,6 +1240,20 @@ mod tests {
     use crate::prometheus_server::{
         accepts_protobuf, check_auth_with_bearer, query_label, seconds,
     };
+
+    #[test]
+    fn future_labels_keep_call_site_column() {
+        use crate::prometheus_server::future_labels;
+        let a = future_labels("src/main.rs:12:34", None);
+        let b = future_labels("src/main.rs:12:60", None);
+        assert_eq!(a[0], ("source", "src/main.rs:12".to_string()));
+        assert_eq!(a[2], ("col", "34".to_string()));
+        assert_ne!(a, b, "same-line future! sites must stay distinct");
+
+        let named = future_labels("my_module::my_future_fn", Some("x"));
+        assert_eq!(named[0].1, "my_module::my_future_fn");
+        assert_eq!(named[2].1, "");
+    }
 
     #[test]
     fn call_site_labels_mirror_entry_identity() {

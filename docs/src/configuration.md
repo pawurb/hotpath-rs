@@ -109,10 +109,10 @@ Exported metric families (all prefixed `hotpath_`, durations in seconds):
 | `io_sampled_bytes_total` | counter | same; bytes of timed ops - `rate(io_sampled_bytes_total) / rate(io_op_seconds_sum)` is the throughput that stays correct under sampling |
 | `io_errors_total` | counter | same |
 | `io_op_seconds` | histogram | same; sampled ops only |
-| `future_polls_total` | counter | `source`, `label`; all polls |
-| `future_sampled_polls_total` | counter | `source`, `label`; denominator for the average poll: `rate(future_poll_seconds_total) / rate(future_sampled_polls_total)` |
-| `future_poll_seconds_total` | counter | `source`, `label`; time in timed polls |
-| `future_poll_alloc_bytes_total` / `future_poll_allocs_total` | counter | `source`, `label`; only with `hotpath-alloc` |
+| `future_polls_total` | counter | `source`, `label`, `col`; all polls. `col` is empty for name-based ids (`#[future_fn]`) |
+| `future_sampled_polls_total` | counter | same; denominator for the average poll: `rate(future_poll_seconds_total) / rate(future_sampled_polls_total)` |
+| `future_poll_seconds_total` | counter | same; time in timed polls |
+| `future_poll_alloc_bytes_total` / `future_poll_allocs_total` | counter | same; only with `hotpath-alloc` |
 | `function_alloc_bytes_total` / `function_allocs_total` | counter | `function`; exact totals, present for every entry (requires `hotpath-alloc`) |
 | `function_alloc_bytes` | histogram | `function`; bytes allocated per call, values clamp at 1GB. Async entries without per-call totals export the counters only |
 | `function_allocs` | histogram | `function`; allocations per call |
