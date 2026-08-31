@@ -94,22 +94,22 @@ Exported metric families (all prefixed `hotpath_`, durations in seconds):
 | `server_duration_seconds` | histogram | `route` |
 | `server_scoped_requests_total` | counter | `route`; denominator for per-request SQL/HTTP rates |
 | `server_sql_calls_total` / `server_http_calls_total` | counter | `route`; divide by `server_scoped_requests_total` for per-request averages |
-| `mutex_acquisitions_total` | counter | `source`, `label`, `col`, `iter`; includes acquisitions skipped by time sampling |
-| `mutex_wait_seconds` / `mutex_acquire_seconds` | histogram | `source`, `label`, `col`, `iter`; sampled acquisitions only (wait = time blocked acquiring, acquire = time held) |
-| `rwlock_acquisitions_total` | counter | `source`, `label`, `col`, `iter`, `op` (`read`/`write`) |
-| `rwlock_wait_seconds` / `rwlock_acquire_seconds` | histogram | `source`, `label`, `col`, `iter`, `op`; sampled acquisitions only |
-| `channel_sent_total` / `channel_received_total` | counter | `source`, `label`, `col`, `iter`, `type`, `payload` |
-| `channel_instances` / `channel_closed_instances` | gauge | `source`, `label`, `col`, `iter`, `type`, `payload`; instances created / closed since start |
-| `channel_queue_size` / `channel_max_queue_size` | gauge | `source`, `label`, `col`, `iter`, `type`, `payload`; max is a since-start high-water mark, not a windowed maximum |
-| `channel_proc_seconds` | histogram | `source`, `label`, `col`, `iter`, `type`, `payload`; send-to-receive delay of sampled receives, wrap mode only |
-| `stream_items_total` | counter | `source`, `label`, `col`, `iter`, `payload` |
-| `stream_instances` / `stream_closed_instances` | gauge | `source`, `label`, `col`, `iter`, `payload` |
-| `io_ops_total` | counter | `source`, `label`, `col`, `iter`, `type`, `op` (`read`/`write`/`flush`/`shutdown`); includes ops skipped by time sampling. Op kinds a wrapper never touched are omitted |
+| `mutex_acquisitions_total` | counter | `source`, `label`, `iter`; includes acquisitions skipped by time sampling |
+| `mutex_wait_seconds` / `mutex_acquire_seconds` | histogram | `source`, `label`, `iter`; sampled acquisitions only (wait = time blocked acquiring, acquire = time held) |
+| `rwlock_acquisitions_total` | counter | `source`, `label`, `iter`, `op` (`read`/`write`) |
+| `rwlock_wait_seconds` / `rwlock_acquire_seconds` | histogram | `source`, `label`, `iter`, `op`; sampled acquisitions only |
+| `channel_sent_total` / `channel_received_total` | counter | `source`, `label`, `iter`, `type`, `payload` |
+| `channel_instances` / `channel_closed_instances` | gauge | `source`, `label`, `iter`, `type`, `payload`; instances created / closed since start |
+| `channel_queue_size` / `channel_max_queue_size` | gauge | `source`, `label`, `iter`, `type`, `payload`; max is a since-start high-water mark, not a windowed maximum |
+| `channel_proc_seconds` | histogram | `source`, `label`, `iter`, `type`, `payload`; send-to-receive delay of sampled receives, wrap mode only |
+| `stream_items_total` | counter | `source`, `label`, `iter`, `payload` |
+| `stream_instances` / `stream_closed_instances` | gauge | `source`, `label`, `iter`, `payload` |
+| `io_ops_total` | counter | `source`, `label`, `iter`, `type`, `op` (`read`/`write`/`flush`/`shutdown`); includes ops skipped by time sampling. Op kinds a wrapper never touched are omitted |
 | `io_bytes_total` | counter | same; all transferred bytes (volume) |
 | `io_sampled_bytes_total` | counter | same; bytes of timed ops - `rate(io_sampled_bytes_total) / rate(io_op_seconds_sum)` is the throughput that stays correct under sampling |
 | `io_errors_total` | counter | same |
 | `io_op_seconds` | histogram | same; sampled ops only |
-| `future_polls_total` | counter | `source`, `label`, `col`; all polls. `col` is empty for name-based ids (`#[future_fn]`) |
+| `future_polls_total` | counter | `source`, `label`; all polls |
 | `future_sampled_polls_total` | counter | same; denominator for the average poll: `rate(future_poll_seconds_total) / rate(future_sampled_polls_total)` |
 | `future_poll_seconds_total` | counter | same; time in timed polls |
 | `future_poll_alloc_bytes_total` / `future_poll_allocs_total` | counter | same; only with `hotpath-alloc` |
@@ -117,11 +117,13 @@ Exported metric families (all prefixed `hotpath_`, durations in seconds):
 | `function_alloc_bytes` | histogram | `function`; bytes allocated per call, values clamp at 1GB. Async entries without per-call totals export the counters only |
 | `function_allocs` | histogram | `function`; allocations per call |
 
-The call-site-keyed families (`mutex_*`, `rwlock_*`, `channel_*`, `stream_*`) mirror the
-profiler's entry identity as labels: `col` is the call-site column (keeps two
-invocations on one source line distinct), `iter` the instantiation index (call sites
-that produce one entry per instantiation), and `payload` the channel/stream item type.
-Aggregate the discriminators away with `sum by (source, label)`.
+The call-site-keyed families (`mutex_*`, `rwlock_*`, `channel_*`, `stream_*`, `io_*`,
+`future_*`) mirror the profiler's entry identity as labels: `source` is the
+column-including `file:line:column` call site (the column keeps two invocations on one
+source line distinct; name-based future ids like `#[future_fn]` appear as the function
+path), `iter` the instantiation index (call sites that produce one entry per
+instantiation), and `payload` the channel/stream item type. Aggregate the
+discriminators away with `sum by (source, label)`.
 
 ## MCP Server
 
