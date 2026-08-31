@@ -1167,9 +1167,13 @@ fn collect_threads(families: &mut Vec<Family>) {
         return;
     }
 
-    // `tid` values are recycled by the OS, so a label pair can outlive the
-    // thread it described; the HELP texts say per-thread series are keyed by
-    // the current sample.
+    // Per-thread series cover only live sampled threads: the rows joined in
+    // from the allocation registry (exited threads) would otherwise grow the
+    // exported label sets without bound under thread churn. Prometheus
+    // staleness handles a dead thread's series disappearing; the bytes it
+    // allocated stay visible in the process-level totals below.
+    let live = &threads.metrics[..threads.live_count];
+
     let labels = |m: &crate::json::ThreadMetrics| {
         vec![("name", m.name.clone()), ("tid", m.os_tid.to_string())]
     };
@@ -1197,9 +1201,7 @@ fn collect_threads(families: &mut Vec<Family>) {
     }
 
     let per_thread_samples = |value: &dyn Fn(&crate::json::ThreadMetrics) -> Option<f64>| {
-        threads
-            .metrics
-            .iter()
+        live.iter()
             .filter_map(|m| {
                 value(m).map(|v| Sample {
                     labels: labels(m),
@@ -1243,8 +1245,7 @@ fn collect_threads(families: &mut Vec<Family>) {
         name: "hotpath_thread_cpu_seconds_total",
         help: "CPU time consumed by each sampled thread, split by mode.",
         kind: FamilyKind::Counter,
-        samples: threads
-            .metrics
+        samples: live
             .iter()
             .flat_map(|m| {
                 [("user", m.cpu_user), ("sys", m.cpu_sys)].map(|(mode, seconds)| Sample {
@@ -1276,6 +1277,41 @@ fn collect_threads(families: &mut Vec<Family>) {
             help: "Bytes deallocated by each thread (requires hotpath-alloc).",
             kind: FamilyKind::Counter,
             samples: dealloc_bytes,
+        });
+    }
+
+    // Process-level totals span every thread ever tracked, exited included:
+    // one bounded series preserving the bytes that leave the per-thread view
+    // when a thread's series goes stale.
+    let (total_alloc, total_dealloc, has_alloc_data) =
+        threads
+            .metrics
+            .iter()
+            .fold((0u64, 0u64, false), |(alloc, dealloc, has), m| {
+                (
+                    alloc + m.alloc_bytes.unwrap_or(0),
+                    dealloc + m.dealloc_bytes.unwrap_or(0),
+                    has || m.alloc_bytes.is_some(),
+                )
+            });
+    if has_alloc_data {
+        families.push(Family {
+            name: "hotpath_alloc_bytes_total",
+            help: "Bytes allocated by the process across all threads, exited included (requires hotpath-alloc).",
+            kind: FamilyKind::Counter,
+            samples: vec![Sample {
+                labels: vec![],
+                value: SampleValue::Scalar(total_alloc as f64),
+            }],
+        });
+        families.push(Family {
+            name: "hotpath_dealloc_bytes_total",
+            help: "Bytes deallocated by the process across all threads, exited included (requires hotpath-alloc).",
+            kind: FamilyKind::Counter,
+            samples: vec![Sample {
+                labels: vec![],
+                value: SampleValue::Scalar(total_dealloc as f64),
+            }],
         });
     }
 }
