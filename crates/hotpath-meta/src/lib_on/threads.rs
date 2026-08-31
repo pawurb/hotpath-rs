@@ -254,6 +254,11 @@ pub(crate) struct ThreadsRaw {
     pub(crate) rss_bytes: Option<u64>,
     pub(crate) current_elapsed_ns: u64,
     pub(crate) sample_interval_ms: u64,
+    /// Bytes allocated/deallocated by threads that never got an allocation
+    /// registry slot (registry full). Counted only in process-wide totals;
+    /// zero without `hotpath-alloc-meta`.
+    pub(crate) overflow_alloc_bytes: u64,
+    pub(crate) overflow_dealloc_bytes: u64,
 }
 
 /// `None` until the thread monitor has started.
@@ -315,12 +320,20 @@ pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
         }
     }
 
+    #[cfg(feature = "hotpath-alloc-meta")]
+    let (overflow_alloc_bytes, overflow_dealloc_bytes) =
+        crate::lib_on::functions::alloc::core::get_overflow_alloc_stats();
+    #[cfg(not(feature = "hotpath-alloc-meta"))]
+    let (overflow_alloc_bytes, overflow_dealloc_bytes) = (0u64, 0u64);
+
     Some(ThreadsRaw {
         metrics: current_metrics,
         live_count,
         rss_bytes,
         current_elapsed_ns,
         sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
+        overflow_alloc_bytes,
+        overflow_dealloc_bytes,
     })
 }
 
@@ -340,15 +353,15 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
     };
     let current_metrics = raw.metrics;
 
-    let (total_alloc, total_dealloc) =
-        current_metrics
-            .iter()
-            .fold((0u64, 0u64), |(alloc, dealloc), m| {
-                (
-                    alloc + m.alloc_bytes.unwrap_or(0),
-                    dealloc + m.dealloc_bytes.unwrap_or(0),
-                )
-            });
+    let (total_alloc, total_dealloc) = current_metrics.iter().fold(
+        (raw.overflow_alloc_bytes, raw.overflow_dealloc_bytes),
+        |(alloc, dealloc), m| {
+            (
+                alloc + m.alloc_bytes.unwrap_or(0),
+                dealloc + m.dealloc_bytes.unwrap_or(0),
+            )
+        },
+    );
 
     let has_alloc_data = current_metrics.iter().any(|m| m.alloc_bytes.is_some());
 
