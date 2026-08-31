@@ -156,6 +156,28 @@ impl IoOpStats {
         }
         crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
     }
+
+    /// Bucket projections of the sampled op durations for the Prometheus
+    /// exporter (sparse native at `schema`, cumulative classic on
+    /// `boundaries`).
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn native_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+        crate::lib_on::native_histograms::native_buckets_opt(
+            self.hist.as_ref(),
+            self.sampled_count > 0,
+            schema,
+            crate::lib_on::native_histograms::NANOS_SCALE,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn classic_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        crate::lib_on::native_histograms::classic_buckets_opt(
+            self.hist.as_ref(),
+            self.sampled_count > 0,
+            boundaries,
+        )
+    }
 }
 
 /// Statistics for a single `io!` creation site (source location + concrete

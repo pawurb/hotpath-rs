@@ -87,6 +87,30 @@ pub(crate) const SLOW_LADDER_NS: &[u64] = &[
     60_000_000_000, // 60s
 ];
 
+/// Bucket boundaries (bytes) for per-call allocation totals - powers of 4
+/// from 64B to 1GiB, matching the alloc histograms' 1GB value clamp.
+pub(crate) const ALLOC_LADDER_BYTES: &[u64] = &[
+    64,
+    256,
+    1_024,
+    4_096,
+    16_384,
+    65_536,
+    262_144,
+    1_048_576,
+    4_194_304,
+    16_777_216,
+    67_108_864,
+    268_435_456,
+    1_073_741_824,
+];
+
+/// Bucket boundaries (allocation counts) for per-call allocation counts -
+/// powers of 4 from 1 to ~1M.
+pub(crate) const ALLOC_LADDER_COUNT: &[u64] = &[
+    1, 4, 16, 64, 256, 1_024, 4_096, 16_384, 65_536, 262_144, 1_048_576,
+];
+
 const TEXT_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 const PROTOBUF_CONTENT_TYPE: &str =
     "application/vnd.google.protobuf; proto=io.prometheus.client.MetricFamily; encoding=delimited";
@@ -257,12 +281,14 @@ fn collect_families() -> Option<Vec<Family>> {
                         sum: seconds(f.total_duration_ns),
                         classic_buckets: classic_pairs(FAST_LADDER_NS, f.bucket_counts),
                         native_buckets: f.native_buckets,
+                        zero_count: 0,
                     }),
                 })
                 .collect(),
         });
     }
 
+    collect_functions_alloc(&mut families);
     collect_sql(&mut families);
     collect_http(&mut families);
     collect_server(&mut families);
@@ -270,8 +296,270 @@ fn collect_families() -> Option<Vec<Family>> {
     collect_rw_locks(&mut families);
     collect_channels(&mut families);
     collect_streams(&mut families);
+    collect_io(&mut families);
+    collect_futures(&mut families);
 
     Some(families)
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_functions_alloc(families: &mut Vec<Family>) {
+    let Some(functions) = crate::functions::get_functions_alloc_raw() else {
+        return;
+    };
+    if functions.is_empty() {
+        return;
+    }
+
+    let labels = |f: &crate::functions::RawFunctionAlloc| vec![("function", f.name.to_string())];
+
+    families.push(Family {
+        name: "hotpath_function_alloc_bytes_total",
+        help: "Total bytes allocated by each instrumented function.",
+        kind: FamilyKind::Counter,
+        samples: functions
+            .iter()
+            .map(|f| Sample {
+                labels: labels(f),
+                value: SampleValue::Scalar(f.total_bytes as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_function_allocs_total",
+        help: "Total allocations made by each instrumented function.",
+        kind: FamilyKind::Counter,
+        samples: functions
+            .iter()
+            .map(|f| Sample {
+                labels: labels(f),
+                value: SampleValue::Scalar(f.total_allocs as f64),
+            })
+            .collect(),
+    });
+
+    // Async entries whose measurements carried no per-call totals export the
+    // counters above only; their histogram projections are empty.
+    let bytes_samples: Vec<Sample> = functions
+        .iter()
+        .filter(|f| f.bytes_sample_count > 0)
+        .map(|f| Sample {
+            labels: labels(f),
+            value: SampleValue::Histogram(HistogramValue {
+                sample_count: f.bytes_sample_count,
+                sum: f.total_bytes as f64,
+                classic_buckets: classic_pairs_units(ALLOC_LADDER_BYTES, f.bytes_classic.clone()),
+                native_buckets: f.bytes_native.clone(),
+                zero_count: f.bytes_zero_count,
+            }),
+        })
+        .collect();
+    if !bytes_samples.is_empty() {
+        families.push(Family {
+            name: "hotpath_function_alloc_bytes",
+            help: "Bytes allocated per call of each instrumented function; values clamp at 1GB.",
+            kind: FamilyKind::Histogram,
+            samples: bytes_samples,
+        });
+    }
+
+    let allocs_samples: Vec<Sample> = functions
+        .iter()
+        .filter(|f| f.allocs_sample_count > 0)
+        .map(|f| Sample {
+            labels: labels(f),
+            value: SampleValue::Histogram(HistogramValue {
+                sample_count: f.allocs_sample_count,
+                sum: f.total_allocs as f64,
+                classic_buckets: classic_pairs_units(ALLOC_LADDER_COUNT, f.allocs_classic.clone()),
+                native_buckets: f.allocs_native.clone(),
+                zero_count: f.allocs_zero_count,
+            }),
+        })
+        .collect();
+    if !allocs_samples.is_empty() {
+        families.push(Family {
+            name: "hotpath_function_allocs",
+            help: "Allocations made per call of each instrumented function.",
+            kind: FamilyKind::Histogram,
+            samples: allocs_samples,
+        });
+    }
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_io(families: &mut Vec<Family>) {
+    use crate::lib_on::io::IoOpKind;
+
+    let mut entries = crate::lib_on::io::get_sorted_io_entries();
+    entries.retain(|e| !e.key.is_empty());
+    if entries.is_empty() {
+        return;
+    }
+
+    const OPS: [(IoOpKind, &str); 4] = [
+        (IoOpKind::Read, "read"),
+        (IoOpKind::Write, "write"),
+        (IoOpKind::Flush, "flush"),
+        (IoOpKind::Shutdown, "shutdown"),
+    ];
+
+    let labels = |e: &crate::lib_on::io::IoEntry, op: &str| {
+        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        labels.push(("type", e.type_name.to_string()));
+        labels.push(("op", op.to_string()));
+        labels
+    };
+
+    // Op kinds a wrapper never touched are skipped rather than exported as
+    // all-zero series; errors count as activity (a retryable-failing reader
+    // records errors without any completed op).
+    let op_samples =
+        |entries: &[crate::lib_on::io::IoEntry],
+         value: &dyn Fn(&crate::lib_on::io::IoOpStats) -> SampleValue| {
+            entries
+                .iter()
+                .flat_map(|e| {
+                    OPS.iter().filter_map(move |&(kind, op)| {
+                        let stats = e.op(kind);
+                        (stats.count > 0 || stats.errors > 0).then(|| Sample {
+                            labels: labels(e, op),
+                            value: value(stats),
+                        })
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+
+    families.push(Family {
+        name: "hotpath_io_ops_total",
+        help: "Total I/O operations per wrapper call site and op kind, including ops skipped by time sampling.",
+        kind: FamilyKind::Counter,
+        samples: op_samples(&entries, &|s| SampleValue::Scalar(s.count as f64)),
+    });
+
+    families.push(Family {
+        name: "hotpath_io_bytes_total",
+        help: "Total bytes transferred per wrapper call site and op kind.",
+        kind: FamilyKind::Counter,
+        samples: op_samples(&entries, &|s| SampleValue::Scalar(s.bytes as f64)),
+    });
+
+    families.push(Family {
+        name: "hotpath_io_sampled_bytes_total",
+        help: "Bytes transferred by timed operations; divide its rate by rate(hotpath_io_op_seconds_sum) for throughput that stays correct under sampling.",
+        kind: FamilyKind::Counter,
+        samples: op_samples(&entries, &|s| SampleValue::Scalar(s.sampled_bytes as f64)),
+    });
+
+    families.push(Family {
+        name: "hotpath_io_errors_total",
+        help: "I/O operations that returned an error, per wrapper call site and op kind.",
+        kind: FamilyKind::Counter,
+        samples: op_samples(&entries, &|s| SampleValue::Scalar(s.errors as f64)),
+    });
+
+    families.push(Family {
+        name: "hotpath_io_op_seconds",
+        help: "Duration of sampled I/O operations per wrapper call site and op kind.",
+        kind: FamilyKind::Histogram,
+        samples: op_samples(&entries, &|s| {
+            SampleValue::Histogram(HistogramValue {
+                sample_count: s.sampled_count,
+                sum: seconds(s.total_nanos),
+                classic_buckets: classic_pairs(FAST_LADDER_NS, s.classic_buckets(FAST_LADDER_NS)),
+                native_buckets: s.native_buckets(NATIVE_SCHEMA),
+                zero_count: 0,
+            })
+        }),
+    });
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_futures(families: &mut Vec<Family>) {
+    let entries = crate::lib_on::futures::get_sorted_future_stats();
+    if entries.is_empty() {
+        return;
+    }
+
+    let labels =
+        |e: &crate::lib_on::futures::FutureEntry| future_labels(e.source, e.label.as_deref());
+
+    families.push(Family {
+        name: "hotpath_future_polls_total",
+        help: "Total polls of each instrumented future, including polls skipped by time sampling.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.total_poll_count as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_future_sampled_polls_total",
+        help: "Timed polls; the denominator for the average poll duration: rate(hotpath_future_poll_seconds_total) / rate(hotpath_future_sampled_polls_total).",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.sampled_polls as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_future_poll_seconds_total",
+        help: "Time spent in timed polls of each instrumented future.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(seconds(e.total_poll_duration_ns)),
+            })
+            .collect(),
+    });
+
+    let alloc_bytes: Vec<Sample> = entries
+        .iter()
+        .filter_map(|e| {
+            e.total_poll_alloc_bytes.map(|bytes| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(bytes as f64),
+            })
+        })
+        .collect();
+    if !alloc_bytes.is_empty() {
+        families.push(Family {
+            name: "hotpath_future_poll_alloc_bytes_total",
+            help: "Bytes allocated during polls of each instrumented future.",
+            kind: FamilyKind::Counter,
+            samples: alloc_bytes,
+        });
+    }
+
+    let alloc_counts: Vec<Sample> = entries
+        .iter()
+        .filter_map(|e| {
+            e.total_poll_alloc_count.map(|count| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(count as f64),
+            })
+        })
+        .collect();
+    if !alloc_counts.is_empty() {
+        families.push(Family {
+            name: "hotpath_future_poll_allocs_total",
+            help: "Allocations made during polls of each instrumented future.",
+            kind: FamilyKind::Counter,
+            samples: alloc_counts,
+        });
+    }
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
@@ -319,6 +607,7 @@ fn collect_mutexes(families: &mut Vec<Family>) {
                         e.classic_wait_buckets(FAST_LADDER_NS),
                     ),
                     native_buckets: e.native_wait_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -340,6 +629,7 @@ fn collect_mutexes(families: &mut Vec<Family>) {
                         e.classic_acquire_buckets(FAST_LADDER_NS),
                     ),
                     native_buckets: e.native_acquire_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -397,6 +687,7 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
                             e.classic_wait_buckets(kind, FAST_LADDER_NS),
                         ),
                         native_buckets: e.native_wait_buckets(kind, NATIVE_SCHEMA),
+                        zero_count: 0,
                     }),
                 })
             })
@@ -420,6 +711,7 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
                             e.classic_acquire_buckets(kind, FAST_LADDER_NS),
                         ),
                         native_buckets: e.native_acquire_buckets(kind, NATIVE_SCHEMA),
+                        zero_count: 0,
                     }),
                 })
             })
@@ -546,6 +838,7 @@ fn collect_channels(families: &mut Vec<Family>) {
                     e.classic_proc_buckets(FAST_LADDER_NS),
                 ),
                 native_buckets: e.native_proc_buckets(NATIVE_SCHEMA),
+                zero_count: 0,
             }),
         })
         .collect();
@@ -664,6 +957,7 @@ fn collect_sql(families: &mut Vec<Family>) {
                         e.classic_buckets(SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -747,6 +1041,7 @@ fn collect_http(families: &mut Vec<Family>) {
                         e.classic_buckets(SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -806,6 +1101,7 @@ fn collect_server(families: &mut Vec<Family>) {
                         e.classic_buckets(SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
+                    zero_count: 0,
                 }),
             })
             .collect(),
@@ -851,6 +1147,21 @@ fn collect_server(families: &mut Vec<Family>) {
     });
 }
 
+/// Futures mirror [`call_site_labels`] minus `iter` (one entry per id, never
+/// per instantiation): `future!` ids are `file:line:column`, so the column
+/// that `display_source` strips rides its own `col` label and keeps same-line
+/// invocations distinct; name-based ids (`#[future_fn]`) pass through with an
+/// empty `col`.
+fn future_labels(id: &'static str, label: Option<&str>) -> Vec<(&'static str, String)> {
+    let source = crate::lib_on::futures::display_source(id);
+    let col = id[source.len()..].trim_start_matches(':');
+    vec![
+        ("source", source.to_string()),
+        ("label", label.unwrap_or_default().to_string()),
+        ("col", col.to_string()),
+    ]
+}
+
 /// Shared call-site identity labels for entries keyed by wrapper macro call
 /// site (locks, channels, streams) - a field-for-field mirror of the store's
 /// entry identity, so distinct entries can never collapse into duplicate
@@ -883,6 +1194,16 @@ fn classic_pairs(ladder: &[u64], counts: Vec<u64>) -> Vec<(f64, u64)> {
         .iter()
         .zip(counts)
         .map(|(&boundary_ns, cumulative)| (seconds(boundary_ns), cumulative))
+        .collect()
+}
+
+/// [`classic_pairs`] for ladders already in base units (bytes, counts): the
+/// boundary is exported as-is.
+fn classic_pairs_units(ladder: &[u64], counts: Vec<u64>) -> Vec<(f64, u64)> {
+    ladder
+        .iter()
+        .zip(counts)
+        .map(|(&boundary, cumulative)| (boundary as f64, cumulative))
         .collect()
 }
 
@@ -919,6 +1240,20 @@ mod tests {
     use crate::prometheus_server::{
         accepts_protobuf, check_auth_with_bearer, query_label, seconds,
     };
+
+    #[test]
+    fn future_labels_keep_call_site_column() {
+        use crate::prometheus_server::future_labels;
+        let a = future_labels("src/main.rs:12:34", None);
+        let b = future_labels("src/main.rs:12:60", None);
+        assert_eq!(a[0], ("source", "src/main.rs:12".to_string()));
+        assert_eq!(a[2], ("col", "34".to_string()));
+        assert_ne!(a, b, "same-line future! sites must stay distinct");
+
+        let named = future_labels("my_module::my_future_fn", Some("x"));
+        assert_eq!(named[0].1, "my_module::my_future_fn");
+        assert_eq!(named[2].1, "");
+    }
 
     #[test]
     fn call_site_labels_mirror_entry_identity() {

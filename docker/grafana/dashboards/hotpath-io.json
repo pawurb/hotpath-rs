@@ -1,0 +1,178 @@
+{
+  "title": "hotpath io / futures / alloc",
+  "uid": "hotpath-io",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "IO throughput by op (timed ops, 1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (source, label, op) (rate(hotpath_io_sampled_bytes_total[1m])) / sum by (source, label, op) (rate(hotpath_io_op_seconds_sum[1m]))",
+          "legendFormat": "{{source}} {{label}} {{op}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "IO p99 op latency (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, source, label, op) (rate(hotpath_io_op_seconds_bucket[1m])))",
+          "legendFormat": "{{source}} {{label}} {{op}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "IO op / error rate (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (source, label, op) (rate(hotpath_io_ops_total[1m]))",
+          "legendFormat": "{{source}} {{label}} {{op}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (source, label, op) (rate(hotpath_io_errors_total[1m])) > 0",
+          "legendFormat": "{{source}} {{label}} {{op}} errors",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "IO volume by op (all ops, 1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (source, label, op) (rate(hotpath_io_bytes_total[1m]))",
+          "legendFormat": "{{source}} {{label}} {{op}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Future average poll duration (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_future_poll_seconds_total[1m]) / rate(hotpath_future_sampled_polls_total[1m])",
+          "legendFormat": "{{source}} {{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Future poll rate (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_future_polls_total[1m])",
+          "legendFormat": "{{source}} {{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Allocation p99 bytes per call (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, function) (rate(hotpath_function_alloc_bytes_bucket[1m])))",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Allocation rate per function (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_function_alloc_bytes_total[1m])",
+          "legendFormat": "{{function}} bytes/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Allocations per function (since start)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "hotpath_function_alloc_bytes_total",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "IO p99 op latency (native histograms, 1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (source, label, op) (rate(hotpath_io_op_seconds[1m])))",
+          "legendFormat": "{{source}} {{label}} {{op}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

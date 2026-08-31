@@ -415,6 +415,7 @@ impl ChannelEntry {
             self.proc_hist.as_ref(),
             self.proc_sampled_count > 0,
             schema,
+            crate::lib_on::native_histograms::NANOS_SCALE,
         )
     }
 

@@ -64,6 +64,8 @@ test_all:
     cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_subsystems -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_flow -- --nocapture --test-threads=1
+    cargo test --features hotpath,hotpath-prometheus --test prometheus_io -- --nocapture --test-threads=1
+    cargo test --features hotpath,hotpath-prometheus --test prometheus_alloc -- --nocapture --test-threads=1
 
 # Run the TUI in demo mode with the Prometheus exporter on port 6772.
 # Scrape it with `docker compose up -d prometheus grafana`:
@@ -113,6 +115,22 @@ grafana-flow-meta:
 # Open the locks / channels / streams Grafana dashboard fed by the legacy meta Prometheus.
 grafana-flow-legacy-meta:
     open "http://localhost:3009/d/hotpath-flow-legacy-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-flow-legacy-meta"
+
+# Open the io / futures / alloc Grafana dashboard fed by the native-histogram Prometheus.
+grafana-io:
+    open "http://localhost:3009/d/hotpath-io" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-io"
+
+# Open the io / futures / alloc Grafana dashboard fed by the legacy (classic buckets only) Prometheus.
+grafana-io-legacy:
+    open "http://localhost:3009/d/hotpath-io-legacy" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-io-legacy"
+
+# Open the io / futures / alloc Grafana dashboard fed by the meta Prometheus (hotpath profiling itself).
+grafana-io-meta:
+    open "http://localhost:3009/d/hotpath-io-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-io-meta"
+
+# Open the io / futures / alloc Grafana dashboard fed by the legacy meta Prometheus.
+grafana-io-legacy-meta:
+    open "http://localhost:3009/d/hotpath-io-legacy-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-io-legacy-meta"
 
 # Open the native-histogram Prometheus UI (started with `docker compose up -d prometheus`).
 prometheus:
