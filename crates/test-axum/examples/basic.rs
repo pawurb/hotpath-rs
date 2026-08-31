@@ -3,7 +3,9 @@
 //! is produced and bucketed by matched route template (`GET /users/{id}`), so
 //! parameter-varied requests to the same route merge into one row. 4xx and
 //! 5xx responses are counted in their own columns; requests that match no
-//! route (the fallback) are bucketed by their normalized raw path.
+//! route (the fallback) collapse into the per-method `<unmatched>` bucket
+//! when they end in an error status and are bucketed by their normalized raw
+//! path when the fallback serves them successfully.
 //!
 //! Run with:
 //!   cargo run -p test-axum --example basic --features hotpath
@@ -32,8 +34,14 @@ async fn crash() -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
-async fn not_found() -> StatusCode {
-    StatusCode::NOT_FOUND
+// Serves one page itself (like a `ServeDir` / `nest_service` target) and
+// 404s everything else.
+async fn fallback(uri: axum::http::Uri) -> (StatusCode, &'static str) {
+    if uri.path() == "/pages/about" {
+        (StatusCode::OK, "about")
+    } else {
+        (StatusCode::NOT_FOUND, "")
+    }
 }
 
 fn app() -> Router {
@@ -43,7 +51,7 @@ fn app() -> Router {
         .route("/users/{id}", get(get_user))
         .route("/users", post(create_user))
         .route("/crash", get(crash))
-        .fallback(not_found))
+        .fallback(fallback))
 }
 
 fn send_requests(port: u16) {
@@ -71,9 +79,17 @@ fn send_requests(port: u16) {
     let err = agent.get(format!("{base}/crash")).call().unwrap_err();
     assert!(matches!(err, ureq::Error::StatusCode(500)));
 
-    // No matching route: bucketed by normalized raw path (GET /missing/{id}).
+    // No matching route + error status: collapsed into GET <unmatched>.
     let err = agent.get(format!("{base}/missing/42")).call().unwrap_err();
     assert!(matches!(err, ureq::Error::StatusCode(404)));
+
+    // No matching route but served by the fallback with 200: keeps its
+    // normalized raw path (GET /pages/about).
+    let resp = agent
+        .get(format!("{base}/pages/about"))
+        .call()
+        .expect("GET /pages/about");
+    assert_eq!(resp.status().as_u16(), 200);
 }
 
 #[tokio::main]

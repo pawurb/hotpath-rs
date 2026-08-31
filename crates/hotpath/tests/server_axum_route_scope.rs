@@ -107,8 +107,9 @@ pub mod tests {
         assert_eq!(users.count, 5);
         assert_eq!(users.sql_per_request, Some(1.0));
         assert_eq!(users.http_per_request, Some(0.0));
-        // Unmatched requests carry no route scope.
-        let missing = by_route("GET /missing");
+        // Unmatched requests carry no route scope; the 404 lands in the
+        // per-method unmatched bucket.
+        let missing = by_route("GET <unmatched>");
         assert_eq!(missing.count, 1);
         assert_eq!(missing.sql_per_request, None);
         assert_eq!(missing.http_per_request, None);
@@ -136,12 +137,12 @@ pub mod tests {
         );
         let missing = stdout
             .lines()
-            .find(|l| l.contains("GET /missing"))
-            .expect("missing row missing");
+            .find(|l| l.contains("GET <unmatched>"))
+            .expect("unmatched row missing");
         let cells: Vec<&str> = missing.split('|').map(str::trim).collect();
         assert_eq!(
             &cells[1..7],
-            &["GET /missing", "1", "1", "0", "-", "-"],
+            &["GET <unmatched>", "1", "1", "0", "-", "-"],
             "{missing}"
         );
     }

@@ -48,14 +48,16 @@ pub mod tests {
         let all_expected = [
             "axum example completed",
             "server - HTTP server response time statistics per route.",
-            // 3 user fetches + create + crash + unmatched = 6.
-            "Total requests: 6",
+            // 3 user fetches + create + crash + unmatched 404 + fallback 200 = 7.
+            "Total requests: 7",
             // Matched routes report the router's own template.
             "GET /users/{id}",
             "POST /users",
             "GET /crash",
-            // Unmatched requests fall back to the normalized raw path.
-            "GET /missing/{id}",
+            // Unmatched requests with an error status collapse per method.
+            "GET <unmatched>",
+            // Unmatched but fallback-served 2xx keeps the normalized raw path.
+            "GET /pages/about",
         ];
         for expected in all_expected {
             assert!(
@@ -72,7 +74,7 @@ pub mod tests {
             .server
             .expect("No server section in report");
 
-        assert_eq!(server.total_calls, 6);
+        assert_eq!(server.total_calls, 7);
         assert_eq!(
             server.total_calls,
             server.data.iter().map(|e| e.count).sum::<u64>()
@@ -102,9 +104,15 @@ pub mod tests {
         assert_eq!(crash.count, 1);
         assert_eq!(crash.status_5xx, 1);
 
-        let unmatched = find("GET /missing/{id}");
+        // Unmatched + error status collapses into the per-method bucket.
+        let unmatched = find("GET <unmatched>");
         assert_eq!(unmatched.count, 1);
         assert_eq!(unmatched.status_4xx, 1);
+
+        // Unmatched but served with 200 by the fallback keeps its own path.
+        let about = find("GET /pages/about");
+        assert_eq!(about.count, 1);
+        assert_eq!(about.status_4xx, 0);
     }
 
     // HOTPATH_METRICS_PORT=6787 TEST_SLEEP_SECONDS=10 cargo run -p test-axum --example basic --features hotpath
@@ -142,7 +150,7 @@ pub mod tests {
                     let parsed: JsonServerList =
                         serde_json::from_str(&body).expect("Failed to parse /server");
                     last_error = None;
-                    if parsed.total_calls == 6 {
+                    if parsed.total_calls == 7 {
                         server = Some(parsed);
                         break;
                     }
@@ -156,7 +164,7 @@ pub mod tests {
         let Some(server) = server else {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("Never observed 6 served requests: {last_error:?}");
+            panic!("Never observed 7 served requests: {last_error:?}");
         };
 
         let users = server
