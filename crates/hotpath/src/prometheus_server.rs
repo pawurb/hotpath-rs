@@ -351,7 +351,7 @@ fn collect_functions_alloc(families: &mut Vec<Family>) {
                 sum: f.total_bytes as f64,
                 classic_buckets: classic_pairs_units(ALLOC_LADDER_BYTES, f.bytes_classic.clone()),
                 native_buckets: f.bytes_native.clone(),
-                zero_count: 0,
+                zero_count: f.bytes_zero_count,
             }),
         })
         .collect();
@@ -374,7 +374,7 @@ fn collect_functions_alloc(families: &mut Vec<Family>) {
                 sum: f.total_allocs as f64,
                 classic_buckets: classic_pairs_units(ALLOC_LADDER_COUNT, f.allocs_classic.clone()),
                 native_buckets: f.allocs_native.clone(),
-                zero_count: 0,
+                zero_count: f.allocs_zero_count,
             }),
         })
         .collect();
