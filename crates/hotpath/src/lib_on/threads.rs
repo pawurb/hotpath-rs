@@ -252,6 +252,11 @@ fn get_rss_bytes() -> Option<u64> {
 /// exporter: live sampled metrics with per-thread allocation stats joined in.
 pub(crate) struct ThreadsRaw {
     pub(crate) metrics: Vec<ThreadMetrics>,
+    /// Threads in the most recent monitor sample - the first `live_count`
+    /// rows of `metrics`. The rows after them are joined in from the
+    /// allocation registry (exited or unsampled threads) so allocation totals
+    /// are never lost, and must not count toward a live-thread gauge.
+    pub(crate) live_count: usize,
     pub(crate) rss_bytes: Option<u64>,
     pub(crate) current_elapsed_ns: u64,
     pub(crate) sample_interval_ms: u64,
@@ -266,6 +271,7 @@ pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
 
     #[allow(unused_mut)]
     let mut current_metrics = state_guard.current_metrics.clone();
+    let live_count = current_metrics.len();
 
     // The allocation registry is the single source of truth for
     // per-thread allocation stats. Live sampled rows join their alloc
@@ -317,6 +323,7 @@ pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
 
     Some(ThreadsRaw {
         metrics: current_metrics,
+        live_count,
         rss_bytes,
         current_elapsed_ns,
         sample_interval_ms: state_guard.sample_interval.as_millis() as u64,

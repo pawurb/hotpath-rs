@@ -1180,7 +1180,7 @@ fn collect_threads(families: &mut Vec<Family>) {
         kind: FamilyKind::Gauge,
         samples: vec![Sample {
             labels: vec![],
-            value: SampleValue::Scalar(threads.metrics.len() as f64),
+            value: SampleValue::Scalar(threads.live_count as f64),
         }],
     });
 
