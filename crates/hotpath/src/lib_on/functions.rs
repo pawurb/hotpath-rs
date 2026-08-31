@@ -519,11 +519,13 @@ pub(crate) fn get_functions_raw() -> Option<Vec<RawFunctionTiming>> {
     query_functions_state(FunctionsQuery::TimingRaw)
 }
 
-/// Outer `None`: worker unreachable; inner `None`: hotpath-alloc not enabled.
+/// Outer `None`: worker unreachable or timed out (the scrape must abort with
+/// 503, never serve 200 with the alloc series missing); inner `None`:
+/// hotpath-alloc not enabled.
 #[cfg(feature = "hotpath-prometheus")]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_functions_alloc_raw() -> Option<Vec<RawFunctionAlloc>> {
-    query_functions_state(FunctionsQuery::AllocRaw).flatten()
+pub(crate) fn get_functions_alloc_raw() -> Option<Option<Vec<RawFunctionAlloc>>> {
+    query_functions_state(FunctionsQuery::AllocRaw)
 }
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
