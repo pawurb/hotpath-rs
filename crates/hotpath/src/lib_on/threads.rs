@@ -248,128 +248,155 @@ fn get_rss_bytes() -> Option<u64> {
     None
 }
 
-/// Get current thread metrics as JSON
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_threads_json() -> JsonThreadsList {
+/// Raw thread snapshot behind both the JSON list and the Prometheus
+/// exporter: live sampled metrics with per-thread allocation stats joined in.
+pub(crate) struct ThreadsRaw {
+    pub(crate) metrics: Vec<ThreadMetrics>,
+    /// Threads in the most recent monitor sample - the first `live_count`
+    /// rows of `metrics`. The rows after them are joined in from the
+    /// allocation registry (exited or unsampled threads) so allocation totals
+    /// are never lost, and must not count toward a live-thread gauge. Only
+    /// the Prometheus exporter distinguishes the two spans.
+    #[cfg_attr(not(feature = "hotpath-prometheus"), allow(dead_code))]
+    pub(crate) live_count: usize,
+    pub(crate) rss_bytes: Option<u64>,
+    pub(crate) current_elapsed_ns: u64,
+    pub(crate) sample_interval_ms: u64,
+}
+
+/// `None` until the thread monitor has started.
+pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
     let rss_bytes = get_rss_bytes();
+    let state = THREADS_STATE.get()?;
+    let state_guard = state.read().ok()?;
+    let current_elapsed_ns = state_guard.start_time.elapsed().as_nanos() as u64;
 
-    if let Some(state) = THREADS_STATE.get() {
-        if let Ok(state_guard) = state.read() {
-            let current_elapsed_ns = state_guard.start_time.elapsed().as_nanos() as u64;
+    #[allow(unused_mut)]
+    let mut current_metrics = state_guard.current_metrics.clone();
+    let live_count = current_metrics.len();
 
-            #[allow(unused_mut)]
-            let mut current_metrics = state_guard.current_metrics.clone();
+    // The allocation registry is the single source of truth for
+    // per-thread allocation stats. Live sampled rows join their alloc
+    // columns from it; registry entries without a live row (threads
+    // that exited, or that allocated but were not sampled yet) become
+    // rows of their own, so allocation stats are never lost. Their
+    // status comes from a liveness probe; their CPU stats are unknown.
+    #[cfg(feature = "hotpath-alloc")]
+    {
+        use crate::lib_on::functions::alloc::core::{
+            get_registered_thread_stats, get_thread_alloc_stats, is_orphaned_tid,
+        };
 
-            // The allocation registry is the single source of truth for
-            // per-thread allocation stats. Live sampled rows join their alloc
-            // columns from it; registry entries without a live row (threads
-            // that exited, or that allocated but were not sampled yet) become
-            // rows of their own, so allocation stats are never lost. Their
-            // status comes from a liveness probe; their CPU stats are unknown.
-            #[cfg(feature = "hotpath-alloc")]
-            {
-                use crate::lib_on::functions::alloc::core::{
-                    get_registered_thread_stats, get_thread_alloc_stats, is_orphaned_tid,
-                };
-
-                for m in &mut current_metrics {
-                    if let Some((alloc, dealloc)) = get_thread_alloc_stats(m.os_tid) {
-                        m.alloc_bytes = Some(alloc);
-                        m.dealloc_bytes = Some(dealloc);
-                        m.mem_diff = Some(alloc as i64 - dealloc as i64);
-                    }
-                }
-
-                let live_tids: HashSet<u64> = current_metrics.iter().map(|m| m.os_tid).collect();
-                for (tid, alloc, dealloc, name) in get_registered_thread_stats() {
-                    if live_tids.contains(&tid) {
-                        continue;
-                    }
-                    let status = if is_orphaned_tid(tid) {
-                        "Exited"
-                    } else {
-                        match collector::is_thread_alive(tid) {
-                            Some(false) => "Exited",
-                            _ => "Unsampled",
-                        }
-                    };
-                    let name = name.unwrap_or_else(|| {
-                        if is_orphaned_tid(tid) {
-                            "(recycled tid)".to_string()
-                        } else {
-                            format!("thread_{tid}")
-                        }
-                    });
-                    let mut m =
-                        ThreadMetrics::new(tid, name, status.to_string(), String::new(), 0.0, 0.0);
-                    m.alloc_bytes = Some(alloc);
-                    m.dealloc_bytes = Some(dealloc);
-                    m.mem_diff = Some(alloc as i64 - dealloc as i64);
-                    current_metrics.push(m);
-                }
+        for m in &mut current_metrics {
+            if let Some((alloc, dealloc)) = get_thread_alloc_stats(m.os_tid) {
+                m.alloc_bytes = Some(alloc);
+                m.dealloc_bytes = Some(dealloc);
+                m.mem_diff = Some(alloc as i64 - dealloc as i64);
             }
+        }
 
-            let (total_alloc, total_dealloc) =
-                current_metrics
-                    .iter()
-                    .fold((0u64, 0u64), |(alloc, dealloc), m| {
-                        (
-                            alloc + m.alloc_bytes.unwrap_or(0),
-                            dealloc + m.dealloc_bytes.unwrap_or(0),
-                        )
-                    });
-
-            let has_alloc_data = current_metrics.iter().any(|m| m.alloc_bytes.is_some());
-
-            let (total_alloc_bytes, total_dealloc_bytes, alloc_dealloc_diff) = if has_alloc_data {
-                let diff = total_alloc as i64 - total_dealloc as i64;
-                (
-                    Some(format_bytes(total_alloc)),
-                    Some(format_bytes(total_dealloc)),
-                    Some(format_bytes_signed(diff)),
-                )
+        let live_tids: HashSet<u64> = current_metrics.iter().map(|m| m.os_tid).collect();
+        for (tid, alloc, dealloc, name) in get_registered_thread_stats() {
+            if live_tids.contains(&tid) {
+                continue;
+            }
+            let status = if is_orphaned_tid(tid) {
+                "Exited"
             } else {
-                (None, None, None)
+                match collector::is_thread_alive(tid) {
+                    Some(false) => "Exited",
+                    _ => "Unsampled",
+                }
             };
-
-            let mut sorted_metrics: Vec<&ThreadMetrics> = current_metrics.iter().collect();
-
-            #[cfg(feature = "hotpath-alloc")]
-            sorted_metrics.sort_by_key(|m| {
-                std::cmp::Reverse(m.alloc_bytes.unwrap_or(0).max(m.dealloc_bytes.unwrap_or(0)))
+            let name = name.unwrap_or_else(|| {
+                if is_orphaned_tid(tid) {
+                    "(recycled tid)".to_string()
+                } else {
+                    format!("thread_{tid}")
+                }
             });
-
-            #[cfg(not(feature = "hotpath-alloc"))]
-            sorted_metrics.sort_by(|a, b| {
-                b.cpu_percent_max
-                    .unwrap_or(0.0)
-                    .total_cmp(&a.cpu_percent_max.unwrap_or(0.0))
-            });
-
-            return JsonThreadsList {
-                current_elapsed_ns,
-                sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
-                data: sorted_metrics
-                    .iter()
-                    .map(|m| JsonThreadEntry::from(*m))
-                    .collect(),
-                thread_count: current_metrics.len(),
-                rss_bytes: rss_bytes.map(format_bytes),
-                total_alloc_bytes,
-                total_dealloc_bytes,
-                alloc_dealloc_diff,
-            };
+            let mut m = ThreadMetrics::new(tid, name, status.to_string(), String::new(), 0.0, 0.0);
+            m.alloc_bytes = Some(alloc);
+            m.dealloc_bytes = Some(dealloc);
+            m.mem_diff = Some(alloc as i64 - dealloc as i64);
+            current_metrics.push(m);
         }
     }
 
+    Some(ThreadsRaw {
+        metrics: current_metrics,
+        live_count,
+        rss_bytes,
+        current_elapsed_ns,
+        sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
+    })
+}
+
+/// Get current thread metrics as JSON
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn get_threads_json() -> JsonThreadsList {
+    let Some(raw) = get_threads_raw() else {
+        return JsonThreadsList {
+            current_elapsed_ns: 0,
+            sample_interval_ms: *THREADS_INTERVAL_MS,
+            data: Vec::new(),
+            thread_count: 0,
+            rss_bytes: get_rss_bytes().map(format_bytes),
+            total_alloc_bytes: None,
+            total_dealloc_bytes: None,
+            alloc_dealloc_diff: None,
+        };
+    };
+    let current_metrics = raw.metrics;
+
+    let (total_alloc, total_dealloc) =
+        current_metrics
+            .iter()
+            .fold((0u64, 0u64), |(alloc, dealloc), m| {
+                (
+                    alloc + m.alloc_bytes.unwrap_or(0),
+                    dealloc + m.dealloc_bytes.unwrap_or(0),
+                )
+            });
+
+    let has_alloc_data = current_metrics.iter().any(|m| m.alloc_bytes.is_some());
+
+    let (total_alloc_bytes, total_dealloc_bytes, alloc_dealloc_diff) = if has_alloc_data {
+        let diff = total_alloc as i64 - total_dealloc as i64;
+        (
+            Some(format_bytes(total_alloc)),
+            Some(format_bytes(total_dealloc)),
+            Some(format_bytes_signed(diff)),
+        )
+    } else {
+        (None, None, None)
+    };
+
+    let mut sorted_metrics: Vec<&ThreadMetrics> = current_metrics.iter().collect();
+
+    #[cfg(feature = "hotpath-alloc")]
+    sorted_metrics.sort_by_key(|m| {
+        std::cmp::Reverse(m.alloc_bytes.unwrap_or(0).max(m.dealloc_bytes.unwrap_or(0)))
+    });
+
+    #[cfg(not(feature = "hotpath-alloc"))]
+    sorted_metrics.sort_by(|a, b| {
+        b.cpu_percent_max
+            .unwrap_or(0.0)
+            .total_cmp(&a.cpu_percent_max.unwrap_or(0.0))
+    });
+
     JsonThreadsList {
-        current_elapsed_ns: 0,
-        sample_interval_ms: *THREADS_INTERVAL_MS,
-        data: Vec::new(),
-        thread_count: 0,
-        rss_bytes: rss_bytes.map(format_bytes),
-        total_alloc_bytes: None,
-        total_dealloc_bytes: None,
-        alloc_dealloc_diff: None,
+        current_elapsed_ns: raw.current_elapsed_ns,
+        sample_interval_ms: raw.sample_interval_ms,
+        data: sorted_metrics
+            .iter()
+            .map(|m| JsonThreadEntry::from(*m))
+            .collect(),
+        thread_count: current_metrics.len(),
+        rss_bytes: raw.rss_bytes.map(format_bytes),
+        total_alloc_bytes,
+        total_dealloc_bytes,
+        alloc_dealloc_diff,
     }
 }

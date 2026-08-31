@@ -66,6 +66,7 @@ test_all:
     cargo test --features hotpath,hotpath-prometheus --test prometheus_flow -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_io -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_alloc -- --nocapture --test-threads=1
+    cargo test --features hotpath,hotpath-prometheus --test prometheus_system -- --nocapture --test-threads=1
 
 # Run the TUI in demo mode with the Prometheus exporter on port 6772.
 # Scrape it with `docker compose up -d prometheus grafana`:
@@ -131,6 +132,22 @@ grafana-io-meta:
 # Open the io / futures / alloc Grafana dashboard fed by the legacy meta Prometheus.
 grafana-io-legacy-meta:
     open "http://localhost:3009/d/hotpath-io-legacy-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-io-legacy-meta"
+
+# Open the threads / tokio / gauges Grafana dashboard fed by the native-histogram Prometheus.
+grafana-system:
+    open "http://localhost:3009/d/hotpath-system" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-system"
+
+# Open the threads / tokio / gauges Grafana dashboard fed by the legacy (classic buckets only) Prometheus.
+grafana-system-legacy:
+    open "http://localhost:3009/d/hotpath-system-legacy" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-system-legacy"
+
+# Open the threads / tokio / gauges Grafana dashboard fed by the meta Prometheus (hotpath profiling itself).
+grafana-system-meta:
+    open "http://localhost:3009/d/hotpath-system-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-system-meta"
+
+# Open the threads / tokio / gauges Grafana dashboard fed by the legacy meta Prometheus.
+grafana-system-legacy-meta:
+    open "http://localhost:3009/d/hotpath-system-legacy-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-system-legacy-meta"
 
 # Open the native-histogram Prometheus UI (started with `docker compose up -d prometheus`).
 prometheus:
