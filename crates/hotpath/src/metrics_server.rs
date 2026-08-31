@@ -27,7 +27,9 @@ pub(crate) static METRICS_AUTH_TOKEN: LazyLock<Option<String>> =
 pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_METRICS_SERVER_OFF"));
 
-pub(crate) static RECV_TIMEOUT_MS: u64 = 250;
+// Worker snapshot queries can take hundreds of ms in debug builds of large
+// programs; keep well below the TUI's 2s client timeout.
+pub(crate) static RECV_TIMEOUT_MS: u64 = 1000;
 
 const TOKIO_RUNTIME_HINT: &str =
     "Tokio runtime metrics not available - use hotpath::tokio_runtime!() to start collection";
