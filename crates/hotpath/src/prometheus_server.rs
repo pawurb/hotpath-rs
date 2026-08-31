@@ -298,6 +298,10 @@ fn collect_families() -> Option<Vec<Family>> {
     collect_streams(&mut families);
     collect_io(&mut families);
     collect_futures(&mut families);
+    collect_threads(&mut families);
+    #[cfg(feature = "tokio")]
+    collect_tokio_runtime(&mut families);
+    collect_gauges(&mut families);
 
     Some(families)
 }
@@ -1149,6 +1153,380 @@ fn collect_server(families: &mut Vec<Family>) {
             .map(|e| Sample {
                 labels: route_labels(e),
                 value: SampleValue::Scalar(e.http_calls as f64),
+            })
+            .collect(),
+    });
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_threads(families: &mut Vec<Family>) {
+    let Some(threads) = crate::lib_on::threads::get_threads_raw() else {
+        return;
+    };
+    if threads.metrics.is_empty() {
+        return;
+    }
+
+    // `tid` values are recycled by the OS, so a label pair can outlive the
+    // thread it described; the HELP texts say per-thread series are keyed by
+    // the current sample.
+    let labels = |m: &crate::json::ThreadMetrics| {
+        vec![("name", m.name.clone()), ("tid", m.os_tid.to_string())]
+    };
+
+    families.push(Family {
+        name: "hotpath_threads",
+        help: "Threads in the most recent monitor sample.",
+        kind: FamilyKind::Gauge,
+        samples: vec![Sample {
+            labels: vec![],
+            value: SampleValue::Scalar(threads.metrics.len() as f64),
+        }],
+    });
+
+    if let Some(rss) = threads.rss_bytes {
+        families.push(Family {
+            name: "hotpath_rss_bytes",
+            help: "Resident set size of the process.",
+            kind: FamilyKind::Gauge,
+            samples: vec![Sample {
+                labels: vec![],
+                value: SampleValue::Scalar(rss as f64),
+            }],
+        });
+    }
+
+    let per_thread_samples = |value: &dyn Fn(&crate::json::ThreadMetrics) -> Option<f64>| {
+        threads
+            .metrics
+            .iter()
+            .filter_map(|m| {
+                value(m).map(|v| Sample {
+                    labels: labels(m),
+                    value: SampleValue::Scalar(v),
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let cpu_percent = per_thread_samples(&|m| m.cpu_percent);
+    if !cpu_percent.is_empty() {
+        families.push(Family {
+            name: "hotpath_thread_cpu_percent",
+            help: "CPU usage of each sampled thread over the last monitor interval.",
+            kind: FamilyKind::Gauge,
+            samples: cpu_percent,
+        });
+    }
+
+    let cpu_percent_max = per_thread_samples(&|m| m.cpu_percent_max);
+    if !cpu_percent_max.is_empty() {
+        families.push(Family {
+            name: "hotpath_thread_cpu_percent_max",
+            help: "Since-start peak CPU usage of each sampled thread, not a windowed maximum.",
+            kind: FamilyKind::Gauge,
+            samples: cpu_percent_max,
+        });
+    }
+
+    let cpu_percent_avg = per_thread_samples(&|m| m.cpu_percent_avg);
+    if !cpu_percent_avg.is_empty() {
+        families.push(Family {
+            name: "hotpath_thread_cpu_percent_avg",
+            help: "Lifetime average CPU usage of each sampled thread.",
+            kind: FamilyKind::Gauge,
+            samples: cpu_percent_avg,
+        });
+    }
+
+    families.push(Family {
+        name: "hotpath_thread_cpu_seconds_total",
+        help: "CPU time consumed by each sampled thread, split by mode.",
+        kind: FamilyKind::Counter,
+        samples: threads
+            .metrics
+            .iter()
+            .flat_map(|m| {
+                [("user", m.cpu_user), ("sys", m.cpu_sys)].map(|(mode, seconds)| Sample {
+                    labels: {
+                        let mut labels = labels(m);
+                        labels.push(("mode", mode.to_string()));
+                        labels
+                    },
+                    value: SampleValue::Scalar(seconds),
+                })
+            })
+            .collect(),
+    });
+
+    let alloc_bytes = per_thread_samples(&|m| m.alloc_bytes.map(|b| b as f64));
+    if !alloc_bytes.is_empty() {
+        families.push(Family {
+            name: "hotpath_thread_alloc_bytes_total",
+            help: "Bytes allocated by each thread (requires hotpath-alloc).",
+            kind: FamilyKind::Counter,
+            samples: alloc_bytes,
+        });
+    }
+
+    let dealloc_bytes = per_thread_samples(&|m| m.dealloc_bytes.map(|b| b as f64));
+    if !dealloc_bytes.is_empty() {
+        families.push(Family {
+            name: "hotpath_thread_dealloc_bytes_total",
+            help: "Bytes deallocated by each thread (requires hotpath-alloc).",
+            kind: FamilyKind::Counter,
+            samples: dealloc_bytes,
+        });
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_tokio_runtime(families: &mut Vec<Family>) {
+    let Some(rt) = crate::lib_on::tokio_runtime::get_runtime_json() else {
+        return;
+    };
+
+    let mut gauge = |name: &'static str, help: &'static str, value: f64| {
+        families.push(Family {
+            name,
+            help,
+            kind: FamilyKind::Gauge,
+            samples: vec![Sample {
+                labels: vec![],
+                value: SampleValue::Scalar(value),
+            }],
+        });
+    };
+
+    gauge(
+        "hotpath_tokio_workers",
+        "Worker threads of the sampled tokio runtime.",
+        rt.num_workers as f64,
+    );
+    gauge(
+        "hotpath_tokio_alive_tasks",
+        "Tasks currently alive in the sampled tokio runtime.",
+        rt.num_alive_tasks as f64,
+    );
+    gauge(
+        "hotpath_tokio_global_queue_depth",
+        "Tasks waiting in the runtime's global injection queue.",
+        rt.global_queue_depth as f64,
+    );
+    if let Some(v) = rt.num_blocking_threads {
+        gauge(
+            "hotpath_tokio_blocking_threads",
+            "Threads in the blocking pool.",
+            v as f64,
+        );
+    }
+    if let Some(v) = rt.num_idle_blocking_threads {
+        gauge(
+            "hotpath_tokio_idle_blocking_threads",
+            "Idle threads in the blocking pool.",
+            v as f64,
+        );
+    }
+    if let Some(v) = rt.blocking_queue_depth {
+        gauge(
+            "hotpath_tokio_blocking_queue_depth",
+            "Tasks waiting for the blocking pool.",
+            v as f64,
+        );
+    }
+
+    let mut counter = |name: &'static str, help: &'static str, value: Option<u64>| {
+        if let Some(value) = value {
+            families.push(Family {
+                name,
+                help,
+                kind: FamilyKind::Counter,
+                samples: vec![Sample {
+                    labels: vec![],
+                    value: SampleValue::Scalar(value as f64),
+                }],
+            });
+        }
+    };
+
+    counter(
+        "hotpath_tokio_spawned_tasks_total",
+        "Tasks spawned on the runtime since start.",
+        rt.spawned_tasks_count,
+    );
+    counter(
+        "hotpath_tokio_remote_schedules_total",
+        "Tasks scheduled from outside the runtime since start.",
+        rt.remote_schedule_count,
+    );
+    counter(
+        "hotpath_tokio_io_fd_registered_total",
+        "File descriptors registered with the io driver.",
+        rt.io_driver_fd_registered_count,
+    );
+    counter(
+        "hotpath_tokio_io_fd_deregistered_total",
+        "File descriptors deregistered from the io driver.",
+        rt.io_driver_fd_deregistered_count,
+    );
+    counter(
+        "hotpath_tokio_io_ready_events_total",
+        "Readiness events delivered by the io driver.",
+        rt.io_driver_ready_count,
+    );
+
+    if rt.workers.is_empty() {
+        return;
+    }
+
+    let worker_labels = |index: usize| vec![("worker", index.to_string())];
+
+    families.push(Family {
+        name: "hotpath_tokio_worker_parks_total",
+        help: "Times each worker parked (went idle).",
+        kind: FamilyKind::Counter,
+        samples: rt
+            .workers
+            .iter()
+            .map(|w| Sample {
+                labels: worker_labels(w.index),
+                value: SampleValue::Scalar(w.park_count as f64),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_tokio_worker_busy_seconds_total",
+        help: "Time each worker spent executing tasks.",
+        kind: FamilyKind::Counter,
+        samples: rt
+            .workers
+            .iter()
+            .map(|w| Sample {
+                labels: worker_labels(w.index),
+                value: SampleValue::Scalar(w.busy_duration_ms as f64 / 1e3),
+            })
+            .collect(),
+    });
+
+    let worker_counter =
+        |families: &mut Vec<Family>,
+         name: &'static str,
+         help: &'static str,
+         value: &dyn Fn(&crate::json::JsonRuntimeWorker) -> Option<u64>| {
+            let samples: Vec<Sample> = rt
+                .workers
+                .iter()
+                .filter_map(|w| {
+                    value(w).map(|v| Sample {
+                        labels: worker_labels(w.index),
+                        value: SampleValue::Scalar(v as f64),
+                    })
+                })
+                .collect();
+            if !samples.is_empty() {
+                families.push(Family {
+                    name,
+                    help,
+                    kind: FamilyKind::Counter,
+                    samples,
+                });
+            }
+        };
+
+    worker_counter(
+        families,
+        "hotpath_tokio_worker_polls_total",
+        "Tasks polled by each worker.",
+        &|w| w.poll_count,
+    );
+    worker_counter(
+        families,
+        "hotpath_tokio_worker_steals_total",
+        "Tasks each worker stole from other workers' queues.",
+        &|w| w.steal_count,
+    );
+
+    let local_depths: Vec<Sample> = rt
+        .workers
+        .iter()
+        .filter_map(|w| {
+            w.local_queue_depth.map(|v| Sample {
+                labels: worker_labels(w.index),
+                value: SampleValue::Scalar(v as f64),
+            })
+        })
+        .collect();
+    if !local_depths.is_empty() {
+        families.push(Family {
+            name: "hotpath_tokio_worker_local_queue_depth",
+            help: "Tasks waiting in each worker's local queue.",
+            kind: FamilyKind::Gauge,
+            samples: local_depths,
+        });
+    }
+}
+
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+fn collect_gauges(families: &mut Vec<Family>) {
+    let entries = crate::lib_on::debug::get_sorted_debug_gauge_entries();
+    if entries.is_empty() {
+        return;
+    }
+
+    let labels = |e: &crate::lib_on::debug::gauge::GaugeEntry| {
+        vec![("key", e.key.to_string()), ("source", e.source.to_string())]
+    };
+
+    families.push(Family {
+        name: "hotpath_gauge",
+        help: "Current value of each gauge! entry.",
+        kind: FamilyKind::Gauge,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.current_value),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_gauge_min",
+        help: "Since-start minimum of each gauge! entry.",
+        kind: FamilyKind::Gauge,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.min_value),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_gauge_max",
+        help: "Since-start maximum of each gauge! entry.",
+        kind: FamilyKind::Gauge,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.max_value),
+            })
+            .collect(),
+    });
+
+    families.push(Family {
+        name: "hotpath_gauge_updates_total",
+        help: "Updates applied to each gauge! entry.",
+        kind: FamilyKind::Counter,
+        samples: entries
+            .iter()
+            .map(|e| Sample {
+                labels: labels(e),
+                value: SampleValue::Scalar(e.update_count as f64),
             })
             .collect(),
     });

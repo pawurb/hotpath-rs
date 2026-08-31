@@ -1,0 +1,161 @@
+{
+  "title": "hotpath threads / tokio / gauges",
+  "uid": "hotpath-system",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Thread CPU % (current sample)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "hotpath_thread_cpu_percent",
+          "legendFormat": "{{name}} ({{tid}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Thread CPU time rate by mode (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_thread_cpu_seconds_total[1m])",
+          "legendFormat": "{{name}} {{mode}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Thread allocation rate (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_thread_alloc_bytes_total[1m])",
+          "legendFormat": "{{name}} alloc",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(hotpath_thread_dealloc_bytes_total[1m])",
+          "legendFormat": "{{name}} dealloc",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Threads",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 6, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "expr": "hotpath_threads",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "RSS",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "hotpath_rss_bytes",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Tokio worker busy ratio (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_tokio_worker_busy_seconds_total[1m])",
+          "legendFormat": "worker {{worker}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Tokio queue depths",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "hotpath_tokio_global_queue_depth",
+          "legendFormat": "global",
+          "refId": "A"
+        },
+        {
+          "expr": "hotpath_tokio_worker_local_queue_depth",
+          "legendFormat": "worker {{worker}}",
+          "refId": "B"
+        },
+        {
+          "expr": "hotpath_tokio_alive_tasks",
+          "legendFormat": "alive tasks",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Tokio poll / park rate (1m window)",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(hotpath_tokio_worker_polls_total[1m])",
+          "legendFormat": "polls worker {{worker}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(hotpath_tokio_worker_parks_total[1m])",
+          "legendFormat": "parks worker {{worker}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Gauges",
+      "datasource": { "type": "prometheus", "uid": "hotpath-prom" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "hotpath_gauge",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
