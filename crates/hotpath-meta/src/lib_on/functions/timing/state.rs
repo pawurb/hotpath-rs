@@ -61,7 +61,7 @@ pub(crate) struct FunctionStats {
 
 impl FunctionStats {
     const LOW_NS: u64 = 1;
-    const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
+    const HIGH_NS: u64 = crate::lib_on::MAX_DURATION_NS;
     const SIGFIGS: u8 = 3;
 
     fn new(id: u32, name: &'static str, wrapper: bool) -> Self {
@@ -149,7 +149,11 @@ impl FunctionStats {
     #[cfg(feature = "hotpath-prometheus-meta")]
     pub(crate) fn native_duration_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
         match self.hist.as_ref().filter(|_| self.sampled_count > 0) {
-            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(hist, schema),
+            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(
+                hist,
+                schema,
+                crate::lib_on::native_histograms::NANOS_SCALE,
+            ),
             None => Vec::new(),
         }
     }

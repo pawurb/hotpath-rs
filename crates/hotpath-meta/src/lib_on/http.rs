@@ -75,7 +75,7 @@ pub(crate) struct HttpEntry {
 
 impl HttpEntry {
     const LOW_NS: u64 = 1;
-    const HIGH_NS: u64 = 1_000_000_000_000; // 1000s
+    const HIGH_NS: u64 = crate::lib_on::MAX_DURATION_NS;
     const SIGFIGS: u8 = 3;
 
     fn new(
@@ -121,6 +121,32 @@ impl HttpEntry {
             return None;
         }
         crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
+    }
+
+    /// Sparse native-histogram buckets of recorded durations, `(index, count)`
+    /// at `schema`, for the Prometheus exporter.
+    #[cfg(feature = "hotpath-prometheus-meta")]
+    pub(crate) fn native_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+        match self.hist.as_ref().filter(|_| self.count > 0) {
+            Some(hist) => crate::lib_on::native_histograms::native_bucket_counts(
+                hist,
+                schema,
+                crate::lib_on::native_histograms::NANOS_SCALE,
+            ),
+            None => Vec::new(),
+        }
+    }
+
+    /// Cumulative classic-bucket counts of recorded durations at or below each
+    /// boundary (ns), exact to the histogram's 0.1% resolution.
+    #[cfg(feature = "hotpath-prometheus-meta")]
+    pub(crate) fn classic_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        match self.hist.as_ref().filter(|_| self.count > 0) {
+            Some(hist) => {
+                crate::lib_on::native_histograms::cumulative_bucket_counts(hist, boundaries)
+            }
+            None => vec![0; boundaries.len()],
+        }
     }
 }
 
