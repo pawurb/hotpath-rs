@@ -131,6 +131,45 @@ impl MutexEntry {
     pub(crate) fn acquire_histogram_base64(&self) -> Option<String> {
         self.encode_histogram(&self.acquire_hist)
     }
+
+    /// Bucket projections of the sampled wait/acquire durations for the
+    /// Prometheus exporter (sparse native at `schema`, cumulative classic on
+    /// `boundaries`).
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn native_wait_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+        crate::lib_on::native_histograms::native_buckets_opt(
+            self.wait_hist.as_ref(),
+            self.sampled_count > 0,
+            schema,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn classic_wait_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        crate::lib_on::native_histograms::classic_buckets_opt(
+            self.wait_hist.as_ref(),
+            self.sampled_count > 0,
+            boundaries,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn native_acquire_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+        crate::lib_on::native_histograms::native_buckets_opt(
+            self.acquire_hist.as_ref(),
+            self.sampled_count > 0,
+            schema,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn classic_acquire_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        crate::lib_on::native_histograms::classic_buckets_opt(
+            self.acquire_hist.as_ref(),
+            self.sampled_count > 0,
+            boundaries,
+        )
+    }
 }
 
 pub(crate) struct MutexesInternalState {

@@ -407,6 +407,26 @@ impl ChannelEntry {
         crate::lib_on::histograms::histogram_base64(self.proc_hist.as_ref()?)
     }
 
+    /// Bucket projections of the sampled processing delays for the Prometheus
+    /// exporter (wrap mode only; empty without a proc histogram).
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn native_proc_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+        crate::lib_on::native_histograms::native_buckets_opt(
+            self.proc_hist.as_ref(),
+            self.proc_sampled_count > 0,
+            schema,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn classic_proc_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+        crate::lib_on::native_histograms::classic_buckets_opt(
+            self.proc_hist.as_ref(),
+            self.proc_sampled_count > 0,
+            boundaries,
+        )
+    }
+
     #[inline]
     fn record_activity(&mut self, ts_ns: u64) {
         // Per-thread batch flushing can deliver events out of timestamp order, so

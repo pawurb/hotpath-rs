@@ -1,0 +1,282 @@
+{
+  "title": "hotpath locks / channels / streams legacy",
+  "uid": "hotpath-flow-legacy",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Mutex p99 (classic buckets) wait by call site (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, source, label) (rate(hotpath_mutex_wait_seconds_bucket[1m])))",
+          "legendFormat": "{{source}} {{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Mutex acquisition rate / time held per second (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hotpath_mutex_acquisitions_total[1m])",
+          "legendFormat": "{{source}} {{label}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(hotpath_mutex_acquire_seconds_sum[1m])",
+          "legendFormat": "{{source}} {{label}} held s/s",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "RwLock p99 (classic buckets) wait by side (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, source, label, op) (rate(hotpath_rwlock_wait_seconds_bucket[1m])))",
+          "legendFormat": "{{source}} {{label}} {{op}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "RwLock acquisition rate by side (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hotpath_rwlock_acquisitions_total[1m])",
+          "legendFormat": "{{source}} {{label}} {{op}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Channel send / receive rate (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hotpath_channel_sent_total[1m])",
+          "legendFormat": "{{source}} {{label}} sent",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(hotpath_channel_received_total[1m])",
+          "legendFormat": "{{source}} {{label}} received",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Current channel queue depth",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "hotpath_channel_queue_size",
+          "legendFormat": "{{source}} {{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Channel p99 (classic buckets) processing delay (wrap mode, 1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, source, label) (rate(hotpath_channel_proc_seconds_bucket[1m])))",
+          "legendFormat": "{{source}} {{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Stream item rate (1m window)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hotpath_stream_items_total[1m])",
+          "legendFormat": "{{source}} {{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Max queue depth per channel (since start)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hotpath-prom-legacy"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "targets": [
+        {
+          "expr": "hotpath_channel_max_queue_size",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

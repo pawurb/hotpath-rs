@@ -115,20 +115,30 @@ impl RwLockEntry {
         }
     }
 
-    pub(crate) fn wait_avg_nanos(&self, kind: RwLockKind) -> u64 {
-        let total = match kind {
+    pub(crate) fn wait_total_nanos(&self, kind: RwLockKind) -> u64 {
+        match kind {
             RwLockKind::Read => self.read_wait_total_nanos,
             RwLockKind::Write => self.write_wait_total_nanos,
-        };
-        total.checked_div(self.sampled_count(kind)).unwrap_or(0)
+        }
+    }
+
+    pub(crate) fn acquire_total_nanos(&self, kind: RwLockKind) -> u64 {
+        match kind {
+            RwLockKind::Read => self.read_acquire_total_nanos,
+            RwLockKind::Write => self.write_acquire_total_nanos,
+        }
+    }
+
+    pub(crate) fn wait_avg_nanos(&self, kind: RwLockKind) -> u64 {
+        self.wait_total_nanos(kind)
+            .checked_div(self.sampled_count(kind))
+            .unwrap_or(0)
     }
 
     pub(crate) fn acquire_avg_nanos(&self, kind: RwLockKind) -> u64 {
-        let total = match kind {
-            RwLockKind::Read => self.read_acquire_total_nanos,
-            RwLockKind::Write => self.write_acquire_total_nanos,
-        };
-        total.checked_div(self.sampled_count(kind)).unwrap_or(0)
+        self.acquire_total_nanos(kind)
+            .checked_div(self.sampled_count(kind))
+            .unwrap_or(0)
     }
 
     fn percentile(hist: &Option<Histogram<u64>>, count: u64, p: f64) -> u64 {
@@ -175,6 +185,61 @@ impl RwLockEntry {
             RwLockKind::Write => &self.write_acquire_hist,
         };
         self.encode_histogram(kind, hist)
+    }
+
+    /// Bucket projections of the sampled wait/acquire durations of one lock
+    /// side for the Prometheus exporter (sparse native at `schema`, cumulative
+    /// classic on `boundaries`).
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn native_wait_buckets(&self, kind: RwLockKind, schema: i32) -> Vec<(i32, u64)> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_wait_hist,
+            RwLockKind::Write => &self.write_wait_hist,
+        };
+        crate::lib_on::native_histograms::native_buckets_opt(
+            hist.as_ref(),
+            self.sampled_count(kind) > 0,
+            schema,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn classic_wait_buckets(&self, kind: RwLockKind, boundaries: &[u64]) -> Vec<u64> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_wait_hist,
+            RwLockKind::Write => &self.write_wait_hist,
+        };
+        crate::lib_on::native_histograms::classic_buckets_opt(
+            hist.as_ref(),
+            self.sampled_count(kind) > 0,
+            boundaries,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn native_acquire_buckets(&self, kind: RwLockKind, schema: i32) -> Vec<(i32, u64)> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_acquire_hist,
+            RwLockKind::Write => &self.write_acquire_hist,
+        };
+        crate::lib_on::native_histograms::native_buckets_opt(
+            hist.as_ref(),
+            self.sampled_count(kind) > 0,
+            schema,
+        )
+    }
+
+    #[cfg(feature = "hotpath-prometheus")]
+    pub(crate) fn classic_acquire_buckets(&self, kind: RwLockKind, boundaries: &[u64]) -> Vec<u64> {
+        let hist = match kind {
+            RwLockKind::Read => &self.read_acquire_hist,
+            RwLockKind::Write => &self.write_acquire_hist,
+        };
+        crate::lib_on::native_histograms::classic_buckets_opt(
+            hist.as_ref(),
+            self.sampled_count(kind) > 0,
+            boundaries,
+        )
     }
 }
 
