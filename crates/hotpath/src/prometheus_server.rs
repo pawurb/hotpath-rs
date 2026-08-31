@@ -413,7 +413,7 @@ fn collect_io(families: &mut Vec<Family>) {
     ];
 
     let labels = |e: &crate::lib_on::io::IoEntry, op: &str| {
-        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        let mut labels = call_site_labels(e.key, e.label.as_deref(), e.iter);
         labels.push(("type", e.type_name.to_string()));
         labels.push(("op", op.to_string()));
         labels
@@ -582,7 +582,7 @@ fn collect_mutexes(families: &mut Vec<Family>) {
     }
 
     let labels = |e: &crate::lib_on::mutexes::MutexEntry| {
-        call_site_labels(e.key, e.source, e.label.as_deref(), e.iter)
+        call_site_labels(e.key, e.label.as_deref(), e.iter)
     };
 
     families.push(Family {
@@ -657,7 +657,7 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
         [(RwLockKind::Read, "read"), (RwLockKind::Write, "write")];
 
     let labels = |e: &crate::lib_on::rw_locks::RwLockEntry, op: &str| {
-        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        let mut labels = call_site_labels(e.key, e.label.as_deref(), e.iter);
         labels.push(("op", op.to_string()));
         labels
     };
@@ -738,7 +738,7 @@ fn collect_channels(families: &mut Vec<Family>) {
     // payload is part of the identity: a generic helper creating channels for
     // two payload types from one site yields two entries.
     let labels = |e: &crate::lib_on::channels::ChannelEntry| {
-        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        let mut labels = call_site_labels(e.key, e.label.as_deref(), e.iter);
         labels.push(("type", e.channel_type.to_string()));
         labels.push(("payload", e.type_name.to_string()));
         labels
@@ -870,7 +870,7 @@ fn collect_streams(families: &mut Vec<Family>) {
     // Stream entries are keyed by call site plus item type - same identity
     // rule as channels.
     let labels = |e: &crate::lib_on::streams::StreamStats| {
-        let mut labels = call_site_labels(e.key, e.source, e.label.as_deref(), e.iter);
+        let mut labels = call_site_labels(e.key, e.label.as_deref(), e.iter);
         labels.push(("payload", e.type_name.to_string()));
         labels
     };
@@ -1155,41 +1155,26 @@ fn collect_server(families: &mut Vec<Family>) {
 }
 
 /// Futures mirror [`call_site_labels`] minus `iter` (one entry per id, never
-/// per instantiation): `future!` ids are `file:line:column`, so the column
-/// that `display_source` strips rides its own `col` label and keeps same-line
-/// invocations distinct; name-based ids (`#[future_fn]`) pass through with an
-/// empty `col`.
+/// per instantiation): the id is the identity verbatim - `file:line:column`
+/// for `future!` sites, the function path for name-based ids (`#[future_fn]`).
 fn future_labels(id: &'static str, label: Option<&str>) -> Vec<(&'static str, String)> {
-    let source = crate::lib_on::futures::display_source(id);
-    let col = id[source.len()..].trim_start_matches(':');
     vec![
-        ("source", source.to_string()),
+        ("source", id.to_string()),
         ("label", label.unwrap_or_default().to_string()),
-        ("col", col.to_string()),
     ]
 }
 
 /// Shared call-site identity labels for entries keyed by wrapper macro call
-/// site (locks, channels, streams) - a field-for-field mirror of the store's
-/// entry identity, so distinct entries can never collapse into duplicate
-/// series. `source` is the user-facing `file:line`; `col` is the call-site
-/// column (two invocations on one physical line share `source`); `iter` is
-/// the instantiation index for call sites that produce one entry per
-/// instantiation; `label` is the user's label verbatim. Dashboards aggregate
-/// the discriminators away with `sum by (source, label)`.
-fn call_site_labels(
-    key: &str,
-    source: &str,
-    label: Option<&str>,
-    iter: u32,
-) -> Vec<(&'static str, String)> {
+/// site (locks, channels, streams, io) - the store's entry identity verbatim,
+/// so distinct entries can never collapse into duplicate series. `source` is
+/// the column-including `file:line:column` key (the column keeps two
+/// invocations on one physical line distinct); `iter` is the instantiation
+/// index for call sites that produce one entry per instantiation; `label` is
+/// the user's label verbatim.
+fn call_site_labels(key: &str, label: Option<&str>, iter: u32) -> Vec<(&'static str, String)> {
     vec![
-        ("source", source.to_string()),
+        ("source", key.to_string()),
         ("label", label.unwrap_or_default().to_string()),
-        (
-            "col",
-            key.rsplit(':').next().unwrap_or_default().to_string(),
-        ),
         ("iter", iter.to_string()),
     ]
 }
@@ -1249,34 +1234,31 @@ mod tests {
     };
 
     #[test]
-    fn future_labels_keep_call_site_column() {
+    fn future_labels_use_id_verbatim() {
         use crate::prometheus_server::future_labels;
         let a = future_labels("src/main.rs:12:34", None);
         let b = future_labels("src/main.rs:12:60", None);
-        assert_eq!(a[0], ("source", "src/main.rs:12".to_string()));
-        assert_eq!(a[2], ("col", "34".to_string()));
+        assert_eq!(a[0], ("source", "src/main.rs:12:34".to_string()));
         assert_ne!(a, b, "same-line future! sites must stay distinct");
 
         let named = future_labels("my_module::my_future_fn", Some("x"));
         assert_eq!(named[0].1, "my_module::my_future_fn");
-        assert_eq!(named[2].1, "");
     }
 
     #[test]
     fn call_site_labels_mirror_entry_identity() {
         use crate::prometheus_server::call_site_labels;
-        let a = call_site_labels("src/app.rs:10:5", "src/app.rs:10", None, 0);
-        assert_eq!(a[0], ("source", "src/app.rs:10".to_string()));
-        assert_eq!(a[2], ("col", "5".to_string()));
-        assert_eq!(a[3], ("iter", "0".to_string()));
+        let a = call_site_labels("src/app.rs:10:5", None, 0);
+        assert_eq!(a[0], ("source", "src/app.rs:10:5".to_string()));
+        assert_eq!(a[2], ("iter", "0".to_string()));
 
-        // Same-line call sites differ by column, repeated instantiations by
-        // iter, and the user label stays verbatim (no suffix encoding that
-        // could alias two entries).
-        let b = call_site_labels("src/app.rs:10:30", "src/app.rs:10", None, 0);
+        // The column-including key keeps same-line call sites distinct,
+        // repeated instantiations differ by iter, and the user label stays
+        // verbatim (no suffix encoding that could alias two entries).
+        let b = call_site_labels("src/app.rs:10:30", None, 0);
         assert_ne!(a, b);
-        let worker_2 = call_site_labels("src/app.rs:10:5", "src/app.rs:10", Some("worker-2"), 0);
-        let worker_iter = call_site_labels("src/app.rs:10:5", "src/app.rs:10", Some("worker"), 1);
+        let worker_2 = call_site_labels("src/app.rs:10:5", Some("worker-2"), 0);
+        let worker_iter = call_site_labels("src/app.rs:10:5", Some("worker"), 1);
         assert_ne!(worker_2, worker_iter);
         assert_eq!(worker_iter[1], ("label", "worker".to_string()));
     }
