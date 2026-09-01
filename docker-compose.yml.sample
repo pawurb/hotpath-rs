@@ -2,9 +2,9 @@ services:
   postgres:
     image: postgres:17
     ports:
-      # Non-default host port so a system-wide postgres (or another project's
-      # container) on 5432 doesn't collide.
-      - "5439:5432"
+      # Loopback-only, non-default host port so a system-wide postgres (or
+      # another project's container) on 5432 doesn't collide.
+      - "127.0.0.1:5439:5432"
     environment:
       POSTGRES_USER: hotpath
       POSTGRES_PASSWORD: hotpath
@@ -17,8 +17,9 @@ services:
   redis:
     image: redis:7
     ports:
-      # Non-default host port so a system-wide redis on 6379 doesn't collide.
-      - "6390:6379"
+      # Loopback-only, non-default host port so a system-wide redis on 6379
+      # doesn't collide.
+      - "127.0.0.1:6390:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -42,7 +43,7 @@ services:
     # two representations side by side.
     image: prom/prometheus:v2.53.0
     ports:
-      - "9098:9090"
+      - "127.0.0.1:9098:9090"
     volumes:
       - ./docker/prometheus-legacy.yml:/etc/prometheus/prometheus.yml:ro
     extra_hosts:
