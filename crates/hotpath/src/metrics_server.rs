@@ -27,10 +27,11 @@ pub(crate) static METRICS_AUTH_TOKEN: LazyLock<Option<String>> =
 pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_METRICS_SERVER_OFF"));
 
-// Guards against a dead or not yet started worker only; a debug build of a
-// large program can need over a second per snapshot. Keep below the TUI's 5s
-// client timeout.
-pub(crate) static RECV_TIMEOUT_MS: u64 = 3000;
+// Worker snapshot queries can take hundreds of ms in debug builds of large
+// programs. Must stay below the TUI refresh interval: the TUI aborts an
+// in-flight request for the same route when the next refresh fires, so a
+// response slower than one refresh tick never reaches it.
+pub(crate) static RECV_TIMEOUT_MS: u64 = 1000;
 
 pub(crate) const WORKER_NOT_READY_MSG: &str =
     "Profiler worker not ready - snapshot query timed out or worker not started";

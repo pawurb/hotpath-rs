@@ -115,7 +115,7 @@ fn default_refresh_interval() -> u64 {
     std::env::var("HOTPATH_TUI_REFRESH_INTERVAL_MS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(1000)
+        .unwrap_or(2000)
 }
 
 fn default_metrics_host() -> String {
