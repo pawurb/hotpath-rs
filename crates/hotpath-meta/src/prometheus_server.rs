@@ -37,6 +37,10 @@ pub(crate) static PROMETHEUS_HOST: LazyLock<String> = LazyLock::new(|| {
 static PROMETHEUS_AUTH_TOKEN: LazyLock<Option<String>> =
     LazyLock::new(|| crate::auth::token_from_env("HOTPATH_META_PROMETHEUS_AUTH_TOKEN"));
 
+// Per worker query; a scrape issues two, so the worst case stays under
+// Prometheus' default 10s scrape timeout.
+pub(crate) static RECV_TIMEOUT_MS: u64 = 4000;
+
 static PROMETHEUS_SERVER_STARTED: OnceLock<()> = OnceLock::new();
 static PROMETHEUS_SERVER_ERROR: OnceLock<String> = OnceLock::new();
 
