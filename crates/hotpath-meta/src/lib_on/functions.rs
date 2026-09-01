@@ -9,8 +9,6 @@ use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
 use crossbeam_channel::{bounded, Sender};
 
 use crate::json::JsonFunctionsList;
-use crate::lib_on::START_TIME;
-use crate::metrics_server::RECV_TIMEOUT_MS;
 use crate::output::FunctionLogsList;
 
 #[cfg(feature = "hotpath-cpu-meta")]
@@ -435,14 +433,8 @@ pub(crate) enum FunctionsQuery {
     },
 }
 
-fn get_current_elapsed_ns() -> u64 {
-    START_TIME
-        .get()
-        .map(|start| start.elapsed().as_nanos() as u64)
-        .unwrap_or(0)
-}
-
-fn query_functions_state<T, F>(make_query: F) -> Option<T>
+/// `None` when the worker has not started or did not answer within `timeout_ms`.
+fn query_functions_state<T, F>(timeout_ms: u64, make_query: F) -> Option<T>
 where
     F: FnOnce(Sender<T>) -> FunctionsQuery,
 {
@@ -450,21 +442,28 @@ where
     let (response_tx, response_rx) = bounded::<T>(1);
     query_tx.send(make_query(response_tx)).ok()?;
     response_rx
-        .recv_timeout(Duration::from_millis(RECV_TIMEOUT_MS))
+        .recv_timeout(Duration::from_millis(timeout_ms))
         .ok()
 }
 
-pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
-    if let Some(formatted) = query_functions_state(FunctionsQuery::Timing) {
-        return formatted;
-    }
+fn query_json<T, F>(make_query: F) -> Option<T>
+where
+    F: FnOnce(Sender<T>) -> FunctionsQuery,
+{
+    query_functions_state(crate::metrics_server::RECV_TIMEOUT_MS, make_query)
+}
 
-    JsonFunctionsList::empty_fallback(get_current_elapsed_ns())
+/// `None`: worker unreachable or timed out (the metrics server answers 503).
+pub(crate) fn get_functions_timing_json() -> Option<JsonFunctionsList> {
+    query_json(FunctionsQuery::Timing)
 }
 
 #[cfg(feature = "hotpath-prometheus-meta")]
 pub(crate) fn get_functions_raw() -> Option<Vec<RawFunctionTiming>> {
-    query_functions_state(FunctionsQuery::TimingRaw)
+    query_functions_state(
+        crate::prometheus_server::RECV_TIMEOUT_MS,
+        FunctionsQuery::TimingRaw,
+    )
 }
 
 /// Outer `None`: worker unreachable or timed out (the scrape must abort with
@@ -472,30 +471,37 @@ pub(crate) fn get_functions_raw() -> Option<Vec<RawFunctionTiming>> {
 /// hotpath-alloc-meta not enabled.
 #[cfg(feature = "hotpath-prometheus-meta")]
 pub(crate) fn get_functions_alloc_raw() -> Option<Option<Vec<RawFunctionAlloc>>> {
-    query_functions_state(FunctionsQuery::AllocRaw)
+    query_functions_state(
+        crate::prometheus_server::RECV_TIMEOUT_MS,
+        FunctionsQuery::AllocRaw,
+    )
 }
 
-pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsList> {
-    query_functions_state(|response_tx| FunctionsQuery::LogsTiming {
+/// Outer `None`: worker unreachable or timed out; inner `None`: no function
+/// with this id.
+pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<Option<FunctionLogsList>> {
+    query_json(|response_tx| FunctionsQuery::LogsTiming {
         function_id,
         response_tx,
     })
-    .flatten()
 }
 
-pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
-    query_functions_state(FunctionsQuery::Alloc).flatten()
+/// Outer `None`: worker unreachable or timed out; inner `None`: hotpath-alloc-meta
+/// not enabled.
+pub(crate) fn get_functions_alloc_json() -> Option<Option<JsonFunctionsList>> {
+    query_json(FunctionsQuery::Alloc)
 }
 
 #[cfg(feature = "hotpath-cpu-meta")]
 pub(crate) fn get_instrumented_names_and_ids() -> Option<HashMap<&'static str, u32>> {
-    query_functions_state(FunctionsQuery::NamesAndIds)
+    query_json(FunctionsQuery::NamesAndIds)
 }
 
-pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<FunctionLogsList> {
-    query_functions_state(|response_tx| FunctionsQuery::LogsAlloc {
+/// Outer `None`: worker unreachable or timed out; inner `None`: hotpath-alloc-meta
+/// not enabled or no function with this id.
+pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<Option<FunctionLogsList>> {
+    query_json(|response_tx| FunctionsQuery::LogsAlloc {
         function_id,
         response_tx,
     })
-    .flatten()
 }

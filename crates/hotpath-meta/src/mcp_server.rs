@@ -159,10 +159,12 @@ Use this first to identify performance hotspots. Look for high p95/p99 values in
     async fn functions_timing(&self) -> Result<CallToolResult, McpError> {
         log_debug("Tool called: functions_timing");
 
-        let formatted = get_functions_timing_json();
-        Ok(CallToolResult::success(vec![Content::text(to_json(
-            &formatted,
-        )?)]))
+        match get_functions_timing_json() {
+            Some(formatted) => Ok(CallToolResult::success(vec![Content::text(to_json(
+                &formatted,
+            )?)])),
+            None => Ok(worker_not_ready()),
+        }
     }
 
     #[tool(
@@ -179,12 +181,13 @@ Returns error if hotpath-alloc-meta feature is not enabled. Cross-reference with
         log_debug("Tool called: functions_alloc");
 
         match get_functions_alloc_json() {
-            Some(formatted) => Ok(CallToolResult::success(vec![Content::text(to_json(
+            Some(Some(formatted)) => Ok(CallToolResult::success(vec![Content::text(to_json(
                 &formatted,
             )?)])),
-            None => Ok(CallToolResult::error(vec![Content::text(
+            Some(None) => Ok(CallToolResult::error(vec![Content::text(
                 "Memory profiling not available - enable hotpath-alloc-meta feature",
             )])),
+            None => Ok(worker_not_ready()),
         }
     }
 
@@ -521,17 +524,18 @@ Returns JSON array of recent execution logs with timestamps and duration. Use fu
         ));
 
         match get_function_logs_timing(function_id) {
-            Some(logs) => {
+            Some(Some(logs)) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonFunctionTimingLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))
             }
-            None => Ok(CallToolResult::error(vec![Content::text(format!(
+            Some(None) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Function with id {} not found",
                 function_id
             ))])),
+            None => Ok(worker_not_ready()),
         }
     }
 
@@ -551,16 +555,17 @@ Returns JSON array of recent allocation logs. Use functions_alloc first to get f
         ));
 
         match get_function_logs_alloc(function_id) {
-            Some(logs) => {
+            Some(Some(logs)) => {
                 let current_elapsed_ns = get_current_elapsed_ns();
                 let formatted = JsonFunctionAllocLogsList::from_logs(&logs, current_elapsed_ns);
                 Ok(CallToolResult::success(vec![Content::text(to_json(
                     &formatted,
                 )?)]))
             }
-            None => Ok(CallToolResult::error(vec![Content::text(
+            Some(None) => Ok(CallToolResult::error(vec![Content::text(
                 "Memory profiling not available - enable hotpath-alloc-meta feature",
             )])),
+            None => Ok(worker_not_ready()),
         }
     }
 
@@ -800,6 +805,12 @@ impl ServerHandler for HotPathMcpServer {
         );
         info
     }
+}
+
+fn worker_not_ready() -> CallToolResult {
+    CallToolResult::error(vec![Content::text(
+        crate::metrics_server::WORKER_NOT_READY_MSG,
+    )])
 }
 
 fn to_json<T: serde::Serialize>(value: &T) -> Result<String, McpError> {

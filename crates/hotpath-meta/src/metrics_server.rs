@@ -28,8 +28,13 @@ pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
     LazyLock::new(|| crate::shared::env_flag("HOTPATH_META_METRICS_SERVER_OFF"));
 
 // Worker snapshot queries can take hundreds of ms in debug builds of large
-// programs; keep well below the TUI's 2s client timeout.
-pub(crate) static RECV_TIMEOUT_MS: u64 = 1000;
+// programs. Must stay below the TUI refresh interval: the TUI aborts an
+// in-flight request for the same route when the next refresh fires, so a
+// response slower than one refresh tick never reaches it.
+pub(crate) static RECV_TIMEOUT_MS: u64 = 800;
+
+pub(crate) const WORKER_NOT_READY_MSG: &str =
+    "Profiler worker not ready - snapshot query timed out or worker not started";
 
 const TOKIO_RUNTIME_HINT: &str =
     "Tokio runtime metrics not available - use hotpath_meta::tokio_runtime!() to start collection";
@@ -106,44 +111,47 @@ fn handle_request(request: Request) {
     let path = request.url();
 
     match path.parse::<Route>() {
-        Ok(Route::FunctionsTiming) => {
-            let formatted = get_functions_timing_json();
-            respond_json(request, &formatted);
-        }
-        Ok(Route::FunctionsAlloc) => match get_functions_alloc_json() {
+        Ok(Route::FunctionsTiming) => match get_functions_timing_json() {
             Some(formatted) => respond_json(request, &formatted),
-            None => respond_error(
+            None => respond_worker_not_ready(request),
+        },
+        Ok(Route::FunctionsAlloc) => match get_functions_alloc_json() {
+            Some(Some(formatted)) => respond_json(request, &formatted),
+            Some(None) => respond_error(
                 request,
                 404,
                 "Memory profiling not available - enable hotpath-alloc-meta feature",
             ),
+            None => respond_worker_not_ready(request),
         },
         Ok(Route::FunctionTimingLogs { function_id }) => {
             match get_function_logs_timing(function_id) {
-                Some(logs) => {
+                Some(Some(logs)) => {
                     let formatted =
                         JsonFunctionTimingLogsList::from_logs(&logs, get_current_elapsed_ns());
                     respond_json(request, &formatted);
                 }
-                None => respond_error(
+                Some(None) => respond_error(
                     request,
                     404,
                     &format!("Function with id {} not found", function_id),
                 ),
+                None => respond_worker_not_ready(request),
             }
         }
         Ok(Route::FunctionAllocLogs { function_id }) => {
             match get_function_logs_alloc(function_id) {
-                Some(logs) => {
+                Some(Some(logs)) => {
                     let formatted =
                         JsonFunctionAllocLogsList::from_logs(&logs, get_current_elapsed_ns());
                     respond_json(request, &formatted);
                 }
-                None => respond_error(
+                Some(None) => respond_error(
                     request,
                     404,
                     "Memory profiling not available - enable hotpath-alloc-meta feature",
                 ),
+                None => respond_worker_not_ready(request),
             }
         }
         Ok(Route::Debug) => {
@@ -329,6 +337,12 @@ fn respond_json<T: Serialize>(request: Request, value: &T) {
         }
         Err(e) => respond_internal_error(request, e),
     }
+}
+
+// An empty 200 would render in the TUI as live "no data"; an error keeps the
+// last snapshot and marks it stale.
+fn respond_worker_not_ready(request: Request) {
+    respond_error(request, 503, WORKER_NOT_READY_MSG);
 }
 
 fn respond_error(request: Request, code: u16, msg: &str) {
