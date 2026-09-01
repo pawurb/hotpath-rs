@@ -166,7 +166,15 @@ pub(crate) fn to_protobuf(families: &[Family]) -> Option<Vec<u8>> {
                             }
                         },
                         SampleValue::Histogram(hist) => {
-                            let (spans, deltas) = to_spans(&hist.native_buckets);
+                            let (mut spans, deltas) = to_spans(&hist.native_buckets);
+                            // A histogram with no buckets and zero_count 0 fails
+                            // Prometheus's isNativeHistogram() check, and a native
+                            // scrape then aborts on the nil histogram. The documented
+                            // convention for empty native histograms is a single
+                            // no-op span (offset 0, length 0).
+                            if spans.is_empty() && hist.zero_count == 0 {
+                                spans.push((0, 0));
+                            }
                             metric.histogram = Some(Histogram {
                                 sample_count: Some(hist.sample_count),
                                 sample_sum: Some(hist.sum),
@@ -338,6 +346,35 @@ hotpath_duration_seconds_count{function=\"app::run\"} 7
         assert_eq!(hist.bucket[1].cumulative_count, Some(5));
         assert_eq!(hist.positive_span.len(), 1);
         assert_eq!(hist.positive_delta, vec![2, 3]);
+    }
+
+    #[test]
+    fn empty_histogram_gets_noop_span() {
+        use crate::prometheus_server::protobuf::MetricFamily;
+        use prost::Message;
+
+        let families = vec![Family {
+            name: "hotpath_wait_seconds",
+            help: "Test empty histogram.",
+            kind: FamilyKind::Histogram,
+            samples: vec![Sample {
+                labels: vec![],
+                value: SampleValue::Histogram(HistogramValue {
+                    sample_count: 0,
+                    sum: 0.0,
+                    classic_buckets: vec![(0.00025, 0)],
+                    native_buckets: vec![],
+                    zero_count: 0,
+                }),
+            }],
+        }];
+        let bytes = to_protobuf(&families).unwrap();
+        let decoded = MetricFamily::decode_length_delimited(&mut bytes.as_slice()).unwrap();
+        let hist = decoded.metric[0].histogram.as_ref().unwrap();
+        assert_eq!(hist.positive_span.len(), 1);
+        assert_eq!(hist.positive_span[0].offset, Some(0));
+        assert_eq!(hist.positive_span[0].length, Some(0));
+        assert!(hist.positive_delta.is_empty());
     }
 
     #[test]
