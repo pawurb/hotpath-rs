@@ -124,23 +124,6 @@ pub struct JsonFunctionsList {
     pub total_count: usize,
 }
 
-impl JsonFunctionsList {
-    pub fn empty_fallback(current_elapsed_ns: u64) -> Self {
-        JsonFunctionsList {
-            profiling_mode: ProfilingMode::Timing,
-            time_elapsed: format_duration(0),
-            total_elapsed_ns: current_elapsed_ns,
-            total_allocated: None,
-            description: "No timing data available yet".to_string(),
-            caller_name: "hotpath".to_string(),
-            percentiles: vec![95.0],
-            data: Vec::new(),
-            displayed_count: 0,
-            total_count: 0,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonFunctionCpuEntry {
     pub id: u32,

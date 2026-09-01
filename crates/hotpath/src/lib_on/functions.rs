@@ -9,8 +9,6 @@ use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
 
 use crate::json::JsonFunctionsList;
-use crate::lib_on::START_TIME;
-use crate::metrics_server::RECV_TIMEOUT_MS;
 use crate::output::FunctionLogsList;
 
 #[cfg(feature = "hotpath-cpu")]
@@ -483,16 +481,9 @@ pub(crate) enum FunctionsQuery {
     },
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-fn get_current_elapsed_ns() -> u64 {
-    START_TIME
-        .get()
-        .map(|start| start.elapsed().as_nanos() as u64)
-        .unwrap_or(0)
-}
-
+/// `None` when the worker has not started or did not answer within `timeout_ms`.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-fn query_functions_state<T, F>(make_query: F) -> Option<T>
+fn query_functions_state<T, F>(timeout_ms: u64, make_query: F) -> Option<T>
 where
     F: FnOnce(Sender<T>) -> FunctionsQuery,
 {
@@ -500,23 +491,30 @@ where
     let (response_tx, response_rx) = bounded::<T>(1);
     query_tx.send(make_query(response_tx)).ok()?;
     response_rx
-        .recv_timeout(Duration::from_millis(RECV_TIMEOUT_MS))
+        .recv_timeout(Duration::from_millis(timeout_ms))
         .ok()
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_functions_timing_json() -> JsonFunctionsList {
-    if let Some(formatted) = query_functions_state(FunctionsQuery::Timing) {
-        return formatted;
-    }
+fn query_json<T, F>(make_query: F) -> Option<T>
+where
+    F: FnOnce(Sender<T>) -> FunctionsQuery,
+{
+    query_functions_state(crate::metrics_server::RECV_TIMEOUT_MS, make_query)
+}
 
-    JsonFunctionsList::empty_fallback(get_current_elapsed_ns())
+/// `None`: worker unreachable or timed out (the metrics server answers 503).
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
+pub(crate) fn get_functions_timing_json() -> Option<JsonFunctionsList> {
+    query_json(FunctionsQuery::Timing)
 }
 
 #[cfg(feature = "hotpath-prometheus")]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_functions_raw() -> Option<Vec<RawFunctionTiming>> {
-    query_functions_state(FunctionsQuery::TimingRaw)
+    query_functions_state(
+        crate::prometheus_server::RECV_TIMEOUT_MS,
+        FunctionsQuery::TimingRaw,
+    )
 }
 
 /// Outer `None`: worker unreachable or timed out (the scrape must abort with
@@ -525,34 +523,41 @@ pub(crate) fn get_functions_raw() -> Option<Vec<RawFunctionTiming>> {
 #[cfg(feature = "hotpath-prometheus")]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_functions_alloc_raw() -> Option<Option<Vec<RawFunctionAlloc>>> {
-    query_functions_state(FunctionsQuery::AllocRaw)
+    query_functions_state(
+        crate::prometheus_server::RECV_TIMEOUT_MS,
+        FunctionsQuery::AllocRaw,
+    )
 }
 
+/// Outer `None`: worker unreachable or timed out; inner `None`: no function
+/// with this id.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<FunctionLogsList> {
-    query_functions_state(|response_tx| FunctionsQuery::LogsTiming {
+pub(crate) fn get_function_logs_timing(function_id: u32) -> Option<Option<FunctionLogsList>> {
+    query_json(|response_tx| FunctionsQuery::LogsTiming {
         function_id,
         response_tx,
     })
-    .flatten()
 }
 
+/// Outer `None`: worker unreachable or timed out; inner `None`: hotpath-alloc
+/// not enabled.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_functions_alloc_json() -> Option<JsonFunctionsList> {
-    query_functions_state(FunctionsQuery::Alloc).flatten()
+pub(crate) fn get_functions_alloc_json() -> Option<Option<JsonFunctionsList>> {
+    query_json(FunctionsQuery::Alloc)
 }
 
 #[cfg(feature = "hotpath-cpu")]
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_instrumented_names_and_ids() -> Option<HashMap<&'static str, u32>> {
-    query_functions_state(FunctionsQuery::NamesAndIds)
+    query_json(FunctionsQuery::NamesAndIds)
 }
 
+/// Outer `None`: worker unreachable or timed out; inner `None`: hotpath-alloc
+/// not enabled or no function with this id.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<FunctionLogsList> {
-    query_functions_state(|response_tx| FunctionsQuery::LogsAlloc {
+pub(crate) fn get_function_logs_alloc(function_id: u32) -> Option<Option<FunctionLogsList>> {
+    query_json(|response_tx| FunctionsQuery::LogsAlloc {
         function_id,
         response_tx,
     })
-    .flatten()
 }
