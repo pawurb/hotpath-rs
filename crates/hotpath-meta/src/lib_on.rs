@@ -36,7 +36,7 @@ pub mod debug;
 pub mod futures;
 pub mod http;
 pub mod io;
-pub mod locations;
+pub(crate) mod locations;
 pub mod mutexes;
 pub mod rw_locks;
 pub mod server;
@@ -72,6 +72,7 @@ pub(crate) mod report;
 pub(crate) mod report_meta;
 pub(crate) mod sampling;
 
+#[doc(hidden)]
 pub use locations::{register_location, Location};
 
 pub use functions::allocator::CountingAllocator;

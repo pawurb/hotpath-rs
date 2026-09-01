@@ -23,6 +23,9 @@ compile_error!("the `hotpath-cpu-meta` feature requires the `hotpath-meta` featu
 #[cfg(all(feature = "hotpath-prometheus-meta", not(feature = "hotpath-meta")))]
 compile_error!("the `hotpath-prometheus-meta` feature requires the `hotpath-meta` feature");
 
+#[cfg(all(feature = "hotpath-cloud-meta", not(feature = "hotpath-meta")))]
+compile_error!("the `hotpath-cloud-meta` feature requires the `hotpath-meta` feature");
+
 #[cfg(feature = "hotpath-meta")]
 #[doc(inline)]
 pub use lib_on::*;
