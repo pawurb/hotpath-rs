@@ -74,7 +74,7 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 
 | Variable | Description |
 |----------|-------------|
-| `HOTPATH_TUI_REFRESH_INTERVAL_MS` | TUI dashboard refresh interval in milliseconds. (default: `2000`) |
+| `HOTPATH_TUI_REFRESH_INTERVAL_MS` | TUI dashboard refresh interval in milliseconds. (default: `1000`) |
 | `HOTPATH_TUI_TAB` | Initial tab to display when launching the TUI: `1` (Timing), `2` (Memory), `3` (Data Flow), `4` (Threads), `5` (Debug), `6` (Tokio). (default: unset) |
 | `HOTPATH_TUI_AUTO_EXPAND_LOGS` | Auto-open the logs panel once initial data arrives and pin selection to the given table index. Set to an integer (e.g. `0` for the first row, `2` for the third). (default: unset) |
 | `HOTPATH_METRICS_HOST` | Host URL that the TUI console connects to for metrics data. (default: `http://localhost`) |

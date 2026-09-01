@@ -31,7 +31,7 @@ pub(crate) static METRICS_SERVER_DISABLED: LazyLock<bool> =
 // programs. Must stay below the TUI refresh interval: the TUI aborts an
 // in-flight request for the same route when the next refresh fires, so a
 // response slower than one refresh tick never reaches it.
-pub(crate) static RECV_TIMEOUT_MS: u64 = 1000;
+pub(crate) static RECV_TIMEOUT_MS: u64 = 800;
 
 pub(crate) const WORKER_NOT_READY_MSG: &str =
     "Profiler worker not ready - snapshot query timed out or worker not started";

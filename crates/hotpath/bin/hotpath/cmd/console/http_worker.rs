@@ -18,7 +18,7 @@ use tokio::{runtime::Runtime, task::JoinHandle};
 
 use crate::cmd::console::events::{AppEvent, DataRequest, DataResponse};
 
-// Must exceed the metrics server's 1s worker query timeout plus queueing on
+// Must exceed the metrics server's 800ms worker query timeout plus queueing on
 // its single request thread.
 const HTTP_TIMEOUT_MS: u64 = 5000;
 
