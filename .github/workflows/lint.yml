@@ -29,6 +29,9 @@ jobs:
       - name: Lint (--all-features)
         run: |
           cargo clippy --all --all-features -- -D warnings
+      - name: Doc (docs.rs features)
+        run: |
+          RUSTDOCFLAGS="-D warnings" cargo doc -p hotpath --no-deps --features hotpath,hotpath-alloc
       - name: Lint (hotpath-alloc)
         run: |
           cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings

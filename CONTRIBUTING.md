@@ -220,6 +220,7 @@ cargo fmt --all --check
 cargo clippy --all --features hotpath -- -D warnings
 cargo clippy --all --all-features -- -D warnings
 cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc -p hotpath --no-deps --features hotpath,hotpath-alloc
 ```
 
 ### Tests

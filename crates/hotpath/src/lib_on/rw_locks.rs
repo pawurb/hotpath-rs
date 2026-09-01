@@ -506,7 +506,7 @@ pub(crate) fn compare_rw_lock_entries(a: &RwLockEntry, b: &RwLockEntry) -> std::
 }
 
 /// Trait for instrumenting RwLocks. Dispatches on the type of the wrapped lock
-/// (e.g. [`std::sync::RwLock`] or [`parking_lot::RwLock`]).
+/// (e.g. [`std::sync::RwLock`] or `parking_lot::RwLock`).
 ///
 /// This trait is not intended for direct use. Use the `rw_lock!` macro instead.
 #[doc(hidden)]
@@ -515,7 +515,7 @@ pub trait InstrumentRwLock {
     fn instrument(self, source: &'static str, label: Option<String>) -> Self::Output;
 }
 
-/// Instrument an [`std::sync::RwLock`], [`parking_lot::RwLock`], `async_lock::RwLock`, or
+/// Instrument an [`std::sync::RwLock`], `parking_lot::RwLock`, `async_lock::RwLock`, or
 /// `tokio::sync::RwLock` for read/write profiling.
 ///
 /// Returns an instrumented drop-in replacement that proxies to the wrapped lock and records
