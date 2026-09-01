@@ -149,7 +149,7 @@ mod tests {
         // reflect the build workspace root - the repo root here - not the
         // runtime directory, so joining source_root and location.file yields
         // a path that exists.
-        let meta = report.meta;
+        let meta = report.meta.expect("meta object");
         assert!(!meta.rustc.is_empty(), "rustc version");
         assert!(meta.os.contains('-'), "os is <os>-<arch>: {}", meta.os);
         assert!(
@@ -163,9 +163,37 @@ mod tests {
     #[test]
     fn test_source_root_env_override() {
         let report = run_example(Some("crates/test-tokio-async"));
-        assert_eq!(
-            report.meta.source_root.as_deref(),
-            Some("crates/test-tokio-async")
-        );
+        let meta = report.meta.expect("meta object");
+        assert_eq!(meta.source_root.as_deref(), Some("crates/test-tokio-async"));
+    }
+
+    /// Reports written before `meta`/`location` existed still deserialize.
+    #[test]
+    fn test_old_report_deserializes() {
+        let old = r#"{
+            "type": "hotpath_report",
+            "version": "0.20.0",
+            "functions_timing": {
+                "profiling_mode": "timing",
+                "time_elapsed": "1s",
+                "total_elapsed_ns": 1,
+                "description": "d",
+                "caller_name": "main",
+                "percentiles": [95.0],
+                "data": [{
+                    "id": 1,
+                    "name": "f",
+                    "calls": 1,
+                    "avg": "1ms",
+                    "p95": "1ms",
+                    "total": "1ms",
+                    "percent_total": "100.00%"
+                }]
+            }
+        }"#;
+        let report: JsonReport = serde_json::from_str(old).expect("old report deserializes");
+        assert!(report.meta.is_none());
+        let functions = report.functions_timing.unwrap();
+        assert!(functions.data[0].location.is_none());
     }
 }

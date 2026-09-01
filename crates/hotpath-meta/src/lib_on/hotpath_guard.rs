@@ -1005,7 +1005,7 @@ impl Drop for HotpathGuard {
 
         if is_json || cloud_enabled {
             let mut report = JsonReport {
-                meta: crate::lib_on::report_meta::build_meta(),
+                meta: Some(crate::lib_on::report_meta::build_meta()),
                 label: std::env::var("HOTPATH_META_REPORT_LABEL")
                     .ok()
                     .filter(|s| !s.is_empty()),
