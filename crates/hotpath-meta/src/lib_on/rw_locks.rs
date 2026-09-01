@@ -15,7 +15,6 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 pub(crate) mod wrapper;
 
 // Re-exported to keep the std wrapper reachable at `hotpath_meta::rw_locks::*` for downstream code.
-pub use wrapper::std::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 static RW_LOCK_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 

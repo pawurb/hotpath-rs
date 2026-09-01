@@ -17,7 +17,6 @@ use crate::json::JsonStreamEntry;
 pub(crate) use crate::json::{ChannelState, DataFlowLogEntry, StreamLogs};
 use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::metrics_server::METRICS_SERVER_PORT;
-pub use crate::Format;
 
 static STREAM_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 

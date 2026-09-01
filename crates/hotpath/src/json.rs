@@ -9,7 +9,16 @@ pub use formatted::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use crate::channels::ChannelType;
+/// Type of a channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChannelType {
+    Bounded(usize),
+    Unbounded,
+    Oneshot,
+    /// Placeholder for a channel whose `Created` event has not been processed
+    /// yet; backfilled with the real type when it arrives.
+    Pending,
+}
 
 /// State of a channel or stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -22,7 +31,7 @@ pub(crate) enum ChannelState {
 }
 
 impl ChannelState {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             ChannelState::Active => "active",
             ChannelState::Closed => "closed",
@@ -100,7 +109,7 @@ pub(crate) struct DataFlowLogEntry {
 }
 
 impl DataFlowLogEntry {
-    pub fn new(
+    pub(crate) fn new(
         index: u64,
         timestamp: u64,
         message: Option<String>,
@@ -184,7 +193,7 @@ pub(crate) enum FutureState {
 }
 
 impl FutureState {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             FutureState::Pending => "pending",
             FutureState::Running => "running",
@@ -221,7 +230,7 @@ pub(crate) struct FutureLog {
 }
 
 impl FutureLog {
-    pub fn new(id: u32, future_id: u32) -> Self {
+    pub(crate) fn new(id: u32, future_id: u32) -> Self {
         Self {
             id,
             future_id,
@@ -288,7 +297,7 @@ pub(crate) struct ThreadMetrics {
 }
 
 impl ThreadMetrics {
-    pub fn new(
+    pub(crate) fn new(
         os_tid: u64,
         name: String,
         status: String,
@@ -412,11 +421,6 @@ impl Route {
             Route::TokioRuntime => "/tokio_runtime".to_string(),
             Route::ProfilerStatus => "/profiler_status".to_string(),
         }
-    }
-
-    /// Returns the full URL for this route with the given port.
-    pub fn to_url(&self, port: u16) -> String {
-        format!("http://localhost:{}{}", port, self.to_path())
     }
 }
 

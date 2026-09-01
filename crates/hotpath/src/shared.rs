@@ -57,7 +57,8 @@ impl Section {
         }
     }
 
-    pub fn from_name(s: &str) -> Option<Section> {
+    #[cfg(feature = "hotpath")]
+    pub(crate) fn from_name(s: &str) -> Option<Section> {
         match s.trim() {
             "functions-timing" => Some(Section::FunctionsTiming),
             "functions-alloc" => Some(Section::FunctionsAlloc),
@@ -81,7 +82,7 @@ impl Section {
 /// How the set of report sections is determined.
 #[cfg(feature = "hotpath")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SectionsMode {
+pub(crate) enum SectionsMode {
     /// Base sections (functions, threads) plus every data-driven section
     /// (channels, streams, futures, rw_locks, mutexes, sql, http, server, io, debug)
     /// that has data at shutdown. `include` forces sections in, `exclude`
@@ -110,7 +111,7 @@ impl SectionsMode {
     /// exclusions, comma-separated. A spec containing `auto` or any `-section`
     /// token resolves to [`SectionsMode::Auto`]; a plain list of names is
     /// [`SectionsMode::Explicit`]; `all` is every section minus exclusions.
-    pub fn parse(spec: &str) -> SectionsMode {
+    pub(crate) fn parse(spec: &str) -> SectionsMode {
         let mut auto = false;
         let mut all = false;
         let mut include = Vec::new();
@@ -151,7 +152,7 @@ impl SectionsMode {
         }
     }
 
-    pub fn from_env() -> Option<SectionsMode> {
+    pub(crate) fn from_env() -> Option<SectionsMode> {
         std::env::var("HOTPATH_REPORT")
             .ok()
             .map(|val| SectionsMode::parse(&val))
@@ -160,7 +161,7 @@ impl SectionsMode {
     /// Whether the section is requested by name (explicit list or a forced
     /// auto include). Auto mode does not imply it - used for build-time
     /// side effects that should stay lazy under auto.
-    pub fn explicitly_contains(&self, section: Section) -> bool {
+    pub(crate) fn explicitly_contains(&self, section: Section) -> bool {
         match self {
             SectionsMode::Explicit(list) => list.contains(&section),
             SectionsMode::Auto { include, .. } => include.contains(&section),
@@ -170,7 +171,7 @@ impl SectionsMode {
     /// Whether the section is part of the report set decidable before any
     /// data exists: listed explicitly, or in auto mode and not excluded.
     #[cfg(feature = "hotpath-cpu")]
-    pub fn contains_or_auto(&self, section: Section) -> bool {
+    pub(crate) fn contains_or_auto(&self, section: Section) -> bool {
         match self {
             SectionsMode::Explicit(list) => list.contains(&section),
             SectionsMode::Auto { include, exclude } => {
@@ -228,7 +229,8 @@ impl FromStr for Format {
 impl Format {
     /// Returns the format from `HOTPATH_OUTPUT_FORMAT` env var, or default if not set.
     /// Panics if the env var contains an invalid value.
-    pub fn from_env() -> Self {
+    #[cfg(feature = "hotpath")]
+    pub(crate) fn from_env() -> Self {
         match std::env::var("HOTPATH_OUTPUT_FORMAT") {
             Ok(v) => v
                 .parse()

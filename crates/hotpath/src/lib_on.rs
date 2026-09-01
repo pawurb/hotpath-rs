@@ -1,5 +1,4 @@
 #[doc(hidden)]
-pub use cfg_if::cfg_if;
 pub use hotpath_macros::{future_fn, main, measure, measure_all, skip};
 use std::sync::OnceLock;
 
@@ -29,23 +28,29 @@ pub(crate) fn current_elapsed_ns() -> u64 {
 
 pub(crate) mod batch;
 pub(crate) mod caller_stack;
-pub mod channels;
-pub mod cpu_baseline;
+pub(crate) mod channels;
+pub(crate) mod cpu_baseline;
+#[doc(hidden)]
 pub mod debug;
+#[doc(hidden)]
 pub mod futures;
+#[doc(hidden)]
 pub mod http;
+#[doc(hidden)]
 pub mod io;
-pub mod locations;
-pub mod mutexes;
-pub mod rw_locks;
-pub mod server;
-pub mod sql;
-pub mod streams;
+pub(crate) mod locations;
+pub(crate) mod mutexes;
+pub(crate) mod rw_locks;
+pub(crate) mod server;
+pub(crate) mod sql;
+pub(crate) mod streams;
 #[cfg(feature = "threads")]
-pub mod threads;
+pub(crate) mod threads;
 #[cfg(feature = "tokio")]
+#[doc(hidden)]
 pub mod tokio_runtime;
 
+#[doc(hidden)]
 pub mod functions;
 
 pub use channels::{
@@ -71,13 +76,14 @@ pub(crate) mod cloud;
 #[cfg(feature = "hotpath-cloud")]
 pub(crate) mod git_info;
 pub(crate) mod histograms;
-pub mod hotpath_guard;
+pub(crate) mod hotpath_guard;
 #[cfg(feature = "hotpath-prometheus")]
 pub(crate) mod native_histograms;
 pub(crate) mod report;
 pub(crate) mod report_meta;
 pub(crate) mod sampling;
 
+#[doc(hidden)]
 pub use locations::{register_location, Location};
 
 cfg_if::cfg_if! {

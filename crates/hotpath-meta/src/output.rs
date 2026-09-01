@@ -1,7 +1,9 @@
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+#[cfg(feature = "hotpath-meta")]
 use std::fs::File;
+#[cfg(feature = "hotpath-meta")]
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -15,7 +17,7 @@ pub static MAX_LOG_LEN: LazyLock<usize> = LazyLock::new(|| {
 });
 
 const DEFAULT_FUNCTIONS_NAME_DEPTH: usize = 2;
-pub static FUNCTIONS_NAME_DEPTH: LazyLock<usize> = LazyLock::new(|| {
+pub(crate) static FUNCTIONS_NAME_DEPTH: LazyLock<usize> = LazyLock::new(|| {
     std::env::var("HOTPATH_META_FUNCTIONS_NAME_DEPTH")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -24,7 +26,8 @@ pub static FUNCTIONS_NAME_DEPTH: LazyLock<usize> = LazyLock::new(|| {
 
 /// Destination for profiling report output.
 #[derive(Default)]
-pub enum OutputDestination {
+#[cfg(feature = "hotpath-meta")]
+pub(crate) enum OutputDestination {
     #[default]
     Stdout,
     File(PathBuf),
@@ -115,7 +118,8 @@ pub fn format_rate(rate: Option<f64>) -> String {
 /// Formats an optional bytes-per-second rate (e.g. `12.4 MB/s`), or `-` when absent.
 /// Sub-KB rates keep one decimal place so slow but nonzero traffic doesn't
 /// round down to `0 B/s`.
-pub fn format_throughput(rate: Option<f64>) -> String {
+#[cfg(feature = "hotpath-meta")]
+pub(crate) fn format_throughput(rate: Option<f64>) -> String {
     rate.map_or_else(
         || "-".to_string(),
         |v| {
@@ -213,13 +217,14 @@ pub(crate) fn cyan(text: &str) -> String {
     }
 }
 
+#[cfg(feature = "hotpath-meta")]
 impl OutputDestination {
     /// Creates a writer for this destination.
     ///
     /// Returns a boxed writer that implements `Write`.
     /// For `Stdout`, returns a handle to stdout.
     /// For `File`, creates parent directories if needed, then creates or truncates the file.
-    pub fn writer(&self) -> Result<Box<dyn Write>, std::io::Error> {
+    pub(crate) fn writer(&self) -> Result<Box<dyn Write>, std::io::Error> {
         match self {
             OutputDestination::Stdout => Ok(Box::new(std::io::stdout())),
             OutputDestination::File(path) => {
@@ -236,7 +241,7 @@ impl OutputDestination {
     /// Environment variable `HOTPATH_META_OUTPUT_PATH` takes precedence over programmatic config.
     /// If the path is provided, resolves relative paths against the current working directory.
     /// If no path is provided, returns Stdout.
-    pub fn from_path(path: Option<PathBuf>) -> Self {
+    pub(crate) fn from_path(path: Option<PathBuf>) -> Self {
         if let Ok(env_path) = std::env::var("HOTPATH_META_OUTPUT_PATH") {
             return OutputDestination::File(resolve_output_path(env_path));
         }
@@ -513,6 +518,7 @@ mod parse_tests {
     }
 
     #[test]
+    #[cfg(feature = "hotpath-meta")]
     fn test_format_throughput() {
         assert_eq!(format_throughput(None), "-");
         assert_eq!(format_throughput(Some(0.33)), "0.3 B/s");

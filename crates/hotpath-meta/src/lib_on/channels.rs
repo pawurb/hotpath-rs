@@ -18,24 +18,13 @@ pub(crate) use crate::json::{ChannelLogs, ChannelState, DataFlowLogEntry};
 use crate::lib_on::hotpath_guard::DRAIN_INTERVAL_MS;
 use crate::metrics_server::METRICS_SERVER_PORT;
 
-pub use crate::Format;
-
 static CHANNEL_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 pub(crate) fn next_channel_id() -> u32 {
     CHANNEL_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Type of a channel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChannelType {
-    Bounded(usize),
-    Unbounded,
-    Oneshot,
-    /// Placeholder for a channel whose `Created` event has not been processed
-    /// yet; backfilled with the real type when it arrives.
-    Pending,
-}
+pub(crate) use crate::json::ChannelType;
 
 /// Entries are keyed by creation site and message type, so channels created
 /// repeatedly at one `channel!` call (e.g. per handled request) share a single

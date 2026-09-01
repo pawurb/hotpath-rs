@@ -81,7 +81,7 @@ impl FunctionStats {
     const SIGFIGS: u8 = 3;
 
     #[allow(clippy::too_many_arguments)]
-    pub fn new_alloc(
+    pub(crate) fn new_alloc(
         id: u32,
         name: &'static str,
         bytes_total: Option<u64>,
@@ -171,7 +171,7 @@ impl FunctionStats {
         }
     }
 
-    pub fn update_alloc(
+    pub(crate) fn update_alloc(
         &mut self,
         bytes_total: Option<u64>,
         count_total: Option<u64>,
@@ -202,7 +202,7 @@ impl FunctionStats {
     }
 
     #[inline]
-    pub fn bytes_total_percentile(&self, p: f64) -> u64 {
+    pub(crate) fn bytes_total_percentile(&self, p: f64) -> u64 {
         if self.count == 0 || self.bytes_total_hist.is_none() {
             return 0;
         }
@@ -214,7 +214,7 @@ impl FunctionStats {
     }
 
     #[inline]
-    pub fn count_total_percentile(&self, p: f64) -> u64 {
+    pub(crate) fn count_total_percentile(&self, p: f64) -> u64 {
         if self.count == 0 || self.count_total_hist.is_none() {
             return 0;
         }
@@ -226,12 +226,12 @@ impl FunctionStats {
     }
 
     #[inline]
-    pub fn total_bytes(&self) -> u64 {
+    pub(crate) fn total_bytes(&self) -> u64 {
         self.total_bytes_sum
     }
 
     #[inline]
-    pub fn avg_bytes(&self) -> u64 {
+    pub(crate) fn avg_bytes(&self) -> u64 {
         if self.count == 0 {
             return 0;
         }
@@ -239,12 +239,12 @@ impl FunctionStats {
     }
 
     #[inline]
-    pub fn total_count(&self) -> u64 {
+    pub(crate) fn total_count(&self) -> u64 {
         self.total_count_sum
     }
 
     #[inline]
-    pub fn avg_count(&self) -> u64 {
+    pub(crate) fn avg_count(&self) -> u64 {
         if self.count == 0 {
             return 0;
         }
@@ -252,7 +252,7 @@ impl FunctionStats {
     }
 
     #[inline]
-    pub fn duration_percentile(&self, p: f64) -> u64 {
+    pub(crate) fn duration_percentile(&self, p: f64) -> u64 {
         if self.duration_sampled_count == 0 || self.duration_hist.is_none() {
             return 0;
         }
@@ -355,7 +355,7 @@ impl FunctionStats {
     }
 
     #[inline]
-    pub fn avg_duration_ns(&self) -> u64 {
+    pub(crate) fn avg_duration_ns(&self) -> u64 {
         self.total_duration_ns
             .checked_div(self.duration_sampled_count)
             .unwrap_or(0)
@@ -363,7 +363,7 @@ impl FunctionStats {
 
     /// Exact when every call was timed, extrapolated (`avg * count`) under time sampling.
     #[inline]
-    pub fn display_total_duration_ns(&self) -> u64 {
+    pub(crate) fn display_total_duration_ns(&self) -> u64 {
         if self.duration_sampled_count == self.count {
             self.total_duration_ns
         } else {

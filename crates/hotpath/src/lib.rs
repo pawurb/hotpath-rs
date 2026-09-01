@@ -19,11 +19,17 @@ compile_error!("the `hotpath-cpu` feature requires the `hotpath` feature");
 #[cfg(all(feature = "hotpath-prometheus", not(feature = "hotpath")))]
 compile_error!("the `hotpath-prometheus` feature requires the `hotpath` feature");
 
+#[cfg(all(feature = "hotpath-cloud", not(feature = "hotpath")))]
+compile_error!("the `hotpath-cloud` feature requires the `hotpath` feature");
+
 #[cfg(all(feature = "hotpath-alloc-meta", not(feature = "hotpath-meta")))]
 compile_error!("the `hotpath-alloc-meta` feature requires the `hotpath-meta` feature");
 
 #[cfg(all(feature = "hotpath-prometheus-meta", not(feature = "hotpath-meta")))]
 compile_error!("the `hotpath-prometheus-meta` feature requires the `hotpath-meta` feature");
+
+#[cfg(all(feature = "hotpath-cloud-meta", not(feature = "hotpath-meta")))]
+compile_error!("the `hotpath-cloud-meta` feature requires the `hotpath-meta` feature");
 
 // Referenced by the #[hotpath::main] expansion when the meta allocator layer
 // is enabled, so user crates can name hotpath_meta without depending on it.
@@ -37,12 +43,8 @@ pub use lib_on::*;
 #[cfg(feature = "hotpath")]
 mod lib_on;
 
-#[cfg(all(feature = "hotpath", feature = "threads"))]
-pub use lib_on::threads;
 #[cfg(all(feature = "hotpath", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
-#[cfg(feature = "hotpath")]
-pub use lib_on::{channels, futures, http, io, mutexes, server, sql, streams};
 
 #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub(crate) mod output;
@@ -51,9 +53,8 @@ pub use output::format_debug_truncated;
 #[cfg(any(feature = "hotpath", feature = "utils", feature = "tui"))]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_count, format_duration,
-    format_percentile_header, format_percentile_key, format_rate, format_throughput, parse_bytes,
-    parse_count, parse_duration, shorten_function_name, OutputDestination, ProfilingMode,
-    MAX_LOG_LEN,
+    format_percentile_header, format_percentile_key, format_rate, parse_bytes, parse_count,
+    parse_duration, shorten_function_name, ProfilingMode, MAX_LOG_LEN,
 };
 
 #[cfg(feature = "hotpath")]
@@ -89,9 +90,6 @@ pub use lib_off::*;
 #[cfg(not(feature = "hotpath"))]
 mod lib_off;
 
-#[cfg(not(feature = "hotpath"))]
-pub use lib_off::{channels, futures, streams, threads};
-
 /// Mirror of `std` paths so instrumented types can be used as drop-in
 /// replacements by prefixing imports with `hotpath::wrap::` (e.g.
 /// `hotpath::wrap::std::sync::RwLock`).
@@ -103,16 +101,13 @@ pub use lib_off::{channels, futures, streams, threads};
 pub mod wrap {
     pub mod std {
         pub mod sync {
-            #[cfg(not(feature = "hotpath"))]
-            pub use crate::lib_off::{
-                mutexes::{Mutex, MutexGuard},
-                rw_locks::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-            };
             #[cfg(feature = "hotpath")]
             pub use crate::lib_on::{
                 mutexes::wrapper::std::{Mutex, MutexGuard},
                 rw_locks::wrapper::std::{RwLock, RwLockReadGuard, RwLockWriteGuard},
             };
+            #[cfg(not(feature = "hotpath"))]
+            pub use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
             /// Instrumented `std::sync::mpsc` channel endpoints for
             /// `channel!(..., wrap = true)`. With `hotpath` enabled these are the

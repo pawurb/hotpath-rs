@@ -25,7 +25,7 @@ pub(crate) fn format_time_ago(nanos_ago: u64) -> String {
     }
 }
 
-pub fn format_delay(nanos: u64) -> String {
+pub(crate) fn format_delay(nanos: u64) -> String {
     if nanos < 1_000 {
         format!("{} ns", nanos)
     } else if nanos < 1_000_000 {

@@ -321,7 +321,7 @@ impl MeasurementGuardSyncWithLog {
     }
 
     #[inline]
-    pub fn finish_with_result<T: std::fmt::Debug>(mut self, result: &T) {
+    pub(crate) fn finish_with_result<T: std::fmt::Debug>(mut self, result: &T) {
         self.finished = true;
         if self.skipped {
             return;
@@ -426,7 +426,7 @@ impl MeasurementGuardAsyncWithLog {
     }
 
     #[inline]
-    pub fn finish_with_result<T: std::fmt::Debug>(mut self, result: &T) {
+    pub(crate) fn finish_with_result<T: std::fmt::Debug>(mut self, result: &T) {
         self.finished = true;
         if self.skipped {
             return;

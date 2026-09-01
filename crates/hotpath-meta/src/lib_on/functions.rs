@@ -105,19 +105,13 @@ pub fn build_measurement_guard_block(
     MeasurementGuardSync::new(measurement_name, wrapper, skipped)
 }
 
-#[doc(hidden)]
+#[cfg(not(feature = "hotpath-alloc-meta"))]
 fn build_measurement_guard_async(
     measurement_name: &'static str,
     wrapper: bool,
 ) -> MeasurementGuardAsync {
     let skipped = !wrapper && !is_focused(measurement_name);
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "hotpath-alloc-meta")] {
-            MeasurementGuardAsync::new(measurement_name, wrapper, skipped, None)
-        } else {
-            MeasurementGuardAsync::new(measurement_name, wrapper, skipped)
-        }
-    }
+    MeasurementGuardAsync::new(measurement_name, wrapper, skipped)
 }
 
 #[inline]

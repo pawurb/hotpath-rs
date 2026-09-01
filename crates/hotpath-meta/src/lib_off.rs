@@ -93,7 +93,7 @@ impl ValHandle {
     pub fn set<T: std::fmt::Debug>(&self, _value: &T) {}
 }
 
-pub use crate::shared::IntoF64;
+use crate::shared::IntoF64;
 
 #[macro_export]
 macro_rules! gauge {
@@ -163,20 +163,8 @@ macro_rules! future {
     };
 }
 
-pub use crate::Format;
-pub use crate::Section;
-
-pub struct MeasurementGuard {}
-
-impl MeasurementGuard {
-    pub fn new(_name: &'static str, _wrapper: bool) -> Self {
-        Self {}
-    }
-
-    pub fn build(_name: &'static str, _wrapper: bool) -> Self {
-        Self {}
-    }
-}
+use crate::Format;
+use crate::Section;
 
 #[inline]
 pub fn measure_sync<T, F: FnOnce() -> T>(_measurement_loc: &'static str, f: F) -> T {
@@ -360,30 +348,6 @@ impl HotpathGuardBuilder {
     }
 
     pub fn build_with_shutdown(self, _duration: std::time::Duration) {}
-}
-
-pub mod channels {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ChannelType {
-        Bounded(usize),
-        Unbounded,
-        Oneshot,
-        Pending,
-    }
-}
-
-pub mod streams {}
-
-pub mod threads {}
-
-pub mod futures {}
-
-pub mod rw_locks {
-    pub use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-}
-
-pub mod mutexes {
-    pub use std::sync::{Mutex, MutexGuard};
 }
 
 #[macro_export]

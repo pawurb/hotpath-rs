@@ -351,7 +351,7 @@ fn flush_server_buffer(buffer: &mut Vec<ServerEvent>, inner: &Arc<StdRwLock<Serv
 
 /// Initialize the server statistics collection system (called by the `axum!`
 /// macro and the [`AxumLayer`] constructor).
-pub fn init_server_state() {
+pub(crate) fn init_server_state() {
     SERVER_STATE.get_or_init(|| {
         START_TIME.get_or_init(Instant::now);
 
