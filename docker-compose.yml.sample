@@ -42,7 +42,7 @@ services:
     # two representations side by side.
     image: prom/prometheus:v2.53.0
     ports:
-      - "9098:9090"
+      - "127.0.0.1:9098:9090"
     volumes:
       - ./docker/prometheus-legacy.yml:/etc/prometheus/prometheus.yml:ro
     extra_hosts:
