@@ -70,6 +70,16 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 | `HOTPATH_MCP_PORT` | Port for the MCP (Model Context Protocol) server. (default: `6771`) |
 | `HOTPATH_MCP_AUTH_TOKEN` | When set, clients must include this token in the `Authorization` header. (default: `''`) |
 
+## Prometheus Exporter
+
+Requires the `hotpath-prometheus` feature, see [Prometheus & Grafana](prometheus_grafana.md).
+
+| Variable | Description |
+|----------|-------------|
+| `HOTPATH_PROMETHEUS_PORT` | Port for the Prometheus `/metrics` exporter. (default: `6772`) |
+| `HOTPATH_PROMETHEUS_HOST` | Bind address for the exporter. Set to `0.0.0.0` when a Prometheus container must reach it through the Docker bridge gateway; pair it with an auth token. (default: `127.0.0.1`) |
+| `HOTPATH_PROMETHEUS_AUTH_TOKEN` | When set, every scrape must send this token in the `Authorization` header, bare or `Bearer`-prefixed (matches Prometheus' `authorization` scrape config). Same character rules as `HOTPATH_METRICS_AUTH_TOKEN`. (default: `''`) |
+
 ## TUI
 
 | Variable | Description |

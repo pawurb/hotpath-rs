@@ -20,8 +20,9 @@
 
 # More
 
-- [GitHub CI integration](./github_ci.md)
+- [Prometheus & Grafana](./prometheus_grafana.md)
 - [MCP integration](./mcp.md)
+- [GitHub CI integration](./github_ci.md)
 - [Configuration](./configuration.md)
 - [Used by](./adoption.md)
 
