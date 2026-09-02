@@ -17,7 +17,7 @@ cfg_if::cfg_if! {
         pin_project! {
             /// Instrumented wrapper around a byte-level I/O value.
             ///
-            /// Not constructed directly - use the [`io!`](crate::io) macro.
+            /// Not constructed directly - use the [`io!`](macro@crate::io) macro.
             /// Delegates [`Read`], [`Write`], `AsyncRead`, and `AsyncWrite` to the
             /// wrapped value while recording operation counts, bytes, durations,
             /// and errors. The per-direction `*_op` slots hold the in-flight async
@@ -36,7 +36,7 @@ cfg_if::cfg_if! {
     } else {
         /// Instrumented wrapper around a byte-level I/O value.
         ///
-        /// Not constructed directly - use the [`io!`](crate::io) macro.
+        /// Not constructed directly - use the [`io!`](macro@crate::io) macro.
         /// Delegates [`Read`] and [`Write`] to the wrapped value while recording
         /// operation counts, bytes, durations, and errors.
         pub struct InstrumentedIo<T> {

@@ -407,7 +407,7 @@ pub(crate) fn compare_mutex_entries(a: &MutexEntry, b: &MutexEntry) -> std::cmp:
 }
 
 /// Trait for instrumenting Mutexes. Dispatches on the type of the wrapped lock
-/// (e.g. [`std::sync::Mutex`] or [`parking_lot::Mutex`]).
+/// (e.g. [`std::sync::Mutex`] or `parking_lot::Mutex`).
 ///
 /// This trait is not intended for direct use. Use the `mutex!` macro instead.
 #[doc(hidden)]
@@ -416,7 +416,7 @@ pub trait InstrumentMutex {
     fn instrument(self, source: &'static str, label: Option<String>) -> Self::Output;
 }
 
-/// Instrument an [`std::sync::Mutex`], [`parking_lot::Mutex`], `tokio::sync::Mutex`, or
+/// Instrument an [`std::sync::Mutex`], `parking_lot::Mutex`, `tokio::sync::Mutex`, or
 /// `async_lock::Mutex` for lock wait & acquire profiling.
 ///
 /// Returns an instrumented drop-in replacement that proxies to the wrapped lock and records

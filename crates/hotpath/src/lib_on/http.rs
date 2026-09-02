@@ -2,7 +2,7 @@
 //!
 //! Entries are keyed by *normalized* endpoint (`GET api.example.com/users/{id}`),
 //! so parameter-varied requests to the same route merge into a single bucket
-//! (see [`normalize`]). Normalization runs on the background worker thread to
+//! (see `normalize`). Normalization runs on the background worker thread to
 //! keep the request path light.
 //!
 //! The write path (worker, events) is driven by the client middleware
