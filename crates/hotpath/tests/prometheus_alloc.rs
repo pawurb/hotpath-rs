@@ -141,9 +141,9 @@ pub mod tests {
                 "hotpath_function_calls_total",
                 "hotpath_function_duration_seconds",
                 "hotpath_function_alloc_bytes_total",
-                "hotpath_function_allocs_total",
+                "hotpath_function_alloc_count_total",
                 "hotpath_function_alloc_bytes",
-                "hotpath_function_allocs",
+                "hotpath_function_alloc_count",
             ] {
                 assert!(
                     body.contains(&format!("# TYPE {family} ")),
@@ -151,7 +151,10 @@ pub mod tests {
                 );
             }
 
-            for family in ["hotpath_function_alloc_bytes", "hotpath_function_allocs"] {
+            for family in [
+                "hotpath_function_alloc_bytes",
+                "hotpath_function_alloc_count",
+            ] {
                 assert_histogram_family(&body, family);
             }
 
@@ -160,7 +163,7 @@ pub mod tests {
             assert!(
                 series_value(&body, "hotpath_function_alloc_bytes_total", function) >= 51_200.0
             );
-            assert!(series_value(&body, "hotpath_function_allocs_total", function) >= 50.0);
+            assert!(series_value(&body, "hotpath_function_alloc_count_total", function) >= 50.0);
             assert_eq!(
                 series_value(&body, "hotpath_function_alloc_bytes_count", function),
                 50.0

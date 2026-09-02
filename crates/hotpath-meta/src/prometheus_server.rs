@@ -348,7 +348,7 @@ fn collect_functions_alloc(families: &mut Vec<Family>) -> Option<()> {
     });
 
     families.push(Family {
-        name: "hotpath_function_allocs_total",
+        name: "hotpath_function_alloc_count_total",
         help: "Total allocations made by each instrumented function.",
         kind: FamilyKind::Counter,
         samples: functions
@@ -401,7 +401,7 @@ fn collect_functions_alloc(families: &mut Vec<Family>) -> Option<()> {
         .collect();
     if !allocs_samples.is_empty() {
         families.push(Family {
-            name: "hotpath_function_allocs",
+            name: "hotpath_function_alloc_count",
             help: "Allocations made per call of each instrumented function.",
             kind: FamilyKind::Histogram,
             samples: allocs_samples,
