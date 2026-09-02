@@ -246,15 +246,7 @@ fn collect_families() -> Option<Vec<Family>> {
                 labels: vec![
                     ("hotpath_version", env!("CARGO_PKG_VERSION").to_string()),
                     ("rustc_version", env!("HOTPATH_RUSTC_VERSION").to_string()),
-                    (
-                        "profile",
-                        if cfg!(debug_assertions) {
-                            "debug"
-                        } else {
-                            "release"
-                        }
-                        .to_string(),
-                    ),
+                    ("profile", env!("HOTPATH_CARGO_PROFILE").to_string()),
                     (
                         "os",
                         format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),

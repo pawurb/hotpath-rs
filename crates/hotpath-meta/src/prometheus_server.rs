@@ -246,15 +246,7 @@ fn collect_families() -> Option<Vec<Family>> {
                         "rustc_version",
                         env!("HOTPATH_META_RUSTC_VERSION").to_string(),
                     ),
-                    (
-                        "profile",
-                        if cfg!(debug_assertions) {
-                            "debug"
-                        } else {
-                            "release"
-                        }
-                        .to_string(),
-                    ),
+                    ("profile", env!("HOTPATH_META_CARGO_PROFILE").to_string()),
                     (
                         "os",
                         format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
