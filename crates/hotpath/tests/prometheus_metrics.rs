@@ -146,6 +146,17 @@ pub mod tests {
                 );
             }
             assert!(
+                body.contains("hotpath_build_info{hotpath_version=\"")
+                    && body.contains("rustc_version=\"")
+                    && body.contains("profile=\"debug\"")
+                    && body.contains(&format!(
+                        "os=\"{}-{}\"",
+                        std::env::consts::OS,
+                        std::env::consts::ARCH
+                    )),
+                "build info labels missing, body:\n{body}"
+            );
+            assert!(
                 body.contains("function=\"basic::sync_function\""),
                 "instrumented function missing, body:\n{body}"
             );

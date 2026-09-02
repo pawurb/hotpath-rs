@@ -240,10 +240,26 @@ fn collect_families() -> Option<Vec<Family>> {
     let mut families = vec![
         Family {
             name: "hotpath_build_info",
-            help: "hotpath version info, value is always 1.",
+            help: "hotpath build info, value is always 1.",
             kind: FamilyKind::Gauge,
             samples: vec![Sample {
-                labels: vec![("version", env!("CARGO_PKG_VERSION").to_string())],
+                labels: vec![
+                    ("hotpath_version", env!("CARGO_PKG_VERSION").to_string()),
+                    ("rustc_version", env!("HOTPATH_RUSTC_VERSION").to_string()),
+                    (
+                        "profile",
+                        if cfg!(debug_assertions) {
+                            "debug"
+                        } else {
+                            "release"
+                        }
+                        .to_string(),
+                    ),
+                    (
+                        "os",
+                        format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+                    ),
+                ],
                 value: SampleValue::Scalar(1.0),
             }],
         },
