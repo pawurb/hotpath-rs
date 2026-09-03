@@ -5,6 +5,7 @@ use std::fmt;
 use std::fs::File;
 #[cfg(feature = "hotpath-meta")]
 use std::io::Write;
+#[cfg(feature = "hotpath-meta")]
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -254,6 +255,7 @@ impl OutputDestination {
 }
 
 /// Resolves a path, converting relative paths to absolute by joining with cwd.
+#[cfg(feature = "hotpath-meta")]
 pub(crate) fn resolve_output_path(path: impl AsRef<std::path::Path>) -> PathBuf {
     let path = path.as_ref();
     if path.is_absolute() {
