@@ -2,6 +2,96 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.25.0] - 2026-09-03
+
+### 🚀 Features
+
+- Initial hotpath-cloud upload logic
+
+- Display axum HTTP and SQL calls
+
+- Add raw histogram data for hotpath-cloud uploads
+
+- Improve TUI route and source display
+
+- Render all histograms data
+
+- Validate benchmark name format
+
+- Add location info to each resource type
+
+- Initial prometheus metrics
+
+- Initial native prometheus histogram
+
+- Enable simultaneous meta and standard alloc profiling
+
+- Add SQL and HTTP calls to prometheus
+
+- Add mutexes, rw_locks and channels to prometheus
+
+- Add io, futures and alloc metrics to prometheus
+
+- Add threads tokio_runtime and gauge to prometheus
+
+- Add build info to prometheus
+
+
+### 🐛 Bug Fixes
+
+- Record zero-duration alloc samples in histogram
+
+- Record 0 alloc values
+
+- Add columns to resource identity
+
+- [**breaking**] Non optional reports meta
+
+- Unify duration clamp max
+
+- Group unmatched HTTP endpoints
+
+- Handle hotpath-alloc prometheus timeouts
+
+- Unify same line resource prometheus label
+
+- Misc prometheus metrics fixes
+
+- Handle empty native prometheus histogram
+
+- Increase response timeout limit
+
+- Dev processes host binding
+
+- [**breaking**] Limit public API and feature flag fixes
+
+- Doc build warnings
+
+- Rename prometheus metric
+
+- Export channel and stream counts as counters
+
+
+### 🚜 Refactor
+
+- Extract e2e upload CI
+
+- Unify grafana rendering
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Add test prometheus and grafana setup
+
+- Add prometheus and grafana meta config
+
+- Validate feature flags
+
+- Add grafana, prometheus docs
+
+- Release 0.25.0
+
+
 ## [0.24.0] - 2026-08-22
 
 ### 🚀 Features
