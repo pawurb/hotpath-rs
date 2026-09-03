@@ -108,6 +108,7 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 - **I/O monitoring** - bytes, throughput, latency of any sync or async IO stream like files, TCP, or compression.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
 - **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest and ureq.
+- **HTTP server profiling** - per-route response time and error metrics for axum.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
 - **Prometheus & Grafana integration** - export profiling metrics to your existing dashboards.

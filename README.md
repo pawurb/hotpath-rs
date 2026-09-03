@@ -3,7 +3,7 @@
 
 hotpath-rs is an easy-to-configure Rust performance profiler that shows exactly where your code spends time, burns CPU, and allocates memory. 
 
-It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, HTTP calls, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
+It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, HTTP calls, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup. Built-in support for Prometheus metrics and Grafana dashboards.
 
 Try the TUI demo via SSH - no installation required:
 
@@ -35,7 +35,7 @@ monitor throughput, performance and max queue depth of instrumented channels:
 
 ![hotpath-rs channel profiling report showing throughput, send-to-receive latency and max queue depth per channel](media/channel_metrics.png)
 
-or use the live TUI dashboard to monitor real-time performance metrics with debug info:
+or use the live TUI dashboard to monitor real-time performance and async data flow metrics with debug info:
 
 https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
@@ -43,12 +43,13 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
 - **Time, CPU & memory profiling** - identify expensive functions, allocation hotspots, and investigate memory leaks.
 - **Async observability** - futures, channels and streams.
-- **I/O monitoring** - bytes, throughput, latency and errors for any sync or async IO stream like files, TCP, or compression.
+- **I/O monitoring** - bytes, throughput, latency of any sync or async IO stream like files, TCP, or compression.
 - **SQL query profiling** - query performance metrics for sqlx and Diesel.
 - **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest and ureq.
 - **HTTP server profiling** - per-route response time and error metrics for axum.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
+- **Prometheus & Grafana integration** - export profiling metrics to your existing dashboards.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
 - **CI regression detection** - benchmark every PR automatically.
 - **MCP server for AI agents** - query profiling data in real time.
@@ -81,6 +82,7 @@ hotpath = "0.25"
 hotpath = ["hotpath/hotpath"]
 hotpath-cpu = ["hotpath/hotpath-cpu"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 ```
 
 This config ensures that the lib has no compile time or runtime overhead unless explicitly enabled via a `hotpath` feature. All the lib dependencies are optional (i.e. not compiled) and all macros are noop unless profiling is enabled.
@@ -176,7 +178,6 @@ See the full docs and advanced config tutorials at [hotpath.rs](https://hotpath.
 
 Read the [complete guide to profiling Rust applications](https://hotpath.rs/blog/profiling-rust-guide) - a comprehensive overview of debugging performance issues in Rust.
 
-- [Sampling Comparison](https://hotpath.rs/blog/sampling_comparison) - when to use `hotpath` vs CPU sampling profilers
 - [Profiling modes](https://hotpath.rs/profiling_modes) - static reports vs live TUI dashboard
 - [Profiling overhead](https://hotpath.rs/profiling_overhead) - per-operation instrumentation cost and time sampling
 - [Functions](https://hotpath.rs/functions) - measure execution time and memory allocations
@@ -186,12 +187,14 @@ Read the [complete guide to profiling Rust applications](https://hotpath.rs/blog
 - [Locks](https://hotpath.rs/locks) - track Mutex and RwLock wait and hold times
 - [SQL queries](https://hotpath.rs/sql_tracing) - profile query execution time for sqlx and Diesel
 - [HTTP requests](https://hotpath.rs/http_tracing) - profile reqwest and ureq client calls per endpoint
-- [HTTP server (axum)](https://hotpath.rs/axum_tracing) - profile served requests per axum route
+- [HTTP server (axum)](https://hotpath.rs/axum_tracing) - profile axum request latency and errors per route
 - [I/O tracing](https://hotpath.rs/io_tracing) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](https://hotpath.rs/tokio_runtime) - monitor Tokio runtime worker stats and task scheduling
-- [Debug & Metrics](https://hotpath.rs/debug) - track custom values with `dbg!`, `val!`, and `gauge!` macros
+- [Debug & Metrics](https://hotpath.rs/debug) - track custom values with dbg!, val!, and gauge! macros
+- [Prometheus & Grafana](https://hotpath.rs/prometheus_grafana) - export metrics to Prometheus and build Grafana dashboards
 - [GitHub CI](https://hotpath.rs/github_ci) - automated benchmarking and regression detection in CI
 - [MCP Server](https://hotpath.rs/mcp) - LLM integration via Model Context Protocol
+- [Cargo flamegraph alternatives](https://hotpath.rs/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply
 - [Configuration](https://hotpath.rs/configuration) - explore all config options
 
 ## Waitlist
