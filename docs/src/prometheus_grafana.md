@@ -1,6 +1,6 @@
 # Prometheus and Grafana integration
 
-The `hotpath-prometheus` feature exposes every profiling subsystem as Prometheus metrics on a dedicated `GET /metrics` endpoint. Point a Prometheus scraper at it and build Grafana dashboards on top of any of the performance signals measured by this library.
+The `hotpath-prometheus` feature exposes every profiling subsystem as Prometheus metrics on a dedicated `GET /metrics` endpoint. Point a Prometheus scraper at it and build Grafana dashboards on top of any of the performance signals measured by the library.
 
 ## Configure prometheus metrics endpoint
 
