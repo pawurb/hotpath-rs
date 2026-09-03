@@ -1,6 +1,6 @@
 # A simple Rust profiler that shows exactly why your code is slow
 
-<h2 class="hero-subtitle"><b>Performance feedback for developers and coding agents.</b> Profile CPU, memory, async execution, SQL and HTTP calls, I/O streams, lock contention and channels from a single tool.</h2>
+<h2 class="hero-subtitle"><b>Performance feedback for developers and coding agents.</b> Profile CPU, memory, async execution, SQL and HTTP calls, I/O streams, lock contention and channels. Built-in support for Prometheus metrics and Grafana dashboards.</h2>
 
 <div class="hero-badges">
   <a href="https://github.com/pawurb/hotpath-rs" target="_blank" rel="noopener noreferrer"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a>
@@ -110,6 +110,7 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 - **HTTP calls profiling** - per-endpoint latency and error metrics for reqwest and ureq.
 - **Concurrency metrics** - Mutex/RwLock wait time and contention.
 - **Tokio runtime monitoring** - workers, scheduling and queues.
+- **Prometheus & Grafana integration** - export profiling metrics to your existing dashboards.
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
 - **CI regression detection** - benchmark every PR automatically.
 - **MCP server for AI agents** - query profiling data in real time.
@@ -162,8 +163,8 @@ hotpath = "{{HOTPATH_VERSION}}"
 
 [features]
 hotpath = ["hotpath/hotpath"]
-hotpath-cpu = ["hotpath/hotpath-cpu"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 ```
 
 This config ensures that the lib has no compile time or runtime overhead unless explicitly enabled via a `hotpath` feature. All the lib dependencies are optional (i.e. not compiled) and all macros are noop unless profiling is enabled.
@@ -290,6 +291,7 @@ Explore the docs for customization options and advanced profiling features.
 - [I/O tracing](./io_tracing.html) - monitor bytes, throughput and duration of TCP, Redis, and file operations
 - [Tokio Runtime](./tokio_runtime.html) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
+- [Prometheus & Grafana](./prometheus_grafana.html) - export metrics to Prometheus and build Grafana dashboards
 - [GitHub CI](./github_ci.html) - automated benchmarking and regression detection in CI
 - [MCP Server](./mcp.html) - LLM integration via Model Context Protocol
 - [Cargo flamegraph alternatives](/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply
