@@ -4,7 +4,7 @@ The `hotpath-prometheus` feature exposes every profiling subsystem as Prometheus
 
 ## Configure prometheus metrics endpoint
 
-Forward the feature from your crate so it stays opt-in like `hotpath` itself:
+Add `hotpath-prometheus` feature forwarding:
 
 ```toml
 [dependencies]
@@ -19,7 +19,7 @@ hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 cargo run --features='hotpath,hotpath-prometheus'
 ```
 
-The exporter starts automatically with the profiler on `127.0.0.1:6772` (customizable with `HOTPATH_PROMETHEUS_PORT`, `HOTPATH_PROMETHEUS_HOST`) and runs on its own `hp-prometheus` thread. Verify it with:
+The exporter starts automatically with the profiler on `127.0.0.1:6772` (customizable with `HOTPATH_PROMETHEUS_PORT`, `HOTPATH_PROMETHEUS_HOST`). Verify it with:
 
 ```bash
 curl http://127.0.0.1:6772/metrics
@@ -31,7 +31,7 @@ Minimal `prometheus.yml`:
 
 ```yaml
 global:
-  scrape_interval: 15s
+  scrape_interval: 5s
 
 scrape_configs:
   - job_name: hotpath
@@ -39,8 +39,6 @@ scrape_configs:
     static_configs:
       - targets: ["127.0.0.1:6772"]
 ```
-
-The default `scrape_interval` is one minute, so the `rate(...[1m])` windows used in the queries below would rarely contain the two samples `rate()` needs. A 15s interval keeps them populated.
 
 With `scrape_native_histograms: true` Prometheus negotiates the protobuf format and ingests high-resolution [native histograms](https://prometheus.io/docs/specs/native_histograms/). Without it, the exporter serves the text format with coarse classic buckets.
 
@@ -52,7 +50,7 @@ Set `HOTPATH_PROMETHEUS_AUTH_TOKEN` and every request must carry it in the `Auth
 
 ```yaml
 global:
-  scrape_interval: 15s
+  scrape_interval: 5s
 
 scrape_configs:
   - job_name: hotpath
@@ -234,7 +232,7 @@ Subtract the closed counter from the created one for the number of instances cur
 
 ### Futures
 
-Requires [`hotpath::future!` / `#[hotpath::future_fn]`](data_flow.md). `source` is the `file:line:column` for `future!` sites or the function path for `#[future_fn]`.
+Requires [`#[hotpath::measure(future = true)]`](functions.md) on the async function. `source` is the function path.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
@@ -275,7 +273,7 @@ Requires the `threads` feature. Per-thread series cover live threads only; a thr
 
 ### Tokio runtime
 
-Requires the `tokio` feature and [`hotpath::tokio_runtime!()`](tokio_runtime.md). Some series are only available when Tokio's unstable metrics are enabled.
+Requires the `tokio` feature and [`hotpath::tokio_runtime!()`](tokio_runtime.md). Some series are only available when Tokio's unstable (`RUSTFLAGS="--cfg tokio_unstable"`) metrics are enabled.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|

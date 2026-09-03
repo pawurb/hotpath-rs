@@ -70,6 +70,7 @@ An attribute macro that instruments functions to send timing/memory measurements
 - `log = true` - logs the result value when the function returns (requires `std::fmt::Debug` on return type)
 - `label = "name"` - replaces the full reported identifier (instead of `module_path::<fn_name>`).
 - `impl_type = "Type"` - inserts the enclosing type segment so the registered name becomes `module_path::<Type>::<fn_name>`. Use this for bare `#[hotpath::measure]` on a method inside an `impl` not covered by `measure_all`. Required for correct CPU sampling attribution under `hotpath-cpu` (see [CPU profiling](./cpu_profiling.md)), since the demangled symbol contains the type segment.
+- `future = true` - additionally tracks the async function as a future: poll counts, poll durations, and pending/ready/cancelled state transitions. Only valid on `async fn`.
 
 Example:
 
@@ -91,6 +92,20 @@ impl Worker {
 ```
 
 <img loading="lazy" src="{{#asset-hash images/functions-log.png}}" alt="hotpath-rs TUI showing function return value logging">
+
+### Async functions and `future = true`
+
+`#[hotpath::measure]` on an `async fn` records its wall-clock time and allocations in the functions report, but nothing about how the future itself behaves. Add `future = true` to also register it in the [futures section](./data_flow.md#futures-monitoring), which shows poll counts, average poll duration, and whether calls completed or were cancelled:
+
+```rust
+#[hotpath::measure(future = true)]
+async fn fetch_data() -> Vec<u8> {
+    // Reported under both functions and futures, keyed by the function path
+    vec![1, 2, 3]
+}
+```
+
+This is the recommended way to monitor async functions: one attribute covers timing, allocations and future lifecycle. The `future!` and `#[future_fn]` macros from the [async data flow](./data_flow.md#futures-monitoring) page are for ad-hoc future expressions.
 
 ## `#[hotpath::measure_all]` macro
 
