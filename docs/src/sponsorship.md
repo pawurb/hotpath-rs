@@ -8,10 +8,10 @@ I'm currently opening a limited number of sponsorship slots for companies intere
 
 **Project traction**
 
-- <a href="https://crates.io/crates/hotpath" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/crates/d/hotpath?cacheSeconds=86400" alt="crates.io downloads"></a> 100k+ downloads on [crates.io](https://crates.io/crates/hotpath)
-- <a href="https://github.com/pawurb/hotpath-rs" target="_blank" rel="noopener noreferrer"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a> 1k+ GitHub stars
+- <a href="https://crates.io/crates/hotpath" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/crates/d/hotpath?cacheSeconds=86400" alt="crates.io downloads"></a> 500k+ downloads on [crates.io](https://crates.io/crates/hotpath)
+- <a href="https://github.com/pawurb/hotpath-rs" target="_blank" rel="noopener noreferrer"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a> 1.5k+ GitHub stars
 
-**Sponsorship starts at $500/month and may include:**
+**Sponsorship starts at $750/month and may include:**
 
 - Sponsor logo placement in the GitHub README and documentation website
 - Priority consideration for feature requests and feedback
