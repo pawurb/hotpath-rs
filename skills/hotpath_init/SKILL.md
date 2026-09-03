@@ -21,7 +21,7 @@ In the target crate's `Cargo.toml`:
 
 ```toml
 [dependencies]
-hotpath = "0.24"
+hotpath = "0.25"
 
 [features]
 hotpath = ["hotpath/hotpath"]
@@ -31,7 +31,7 @@ hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 
 Enable extra hotpath cargo features on the dependency based on what the project uses:
 
-- `tokio` - for `tokio::sync` channel instrumentation, async `io!` traits (`AsyncRead`/`AsyncWrite`), and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.24", features = ["tokio"] }`
+- `tokio` - for `tokio::sync` channel instrumentation, async `io!` traits (`AsyncRead`/`AsyncWrite`), and `hotpath::tokio_runtime!()` metrics: `hotpath = { version = "0.25", features = ["tokio"] }`
 - `crossbeam` - for `crossbeam_channel` instrumentation
 - `futures` - for `futures_channel` instrumentation
 - `flume` - for `flume` channel instrumentation
