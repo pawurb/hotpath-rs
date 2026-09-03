@@ -51,13 +51,16 @@ The two representations are queried differently. A native histogram is a single 
 Set `HOTPATH_PROMETHEUS_AUTH_TOKEN` and every request must carry it in the `Authorization` header, either bare or `Bearer`-prefixed. This matches Prometheus' `authorization` scrape config:
 
 ```yaml
+global:
+  scrape_interval: 15s
+
 scrape_configs:
   - job_name: hotpath
     scrape_native_histograms: true
     authorization:
       credentials: your-secret-token
     static_configs:
-      - targets: ["host.docker.internal:6772"]
+      - targets: ["127.0.0.1:6772"]
 ```
 
 The token travels in plaintext: it guards against other local processes and accidental exposure, not a substitute for TLS.
