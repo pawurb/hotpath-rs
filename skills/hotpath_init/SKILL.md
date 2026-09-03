@@ -26,6 +26,7 @@ hotpath = "0.24"
 [features]
 hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 ```
 
 Enable extra hotpath cargo features on the dependency based on what the project uses:
