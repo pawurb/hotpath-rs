@@ -113,6 +113,7 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 - **Live TUI dashboard & static reports** - real-time or one-off analysis.
 - **CI regression detection** - benchmark every PR automatically.
 - **MCP server for AI agents** - query profiling data in real time.
+- **Prometheus & Grafana integration** - export profiling metrics to your existing dashboards.
 - **Zero cost when disabled** - fully feature-gated.
 
 <div class="waitlist-card" id="waitlist">
@@ -164,6 +165,7 @@ hotpath = "{{HOTPATH_VERSION}}"
 hotpath = ["hotpath/hotpath"]
 hotpath-cpu = ["hotpath/hotpath-cpu"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 ```
 
 This config ensures that the lib has no compile time or runtime overhead unless explicitly enabled via a `hotpath` feature. All the lib dependencies are optional (i.e. not compiled) and all macros are noop unless profiling is enabled.
@@ -292,5 +294,6 @@ Explore the docs for customization options and advanced profiling features.
 - [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
 - [GitHub CI](./github_ci.html) - automated benchmarking and regression detection in CI
 - [MCP Server](./mcp.html) - LLM integration via Model Context Protocol
+- [Prometheus & Grafana](./prometheus_grafana.html) - export metrics to Prometheus and build Grafana dashboards
 - [Cargo flamegraph alternatives](/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply
 - [Configuration](./configuration.html) - explore all config options

@@ -4,11 +4,15 @@ The `hotpath-prometheus` feature exposes every profiling subsystem as Prometheus
 
 ## Configure prometheus metrics endpoint
 
-Enable the feature alongside `hotpath`:
+Forward the feature from your crate so it stays opt-in like `hotpath` itself:
 
 ```toml
 [dependencies]
-hotpath = { version = "{{HOTPATH_VERSION}}", features = ["hotpath-prometheus"] }
+hotpath = "{{HOTPATH_VERSION}}"
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 ```
 
 ```bash
@@ -26,12 +30,17 @@ curl http://127.0.0.1:6772/metrics
 Minimal `prometheus.yml`:
 
 ```yaml
+global:
+  scrape_interval: 15s
+
 scrape_configs:
   - job_name: hotpath
     scrape_native_histograms: true
     static_configs:
       - targets: ["127.0.0.1:6772"]
 ```
+
+The default `scrape_interval` is one minute, so the `rate(...[1m])` windows used in the queries below would rarely contain the two samples `rate()` needs. A 15s interval keeps them populated.
 
 With `scrape_native_histograms: true` Prometheus negotiates the protobuf format and ingests high-resolution [native histograms](https://prometheus.io/docs/specs/native_histograms/). Without it, the exporter serves the text format with coarse classic buckets.
 
