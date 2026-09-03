@@ -33,7 +33,9 @@ scrape_configs:
       - targets: ["127.0.0.1:6772"]
 ```
 
-With `scrape_native_histograms: true` Prometheus negotiates the protobuf format and ingests high-resolution [native histograms](https://prometheus.io/docs/specs/native_histograms/). Without it, the exporter serves the text format with coarse classic buckets. 
+With `scrape_native_histograms: true` Prometheus negotiates the protobuf format and ingests high-resolution [native histograms](https://prometheus.io/docs/specs/native_histograms/). Without it, the exporter serves the text format with coarse classic buckets.
+
+The two representations are queried differently. A native histogram is a single series under the bare metric name, e.g. `hotpath_function_duration_seconds`. A classic histogram is a set of float series with the `_bucket`, `_sum` and `_count` suffixes. When Prometheus ingests the native part, it drops the classic part, so the suffixed series do not exist. Add `always_scrape_classic_histograms: true` to the scrape config to store both.
 
 ### Authentication
 
@@ -54,15 +56,14 @@ The token travels in plaintext: it guards against other local processes and acci
 
 ## Grafana
 
-
-Add Prometheus as a data source and query the metrics with PromQL. Some useful queries:
+Add Prometheus as a data source and query the metrics with PromQL. The histogram queries below assume native histograms (the `scrape_native_histograms: true` config above); the classic equivalents follow.
 
 ```promql
-# p99 function duration (native or classic histograms)
-histogram_quantile(0.99, sum by (function, le) (rate(hotpath_function_duration_seconds_bucket[1m])))
+# p99 function duration
+histogram_quantile(0.99, sum by (function) (rate(hotpath_function_duration_seconds[1m])))
 
 # Average function duration
-rate(hotpath_function_duration_seconds_sum[1m]) / rate(hotpath_function_duration_seconds_count[1m])
+histogram_sum(rate(hotpath_function_duration_seconds[1m])) / histogram_count(rate(hotpath_function_duration_seconds[1m]))
 
 # Calls per second per function
 rate(hotpath_function_calls_total[1m])
@@ -74,7 +75,7 @@ rate(hotpath_function_alloc_bytes_total[1m])
 rate(hotpath_server_sql_calls_total[5m]) / rate(hotpath_server_scoped_requests_total[5m])
 
 # I/O throughput that stays correct under time sampling
-rate(hotpath_io_sampled_bytes_total[1m]) / rate(hotpath_io_op_seconds_sum[1m])
+rate(hotpath_io_sampled_bytes_total[1m]) / histogram_sum(rate(hotpath_io_op_seconds[1m]))
 
 # Average future poll duration
 rate(hotpath_future_poll_seconds_total[1m]) / rate(hotpath_future_sampled_polls_total[1m])
@@ -82,11 +83,26 @@ rate(hotpath_future_poll_seconds_total[1m]) / rate(hotpath_future_sampled_polls_
 
 Durations are exported in seconds. Counters are cumulative since profiling started, so use `rate()` / `increase()` in queries.
 
-For native histograms drop the `_bucket` suffix and the `le` label: `histogram_quantile(0.99, sum by (function) (rate(hotpath_function_duration_seconds[1m])))`.
+### Classic histogram queries
+
+Without `scrape_native_histograms` (or with `always_scrape_classic_histograms: true`) histograms are stored as `_bucket`, `_sum` and `_count` series. Quantiles need the `le` label and the `_bucket` suffix, and sums and counts are plain series instead of `histogram_sum()` / `histogram_count()`:
+
+```promql
+# p99 function duration
+histogram_quantile(0.99, sum by (function, le) (rate(hotpath_function_duration_seconds_bucket[1m])))
+
+# Average function duration
+rate(hotpath_function_duration_seconds_sum[1m]) / rate(hotpath_function_duration_seconds_count[1m])
+
+# I/O throughput that stays correct under time sampling
+rate(hotpath_io_sampled_bytes_total[1m]) / rate(hotpath_io_op_seconds_sum[1m])
+```
+
+Classic buckets are coarse, log-spaced 1-3 steps, so quantiles from them are rough estimates. Prefer native histograms when accuracy matters.
 
 ## Time sampling
 
-With [time sampling](profiling_overhead.md#reducing-overhead-time-sampling) enabled, `*_total` call counters still count every call, while duration histograms only contain the sampled ones. Their `_count` is the number of timed calls, so averages derived from `_sum / _count` stay correct.
+With [time sampling](profiling_overhead.md#reducing-overhead-time-sampling) enabled, `*_total` call counters still count every call, while duration histograms only contain the sampled ones. Their count (`histogram_count()`, or the classic `_count` series) is the number of timed calls, so averages derived from sum / count stay correct.
 
 ## Available metrics
 
