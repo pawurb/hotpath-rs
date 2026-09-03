@@ -788,9 +788,9 @@ fn collect_channels(families: &mut Vec<Family>) {
     });
 
     families.push(Family {
-        name: "hotpath_channel_instances",
+        name: "hotpath_channel_instances_created_total",
         help: "Channel instances created at this call site since start.",
-        kind: FamilyKind::Gauge,
+        kind: FamilyKind::Counter,
         samples: entries
             .iter()
             .map(|e| Sample {
@@ -801,9 +801,9 @@ fn collect_channels(families: &mut Vec<Family>) {
     });
 
     families.push(Family {
-        name: "hotpath_channel_closed_instances",
+        name: "hotpath_channel_instances_closed_total",
         help: "Channel instances created at this call site that have closed.",
-        kind: FamilyKind::Gauge,
+        kind: FamilyKind::Counter,
         samples: entries
             .iter()
             .map(|e| Sample {
@@ -906,9 +906,9 @@ fn collect_streams(families: &mut Vec<Family>) {
     });
 
     families.push(Family {
-        name: "hotpath_stream_instances",
+        name: "hotpath_stream_instances_created_total",
         help: "Stream instances created at this call site since start.",
-        kind: FamilyKind::Gauge,
+        kind: FamilyKind::Counter,
         samples: entries
             .iter()
             .map(|e| Sample {
@@ -919,9 +919,9 @@ fn collect_streams(families: &mut Vec<Family>) {
     });
 
     families.push(Family {
-        name: "hotpath_stream_closed_instances",
+        name: "hotpath_stream_instances_closed_total",
         help: "Stream instances created at this call site that have closed.",
-        kind: FamilyKind::Gauge,
+        kind: FamilyKind::Counter,
         samples: entries
             .iter()
             .map(|e| Sample {
