@@ -94,10 +94,10 @@ reqwest-middleware-04 = { package = "reqwest-middleware", version = "0.4", optio
 reqwest-middleware-05 = { package = "reqwest-middleware", version = "0.5", optional = true }
 async-trait = { version = "0.1", optional = true }
 http = { version = "1", optional = true }
-futures-channel = { version = "0.3", features = ["sink"], optional = true }
+futures-channel = { version = "0.3.31", features = ["sink"], optional = true }
 async-channel = { version = "2", optional = true }
-futures-core = { version = "0.3", optional = true }
-futures-util = { version = "0.3", default-features = false, features = ["sink"], optional = true }
+futures-core = { version = "0.3.31", optional = true }
+futures-util = { version = "0.3.31", default-features = false, features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
 libc = { version = "0.2.172", optional = true }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"], optional = true }
