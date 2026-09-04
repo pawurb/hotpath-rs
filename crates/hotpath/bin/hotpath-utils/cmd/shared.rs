@@ -2,10 +2,10 @@ use hotpath::json::{
     format_bytes_signed, parse_bytes_signed, JsonFunctionEntry, JsonFunctionsList, JsonReport,
     JsonThreadEntry, JsonThreadsList,
 };
+use hotpath::table::{Cell, Table};
 use hotpath::{
     format_bytes, format_count, parse_bytes, parse_count, parse_duration, shorten_function_name,
 };
-use prettytable::{color, Attr, Cell, Row, Table};
 use std::fmt;
 use std::time::Duration;
 
@@ -565,37 +565,23 @@ pub fn compare_threads(
     }
 }
 
-fn styled_header(text: &str, use_colors: bool) -> Cell {
-    if use_colors {
-        Cell::new(text)
-            .with_style(Attr::Bold)
-            .with_style(Attr::ForegroundColor(color::CYAN))
-    } else {
-        Cell::new(text).with_style(Attr::Bold)
-    }
-}
-
 pub fn build_functions_table(
     comparison: &FunctionsComparison,
     emoji_threshold: Option<u32>,
-    use_colors: bool,
 ) -> Table {
     let mut table = Table::new();
 
     let mut header_cells = vec![
-        styled_header("Function", use_colors),
-        styled_header("Calls", use_colors),
-        styled_header("Avg", use_colors),
+        Cell::header("Function"),
+        Cell::header("Calls"),
+        Cell::header("Avg"),
     ];
     for &p in &comparison.percentiles {
-        header_cells.push(styled_header(
-            &hotpath::format_percentile_header(p),
-            use_colors,
-        ));
+        header_cells.push(Cell::header(&hotpath::format_percentile_header(p)));
     }
-    header_cells.push(styled_header("Total", use_colors));
-    header_cells.push(styled_header("% Total", use_colors));
-    table.add_row(Row::new(header_cells));
+    header_cells.push(Cell::header("Total"));
+    header_cells.push(Cell::header("% Total"));
+    table.add_row(header_cells);
 
     for func_diff in &comparison.function_diffs {
         let short_name = shorten_function_name(&func_diff.function_name);
@@ -611,17 +597,13 @@ pub fn build_functions_table(
         for metric_diff in &func_diff.metrics {
             row_cells.push(Cell::new(&metric_diff.format_with_emoji(emoji_threshold)));
         }
-        table.add_row(Row::new(row_cells));
+        table.add_row(row_cells);
     }
 
     table
 }
 
-pub fn build_threads_table(
-    threads: &ThreadsComparison,
-    emoji_threshold: Option<u32>,
-    use_colors: bool,
-) -> Table {
+pub fn build_threads_table(threads: &ThreadsComparison, emoji_threshold: Option<u32>) -> Table {
     let fmt = |m: &Option<MetricDiff>| {
         m.as_ref()
             .map(|d| d.format_with_emoji(emoji_threshold))
@@ -635,18 +617,18 @@ pub fn build_threads_table(
 
     let mut table = Table::new();
     let mut header = vec![
-        styled_header("Thread", use_colors),
-        styled_header("CPU % Avg", use_colors),
-        styled_header("CPU % Max", use_colors),
+        Cell::header("Thread"),
+        Cell::header("CPU % Avg"),
+        Cell::header("CPU % Max"),
     ];
     if has_alloc {
         header.extend([
-            styled_header("Alloc", use_colors),
-            styled_header("Dealloc", use_colors),
-            styled_header("Mem Diff", use_colors),
+            Cell::header("Alloc"),
+            Cell::header("Dealloc"),
+            Cell::header("Mem Diff"),
         ]);
     }
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for diff in &threads.thread_diffs {
         let name = if diff.is_removed {
@@ -669,7 +651,7 @@ pub fn build_threads_table(
                 Cell::new(&fmt(&diff.mem_diff)),
             ]);
         }
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     table
