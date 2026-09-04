@@ -34,7 +34,7 @@ hotpath = [
   "dep:serde",
   "dep:serde_json",
   "dep:tiny_http",
-  "dep:futures-util",
+  "dep:futures-core",
   "dep:pin-project-lite",
   "dep:libc",
 ]
@@ -46,10 +46,10 @@ hotpath-prometheus-meta = ["hotpath-meta/hotpath-prometheus-meta"]
 hotpath-alloc = ["hotpath-macros/hotpath-alloc"]
 hotpath-cloud = ["dep:ureq", "ureq/rustls", "ureq/json", "dep:serde", "dep:serde_json", "hdrhistogram/serialization", "dep:base64"]
 utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
-tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
+tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam", "dep:futures-util"]
 demo = ["hotpath", "hotpath-prometheus", "sqlx", "dep:sqlx", "diesel", "diesel/sqlite", "dep:libsqlite3-sys", "reqwest-0-13", "axum-0-8"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "tokio/time"]
-futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:futures-channel"]
+futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:futures-channel", "dep:futures-util"]
 async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:async-channel"]
 crossbeam = ["dep:crossbeam-channel"]
 parking_lot = ["dep:parking_lot"]
@@ -96,6 +96,7 @@ async-trait = { version = "0.1", optional = true }
 http = { version = "1", optional = true }
 futures-channel = { version = "0.3", features = ["sink"], optional = true }
 async-channel = { version = "2", optional = true }
+futures-core = { version = "0.3", optional = true }
 futures-util = { version = "0.3", default-features = false, features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
 libc = { version = "0.2.172", optional = true }

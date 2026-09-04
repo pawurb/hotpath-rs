@@ -1,6 +1,6 @@
 use crate::output::format_debug_truncated;
 use crate::streams::{register_stream, send_stream_event, StreamEvent};
-use futures_util::Stream;
+use futures_core::Stream;
 use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
