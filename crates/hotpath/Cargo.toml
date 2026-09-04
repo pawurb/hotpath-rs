@@ -30,7 +30,7 @@ hotpath = [
   "dep:crossbeam-channel",
   "dep:hdrhistogram",
   "dep:quanta",
-  "dep:regex",
+  "dep:regex-lite",
   "dep:serde",
   "dep:serde_json",
   "dep:tiny_http",
@@ -43,7 +43,7 @@ hotpath-alloc-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-
 hotpath-cloud-meta = ["hotpath-meta/hotpath-cloud-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta", "hotpath-meta/axum-0-8"]
 hotpath-prometheus-meta = ["hotpath-meta/hotpath-prometheus-meta"]
-hotpath-alloc = ["dep:tokio", "hotpath-macros/hotpath-alloc"]
+hotpath-alloc = ["hotpath-macros/hotpath-alloc"]
 hotpath-cloud = ["dep:ureq", "ureq/rustls", "ureq/json", "dep:serde", "dep:serde_json", "hdrhistogram/serialization", "dep:base64"]
 utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
 tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
@@ -81,9 +81,8 @@ crossterm = { version = "0.29", optional = true }
 eyre = { version = "0.6", optional = true }
 hdrhistogram = { version = "7", default-features = false, optional = true }
 hotpath-macros = { workspace = true }
-quanta = { version = "0.12", optional = true }
 ratatui = { version = "0.30", optional = true }
-regex = { version = "1", optional = true }
+regex-lite = { version = "0.1", optional = true }
 serde = { version = "1.0.130", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 tiny_http = { version = "0.12", optional = true }
@@ -97,7 +96,7 @@ async-trait = { version = "0.1", optional = true }
 http = { version = "1", optional = true }
 futures-channel = { version = "0.3", features = ["sink"], optional = true }
 async-channel = { version = "2", optional = true }
-futures-util = { version = "0.3", features = ["sink"], optional = true }
+futures-util = { version = "0.3", default-features = false, features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
 libc = { version = "0.2.172", optional = true }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"], optional = true }
@@ -117,6 +116,9 @@ hotpath-meta = { workspace = true, optional = true }
 object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }
 rustc-demangle = { version = "0.1.24", optional = true }
 flate2 = { version = "1", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+quanta = { version = "0.12", optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

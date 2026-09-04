@@ -26,7 +26,7 @@
 
 | Variable | Description |
 |----------|-------------|
-| `HOTPATH_FOCUS` | Filter profiled functions by name. Plain text does substring matching; wrap in `/pattern/` for regex (e.g. `HOTPATH_FOCUS="/^(compute\|process)/"`). (default: `''`) |
+| `HOTPATH_FOCUS` | Filter profiled functions by name. Plain text does substring matching; wrap in `/pattern/` for regex (e.g. `HOTPATH_FOCUS="/^(compute\|process)/"`). Patterns use the [`regex-lite`](https://docs.rs/regex-lite) syntax subset (no Unicode classes like `\p{..}`). (default: `''`) |
 | `HOTPATH_EXCLUDE_WRAPPER` | Set to `true` or `1` to calculate ratios using the sum of measured functions instead of the wrapper total. (default: `false`) |
 | `HOTPATH_ALLOC_CUMULATIVE` | Set to `true` or `1` to track cumulative memory allocations per function (including nested calls) instead of the default exclusive mode. Produces invalid results for recursive functions. (default: `false`) |
 | `HOTPATH_ALLOC_METRIC` | Primary metric for alloc mode: `bytes` or `count`. Controls sorting, percentages, and displayed values in reports. (default: `bytes`) |

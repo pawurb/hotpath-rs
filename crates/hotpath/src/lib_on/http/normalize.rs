@@ -11,7 +11,7 @@
 //! - a UUID (`/jobs/550e8400-e29b-41d4-a716-446655440000`)
 //! - a hex string of 16+ chars (`/blobs/deadbeefdeadbeef`)
 
-use regex::Regex;
+use regex_lite::Regex;
 use std::sync::LazyLock;
 
 static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
