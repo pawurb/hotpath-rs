@@ -29,7 +29,6 @@ hotpath = [
   "dep:cfg-if",
   "dep:crossbeam-channel",
   "dep:hdrhistogram",
-  "dep:prettytable-rs",
   "dep:quanta",
   "dep:regex",
   "dep:serde",
@@ -46,8 +45,8 @@ hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta", "hotpath-meta/axum-0-8"]
 hotpath-prometheus-meta = ["hotpath-meta/hotpath-prometheus-meta"]
 hotpath-alloc = ["dep:tokio", "hotpath-macros/hotpath-alloc"]
 hotpath-cloud = ["dep:ureq", "ureq/rustls", "ureq/json", "dep:serde", "dep:serde_json", "hdrhistogram/serialization", "dep:base64"]
-utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
-tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
+utils = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
+tui = ["dep:serde", "dep:serde_json", "dep:eyre", "dep:clap", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
 demo = ["hotpath", "hotpath-prometheus", "sqlx", "dep:sqlx", "diesel", "diesel/sqlite", "dep:libsqlite3-sys", "reqwest-0-13", "axum-0-8"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "tokio/time"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:futures-channel"]
@@ -82,7 +81,6 @@ crossterm = { version = "0.29", optional = true }
 eyre = { version = "0.6", optional = true }
 hdrhistogram = { version = "7", default-features = false, optional = true }
 hotpath-macros = { workspace = true }
-prettytable-rs = { version = "0.10", default-features = false, optional = true }
 quanta = { version = "0.12", optional = true }
 ratatui = { version = "0.30", optional = true }
 regex = { version = "1", optional = true }

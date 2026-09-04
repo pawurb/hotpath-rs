@@ -5,7 +5,7 @@ use std::sync::{LazyLock, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::dev_logging::warn;
-use prettytable::{color, Attr, Cell, Row, Table};
+use crate::table::{Cell, Color, Table};
 
 use crate::json::{
     CpuSnapshotStatus, JsonFunctionCpuEntry, JsonFunctionsCpuEnvelope, JsonFunctionsCpuList,
@@ -246,22 +246,8 @@ pub(crate) fn build_cpu_json(
     }
 }
 
-fn styled_header(text: &str) -> Cell {
-    if crate::output::use_colors() {
-        Cell::new(text)
-            .with_style(Attr::Bold)
-            .with_style(Attr::ForegroundColor(color::CYAN))
-    } else {
-        Cell::new(text).with_style(Attr::Bold)
-    }
-}
-
 fn print_table<W: Write>(table: &Table, writer: &mut W) {
-    if crate::output::use_colors() {
-        let _ = table.print_tty(false);
-    } else {
-        let _ = table.print(writer);
-    }
+    let _ = table.print(writer, crate::output::use_colors());
 }
 
 pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFunctionsCpuList) {
@@ -275,19 +261,19 @@ pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFu
         let _ = writeln!(writer, "no samples attributed to instrumented functions");
     } else {
         let mut table = Table::new();
-        table.add_row(Row::new(vec![
-            styled_header("Function"),
-            styled_header("Samples"),
-            styled_header("% Total"),
-        ]));
+        table.add_row(vec![
+            Cell::header("Function"),
+            Cell::header("Samples"),
+            Cell::header("% Total"),
+        ]);
 
         for entry in &list.data {
             let short_name = shorten_function_name(&entry.name);
-            table.add_row(Row::new(vec![
+            table.add_row(vec![
                 Cell::new(&short_name),
                 Cell::new(&entry.samples.to_string()),
                 Cell::new(&entry.percent),
-            ]));
+            ]);
         }
         print_table(&table, writer);
     }
@@ -302,20 +288,10 @@ pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFu
 
 pub(crate) fn report_functions_cpu_error_table<W: Write>(writer: &mut W, message: &str) {
     let mut table = Table::new();
-    table.add_row(Row::new(vec![styled_error_header("Error")]));
-    table.add_row(Row::new(vec![Cell::new(message)]));
+    table.add_row(vec![Cell::new("Error").bold().color(Color::Red)]);
+    table.add_row(vec![Cell::new(message)]);
 
     let _ = writeln!(writer, "cpu - report unavailable");
     print_table(&table, writer);
     let _ = writeln!(writer);
-}
-
-fn styled_error_header(text: &str) -> Cell {
-    if crate::output::use_colors() {
-        Cell::new(text)
-            .with_style(Attr::Bold)
-            .with_style(Attr::ForegroundColor(color::RED))
-    } else {
-        Cell::new(text).with_style(Attr::Bold)
-    }
 }

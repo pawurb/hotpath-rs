@@ -60,6 +60,10 @@ pub use output::{
 #[cfg(feature = "hotpath")]
 pub(crate) mod output_on;
 
+#[cfg(any(feature = "hotpath", feature = "utils"))]
+#[doc(hidden)]
+pub mod table;
+
 #[cfg(feature = "hotpath")]
 pub(crate) mod auth;
 

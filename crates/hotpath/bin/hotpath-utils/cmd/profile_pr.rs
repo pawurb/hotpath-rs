@@ -159,7 +159,7 @@ fn format_diff_markdown(
         } else {
             markdown.push_str(&format!(
                 "```\n{}```\n",
-                build_functions_table(comparison, emoji_threshold, false)
+                build_functions_table(comparison, emoji_threshold)
             ));
         }
     }
@@ -174,7 +174,7 @@ fn format_diff_markdown(
         } else {
             markdown.push_str(&format!(
                 "```\n{}```\n",
-                build_functions_table(comparison, emoji_threshold, false)
+                build_functions_table(comparison, emoji_threshold)
             ));
         }
     }
@@ -191,7 +191,7 @@ fn format_diff_markdown(
             }
             markdown.push_str(&format!(
                 "```\n{}```\n",
-                build_threads_table(threads, emoji_threshold, false)
+                build_threads_table(threads, emoji_threshold)
             ));
         }
     }

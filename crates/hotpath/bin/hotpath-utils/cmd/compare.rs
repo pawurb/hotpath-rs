@@ -3,6 +3,7 @@ use eyre::Result;
 use hotpath::json::JsonReport;
 use std::env;
 use std::fs;
+use std::io::IsTerminal;
 
 use crate::cmd::shared::{
     build_functions_table, build_threads_table, compare_reports, format_threads_globals,
@@ -13,12 +14,10 @@ fn use_colors() -> bool {
     env::var("NO_COLOR").is_err()
 }
 
-fn print_table(table: &prettytable::Table) {
-    if use_colors() {
-        let _ = table.print_tty(false);
-    } else {
-        table.printstd();
-    }
+fn print_table(table: &hotpath::table::Table) {
+    let stdout = std::io::stdout();
+    let colors = use_colors() && stdout.is_terminal();
+    let _ = table.print(&mut stdout.lock(), colors);
 }
 
 #[derive(Debug, Parser)]
@@ -67,14 +66,12 @@ fn print_diff(diff: &JsonReportDiff) {
     }
     println!();
 
-    let colors = use_colors();
-
     if let Some(comparison) = &diff.functions_timing {
         println!("{} - {}", comparison.profiling_mode, comparison.description);
         if comparison.function_diffs.is_empty() {
             println!("No functions to compare.");
         } else {
-            print_table(&build_functions_table(comparison, None, colors));
+            print_table(&build_functions_table(comparison, None));
         }
         println!();
     }
@@ -84,7 +81,7 @@ fn print_diff(diff: &JsonReportDiff) {
         if comparison.function_diffs.is_empty() {
             println!("No functions to compare.");
         } else {
-            print_table(&build_functions_table(comparison, None, colors));
+            print_table(&build_functions_table(comparison, None));
         }
         println!();
     }
@@ -98,7 +95,7 @@ fn print_diff(diff: &JsonReportDiff) {
             if !globals.is_empty() {
                 println!("{}", globals.join(" | "));
             }
-            print_table(&build_threads_table(threads, None, colors));
+            print_table(&build_threads_table(threads, None));
         }
         println!();
     }

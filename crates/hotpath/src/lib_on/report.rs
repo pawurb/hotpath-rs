@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use prettytable::{color, Attr, Cell, Row, Table};
+use crate::table::{Cell, Table};
 
 use crate::channels::{
     channel_to_json, compare_channel_entries, resolve_label, ChannelEntry, CHANNELS_STATE,
@@ -38,22 +38,8 @@ fn format_sampled_duration(nanos: u64, sampled_count: u64, count: u64) -> String
     }
 }
 
-fn styled_header(text: &str) -> Cell {
-    if crate::output::use_colors() {
-        Cell::new(text)
-            .with_style(Attr::Bold)
-            .with_style(Attr::ForegroundColor(color::CYAN))
-    } else {
-        Cell::new(text).with_style(Attr::Bold)
-    }
-}
-
 fn print_table(table: &Table, writer: &mut dyn Write) {
-    if crate::output::use_colors() {
-        let _ = table.print_tty(false);
-    } else {
-        let _ = table.print(writer);
-    }
+    let _ = table.print(writer, crate::output::use_colors());
 }
 
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
@@ -99,16 +85,16 @@ pub(crate) fn report_channels_table(
     write_section_header(writer, "channels", "Channel throughput statistics.");
 
     let mut table = Table::new();
-    table.add_row(Row::new(vec![
-        styled_header("Channel"),
-        styled_header("Type"),
-        styled_header("Inst"),
-        styled_header("Sent"),
-        styled_header("Received"),
-        styled_header("Sent/s"),
-        styled_header("Recv/s"),
-        styled_header("Max queue"),
-    ]));
+    table.add_row(vec![
+        Cell::header("Channel"),
+        Cell::header("Type"),
+        Cell::header("Inst"),
+        Cell::header("Sent"),
+        Cell::header("Received"),
+        Cell::header("Sent/s"),
+        Cell::header("Recv/s"),
+        Cell::header("Max queue"),
+    ]);
 
     for channel_stats in channels {
         let label = resolve_label(
@@ -120,7 +106,7 @@ pub(crate) fn report_channels_table(
         let max_queue = channel_stats
             .max_queue_size
             .map_or_else(|| "-".to_string(), |q| q.to_string());
-        table.add_row(Row::new(vec![
+        table.add_row(vec![
             Cell::new(&label),
             Cell::new(&channel_stats.channel_type.to_string()),
             Cell::new(&channel_stats.instances.to_string()),
@@ -129,7 +115,7 @@ pub(crate) fn report_channels_table(
             Cell::new(&format_rate(channel_stats.sent_per_sec(now_ns))),
             Cell::new(&format_rate(channel_stats.received_per_sec(now_ns))),
             Cell::new(&max_queue),
-        ]));
+        ]);
     }
 
     if channels.len() < total_count {
@@ -161,16 +147,16 @@ pub(crate) fn report_channel_latency_table(
     let _ = writeln!(writer);
 
     let mut header = vec![
-        styled_header("Channel"),
-        styled_header("Msgs"),
-        styled_header("Avg"),
+        Cell::header("Channel"),
+        Cell::header("Msgs"),
+        Cell::header("Avg"),
     ];
     for &p in percentiles {
-        header.push(styled_header(&format_percentile_header(p)));
+        header.push(Cell::header(&format_percentile_header(p)));
     }
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for channel in rows {
         let label = resolve_label(channel.source, channel.label.as_deref(), Some(channel.iter));
@@ -190,7 +176,7 @@ pub(crate) fn report_channel_latency_table(
         for &p in percentiles {
             row.push(duration_cell(channel.proc_percentile_nanos(p)));
         }
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     print_table(&table, writer);
@@ -280,26 +266,26 @@ fn report_rw_locks_subtable(
     };
 
     let mut header = vec![
-        styled_header("RwLock"),
-        styled_header(count_label),
-        styled_header("Wait avg"),
+        Cell::header("RwLock"),
+        Cell::header(count_label),
+        Cell::header("Wait avg"),
     ];
     for &p in percentiles {
-        header.push(styled_header(&format!(
+        header.push(Cell::header(&format!(
             "Wait {}",
             format_percentile_header(p)
         )));
     }
-    header.push(styled_header("Acq avg"));
+    header.push(Cell::header("Acq avg"));
     for &p in percentiles {
-        header.push(styled_header(&format!(
+        header.push(Cell::header(&format!(
             "Acq {}",
             format_percentile_header(p)
         )));
     }
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for rw_lock in rows {
         let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
@@ -318,7 +304,7 @@ fn report_rw_locks_subtable(
         for &p in percentiles {
             row.push(Cell::new(&fmt(rw_lock.acquire_percentile_nanos(kind, p))));
         }
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     print_table(&table, writer);
@@ -475,26 +461,26 @@ pub(crate) fn report_mutexes_table(
     let _ = writeln!(writer);
 
     let mut header = vec![
-        styled_header("Mutex"),
-        styled_header("Locks"),
-        styled_header("Wait avg"),
+        Cell::header("Mutex"),
+        Cell::header("Locks"),
+        Cell::header("Wait avg"),
     ];
     for &p in percentiles {
-        header.push(styled_header(&format!(
+        header.push(Cell::header(&format!(
             "Wait {}",
             format_percentile_header(p)
         )));
     }
-    header.push(styled_header("Acq avg"));
+    header.push(Cell::header("Acq avg"));
     for &p in percentiles {
-        header.push(styled_header(&format!(
+        header.push(Cell::header(&format!(
             "Acq {}",
             format_percentile_header(p)
         )));
     }
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for mutex in rows {
         let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
@@ -511,7 +497,7 @@ pub(crate) fn report_mutexes_table(
         for &p in percentiles {
             row.push(Cell::new(&fmt(mutex.acquire_percentile_nanos(p))));
         }
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     print_table(&table, writer);
@@ -626,19 +612,19 @@ pub(crate) fn report_sql_table(
     let _ = writeln!(writer, "Total calls: {}", total_calls);
 
     let show_route = entries.iter().any(|e| e.route.is_some());
-    let mut header = vec![styled_header("Query"), styled_header("Source")];
+    let mut header = vec![Cell::header("Query"), Cell::header("Source")];
     if show_route {
-        header.push(styled_header("Route"));
+        header.push(Cell::header("Route"));
     }
-    header.extend([styled_header("Calls"), styled_header("Avg")]);
+    header.extend([Cell::header("Calls"), Cell::header("Avg")]);
     for &p in percentiles {
-        header.push(styled_header(&format_percentile_header(p)));
+        header.push(Cell::header(&format_percentile_header(p)));
     }
-    header.push(styled_header("Total"));
-    header.push(styled_header("% Total"));
+    header.push(Cell::header("Total"));
+    header.push(Cell::header("% Total"));
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for entry in entries {
         let mut row = vec![
@@ -660,7 +646,7 @@ pub(crate) fn report_sql_table(
             entry.total_nanos,
             reference_total,
         )));
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     print_table(&table, writer);
@@ -784,23 +770,23 @@ pub(crate) fn report_http_table(
     let _ = writeln!(writer, "Total calls: {}", total_calls);
 
     let show_route = entries.iter().any(|e| e.route.is_some());
-    let mut header = vec![styled_header("Endpoint"), styled_header("Source")];
+    let mut header = vec![Cell::header("Endpoint"), Cell::header("Source")];
     if show_route {
-        header.push(styled_header("Route"));
+        header.push(Cell::header("Route"));
     }
     header.extend([
-        styled_header("Calls"),
-        styled_header("Errors"),
-        styled_header("Avg"),
+        Cell::header("Calls"),
+        Cell::header("Errors"),
+        Cell::header("Avg"),
     ]);
     for &p in percentiles {
-        header.push(styled_header(&format_percentile_header(p)));
+        header.push(Cell::header(&format_percentile_header(p)));
     }
-    header.push(styled_header("Total"));
-    header.push(styled_header("% Total"));
+    header.push(Cell::header("Total"));
+    header.push(Cell::header("% Total"));
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for entry in entries {
         let mut row = vec![
@@ -823,7 +809,7 @@ pub(crate) fn report_http_table(
             entry.total_nanos,
             reference_total,
         )));
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     print_table(&table, writer);
@@ -958,26 +944,26 @@ pub(crate) fn report_server_table(
     let _ = writeln!(writer, "Total requests: {}", total_calls);
 
     let mut header = vec![
-        styled_header("Route"),
-        styled_header("Calls"),
-        styled_header("4xx"),
-        styled_header("5xx"),
+        Cell::header("Route"),
+        Cell::header("Calls"),
+        Cell::header("4xx"),
+        Cell::header("5xx"),
     ];
     if columns.sql {
-        header.push(styled_header("SQL/req"));
+        header.push(Cell::header("SQL/req"));
     }
     if columns.http {
-        header.push(styled_header("HTTP/req"));
+        header.push(Cell::header("HTTP/req"));
     }
-    header.push(styled_header("Avg"));
+    header.push(Cell::header("Avg"));
     for &p in percentiles {
-        header.push(styled_header(&format_percentile_header(p)));
+        header.push(Cell::header(&format_percentile_header(p)));
     }
-    header.push(styled_header("Total"));
-    header.push(styled_header("% Total"));
+    header.push(Cell::header("Total"));
+    header.push(Cell::header("% Total"));
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for entry in entries {
         let mut row = vec![
@@ -1001,7 +987,7 @@ pub(crate) fn report_server_table(
             entry.total_nanos,
             reference_total,
         )));
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     print_table(&table, writer);
@@ -1139,24 +1125,24 @@ fn report_io_subtable(
     };
 
     let mut header = vec![
-        styled_header("Io"),
-        styled_header("Inst"),
-        styled_header(count_label),
-        styled_header("Bytes"),
-        styled_header("Rate"),
-        styled_header("Avg"),
+        Cell::header("Io"),
+        Cell::header("Inst"),
+        Cell::header(count_label),
+        Cell::header("Bytes"),
+        Cell::header("Rate"),
+        Cell::header("Avg"),
     ];
     for &p in percentiles {
-        header.push(styled_header(&format_percentile_header(p)));
+        header.push(Cell::header(&format_percentile_header(p)));
     }
-    header.push(styled_header("Total"));
+    header.push(Cell::header("Total"));
     if kind == IoOpKind::Write {
-        header.push(styled_header("Flushes"));
+        header.push(Cell::header("Flushes"));
     }
-    header.push(styled_header("Errors"));
+    header.push(Cell::header("Errors"));
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for entry in rows {
         let label = resolve_label(entry.source, entry.label.as_deref(), Some(entry.iter));
@@ -1181,7 +1167,7 @@ fn report_io_subtable(
             stats.errors
         };
         row.push(Cell::new(&errors.to_string()));
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     print_table(&table, writer);
@@ -1287,12 +1273,12 @@ pub(crate) fn report_streams_table(
     write_section_header(writer, "streams", "Stream yield statistics.");
 
     let mut table = Table::new();
-    table.add_row(Row::new(vec![
-        styled_header("Stream"),
-        styled_header("Inst"),
-        styled_header("State"),
-        styled_header("Yielded"),
-    ]));
+    table.add_row(vec![
+        Cell::header("Stream"),
+        Cell::header("Inst"),
+        Cell::header("State"),
+        Cell::header("Yielded"),
+    ]);
 
     for stream_stats in streams {
         let label = resolve_label(
@@ -1300,7 +1286,7 @@ pub(crate) fn report_streams_table(
             stream_stats.label.as_deref(),
             Some(stream_stats.iter),
         );
-        table.add_row(Row::new(vec![
+        table.add_row(vec![
             Cell::new(&label),
             Cell::new(&stream_stats.instances.to_string()),
             Cell::new(
@@ -1309,7 +1295,7 @@ pub(crate) fn report_streams_table(
                     .map_or("-", |state| state.as_str()),
             ),
             Cell::new(&stream_stats.items_yielded.to_string()),
-        ]));
+        ]);
     }
 
     if streams.len() < total_count {
@@ -1371,15 +1357,15 @@ pub(crate) fn report_futures_table(
     write_section_header(writer, "futures", "Future poll and lifecycle statistics.");
 
     let mut table = Table::new();
-    table.add_row(Row::new(vec![
-        styled_header("Future"),
-        styled_header("Calls"),
-        styled_header("Polls"),
-        styled_header("Avg Poll"),
-        styled_header("Total Poll"),
-        styled_header("Avg Alloc"),
-        styled_header("Total Alloc"),
-    ]));
+    table.add_row(vec![
+        Cell::header("Future"),
+        Cell::header("Calls"),
+        Cell::header("Polls"),
+        Cell::header("Avg Poll"),
+        Cell::header("Total Poll"),
+        Cell::header("Avg Alloc"),
+        Cell::header("Total Alloc"),
+    ]);
 
     for future_stats in futures {
         let label = resolve_label(
@@ -1409,7 +1395,7 @@ pub(crate) fn report_futures_table(
         } else {
             format_duration(total_poll_dur)
         };
-        table.add_row(Row::new(vec![
+        table.add_row(vec![
             Cell::new(&label),
             Cell::new(&total_calls.to_string()),
             Cell::new(&total_polls.to_string()),
@@ -1417,7 +1403,7 @@ pub(crate) fn report_futures_table(
             Cell::new(&total_poll_dur),
             Cell::new(&avg_alloc_per_call),
             Cell::new(&total_alloc),
-        ]));
+        ]);
     }
 
     if futures.len() < total_count {
@@ -1456,20 +1442,20 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
     let has_alloc = threads_json.data.iter().any(|t| t.alloc_bytes.is_some());
 
     let mut header = vec![
-        styled_header("Thread"),
-        styled_header("Status"),
-        styled_header("CPU%"),
-        styled_header("Max%"),
-        styled_header("Avg%"),
+        Cell::header("Thread"),
+        Cell::header("Status"),
+        Cell::header("CPU%"),
+        Cell::header("Max%"),
+        Cell::header("Avg%"),
     ];
     if has_alloc {
-        header.push(styled_header("Alloc"));
-        header.push(styled_header("Dealloc"));
-        header.push(styled_header("Diff"));
+        header.push(Cell::header("Alloc"));
+        header.push(Cell::header("Dealloc"));
+        header.push(Cell::header("Diff"));
     }
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     for thread in &threads_json.data {
         let cpu_pct = thread.cpu_percent.as_deref().unwrap_or("-");
@@ -1487,7 +1473,7 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
             row.push(Cell::new(thread.dealloc_bytes.as_deref().unwrap_or("-")));
             row.push(Cell::new(thread.mem_diff.as_deref().unwrap_or("-")));
         }
-        table.add_row(Row::new(row));
+        table.add_row(row);
     }
 
     let mut info_parts = Vec::new();
@@ -1544,15 +1530,15 @@ pub(crate) fn report_debug_table(writer: &mut dyn Write) {
     write_section_header(writer, "debug", "Debug last values (dbg!, val!, gauge!).");
 
     let header = vec![
-        styled_header("Type"),
-        styled_header("Key/Expr"),
-        styled_header("Value"),
-        styled_header("Updates"),
-        styled_header("Source"),
+        Cell::header("Type"),
+        Cell::header("Key/Expr"),
+        Cell::header("Value"),
+        Cell::header("Updates"),
+        Cell::header("Source"),
     ];
 
     let mut table = Table::new();
-    table.add_row(Row::new(header));
+    table.add_row(header);
 
     let mut entries: Vec<JsonDebugEntry> = Vec::new();
     entries.extend(dbg_entries.iter().map(JsonDebugEntry::from));
@@ -1561,13 +1547,13 @@ pub(crate) fn report_debug_table(writer: &mut dyn Write) {
 
     for entry in &entries {
         let value = entry.last_value.as_deref().unwrap_or("-");
-        table.add_row(Row::new(vec![
+        table.add_row(vec![
             Cell::new(entry.entry_type.as_str()),
             Cell::new(&entry.expression),
             Cell::new(value),
             Cell::new(&entry.log_count.to_string()),
             Cell::new(&entry.source_display),
-        ]));
+        ]);
     }
 
     let _ = writeln!(writer);
