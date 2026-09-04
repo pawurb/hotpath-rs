@@ -56,14 +56,14 @@ pub(crate) fn next_function_id() -> u32 {
 
 enum Focus {
     Text(String),
-    Regex(regex::Regex),
+    Regex(regex_lite::Regex),
 }
 
 static FOCUS_FILTER: LazyLock<Option<Focus>> = LazyLock::new(|| {
     let val = std::env::var("HOTPATH_FOCUS").ok()?;
     if let Some(pattern) = val.strip_prefix('/').and_then(|s| s.strip_suffix('/')) {
         Some(Focus::Regex(
-            regex::Regex::new(pattern).expect("Invalid HOTPATH_FOCUS regex pattern"),
+            regex_lite::Regex::new(pattern).expect("Invalid HOTPATH_FOCUS regex pattern"),
         ))
     } else {
         Some(Focus::Text(val))
