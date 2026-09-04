@@ -3,7 +3,7 @@ use crate::output::{
     format_duration, format_percentile_header, format_percentile_key, shorten_function_name,
 };
 use crate::shared::Section;
-use prettytable::{color, Attr, Cell, Row, Table};
+use crate::table::{Cell, Table};
 use std::io::Write;
 use std::time::Duration;
 
@@ -48,15 +48,10 @@ pub(crate) fn write_section_header<W: Write + ?Sized>(
 }
 
 fn print_table<W: Write>(table: &Table, writer: &mut W) {
-    if crate::output::use_colors() {
-        let _ = table.print_tty(false);
-    } else {
-        let _ = table.print(writer);
-    }
+    let _ = table.print(writer, crate::output::use_colors());
 }
 
 pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFunctionsList) {
-    let use_colors = crate::output::use_colors();
     let mut table = Table::new();
 
     let mut header_names = vec![
@@ -71,19 +66,11 @@ pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFu
     header_names.push("% Total".to_string());
 
     let header_cells: Vec<Cell> = header_names
-        .into_iter()
-        .map(|header| {
-            if use_colors {
-                Cell::new(&header)
-                    .with_style(Attr::Bold)
-                    .with_style(Attr::ForegroundColor(color::CYAN))
-            } else {
-                Cell::new(&header).with_style(Attr::Bold)
-            }
-        })
+        .iter()
+        .map(|header| Cell::header(header))
         .collect();
 
-    table.add_row(Row::new(header_cells));
+    table.add_row(header_cells);
 
     for entry in &list.data {
         let mut row_cells = Vec::new();
@@ -106,7 +93,7 @@ pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFu
         row_cells.push(Cell::new(&entry.total));
         row_cells.push(Cell::new(&entry.percent_total));
 
-        table.add_row(Row::new(row_cells));
+        table.add_row(row_cells);
     }
 
     let mode = list.profiling_mode.to_string();
