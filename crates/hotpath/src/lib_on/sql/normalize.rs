@@ -42,8 +42,12 @@ pub(crate) fn normalize(sql: &str) -> String {
     s.trim().to_string()
 }
 
+// Every non-ASCII char counts as identifier content: string literals are
+// already replaced by this point and all SQL punctuation that can sit next to
+// a numeric literal is ASCII. This also covers combining marks, which
+// `char::is_alphanumeric` rejects.
 fn is_ident_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
+    !c.is_ascii() || c.is_ascii_alphanumeric() || c == '_'
 }
 
 /// Replaces standalone numeric literals with `?`, leaving digits that are part
@@ -148,6 +152,17 @@ mod tests {
         assert_ne!(
             normalize("SELECT café1 FROM t"),
             normalize("SELECT café2 FROM t"),
+        );
+    }
+
+    #[test]
+    fn keeps_digits_after_combining_marks() {
+        // Decomposed form: `e` followed by U+0301 COMBINING ACUTE ACCENT.
+        let decomposed = "SELECT \"cafe\u{301}1\" FROM t";
+        assert_eq!(normalize(decomposed), decomposed);
+        assert_ne!(
+            normalize(decomposed),
+            normalize("SELECT \"cafe\u{301}2\" FROM t"),
         );
     }
 
