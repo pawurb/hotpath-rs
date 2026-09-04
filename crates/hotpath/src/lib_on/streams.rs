@@ -436,7 +436,7 @@ pub trait InstrumentStreamLog {
 // Implement InstrumentStream for all Stream types
 impl<S> InstrumentStream for S
 where
-    S: futures_util::Stream,
+    S: futures_core::Stream,
 {
     type Output = crate::streams::wrapper::InstrumentedStream<S>;
 
@@ -453,7 +453,7 @@ where
 // Implement InstrumentStreamLog for all Stream types with Debug items
 impl<S> InstrumentStreamLog for S
 where
-    S: futures_util::Stream,
+    S: futures_core::Stream,
     S::Item: std::fmt::Debug,
 {
     type Output = crate::streams::wrapper::InstrumentedStreamLog<S>;
