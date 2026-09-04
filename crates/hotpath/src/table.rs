@@ -10,7 +10,9 @@ use std::fmt;
 use std::io::{self, Write};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Color {
+// `Red` is only built by the cpu error table.
+#[cfg_attr(not(feature = "hotpath-cpu"), allow(dead_code))]
+pub(crate) enum Color {
     Cyan,
     Red,
 }
@@ -50,12 +52,12 @@ impl Cell {
         Cell::new(text).bold().color(Color::Cyan)
     }
 
-    pub fn bold(mut self) -> Self {
+    pub(crate) fn bold(mut self) -> Self {
         self.bold = true;
         self
     }
 
-    pub fn color(mut self, color: Color) -> Self {
+    pub(crate) fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
         self
     }
