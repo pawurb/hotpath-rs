@@ -451,12 +451,14 @@ impl HotpathGuardBuilder {
     ///
     /// # Panics
     ///
-    /// Panics if another `HotpathGuard` is already alive, if a configured
-    /// percentile falls outside `0..=100`, or if more than 10 distinct
-    /// percentiles are configured.
+    /// Panics if another `HotpathGuard` is already alive, if `HOTPATH_FOCUS`
+    /// holds an invalid regex pattern, if a configured percentile falls outside
+    /// `0..=100`, or if more than 10 distinct percentiles are configured.
     pub fn build(self) -> HotpathGuard {
         #[cfg(feature = "dev")]
         crate::dev_logging::init_logging();
+
+        crate::lib_on::functions::init_focus_filter();
 
         crate::lib_on::sampling::init_time_sampling_rate(&self.time_sampling);
 
