@@ -41,7 +41,7 @@ pub(crate) fn build_functions_list(
     });
 
     let total_count = entries.len();
-    let displayed_count = if config.limit > 0 && config.limit < total_count {
+    let included_count = if config.limit > 0 && config.limit < total_count {
         config.limit
     } else {
         total_count
@@ -114,7 +114,7 @@ pub(crate) fn build_functions_list(
         caller_name: config.caller_name.to_string(),
         percentiles: config.percentiles.clone(),
         data,
-        displayed_count,
+        included_count,
         total_count,
     }
 }

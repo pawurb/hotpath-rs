@@ -221,7 +221,7 @@ pub(crate) fn build_cpu_json(
     );
 
     let total_count = total_inner + wrapper_stats.len();
-    let displayed_count = displayed_inner + wrapper_stats.len();
+    let included_count = displayed_inner + wrapper_stats.len();
 
     let description = if *CPU_INCLUSIVE {
         "CPU sampling attribution per function (inclusive).".to_string()
@@ -238,7 +238,7 @@ pub(crate) fn build_cpu_json(
         caller_name: report.caller_name.to_string(),
         data: entries,
         profile_path: report.profile_path.clone(),
-        displayed_count,
+        included_count,
         total_count,
     }
 }
@@ -249,8 +249,8 @@ fn print_table<W: Write>(table: &Table, writer: &mut W) {
 
 pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFunctionsCpuList) {
     let mut info = format!("{} total samples", list.total_samples);
-    if list.displayed_count < list.total_count {
-        info.push_str(&format!(", {}/{}", list.displayed_count, list.total_count));
+    if list.included_count < list.total_count {
+        info.push_str(&format!(", {}/{}", list.included_count, list.total_count));
     }
     let _ = writeln!(writer, "cpu - {} ({})", list.description, info);
 
