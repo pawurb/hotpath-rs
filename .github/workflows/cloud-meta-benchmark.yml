@@ -1,0 +1,40 @@
+name: Cloud meta benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Self-benchmark of the profiler: `benchmark_meta` drives every instrumented
+# subsystem a fixed number of times while `hotpath-meta` profiles hotpath's own
+# hot paths, then uploads that report to hotpath.rs using this job's OIDC token.
+# Skipped on fork PRs, which get no token.
+jobs:
+  cloud-meta-benchmark:
+    name: cloud meta benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run meta benchmark and upload report
+        env:
+          HOTPATH_META_UPLOAD: "1"
+          HOTPATH_META_BENCHMARK: meta
+          HOTPATH_META_EXCLUDE_WRAPPER: "true"
+          HOTPATH_META_LIMIT: "25"
+          HOTPATH_OUTPUT_FORMAT: none
+        run: |
+          set -o pipefail
+          cargo run -q --release -p test-all-features --example benchmark_meta \
+            --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta 2>&1 | tee run.log
+          grep -q '^hotpath: uploaded report ' run.log
+          {
+            echo "## hotpath.rs meta benchmark"
+            echo '```'; grep '^hotpath: upload' run.log; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

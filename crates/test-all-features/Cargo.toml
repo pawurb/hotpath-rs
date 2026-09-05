@@ -12,6 +12,7 @@ hotpath-cpu = ["hotpath/hotpath-cpu"]
 hotpath-cloud = ["hotpath/hotpath-cloud"]
 hotpath-meta = ["hotpath/hotpath-meta"]
 hotpath-alloc-meta = ["hotpath/hotpath-alloc-meta"]
+hotpath-cloud-meta = ["hotpath/hotpath-cloud-meta"]
 hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 
 [dependencies]
