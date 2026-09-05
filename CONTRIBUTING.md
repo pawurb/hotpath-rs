@@ -46,17 +46,6 @@ It benchmarks two versions of the library (branch names or commit SHAs are suppo
 - `HOTPATH_TUI_AUTO_EXPAND_LOGS` - Auto-open the logs panel once initial data arrives and pin selection to the given table index. Set to an integer (e.g. `0` for the first row, `2` for the third) (default: unset). 
 - `HOTPATH_META_FOCUS` - filter which methods appear in the benchmark report by name. Plain text does substring matching; wrap in `/pattern/` for regex (e.g. `HOTPATH_META_FOCUS="/^(compute|process)/"`).
 
-#### CI meta benchmark
-
-`crates/test-all-features/examples/benchmark_meta.rs` is the workload the `Cloud meta benchmark` workflow runs on every PR. It drives functions, blocks, futures, streams, channels, mutexes, rw_locks, byte I/O, debug handles and the metrics server a fixed number of times, with no sleeps, so call counts are identical between runs and a report diff isolates timing changes. Run it locally with:
-
-```bash
-cargo run --release -p test-all-features --example benchmark_meta \
-  --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta
-```
-
-Changing the iteration constants invalidates comparability with previously uploaded reports, so treat the workload as frozen. The workflow adds `hotpath-cloud-meta` and `HOTPATH_META_UPLOAD=1` to upload the report to hotpath.rs under the `meta` benchmark name.
-
 ### Overhead benchmarks
 
 Each `benchmark_*` example hammers a single instrumented codepath in a tight, uncontended loop and prints total time plus per-operation overhead on exit. Run with `--features hotpath` to measure instrumentation cost; omit it for the uninstrumented baseline. The iteration count defaults to 1,000,000 and is configurable via `HOTPATH_BENCH_RUNS`.
