@@ -121,10 +121,7 @@ pub struct JsonFunctionsList {
     #[serde(skip)]
     pub displayed_count: usize,
     /// Total number of measured functions, including ones truncated from
-    /// `data` by the display limit. `0` in reports written before this field
-    /// existed, so consumers treat `0` or a value below `data.len()` as
-    /// "not reported".
-    #[serde(default)]
+    /// `data` by the display limit.
     pub total_count: usize,
 }
 
@@ -149,8 +146,7 @@ pub struct JsonFunctionsCpuList {
     #[serde(skip)]
     pub displayed_count: usize,
     /// Total number of attributed functions, including ones truncated from
-    /// `data` by the display limit; `0` when not reported.
-    #[serde(default)]
+    /// `data` by the display limit.
     pub total_count: usize,
 }
 
@@ -1209,31 +1205,12 @@ mod parse_tests {
     }
 
     #[test]
-    fn json_functions_list_total_count_defaults_to_zero() {
-        let body = r#"{
-            "profiling_mode":"timing","time_elapsed":"1s","total_elapsed_ns":1,
-            "description":"d","caller_name":"main","percentiles":[95.0],"data":[]
-        }"#;
-        let list: JsonFunctionsList = serde_json::from_str(body).unwrap();
-        assert_eq!(list.total_count, 0);
-        assert_eq!(list.displayed_count, 0);
-
-        let body = r#"{
-            "profiling_mode":"timing","time_elapsed":"1s","total_elapsed_ns":1,
-            "description":"d","caller_name":"main","percentiles":[95.0],"data":[],
-            "total_count":42
-        }"#;
-        let list: JsonFunctionsList = serde_json::from_str(body).unwrap();
-        assert_eq!(list.total_count, 42);
-    }
-
-    #[test]
     fn json_functions_cpu_accepts_result_list_shape() {
         let result = r#"{
             "time_elapsed":"1s","total_elapsed_ns":1,
             "total_samples":10,"attributed_samples":5,
             "description":"d","caller_name":"main","data":[],
-            "profile_path":"/tmp/hp.json.gz"
+            "profile_path":"/tmp/hp.json.gz","total_count":0
         }"#;
         match serde_json::from_str::<JsonFunctionsCpu>(result).unwrap() {
             JsonFunctionsCpu::Ok(list) => assert_eq!(list.caller_name, "main"),
