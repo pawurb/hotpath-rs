@@ -1153,7 +1153,7 @@ pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
 pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
     let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
     let current_elapsed_ns = crate::lib_on::current_elapsed_ns();
-    let data = get_sorted_channel_entries()
+    let data: Vec<crate::json::JsonChannelEntry> = get_sorted_channel_entries()
         .iter()
         .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns, false))
         .collect();
@@ -1161,6 +1161,8 @@ pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
     crate::json::JsonChannelsList {
         current_elapsed_ns,
         percentiles,
+        total_count: data.len(),
+        included_count: data.len(),
         data,
     }
 }

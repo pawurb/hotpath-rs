@@ -240,13 +240,10 @@ pub(crate) fn get_server_logs(id: u32) -> Option<HttpLogs> {
 pub(crate) fn get_server_json() -> crate::json::JsonServerList {
     let entries = get_sorted_server_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
-    let total_calls: u64 = entries.iter().map(|e| e.count).sum();
     crate::lib_on::report::collect_server_json(
         &entries,
+        0,
         elapsed,
-        total_calls,
-        reference_total,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
         crate::lib_on::report::ServerColumns::from_state(),
         false,

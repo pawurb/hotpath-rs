@@ -59,6 +59,8 @@ pub(crate) fn get_debug_entries_json() -> JsonDebugList {
 
     JsonDebugList {
         current_elapsed_ns,
+        total_count: formatted.len(),
+        included_count: formatted.len(),
         entries: formatted,
     }
 }

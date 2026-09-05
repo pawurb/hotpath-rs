@@ -558,13 +558,15 @@ pub(crate) fn get_sorted_stream_stats() -> Vec<StreamStats> {
 }
 
 pub(crate) fn get_streams_json() -> crate::json::JsonStreamsList {
-    let data = get_sorted_stream_stats()
+    let data: Vec<JsonStreamEntry> = get_sorted_stream_stats()
         .iter()
         .map(JsonStreamEntry::from)
         .collect();
 
     crate::json::JsonStreamsList {
         current_elapsed_ns: crate::lib_on::current_elapsed_ns(),
+        total_count: data.len(),
+        included_count: data.len(),
         data,
     }
 }
