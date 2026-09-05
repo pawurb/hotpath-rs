@@ -79,6 +79,8 @@ Requires the `hotpath-prometheus` feature, see [Prometheus & Grafana](prometheus
 | `HOTPATH_PROMETHEUS_PORT` | Port for the Prometheus `/metrics` exporter. (default: `6772`) |
 | `HOTPATH_PROMETHEUS_HOST` | Bind address for the exporter. Set to `0.0.0.0` when a Prometheus container must reach it through the Docker bridge gateway; pair it with an auth token. (default: `127.0.0.1`) |
 | `HOTPATH_PROMETHEUS_AUTH_TOKEN` | When set, every scrape must send this token in the `Authorization` header, bare or `Bearer`-prefixed (matches Prometheus' `authorization` scrape config). Same character rules as `HOTPATH_METRICS_AUTH_TOKEN`. (default: `''`) |
+| `HOTPATH_PROMETHEUS_FAST_BUCKETS` | Classic histogram bucket upper bounds, in seconds, for function, lock, channel, future and I/O durations. Comma-separated, positive, strictly ascending, at most `1000`; `+Inf` is always appended and invalid input panics at startup. Only affects the text (classic) exposition, native histograms are unaffected. (default: log-spaced 1-3 steps from `0.00000025` to `10`) |
+| `HOTPATH_PROMETHEUS_SLOW_BUCKETS` | Same as `HOTPATH_PROMETHEUS_FAST_BUCKETS`, for SQL query, outbound HTTP request and server response durations. (default: log-spaced 1-3 steps from `0.0001` to `60`) |
 
 ## TUI
 

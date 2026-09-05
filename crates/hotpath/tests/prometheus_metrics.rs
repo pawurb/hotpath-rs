@@ -7,6 +7,7 @@ pub mod tests {
     const METRICS_PORT: &str = "6791";
     const PROMETHEUS_PORT: &str = "6792";
     const TOKEN: &str = "prom-secret";
+    const FAST_BUCKETS: &str = "0.000001,0.00002,0.5";
 
     fn get(path: &str, auth: Option<&str>) -> Result<(u16, String, String), ureq::Error> {
         let url = format!("http://localhost:{}{}", PROMETHEUS_PORT, path);
@@ -76,6 +77,20 @@ pub mod tests {
         }
     }
 
+    fn assert_custom_fast_buckets(body: &str) {
+        let les: Vec<String> = body
+            .lines()
+            .filter(|l| l.starts_with("hotpath_function_duration_seconds_bucket{"))
+            .filter(|l| l.contains("function=\"basic::sync_function\""))
+            .map(|l| label_value(l, "le"))
+            .collect();
+        assert_eq!(
+            les,
+            ["0.000001", "0.00002", "0.5", "+Inf"],
+            "HOTPATH_PROMETHEUS_FAST_BUCKETS not applied, body:\n{body}"
+        );
+    }
+
     fn label_value(labels: &str, name: &str) -> String {
         let start = labels.find(&format!("{}=\"", name)).unwrap() + name.len() + 2;
         labels[start..].split('"').next().unwrap().to_string()
@@ -97,6 +112,7 @@ pub mod tests {
             .env("HOTPATH_METRICS_PORT", METRICS_PORT)
             .env("HOTPATH_PROMETHEUS_PORT", PROMETHEUS_PORT)
             .env("HOTPATH_PROMETHEUS_AUTH_TOKEN", TOKEN)
+            .env("HOTPATH_PROMETHEUS_FAST_BUCKETS", FAST_BUCKETS)
             .env("TEST_SLEEP_SECONDS", "15")
             .spawn()
             .expect("Failed to spawn command");
@@ -174,6 +190,7 @@ pub mod tests {
             }
 
             assert_histogram_series(&body);
+            assert_custom_fast_buckets(&body);
         });
 
         let _ = child.kill();
