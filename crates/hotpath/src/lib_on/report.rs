@@ -184,12 +184,17 @@ pub(crate) fn report_channel_latency_table(
 
 pub(crate) fn collect_channels_json(
     channels: &[ChannelEntry],
+    limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
     histograms: bool,
 ) -> JsonChannelsList {
     let current_elapsed_ns = elapsed.as_nanos() as u64;
+    let total_count = channels.len();
+    let channels = &channels[..apply_limit(total_count, limit)];
     JsonChannelsList {
+        total_count,
+        included_count: channels.len(),
         current_elapsed_ns,
         percentiles: percentiles.to_vec(),
         data: channels
@@ -399,11 +404,16 @@ fn rw_lock_to_json(
 
 pub(crate) fn collect_rw_locks_json(
     rw_locks: &[RwLockEntry],
+    limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
     histograms: bool,
 ) -> JsonRwLocksList {
+    let total_count = rw_locks.len();
+    let rw_locks = &rw_locks[..apply_limit(total_count, limit)];
     JsonRwLocksList {
+        total_count,
+        included_count: rw_locks.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         percentiles: percentiles.to_vec(),
         data: rw_locks
@@ -538,11 +548,16 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], histograms: bool) -> J
 
 pub(crate) fn collect_mutexes_json(
     mutexes: &[MutexEntry],
+    limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
     histograms: bool,
 ) -> JsonMutexesList {
+    let total_count = mutexes.len();
+    let mutexes = &mutexes[..apply_limit(total_count, limit)];
     JsonMutexesList {
+        total_count,
+        included_count: mutexes.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         percentiles: percentiles.to_vec(),
         data: mutexes
@@ -702,13 +717,18 @@ fn sql_to_json(
 
 pub(crate) fn collect_sql_json(
     entries: &[SqlEntry],
+    limit: usize,
     elapsed: std::time::Duration,
-    total_calls: u64,
-    reference_total: u64,
     percentiles: &[f64],
     histograms: bool,
 ) -> JsonSqlList {
+    let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
+    let total_calls: u64 = entries.iter().map(|e| e.count).sum();
+    let total_count = entries.len();
+    let entries = &entries[..apply_limit(total_count, limit)];
     JsonSqlList {
+        total_count,
+        included_count: entries.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         total_ns: reference_total,
         total_calls,
@@ -849,13 +869,18 @@ fn http_to_json(
 
 pub(crate) fn collect_http_json(
     entries: &[HttpEntry],
+    limit: usize,
     elapsed: std::time::Duration,
-    total_calls: u64,
-    reference_total: u64,
     percentiles: &[f64],
     histograms: bool,
 ) -> JsonHttpList {
+    let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
+    let total_calls: u64 = entries.iter().map(|e| e.count).sum();
+    let total_count = entries.len();
+    let entries = &entries[..apply_limit(total_count, limit)];
     JsonHttpList {
+        total_count,
+        included_count: entries.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         total_ns: reference_total,
         total_calls,
@@ -1026,14 +1051,19 @@ fn server_to_json(
 
 pub(crate) fn collect_server_json(
     entries: &[ServerEntry],
+    limit: usize,
     elapsed: std::time::Duration,
-    total_calls: u64,
-    reference_total: u64,
     percentiles: &[f64],
     columns: ServerColumns,
     histograms: bool,
 ) -> JsonServerList {
+    let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
+    let total_calls: u64 = entries.iter().map(|e| e.count).sum();
+    let total_count = entries.len();
+    let entries = &entries[..apply_limit(total_count, limit)];
     JsonServerList {
+        total_count,
+        included_count: entries.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         total_ns: reference_total,
         total_calls,
@@ -1217,11 +1247,16 @@ fn io_to_json(entry: &IoEntry, percentiles: &[f64], histograms: bool) -> JsonIoE
 
 pub(crate) fn collect_io_json(
     entries: &[IoEntry],
+    limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
     histograms: bool,
 ) -> JsonIoList {
+    let total_count = entries.len();
+    let entries = &entries[..apply_limit(total_count, limit)];
     JsonIoList {
+        total_count,
+        included_count: entries.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         percentiles: percentiles.to_vec(),
         data: entries
@@ -1307,9 +1342,14 @@ pub(crate) fn report_streams_table(
 
 pub(crate) fn collect_streams_json(
     streams: &[StreamStats],
+    limit: usize,
     elapsed: std::time::Duration,
 ) -> JsonStreamsList {
+    let total_count = streams.len();
+    let streams = &streams[..apply_limit(total_count, limit)];
     JsonStreamsList {
+        total_count,
+        included_count: streams.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         data: streams.iter().map(JsonStreamEntry::from).collect(),
     }
@@ -1415,9 +1455,14 @@ pub(crate) fn report_futures_table(
 
 pub(crate) fn collect_futures_json(
     futures: &[FutureEntry],
+    limit: usize,
     elapsed: std::time::Duration,
 ) -> JsonFuturesList {
+    let total_count = futures.len();
+    let futures = &futures[..apply_limit(total_count, limit)];
     JsonFuturesList {
+        total_count,
+        included_count: futures.len(),
         current_elapsed_ns: elapsed.as_nanos() as u64,
         data: futures.iter().map(JsonFutureEntry::from).collect(),
     }
@@ -1505,10 +1550,17 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
 #[cfg(feature = "threads")]
 pub(crate) fn collect_threads_json(limit: usize) -> crate::json::JsonThreadsList {
     let mut json = crate::threads::get_threads_json();
-    if limit > 0 && limit < json.data.len() {
-        json.data.truncate(limit);
-    }
+    json.data.truncate(apply_limit(json.data.len(), limit));
+    json.included_count = json.data.len();
     json
+}
+
+pub(crate) fn apply_limit(len: usize, limit: usize) -> usize {
+    if limit > 0 && limit < len {
+        limit
+    } else {
+        len
+    }
 }
 
 pub(crate) fn has_debug_entries() -> bool {
@@ -1560,7 +1612,10 @@ pub(crate) fn report_debug_table(writer: &mut dyn Write) {
     let _ = writeln!(writer);
 }
 
-pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::JsonDebugList {
+pub(crate) fn collect_debug_json(
+    elapsed: std::time::Duration,
+    limit: usize,
+) -> crate::json::JsonDebugList {
     let mut entries: Vec<JsonDebugEntry> = Vec::new();
     entries.extend(
         get_sorted_debug_dbg_entries()
@@ -1578,8 +1633,12 @@ pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::J
             .map(JsonDebugEntry::from),
     );
 
+    let total_count = entries.len();
+    entries.truncate(apply_limit(total_count, limit));
     crate::json::JsonDebugList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
+        total_count,
+        included_count: entries.len(),
         entries,
     }
 }

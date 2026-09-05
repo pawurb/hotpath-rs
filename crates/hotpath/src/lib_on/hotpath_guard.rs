@@ -100,6 +100,7 @@ use crate::output_on::{
 use crate::functions::RawFunctionTiming;
 use crate::functions::{FunctionsQuery, Measurement, FUNCTIONS_QUERY_TX, FUNCTIONS_STATE};
 use crate::lib_on::report;
+use crate::lib_on::report::apply_limit;
 use crate::shared::{Section, SectionsMode};
 
 #[cfg(feature = "hotpath-cpu")]
@@ -864,14 +865,6 @@ impl HotpathGuard {
     }
 }
 
-fn apply_limit(len: usize, limit: usize) -> usize {
-    if limit > 0 && limit < len {
-        limit
-    } else {
-        len
-    }
-}
-
 fn parse_usize_env(name: &str) -> Option<usize> {
     std::env::var(name).ok().and_then(|s| s.parse().ok())
 }
@@ -879,9 +872,10 @@ fn parse_usize_env(name: &str) -> Option<usize> {
 fn make_functions_config(
     state_guard: &FunctionsState,
     total_elapsed: std::time::Duration,
+    limit_for: impl Fn(usize) -> usize,
     histograms: bool,
 ) -> FunctionStatsConfig {
-    let limit = parse_usize_env("HOTPATH_FUNCTIONS_LIMIT")
+    let display_limit = parse_usize_env("HOTPATH_FUNCTIONS_LIMIT")
         .or_else(|| parse_usize_env("HOTPATH_LIMIT"))
         .unwrap_or(state_guard.limit);
 
@@ -889,7 +883,7 @@ fn make_functions_config(
         total_elapsed,
         percentiles: state_guard.percentiles.clone(),
         caller_name: state_guard.caller_name,
-        limit,
+        limit: limit_for(display_limit),
         histograms,
     }
 }
@@ -1125,6 +1119,12 @@ impl Drop for HotpathGuard {
                 ..Default::default()
             };
 
+            #[cfg(feature = "hotpath-cloud")]
+            let upload_limit = *crate::lib_on::cloud::UPLOAD_LIMIT;
+            #[cfg(not(feature = "hotpath-cloud"))]
+            let upload_limit = 0;
+            let limit_for = |display: usize| if cloud_enabled { upload_limit } else { display };
+
             for section in &sections {
                 match section {
                     Section::FunctionsTiming => {
@@ -1135,6 +1135,7 @@ impl Drop for HotpathGuard {
                                 let config = make_functions_config(
                                     &state_guard,
                                     total_elapsed,
+                                    limit_for,
                                     cloud_enabled,
                                 );
                                 report.functions_timing =
@@ -1149,7 +1150,7 @@ impl Drop for HotpathGuard {
                                     if let Ok(state_guard) = state.read() {
                                         let total_elapsed = end_time.duration_since(state_guard.start_time);
                                         let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                        let config = make_functions_config(&state_guard, total_elapsed, cloud_enabled);
+                                        let config = make_functions_config(&state_guard, total_elapsed, limit_for, cloud_enabled);
                                         report.functions_alloc = Some(
                                             build_functions_list_alloc(stats, &config, elapsed_ns),
                                         );
@@ -1170,6 +1171,7 @@ impl Drop for HotpathGuard {
                                     let config = make_functions_config(
                                         &state_guard,
                                         total_elapsed,
+                                        limit_for,
                                         cloud_enabled,
                                     );
                                     let list = crate::functions::cpu::build_cpu_json(
@@ -1192,9 +1194,9 @@ impl Drop for HotpathGuard {
                     }
                     Section::Channels => {
                         if !channels_data.is_empty() {
-                            let limit = apply_limit(channels_data.len(), self.channels_limit);
                             report.channels = Some(report::collect_channels_json(
-                                &channels_data[..limit],
+                                &channels_data,
+                                limit_for(self.channels_limit),
                                 elapsed,
                                 &percentiles,
                                 cloud_enabled,
@@ -1203,27 +1205,27 @@ impl Drop for HotpathGuard {
                     }
                     Section::Streams => {
                         if !streams_data.is_empty() {
-                            let limit = apply_limit(streams_data.len(), self.streams_limit);
                             report.streams = Some(report::collect_streams_json(
-                                &streams_data[..limit],
+                                &streams_data,
+                                limit_for(self.streams_limit),
                                 elapsed,
                             ));
                         }
                     }
                     Section::Futures => {
                         if !futures_data.is_empty() {
-                            let limit = apply_limit(futures_data.len(), self.futures_limit);
                             report.futures = Some(report::collect_futures_json(
-                                &futures_data[..limit],
+                                &futures_data,
+                                limit_for(self.futures_limit),
                                 elapsed,
                             ));
                         }
                     }
                     Section::RwLocks => {
                         if !rw_locks_data.is_empty() {
-                            let limit = apply_limit(rw_locks_data.len(), self.rw_locks_limit);
                             report.rw_locks = Some(report::collect_rw_locks_json(
-                                &rw_locks_data[..limit],
+                                &rw_locks_data,
+                                limit_for(self.rw_locks_limit),
                                 elapsed,
                                 &percentiles,
                                 cloud_enabled,
@@ -1232,9 +1234,9 @@ impl Drop for HotpathGuard {
                     }
                     Section::Mutexes => {
                         if !mutexes_data.is_empty() {
-                            let limit = apply_limit(mutexes_data.len(), self.mutexes_limit);
                             report.mutexes = Some(report::collect_mutexes_json(
-                                &mutexes_data[..limit],
+                                &mutexes_data,
+                                limit_for(self.mutexes_limit),
                                 elapsed,
                                 &percentiles,
                                 cloud_enabled,
@@ -1243,14 +1245,10 @@ impl Drop for HotpathGuard {
                     }
                     Section::Sql => {
                         if !sql_data.is_empty() {
-                            let reference_total: u64 = sql_data.iter().map(|e| e.total_nanos).sum();
-                            let total_calls: u64 = sql_data.iter().map(|e| e.count).sum();
-                            let limit = apply_limit(sql_data.len(), self.sql_limit);
                             report.sql = Some(report::collect_sql_json(
-                                &sql_data[..limit],
+                                &sql_data,
+                                limit_for(self.sql_limit),
                                 elapsed,
-                                total_calls,
-                                reference_total,
                                 &percentiles,
                                 cloud_enabled,
                             ));
@@ -1258,15 +1256,10 @@ impl Drop for HotpathGuard {
                     }
                     Section::Http => {
                         if !http_data.is_empty() {
-                            let reference_total: u64 =
-                                http_data.iter().map(|e| e.total_nanos).sum();
-                            let total_calls: u64 = http_data.iter().map(|e| e.count).sum();
-                            let limit = apply_limit(http_data.len(), self.http_limit);
                             report.http = Some(report::collect_http_json(
-                                &http_data[..limit],
+                                &http_data,
+                                limit_for(self.http_limit),
                                 elapsed,
-                                total_calls,
-                                reference_total,
                                 &percentiles,
                                 cloud_enabled,
                             ));
@@ -1274,15 +1267,10 @@ impl Drop for HotpathGuard {
                     }
                     Section::Server => {
                         if !server_data.is_empty() {
-                            let reference_total: u64 =
-                                server_data.iter().map(|e| e.total_nanos).sum();
-                            let total_calls: u64 = server_data.iter().map(|e| e.count).sum();
-                            let limit = apply_limit(server_data.len(), self.server_limit);
                             report.server = Some(report::collect_server_json(
-                                &server_data[..limit],
+                                &server_data,
+                                limit_for(self.server_limit),
                                 elapsed,
-                                total_calls,
-                                reference_total,
                                 &percentiles,
                                 report::ServerColumns::from_state(),
                                 cloud_enabled,
@@ -1291,9 +1279,9 @@ impl Drop for HotpathGuard {
                     }
                     Section::Io => {
                         if !io_data.is_empty() {
-                            let limit = apply_limit(io_data.len(), self.io_limit);
                             report.io = Some(report::collect_io_json(
-                                &io_data[..limit],
+                                &io_data,
+                                limit_for(self.io_limit),
                                 elapsed,
                                 &percentiles,
                                 cloud_enabled,
@@ -1303,14 +1291,14 @@ impl Drop for HotpathGuard {
                     Section::Threads => {
                         #[cfg(feature = "threads")]
                         {
-                            let json = report::collect_threads_json(self.threads_limit);
+                            let json = report::collect_threads_json(limit_for(self.threads_limit));
                             if !json.data.is_empty() {
                                 report.threads = Some(json);
                             }
                         }
                     }
                     Section::Debug => {
-                        let json = report::collect_debug_json(elapsed);
+                        let json = report::collect_debug_json(elapsed, limit_for(0));
                         if !json.entries.is_empty() {
                             report.debug = Some(json);
                         }
@@ -1359,8 +1347,12 @@ impl Drop for HotpathGuard {
                         if let Some(ref stats) = functions_stats {
                             if let Ok(state_guard) = state.read() {
                                 let total_elapsed = end_time.duration_since(state_guard.start_time);
-                                let config =
-                                    make_functions_config(&state_guard, total_elapsed, false);
+                                let config = make_functions_config(
+                                    &state_guard,
+                                    total_elapsed,
+                                    |limit| limit,
+                                    false,
+                                );
                                 let elapsed_ns = total_elapsed.as_nanos() as u64;
                                 let list = build_timing_list(stats, &config, elapsed_ns);
 
@@ -1388,7 +1380,7 @@ impl Drop for HotpathGuard {
                                 if let Some(ref stats) = functions_stats {
                                     if let Ok(state_guard) = state.read() {
                                         let total_elapsed = end_time.duration_since(state_guard.start_time);
-                                        let config = make_functions_config(&state_guard, total_elapsed, false);
+                                        let config = make_functions_config(&state_guard, total_elapsed, |limit| limit, false);
                                         let elapsed_ns = total_elapsed.as_nanos() as u64;
                                         let list = build_functions_list_alloc(stats, &config, elapsed_ns);
 
@@ -1425,6 +1417,7 @@ impl Drop for HotpathGuard {
                                         let config = make_functions_config(
                                             &state_guard,
                                             total_elapsed,
+                                            |limit| limit,
                                             false,
                                         );
                                         let list = crate::functions::cpu::build_cpu_json(

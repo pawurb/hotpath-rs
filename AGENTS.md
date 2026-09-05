@@ -61,7 +61,7 @@ Each subsystem has a dedicated background worker thread named `hp-<subsystem>`, 
 
 **Servers**: a localhost-only metrics HTTP server (tiny_http, port 6770) starts by default and feeds the TUI; the `Route` enum in `src/json.rs` is the route table - read it plus `metrics_server.rs` when modifying the API. An optional MCP server (`hotpath-mcp` feature, port 6771) lives in `mcp_server.rs`.
 
-**Histogram export**: with the `hotpath-cloud` feature and `HOTPATH_UPLOAD=1`, every hdrhistogram-backed entry in the final JSON report carries its raw histogram(s) as optional base64 HdrHistogram V2-deflate fields (`histogram`, `proc_histogram`, `wait_histogram`/`acquire_histogram`, `read_/write_` rw_lock variants; values in ns except `functions_alloc`, `None` when nothing was sampled). Never rendered on the live metrics-server path, so the TUI/MCP never see them. Encoder in `lib_on/histograms.rs`; per-section field list and gating details in `dev_docs/features.md`.
+**Histogram export**: with the `hotpath-cloud` feature and `HOTPATH_UPLOAD=1`, every hdrhistogram-backed entry in the final JSON report carries its raw histogram(s) as optional base64 HdrHistogram V2-deflate fields (`histogram`, `proc_histogram`, `wait_histogram`/`acquire_histogram`, `read_/write_` rw_lock variants; values in ns except `functions_alloc`, `None` when nothing was sampled). Never rendered on the live metrics-server path, so the TUI/MCP never see them. Encoder in `lib_on/histograms.rs`; per-section field list and gating details in `dev_docs/features.md`. The uploaded report also carries complete section lists (`HOTPATH_UPLOAD_LIMIT`, default unlimited, replaces every display limit on the cloud path), and every section list serializes `total_count` / `included_count` so consumers can detect truncation.
 
 **CPU sampling** (`hotpath-cpu`, macOS/Linux): an external `samply` worker records the host process; symbols are resolved from the binary and matched back to instrumented function names. Pitfall: bare `#[hotpath::measure]` on a method inside an `impl` block needs `impl_type = "TypeName"` for CPU attribution to match the demangled symbol (`#[measure_all]` on inherent impls auto-injects it; trait impl methods never match). Full internals in `dev_docs/architecture.md`.
 
@@ -91,6 +91,8 @@ Default to `pub(crate)` for new functions, structs, and fields. Only use `pub` w
 Never use em dashes. Always use a regular hyphen (-) instead. This applies everywhere, especially in code comments.
 
 NEVER use `mod.rs` files, so instead of `functions/mod.rs` use `functions.rs`.
+
+Read environment variables through a `static NAME: LazyLock<T>` evaluated once (see `ENTRIES_LIMIT` in `lib_on/hotpath_guard.rs`), not through a function that re-reads the env on every call. Exceptions are values the builder can override at guard creation, which are parsed in `HotpathGuardBuilder::build`.
 
 Every example in a test crate contains its exact cargo command in the top comment, usually as a `//! Run with:` header (a descriptive module doc may precede it).
 

@@ -7,6 +7,7 @@
 //! be gone, so it never spawns tasks. Failures are reported on stderr and never
 //! affect the process exit code.
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -65,6 +66,19 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
     validate_benchmark_name(&name)?;
     Ok(name)
 }
+
+/// Per-section entry limit for the uploaded report. Defaults to `0`
+/// (unlimited) so the server receives every measured entry: it diffs reports
+/// by name and can truncate for display itself, while a client-side top-N
+/// cannot be undone. Replaces `HOTPATH_LIMIT`, every `HOTPATH_<SECTION>_LIMIT`
+/// and the builder limits for the upload only; unparsable values fall back
+/// to `0`.
+pub(crate) static UPLOAD_LIMIT: LazyLock<usize> = LazyLock::new(|| {
+    std::env::var("HOTPATH_UPLOAD_LIMIT")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+});
 
 pub(crate) fn upload(report: &JsonReport) {
     if std::thread::panicking() {

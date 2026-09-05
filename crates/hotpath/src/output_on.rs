@@ -97,11 +97,11 @@ pub(crate) fn display_functions_table_to<W: Write>(writer: &mut W, list: &JsonFu
 
     let mode = list.profiling_mode.to_string();
     let desc = &list.description;
-    if list.displayed_count < list.total_count {
+    if list.included_count < list.total_count {
         let _ = writeln!(
             writer,
             "{} - {} ({}/{})",
-            mode, desc, list.displayed_count, list.total_count
+            mode, desc, list.included_count, list.total_count
         );
     } else {
         write_section_header(writer, &mode, desc);

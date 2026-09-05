@@ -117,6 +117,7 @@ jobs:
         run: |
           cargo test --lib --features hotpath,hotpath-cloud
           cargo test --features hotpath --test cloud_histograms -- --nocapture --test-threads=1
+          cargo test --features hotpath --test cloud_limit -- --nocapture --test-threads=1
       - name: Run all_noop example
         run: |
           cargo run --example all_noop
