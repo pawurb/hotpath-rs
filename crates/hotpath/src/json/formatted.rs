@@ -1121,9 +1121,17 @@ pub struct JsonMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_root: Option<String>,
     /// Only present with the `hotpath-cloud` feature; read straight from the
-    /// `.git` directory, no git binary involved.
+    /// `.git` directory and the CI environment, no git binary involved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git: Option<JsonGitInfo>,
+    /// How the run was produced; only present with the `hotpath-cloud`
+    /// feature and only when a recognized CI provider is detected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci: Option<JsonCiInfo>,
+    /// Benchmark name, so identity travels with the report instead of the
+    /// upload URL. Same validation as `HOTPATH_BENCHMARK`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1132,6 +1140,40 @@ pub struct JsonGitInfo {
     /// Full ref name (`refs/heads/main`); `None` on a detached HEAD.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
+    /// The commit this run should be compared against: the pull request's base
+    /// commit in CI, `merge-base(HEAD, <default branch>)` locally. A commit, not
+    /// a forge concept, which is why it lives here and not under `ci`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_sha: Option<String>,
+    /// "owner/name", from the `origin` remote. Informational - the server
+    /// authorizes from the upload credential, never from this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+}
+
+/// How the run was produced. Field names are provider-neutral; `provider` is
+/// the discriminator, so supporting a new CI system is a change here only.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct JsonCiInfo {
+    /// "github-actions", later "gitlab-ci", "buildkite", ...
+    pub provider: String,
+    /// "pull_request", "push", ...
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_number: Option<u64>,
+    /// String, not u64: not every provider's run id is numeric.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    /// Forge repository id - `GITHUB_REPOSITORY_ID` on Actions. Numeric and
+    /// rename-proof; the server compares it against its verified claim and
+    /// rejects a mismatch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
