@@ -66,6 +66,18 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
     Ok(name)
 }
 
+/// Function limit for the uploaded report. Defaults to `0` (unlimited) so the
+/// server receives every measured function: it diffs reports by function name
+/// and can truncate for display itself, while a client-side top-N cannot be
+/// undone. Overrides `HOTPATH_META_LIMIT`, `HOTPATH_META_FUNCTIONS_LIMIT` and the
+/// builder limit for the upload only; unparsable values fall back to `0`.
+pub(crate) fn upload_limit() -> usize {
+    std::env::var("HOTPATH_META_UPLOAD_LIMIT")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
 pub(crate) fn upload(report: &JsonReport) {
     if std::thread::panicking() {
         eprintln!("hotpath-meta: upload skipped: the profiled program panicked");
@@ -198,7 +210,8 @@ fn url_encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use crate::lib_on::cloud::{
-        benchmark_name, is_truthy, map_status, url_encode, validate_benchmark_name, APP_URL,
+        benchmark_name, is_truthy, map_status, upload_limit, url_encode, validate_benchmark_name,
+        APP_URL,
     };
 
     #[test]
@@ -268,6 +281,21 @@ mod tests {
             let err = benchmark_name().unwrap_err();
             assert!(err.contains("not valid UTF-8"), "{err}");
         }
+        std::env::remove_var(var);
+    }
+
+    // All HOTPATH_META_UPLOAD_LIMIT cases live in one test so env access stays serialized.
+    #[test]
+    fn upload_limit_from_env() {
+        let var = "HOTPATH_META_UPLOAD_LIMIT";
+        std::env::remove_var(var);
+        assert_eq!(upload_limit(), 0);
+        std::env::set_var(var, " 7 ");
+        assert_eq!(upload_limit(), 7);
+        std::env::set_var(var, "garbage");
+        assert_eq!(upload_limit(), 0);
+        std::env::set_var(var, "-1");
+        assert_eq!(upload_limit(), 0);
         std::env::remove_var(var);
     }
 

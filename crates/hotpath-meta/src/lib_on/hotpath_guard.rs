@@ -781,18 +781,28 @@ fn parse_usize_env(name: &str) -> Option<usize> {
 fn make_functions_config(
     state_guard: &FunctionsState,
     total_elapsed: std::time::Duration,
-    histograms: bool,
+    cloud: bool,
 ) -> FunctionStatsConfig {
-    let limit = parse_usize_env("HOTPATH_META_FUNCTIONS_LIMIT")
-        .or_else(|| parse_usize_env("HOTPATH_META_LIMIT"))
-        .unwrap_or(state_guard.limit);
+    // Only the function sections take the upload limit: the other sections
+    // are not diffed server-side and keep their display limits.
+    #[cfg(feature = "hotpath-cloud-meta")]
+    let upload_limit = crate::lib_on::cloud::upload_limit;
+    #[cfg(not(feature = "hotpath-cloud-meta"))]
+    let upload_limit = || 0;
+    let limit = if cloud {
+        upload_limit()
+    } else {
+        parse_usize_env("HOTPATH_META_FUNCTIONS_LIMIT")
+            .or_else(|| parse_usize_env("HOTPATH_META_LIMIT"))
+            .unwrap_or(state_guard.limit)
+    };
 
     FunctionStatsConfig {
         total_elapsed,
         percentiles: state_guard.percentiles.clone(),
         caller_name: state_guard.caller_name,
         limit,
-        histograms,
+        histograms: cloud,
     }
 }
 

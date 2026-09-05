@@ -120,7 +120,11 @@ pub struct JsonFunctionsList {
     pub data: Vec<JsonFunctionEntry>,
     #[serde(skip)]
     pub displayed_count: usize,
-    #[serde(skip)]
+    /// Total number of measured functions, including ones truncated from
+    /// `data` by the display limit. `0` in reports written before this field
+    /// existed, so consumers treat `0` or a value below `data.len()` as
+    /// "not reported".
+    #[serde(default)]
     pub total_count: usize,
 }
 
@@ -144,7 +148,9 @@ pub struct JsonFunctionsCpuList {
     pub profile_path: String,
     #[serde(skip)]
     pub displayed_count: usize,
-    #[serde(skip)]
+    /// Total number of attributed functions, including ones truncated from
+    /// `data` by the display limit; `0` when not reported.
+    #[serde(default)]
     pub total_count: usize,
 }
 
@@ -1200,6 +1206,25 @@ mod parse_tests {
                 "round-trip failed for {val}: formatted as '{formatted}'"
             );
         }
+    }
+
+    #[test]
+    fn json_functions_list_total_count_defaults_to_zero() {
+        let body = r#"{
+            "profiling_mode":"timing","time_elapsed":"1s","total_elapsed_ns":1,
+            "description":"d","caller_name":"main","percentiles":[95.0],"data":[]
+        }"#;
+        let list: JsonFunctionsList = serde_json::from_str(body).unwrap();
+        assert_eq!(list.total_count, 0);
+        assert_eq!(list.displayed_count, 0);
+
+        let body = r#"{
+            "profiling_mode":"timing","time_elapsed":"1s","total_elapsed_ns":1,
+            "description":"d","caller_name":"main","percentiles":[95.0],"data":[],
+            "total_count":42
+        }"#;
+        let list: JsonFunctionsList = serde_json::from_str(body).unwrap();
+        assert_eq!(list.total_count, 42);
     }
 
     #[test]
