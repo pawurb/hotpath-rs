@@ -120,8 +120,7 @@ pub struct JsonFunctionsList {
     pub data: Vec<JsonFunctionEntry>,
     #[serde(skip)]
     pub displayed_count: usize,
-    /// Total number of measured functions, including ones truncated from
-    /// `data` by the display limit.
+    #[serde(skip)]
     pub total_count: usize,
 }
 
@@ -145,8 +144,7 @@ pub struct JsonFunctionsCpuList {
     pub profile_path: String,
     #[serde(skip)]
     pub displayed_count: usize,
-    /// Total number of attributed functions, including ones truncated from
-    /// `data` by the display limit.
+    #[serde(skip)]
     pub total_count: usize,
 }
 
