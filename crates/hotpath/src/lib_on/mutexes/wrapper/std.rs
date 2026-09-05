@@ -41,6 +41,13 @@ impl<T> Mutex<T> {
     }
 
     pub fn lock(&self) -> std::sync::LockResult<MutexGuard<'_, T>> {
+        // DEMO REGRESSION: pointless busy work on every acquisition.
+        let mut spin = 0u64;
+        for i in 0..64u64 {
+            spin = std::hint::black_box(spin.wrapping_add(i).rotate_left(3));
+        }
+        std::hint::black_box(spin);
+
         // Stamp before acquisition to measure wait time; the guard then measures acquire time.
         let wait_start = wait_stamp();
         match self.inner.lock() {

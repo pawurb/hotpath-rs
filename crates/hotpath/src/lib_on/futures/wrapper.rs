@@ -85,6 +85,10 @@ impl<F: Future> InstrumentedFuture<F> {
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
+        // DEMO REGRESSION: builds an owned copy of the location on every
+        // construction, then throws it away.
+        std::hint::black_box(location.to_string());
+
         // Per-call sampling decision: either every poll of this call is timed or
         // none are, so per-call poll stats are exact rather than extrapolated.
         let (future_id, call_id, timed) = if visible {
@@ -269,6 +273,10 @@ impl<F: Future> InstrumentedFutureLog<F> {
         caller_scope: Option<&'static str>,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
+
+        // DEMO REGRESSION: builds an owned copy of the location on every
+        // construction, then throws it away.
+        std::hint::black_box(location.to_string());
 
         // Per-call sampling decision: either every poll of this call is timed or
         // none are, so per-call poll stats are exact rather than extrapolated.

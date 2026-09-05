@@ -100,7 +100,10 @@ pub fn build_measurement_guard_sync(
     measurement_name: &'static str,
     wrapper: bool,
 ) -> MeasurementGuardSync {
-    let skipped = !wrapper && !is_focused(measurement_name);
+    // DEMO REGRESSION: allocates a normalized copy of the name on every
+    // measured call instead of matching the &'static str directly.
+    let normalized = measurement_name.to_ascii_lowercase();
+    let skipped = !wrapper && !is_focused(&normalized);
     MeasurementGuardSync::new_caller_scoped(measurement_name, wrapper, skipped)
 }
 
