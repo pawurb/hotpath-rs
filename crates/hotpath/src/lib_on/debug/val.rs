@@ -36,7 +36,7 @@ impl ValHandle {
 
     #[inline]
     pub fn set<T: Debug>(&self, value: &T) {
-        let value_str = crate::output::format_debug_truncated(value);
+        let value_str = crate::output_on::format_debug_truncated(value);
         let timestamp = Instant::now();
         let tid = get_thread_id();
 

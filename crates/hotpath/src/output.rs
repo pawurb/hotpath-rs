@@ -1,12 +1,6 @@
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-#[cfg(feature = "hotpath")]
-use std::fs::File;
-#[cfg(feature = "hotpath")]
-use std::io::Write;
-#[cfg(feature = "hotpath")]
-use std::path::PathBuf;
 use std::sync::LazyLock;
 
 const DEFAULT_MAX_LOG_LEN: usize = 1536;
@@ -24,15 +18,6 @@ pub(crate) static FUNCTIONS_NAME_DEPTH: LazyLock<usize> = LazyLock::new(|| {
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_FUNCTIONS_NAME_DEPTH)
 });
-
-/// Destination for profiling report output.
-#[derive(Default)]
-#[cfg(feature = "hotpath")]
-pub(crate) enum OutputDestination {
-    #[default]
-    Stdout,
-    File(PathBuf),
-}
 
 /// Formats a duration in nanoseconds into a human-readable string with appropriate units.
 pub fn format_duration(ns: u64) -> String {
@@ -116,23 +101,6 @@ pub fn format_rate(rate: Option<f64>) -> String {
     rate.map_or_else(|| "-".to_string(), |v| format!("{v:.1}"))
 }
 
-/// Formats an optional bytes-per-second rate (e.g. `12.4 MB/s`), or `-` when absent.
-/// Sub-KB rates keep one decimal place so slow but nonzero traffic doesn't
-/// round down to `0 B/s`.
-#[cfg(feature = "hotpath")]
-pub(crate) fn format_throughput(rate: Option<f64>) -> String {
-    rate.map_or_else(
-        || "-".to_string(),
-        |v| {
-            if v < 1024.0 {
-                format!("{v:.1} B/s")
-            } else {
-                format!("{}/s", format_bytes(v.round() as u64))
-            }
-        },
-    )
-}
-
 /// Parses a human-readable byte string back to a byte count.
 /// Inverse of [`format_bytes`].
 pub fn parse_bytes(s: &str) -> Option<u64> {
@@ -196,77 +164,6 @@ impl fmt::Display for ProfilingMode {
     }
 }
 
-#[cfg(feature = "hotpath")]
-static USE_COLORS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-
-#[cfg(feature = "hotpath")]
-pub(crate) fn set_use_colors(value: bool) {
-    let _ = USE_COLORS.set(value);
-}
-
-#[cfg(feature = "hotpath")]
-pub(crate) fn use_colors() -> bool {
-    *USE_COLORS.get().unwrap_or(&false)
-}
-
-#[cfg(feature = "hotpath-cpu")]
-pub(crate) fn cyan(text: &str) -> String {
-    if use_colors() {
-        format!("\x1b[1;36m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-#[cfg(feature = "hotpath")]
-impl OutputDestination {
-    /// Creates a writer for this destination.
-    ///
-    /// Returns a boxed writer that implements `Write`.
-    /// For `Stdout`, returns a handle to stdout.
-    /// For `File`, creates parent directories if needed, then creates or truncates the file.
-    pub(crate) fn writer(&self) -> Result<Box<dyn Write>, std::io::Error> {
-        match self {
-            OutputDestination::Stdout => Ok(Box::new(std::io::stdout())),
-            OutputDestination::File(path) => {
-                if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                Ok(Box::new(File::create(path)?))
-            }
-        }
-    }
-
-    /// Creates an OutputDestination from an optional path.
-    ///
-    /// Environment variable `HOTPATH_OUTPUT_PATH` takes precedence over programmatic config.
-    /// If the path is provided, resolves relative paths against the current working directory.
-    /// If no path is provided, returns Stdout.
-    pub(crate) fn from_path(path: Option<PathBuf>) -> Self {
-        if let Ok(env_path) = std::env::var("HOTPATH_OUTPUT_PATH") {
-            return OutputDestination::File(resolve_output_path(env_path));
-        }
-
-        match path {
-            Some(p) => OutputDestination::File(p),
-            None => OutputDestination::Stdout,
-        }
-    }
-}
-
-/// Resolves a path, converting relative paths to absolute by joining with cwd.
-#[cfg(feature = "hotpath")]
-pub(crate) fn resolve_output_path(path: impl AsRef<std::path::Path>) -> PathBuf {
-    let path = path.as_ref();
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .map(|cwd| cwd.join(path))
-            .unwrap_or_else(|_| path.to_path_buf())
-    }
-}
-
 impl Serialize for ProfilingMode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -320,59 +217,6 @@ pub fn ceil_char_boundary(s: &str, index: usize) -> usize {
     i
 }
 
-#[cfg(feature = "hotpath")]
-struct TruncatingWriter {
-    buf: String,
-    limit: usize,
-    truncated: bool,
-}
-
-#[cfg(feature = "hotpath")]
-impl std::fmt::Write for TruncatingWriter {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        if self.truncated {
-            return Ok(());
-        }
-
-        let remaining = self.limit.saturating_sub(self.buf.len());
-        if remaining == 0 {
-            if !s.is_empty() {
-                self.truncated = true;
-            }
-            return Ok(());
-        }
-
-        let end = floor_char_boundary(s, s.len().min(remaining));
-
-        if end < s.len() {
-            self.truncated = true;
-        }
-
-        self.buf.push_str(&s[..end]);
-        Ok(())
-    }
-}
-
-#[cfg(feature = "hotpath")]
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
-pub fn format_debug_truncated(value: &impl std::fmt::Debug) -> String {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-    use std::fmt::Write;
-    let limit = MAX_LOG_LEN.saturating_sub(3);
-    let mut writer = TruncatingWriter {
-        buf: String::with_capacity(64),
-        limit,
-        truncated: false,
-    };
-    let _ = write!(writer, "{:?}", value);
-
-    if writer.truncated {
-        writer.buf.push_str("...");
-    }
-
-    writer.buf
-}
-
 pub fn shorten_function_name(function_name: &str) -> String {
     let depth = *FUNCTIONS_NAME_DEPTH;
     if depth == 0 {
@@ -416,45 +260,6 @@ pub(crate) struct FunctionLogsList {
     pub logs: Vec<FunctionLog>,
     /// Total number of times this function was invoked (used to calculate invocation numbers)
     pub count: usize,
-}
-
-#[cfg(all(test, feature = "hotpath"))]
-mod truncation_tests {
-    use super::*;
-
-    #[test]
-    fn test_format_debug_truncated() {
-        let truncate_point = MAX_LOG_LEN.saturating_sub(3);
-
-        let test_cases: Vec<(&str, String)> = vec![
-            (
-                "japanese at boundary",
-                format!("{}リプライ", "a".repeat(truncate_point - 2)),
-            ),
-            ("emoji", "🦀".repeat(500)),
-            ("chinese", "拥抱中文字符测试".repeat(200)),
-            (
-                "2-byte at boundary",
-                format!("{}ñoño", "a".repeat(truncate_point - 1)),
-            ),
-        ];
-
-        for (name, input) in test_cases {
-            let result = format_debug_truncated(&input);
-            assert!(
-                result.chars().count() > 0,
-                "{}: result should have chars",
-                name
-            );
-            if input.len() > *MAX_LOG_LEN {
-                assert!(
-                    result.ends_with("..."),
-                    "{}: truncated result should end with '...'",
-                    name
-                );
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -518,17 +323,6 @@ mod parse_tests {
                 "round-trip failed for {val}: formatted as '{formatted}'"
             );
         }
-    }
-
-    #[test]
-    #[cfg(feature = "hotpath")]
-    fn test_format_throughput() {
-        assert_eq!(format_throughput(None), "-");
-        assert_eq!(format_throughput(Some(0.33)), "0.3 B/s");
-        assert_eq!(format_throughput(Some(512.0)), "512.0 B/s");
-        assert_eq!(format_throughput(Some(1023.9)), "1023.9 B/s");
-        assert_eq!(format_throughput(Some(1536.0)), "1.5 KB/s");
-        assert_eq!(format_throughput(Some(26_004_684.8)), "24.8 MB/s");
     }
 
     #[test]
