@@ -57,7 +57,7 @@ Output:
 
 Attribute macro that initializes the background measurement processing when applied. Supports parameters:
 
-- `percentiles = [50, 95, 99]` - Custom percentiles to display (defaults to `[95]`)
+- `percentiles = [50, 95, 99]` - Custom percentiles to display, sorted and deduplicated, at most 10 (defaults to `[95]`)
 - `format = "json"` - Output format `"table"`, `"json"`, `"json-pretty"`, `"none"` (defaults to `table`)
 - `limit = 20` - Maximum number of functions to display (default: `15`, `0` = show all)
 - `output_path = "report.json"` - Filesystem path for profiling reports. If not set, the report is written to `stdout`. Can be overridden by `HOTPATH_OUTPUT_PATH`; on Unix, set that env var to `/dev/stdout` or `/dev/stderr` to redirect to the standard streams.

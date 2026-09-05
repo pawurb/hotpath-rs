@@ -12,6 +12,10 @@ fn env_flag(name: &str) -> bool {
 
 static KEEP_INLINE: LazyLock<bool> = LazyLock::new(|| env_flag("HOTPATH_KEEP_INLINE"));
 
+/// Upper bound on configured percentiles. Kept in sync with `MAX_PERCENTILES`
+/// in the `hotpath` crate, which enforces the same limit on the builder path.
+pub(crate) const MAX_PERCENTILES: usize = 10;
+
 #[derive(Clone, Copy)]
 pub(crate) enum Format {
     Table,
@@ -40,7 +44,7 @@ impl Format {
 ///
 /// # Parameters
 ///
-/// * `percentiles` - Array of percentile values (0.0-100.0) to display in the report, e.g. `[50, 95, 99.9]`. Default: `[95]`
+/// * `percentiles` - Array of percentile values (0.0-100.0) to display in the report, e.g. `[50, 95, 99.9]`. Sorted and deduplicated, at most 10. Default: `[95]`
 /// * `format` - Output format as a string: `"table"` (default), `"json"`, `"json-pretty"`, or `"none"`
 /// * `limit` - Global maximum number of items shown in each report section (functions, channels, streams, futures, threads, rw_locks). `0` = unlimited.
 /// * `functions_limit` - Maximum number of functions shown in the report. Overrides `limit` for functions.
@@ -186,6 +190,15 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
                 if vals.is_empty() {
                     return Err(meta.error("At least one percentile must be specified"));
+                }
+                vals.sort_by(|a, b| a.partial_cmp(b).expect("percentiles are not NaN"));
+                vals.dedup();
+                if vals.len() > MAX_PERCENTILES {
+                    return Err(meta.error(format!(
+                        "Too many percentiles: {} (max {})",
+                        vals.len(),
+                        MAX_PERCENTILES
+                    )));
                 }
                 percentiles = vals;
                 return Ok(());
