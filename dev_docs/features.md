@@ -43,6 +43,7 @@ Env vars:
 - `HOTPATH_ALLOC_METRIC` panics on values other than `bytes`/`count`. `HOTPATH_ALLOC_CUMULATIVE` produces invalid results for recursive functions.
 - `HOTPATH_SQL_RAW_LOGS` is off by default so bound literals (potentially sensitive) never reach the logs.
 - `HOTPATH_TIME_SAMPLING_RATE=0.0` gives count-only mode (durations and io `Rate` show `-`). Per-resource `HOTPATH_<RESOURCE>_TIME_SAMPLING_RATE` variants take precedence.
+- `HOTPATH_PROMETHEUS_FAST_BUCKETS` / `HOTPATH_PROMETHEUS_SLOW_BUCKETS` replace the classic ladders (`prometheus_server.rs`, `FAST_LADDER_NS` / `SLOW_LADDER_NS` LazyLocks, forced in `start_prometheus_server` so bad input panics on the main thread, not on first scrape inside a worker). Seconds, strictly ascending after rounding to ns, capped at `MAX_DURATION_NS`.
 - CPU report has no dedicated limit var - it uses `HOTPATH_FUNCTIONS_LIMIT` (fallback `HOTPATH_LIMIT`); wrapper `caller_name` is exempt.
 
 ## GitHub CI Integration

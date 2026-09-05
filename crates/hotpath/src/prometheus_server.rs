@@ -52,7 +52,7 @@ pub(crate) const NATIVE_SCHEMA: i32 = 3;
 /// Bucket boundaries (ns) for the classic-format fallback - log-spaced 1-3
 /// steps, coarse on purpose: native histograms are the high-resolution path.
 /// `+Inf` is emitted by the renderer, never stored here.
-pub(crate) const FAST_LADDER_NS: &[u64] = &[
+const DEFAULT_FAST_LADDER_NS: &[u64] = &[
     250,            // 250ns
     1_000,          // 1µs
     3_000,          // 3µs
@@ -73,9 +73,10 @@ pub(crate) const FAST_LADDER_NS: &[u64] = &[
 
 /// Bucket boundaries (ns) for I/O-bound latencies (SQL queries, HTTP client
 /// requests, server responses) - same log-spaced 1-3 stepping as
-/// `FAST_LADDER_NS`, shifted up: sub-100µs I/O is indistinguishably "fast" and
-/// a p99 above the top boundary would clip to it and silently understate.
-pub(crate) const SLOW_LADDER_NS: &[u64] = &[
+/// `DEFAULT_FAST_LADDER_NS`, shifted up: sub-100µs I/O is indistinguishably
+/// "fast" and a p99 above the top boundary would clip to it and silently
+/// understate.
+const DEFAULT_SLOW_LADDER_NS: &[u64] = &[
     100_000,        // 100µs
     300_000,        // 300µs
     1_000_000,      // 1ms
@@ -90,6 +91,62 @@ pub(crate) const SLOW_LADDER_NS: &[u64] = &[
     30_000_000_000, // 30s
     60_000_000_000, // 60s
 ];
+
+/// Classic ladder for function, lock, channel, future and I/O durations:
+/// `HOTPATH_PROMETHEUS_FAST_BUCKETS` (seconds, comma-separated) or
+/// `DEFAULT_FAST_LADDER_NS`.
+pub(crate) static FAST_LADDER_NS: LazyLock<Vec<u64>> =
+    LazyLock::new(|| ladder_from_env("HOTPATH_PROMETHEUS_FAST_BUCKETS", DEFAULT_FAST_LADDER_NS));
+
+/// Classic ladder for SQL, HTTP client and server durations:
+/// `HOTPATH_PROMETHEUS_SLOW_BUCKETS` (seconds, comma-separated) or
+/// `DEFAULT_SLOW_LADDER_NS`.
+pub(crate) static SLOW_LADDER_NS: LazyLock<Vec<u64>> =
+    LazyLock::new(|| ladder_from_env("HOTPATH_PROMETHEUS_SLOW_BUCKETS", DEFAULT_SLOW_LADDER_NS));
+
+fn ladder_from_env(var: &str, default: &[u64]) -> Vec<u64> {
+    match std::env::var(var) {
+        Ok(raw) => parse_ladder(&raw).unwrap_or_else(|e| panic!("{var}: {e}")),
+        Err(_) => default.to_vec(),
+    }
+}
+
+/// Parses a comma-separated list of bucket boundaries in seconds into ns.
+/// Every entry must be a finite positive number no larger than the duration
+/// histograms' `MAX_DURATION_NS` ceiling (a higher bucket could never receive
+/// a distinct count), and the list must be strictly ascending once rounded to
+/// whole nanoseconds (Prometheus rejects duplicate `le` labels).
+fn parse_ladder(raw: &str) -> Result<Vec<u64>, String> {
+    let mut ladder = Vec::new();
+    for item in raw.split(',') {
+        let item = item.trim();
+        let secs: f64 = item.parse().map_err(|_| {
+            format!("invalid bucket boundary `{item}`, expected seconds like 0.001")
+        })?;
+        if !secs.is_finite() || secs <= 0.0 {
+            return Err(format!(
+                "bucket boundary `{item}` must be a positive number"
+            ));
+        }
+        let ns = (secs * 1e9).round() as u64;
+        if ns == 0 {
+            return Err(format!("bucket boundary `{item}` is below 1ns"));
+        }
+        if ns > crate::lib_on::MAX_DURATION_NS {
+            return Err(format!(
+                "bucket boundary `{item}` exceeds the {}s maximum",
+                crate::lib_on::MAX_DURATION_NS / 1_000_000_000
+            ));
+        }
+        if ladder.last().is_some_and(|&prev| ns <= prev) {
+            return Err(format!(
+                "bucket boundaries must be strictly ascending, `{item}` does not exceed the previous entry"
+            ));
+        }
+        ladder.push(ns);
+    }
+    Ok(ladder)
+}
 
 /// Bucket boundaries (bytes) for per-call allocation totals - powers of 4
 /// from 64B to 1GiB, matching the alloc histograms' 1GB value clamp.
@@ -129,6 +186,8 @@ pub(crate) fn start_prometheus_server_once() {
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn start_prometheus_server(port: u16) {
     LazyLock::force(&PROMETHEUS_AUTH_TOKEN);
+    LazyLock::force(&FAST_LADDER_NS);
+    LazyLock::force(&SLOW_LADDER_NS);
     crate::dev_logging::init_logging();
 
     thread::Builder::new()
@@ -291,7 +350,7 @@ fn collect_families() -> Option<Vec<Family>> {
                     value: SampleValue::Histogram(HistogramValue {
                         sample_count: f.sampled_count,
                         sum: seconds(f.total_duration_ns),
-                        classic_buckets: classic_pairs(FAST_LADDER_NS, f.bucket_counts),
+                        classic_buckets: classic_pairs(&FAST_LADDER_NS, f.bucket_counts),
                         native_buckets: f.native_buckets,
                         zero_count: 0,
                     }),
@@ -492,7 +551,7 @@ fn collect_io(families: &mut Vec<Family>) {
             SampleValue::Histogram(HistogramValue {
                 sample_count: s.sampled_count,
                 sum: seconds(s.total_nanos),
-                classic_buckets: classic_pairs(FAST_LADDER_NS, s.classic_buckets(FAST_LADDER_NS)),
+                classic_buckets: classic_pairs(&FAST_LADDER_NS, s.classic_buckets(&FAST_LADDER_NS)),
                 native_buckets: s.native_buckets(NATIVE_SCHEMA),
                 zero_count: 0,
             })
@@ -627,8 +686,8 @@ fn collect_mutexes(families: &mut Vec<Family>) {
                     sample_count: e.sampled_count,
                     sum: seconds(e.wait_total_nanos),
                     classic_buckets: classic_pairs(
-                        FAST_LADDER_NS,
-                        e.classic_wait_buckets(FAST_LADDER_NS),
+                        &FAST_LADDER_NS,
+                        e.classic_wait_buckets(&FAST_LADDER_NS),
                     ),
                     native_buckets: e.native_wait_buckets(NATIVE_SCHEMA),
                     zero_count: 0,
@@ -649,8 +708,8 @@ fn collect_mutexes(families: &mut Vec<Family>) {
                     sample_count: e.sampled_count,
                     sum: seconds(e.acquire_total_nanos),
                     classic_buckets: classic_pairs(
-                        FAST_LADDER_NS,
-                        e.classic_acquire_buckets(FAST_LADDER_NS),
+                        &FAST_LADDER_NS,
+                        e.classic_acquire_buckets(&FAST_LADDER_NS),
                     ),
                     native_buckets: e.native_acquire_buckets(NATIVE_SCHEMA),
                     zero_count: 0,
@@ -707,8 +766,8 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
                         sample_count: e.sampled_count(kind),
                         sum: seconds(e.wait_total_nanos(kind)),
                         classic_buckets: classic_pairs(
-                            FAST_LADDER_NS,
-                            e.classic_wait_buckets(kind, FAST_LADDER_NS),
+                            &FAST_LADDER_NS,
+                            e.classic_wait_buckets(kind, &FAST_LADDER_NS),
                         ),
                         native_buckets: e.native_wait_buckets(kind, NATIVE_SCHEMA),
                         zero_count: 0,
@@ -731,8 +790,8 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
                         sample_count: e.sampled_count(kind),
                         sum: seconds(e.acquire_total_nanos(kind)),
                         classic_buckets: classic_pairs(
-                            FAST_LADDER_NS,
-                            e.classic_acquire_buckets(kind, FAST_LADDER_NS),
+                            &FAST_LADDER_NS,
+                            e.classic_acquire_buckets(kind, &FAST_LADDER_NS),
                         ),
                         native_buckets: e.native_acquire_buckets(kind, NATIVE_SCHEMA),
                         zero_count: 0,
@@ -858,8 +917,8 @@ fn collect_channels(families: &mut Vec<Family>) {
                 sample_count: e.proc_sampled_count,
                 sum: seconds(e.proc_total_nanos),
                 classic_buckets: classic_pairs(
-                    FAST_LADDER_NS,
-                    e.classic_proc_buckets(FAST_LADDER_NS),
+                    &FAST_LADDER_NS,
+                    e.classic_proc_buckets(&FAST_LADDER_NS),
                 ),
                 native_buckets: e.native_proc_buckets(NATIVE_SCHEMA),
                 zero_count: 0,
@@ -977,8 +1036,8 @@ fn collect_sql(families: &mut Vec<Family>) {
                     sample_count: e.count,
                     sum: seconds(e.total_nanos),
                     classic_buckets: classic_pairs(
-                        SLOW_LADDER_NS,
-                        e.classic_buckets(SLOW_LADDER_NS),
+                        &SLOW_LADDER_NS,
+                        e.classic_buckets(&SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
                     zero_count: 0,
@@ -1061,8 +1120,8 @@ fn collect_http(families: &mut Vec<Family>) {
                     sample_count: e.count,
                     sum: seconds(e.total_nanos),
                     classic_buckets: classic_pairs(
-                        SLOW_LADDER_NS,
-                        e.classic_buckets(SLOW_LADDER_NS),
+                        &SLOW_LADDER_NS,
+                        e.classic_buckets(&SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
                     zero_count: 0,
@@ -1121,8 +1180,8 @@ fn collect_server(families: &mut Vec<Family>) {
                     sample_count: e.count,
                     sum: seconds(e.total_nanos),
                     classic_buckets: classic_pairs(
-                        SLOW_LADDER_NS,
-                        e.classic_buckets(SLOW_LADDER_NS),
+                        &SLOW_LADDER_NS,
+                        e.classic_buckets(&SLOW_LADDER_NS),
                     ),
                     native_buckets: e.native_buckets(NATIVE_SCHEMA),
                     zero_count: 0,
@@ -1663,8 +1722,38 @@ fn respond_text(request: Request, code: u16, msg: &str) {
 #[cfg(test)]
 mod tests {
     use crate::prometheus_server::{
-        accepts_protobuf, check_auth_with_bearer, query_label, seconds,
+        accepts_protobuf, check_auth_with_bearer, parse_ladder, query_label, seconds,
     };
+
+    #[test]
+    fn parse_ladder_accepts_ascending_seconds() {
+        assert_eq!(
+            parse_ladder("0.000001, 0.00002,0.5,1000").unwrap(),
+            vec![1_000, 20_000, 500_000_000, 1_000_000_000_000]
+        );
+        assert_eq!(parse_ladder("1e-3").unwrap(), vec![1_000_000]);
+    }
+
+    #[test]
+    fn parse_ladder_rejects_invalid_input() {
+        for raw in [
+            "",
+            "abc",
+            "0.001,",
+            "0.001,,0.01",
+            "-0.001",
+            "0",
+            "inf",
+            "NaN",
+            "0.0000000001",
+            "1001",
+            "0.01,0.001",
+            "0.001,0.001",
+            "0.0000000010,0.0000000014",
+        ] {
+            assert!(parse_ladder(raw).is_err(), "`{raw}` should be rejected");
+        }
+    }
 
     #[test]
     fn future_labels_use_id_verbatim() {

@@ -110,6 +110,8 @@ rate(hotpath_io_sampled_bytes_total[1m]) / rate(hotpath_io_op_seconds_sum[1m])
 
 Classic buckets are coarse, log-spaced 1-3 steps, so quantiles from them are rough estimates. Prefer native histograms when accuracy matters.
 
+Two bucket ladders are used. The fast ladder (250ns to 10s) covers function, lock, channel, future and I/O durations. The slow ladder (100µs to 60s) covers SQL queries, outbound HTTP requests and server responses. Both can be customized with `HOTPATH_PROMETHEUS_FAST_BUCKETS` / `HOTPATH_PROMETHEUS_SLOW_BUCKETS`: a comma-separated list of upper bounds in seconds, strictly ascending, e.g. `0.000001,0.00002,0.001,0.1`. The `+Inf` bucket is always appended. Invalid input panics at startup. Changing the ladder starts new `_bucket` series, so keep it stable across deployments.
+
 ## Time sampling
 
 With [time sampling](profiling_overhead.md#reducing-overhead-time-sampling) enabled, `*_total` call counters still count every call, while duration histograms only contain the sampled ones. Their count (`histogram_count()`, or the classic `_count` series) is the number of timed calls, so averages derived from sum / count stay correct.
@@ -312,6 +314,8 @@ Requires [`hotpath::gauge!`](debug.md) entries.
 | `HOTPATH_PROMETHEUS_PORT` | `6772` | Port the exporter listens on |
 | `HOTPATH_PROMETHEUS_HOST` | `127.0.0.1` | Bind address; set to `0.0.0.0` when a Prometheus container must reach the exporter through the Docker bridge |
 | `HOTPATH_PROMETHEUS_AUTH_TOKEN` | - | Optional token required in the `Authorization` header, bare or `Bearer`-prefixed |
+| `HOTPATH_PROMETHEUS_FAST_BUCKETS` | `250ns .. 10s` | Classic bucket bounds in seconds for function, lock, channel, future and I/O histograms, comma-separated and strictly ascending, see [classic histogram queries](#classic-histogram-queries) |
+| `HOTPATH_PROMETHEUS_SLOW_BUCKETS` | `100µs .. 60s` | Classic bucket bounds in seconds for SQL, HTTP client and server histograms, same format |
 
 Example:
 
