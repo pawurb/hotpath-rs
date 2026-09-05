@@ -1,7 +1,7 @@
 use crate::json::JsonFunctionsList;
 use crate::output::{
-    floor_char_boundary, format_bytes, format_duration, format_percentile_header,
-    format_percentile_key, shorten_function_name, MAX_LOG_LEN,
+    floor_char_boundary, format_bytes, format_percentile_header, format_percentile_key,
+    shorten_function_name, MAX_LOG_LEN,
 };
 use crate::shared::Section;
 use crate::table::{Cell, Table};
@@ -14,14 +14,10 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
     writer: &mut W,
     elapsed: Duration,
     sections: &[Section],
-    cpu_baseline_ns: Option<u64>,
     label: Option<&str>,
 ) {
     let section_names: Vec<&str> = sections.iter().map(|s| s.short_name()).collect();
     let sections_str = section_names.join(", ");
-    let baseline_str = cpu_baseline_ns
-        .map(|ns| format!(" (CPU baseline avg: {})", format_duration(ns)))
-        .unwrap_or_default();
     let label_str = label.map(|l| format!(" | {}", l)).unwrap_or_default();
     let sampling_str = crate::lib_on::sampling::active_rates()
         .map(|rates| {
@@ -36,8 +32,8 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
 
     let _ = writeln!(
         writer,
-        "[hotpath-meta] {:.2?} | {}{}{}{}",
-        elapsed, sections_str, baseline_str, label_str, sampling_str,
+        "[hotpath-meta] {:.2?} | {}{}{}",
+        elapsed, sections_str, label_str, sampling_str,
     );
     let _ = writeln!(writer);
 }

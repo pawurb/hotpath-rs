@@ -146,7 +146,6 @@ pub struct JsonReportDiff {
     pub before_label: Option<String>,
     pub after_label: Option<String>,
     pub total_elapsed_diff: MetricDiff,
-    pub cpu_baseline_diff: Option<MetricDiff>,
     pub functions_timing: Option<FunctionsComparison>,
     pub functions_alloc: Option<FunctionsComparison>,
     pub threads: Option<ThreadsComparison>,
@@ -199,15 +198,6 @@ pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> Result<JsonRe
     let before_ns = before_section.map(|s| s.total_elapsed_ns).unwrap_or(0);
     let after_ns = after_section.map(|s| s.total_elapsed_ns).unwrap_or(0);
 
-    let cpu_baseline_diff = match (&before.cpu_baseline, &after.cpu_baseline) {
-        (Some(b), Some(a)) => {
-            let b_ns = parse_duration(&b.avg).unwrap_or(0);
-            let a_ns = parse_duration(&a.avg).unwrap_or(0);
-            Some(MetricDiff::DurationNs(b_ns, a_ns))
-        }
-        _ => None,
-    };
-
     let threads = match (&before.threads, &after.threads) {
         (Some(b), Some(a)) => Some(compare_threads(b, a)),
         _ => None,
@@ -217,7 +207,6 @@ pub fn compare_reports(before: &JsonReport, after: &JsonReport) -> Result<JsonRe
         before_label: before.label.clone(),
         after_label: after.label.clone(),
         total_elapsed_diff: MetricDiff::DurationNs(before_ns, after_ns),
-        cpu_baseline_diff,
         functions_timing,
         functions_alloc,
         threads,

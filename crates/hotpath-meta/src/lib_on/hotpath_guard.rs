@@ -87,9 +87,9 @@ where
 
 use std::io::Write;
 
-use crate::json::{JsonCpuBaseline, JsonFunctionsList, JsonReport};
+use crate::json::{JsonFunctionsList, JsonReport};
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crate::output::{format_duration, FunctionLog, FunctionLogsList};
+use crate::output::{FunctionLog, FunctionLogsList};
 use crate::output_on::{
     display_functions_table_to, display_no_measurements_message_to, resolve_output_path,
     write_report_header, OutputDestination,
@@ -727,8 +727,6 @@ impl HotpathGuard {
             crate::futures::init_futures_state();
         }
 
-        crate::cpu_baseline::init_cpu_baseline();
-
         #[cfg(feature = "threads")]
         {
             crate::threads::init_threads_monitoring();
@@ -853,8 +851,6 @@ impl Drop for HotpathGuard {
         // Stop producers before signalling shutdown: everything published up to
         // this point is caught by the worker's final sweep.
         set_measurements_active(false);
-
-        let cpu_baseline = crate::cpu_baseline::shutdown_cpu_baseline();
 
         let state: Arc<RwLock<FunctionsState>> = Arc::clone(&self.state);
         let elapsed = self.start_time.elapsed();
@@ -1207,12 +1203,6 @@ impl Drop for HotpathGuard {
                 }
             }
 
-            if let Some(ref baseline) = cpu_baseline {
-                report.cpu_baseline = Some(JsonCpuBaseline {
-                    avg: format_duration(baseline.avg_ns),
-                });
-            }
-
             match format {
                 Format::Json => {
                     let _ = writeln!(
@@ -1238,18 +1228,11 @@ impl Drop for HotpathGuard {
         }
 
         if !is_json {
-            let baseline_ns = cpu_baseline.as_ref().map(|b| b.avg_ns);
             let label = std::env::var("HOTPATH_META_REPORT_LABEL")
                 .ok()
                 .filter(|s| !s.is_empty());
             if matches!(format, Format::Table) {
-                write_report_header(
-                    &mut writer,
-                    elapsed,
-                    &sections,
-                    baseline_ns,
-                    label.as_deref(),
-                );
+                write_report_header(&mut writer, elapsed, &sections, label.as_deref());
                 if let Some(err) = crate::metrics_server::get_metrics_server_error() {
                     let _ = writeln!(writer, "[hotpath-meta - error] {}", err);
                 }
