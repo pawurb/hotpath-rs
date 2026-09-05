@@ -1,7 +1,8 @@
 //! JSON serializable types for TUI and CLI consumers.
 //!
 //! This module contains all JSON types used by the HTTP server and TUI console.
-//! It is gated behind `hotpath`, `utils`, or `tui` features.
+//! It is gated behind the `json` feature (implied by `hotpath-meta`,
+//! `hotpath-cloud-meta`, and `tui`), so consumers can parse reports without the profiler.
 
 mod formatted;
 pub use formatted::*;
