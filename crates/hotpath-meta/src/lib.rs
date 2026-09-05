@@ -35,11 +35,11 @@ mod lib_on;
 #[cfg(all(feature = "hotpath-meta", feature = "tokio"))]
 pub use lib_on::tokio_runtime;
 
-#[cfg(any(feature = "hotpath-meta", feature = "tui"))]
+#[cfg(feature = "json")]
 pub(crate) mod output;
 #[cfg(feature = "hotpath-meta")]
 pub use output::format_debug_truncated;
-#[cfg(any(feature = "hotpath-meta", feature = "tui"))]
+#[cfg(feature = "json")]
 pub use output::{
     ceil_char_boundary, floor_char_boundary, format_bytes, format_count, format_duration,
     format_percentile_header, format_percentile_key, format_rate, parse_bytes, parse_count,
@@ -66,9 +66,9 @@ pub(crate) mod prometheus_server;
 pub(crate) mod mcp_server;
 
 #[allow(dead_code)]
-#[cfg(any(feature = "hotpath-meta", feature = "tui"))]
+#[cfg(feature = "json")]
 pub mod json;
-#[cfg(any(feature = "hotpath-meta", feature = "tui"))]
+#[cfg(feature = "json")]
 pub use json::Route;
 
 #[cfg(feature = "hotpath-meta")]
