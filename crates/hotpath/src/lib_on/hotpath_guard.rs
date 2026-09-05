@@ -1120,7 +1120,7 @@ impl Drop for HotpathGuard {
             };
 
             #[cfg(feature = "hotpath-cloud")]
-            let upload_limit = crate::lib_on::cloud::upload_limit();
+            let upload_limit = *crate::lib_on::cloud::UPLOAD_LIMIT;
             #[cfg(not(feature = "hotpath-cloud"))]
             let upload_limit = 0;
             let limit_for = |display: usize| if cloud_enabled { upload_limit } else { display };

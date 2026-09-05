@@ -92,6 +92,8 @@ Never use em dashes. Always use a regular hyphen (-) instead. This applies every
 
 NEVER use `mod.rs` files, so instead of `functions/mod.rs` use `functions.rs`.
 
+Read environment variables through a `static NAME: LazyLock<T>` evaluated once (see `ENTRIES_LIMIT` in `lib_on/hotpath_guard.rs`), not through a function that re-reads the env on every call. Exceptions are values the builder can override at guard creation, which are parsed in `HotpathGuardBuilder::build`.
+
 Every example in a test crate contains its exact cargo command in the top comment, usually as a `//! Run with:` header (a descriptive module doc may precede it).
 
 ## Other

@@ -7,6 +7,7 @@
 //! be gone, so it never spawns tasks. Failures are reported on stderr and never
 //! affect the process exit code.
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -72,12 +73,12 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
 /// cannot be undone. Replaces `HOTPATH_LIMIT`, every `HOTPATH_<SECTION>_LIMIT`
 /// and the builder limits for the upload only; unparsable values fall back
 /// to `0`.
-pub(crate) fn upload_limit() -> usize {
+pub(crate) static UPLOAD_LIMIT: LazyLock<usize> = LazyLock::new(|| {
     std::env::var("HOTPATH_UPLOAD_LIMIT")
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0)
-}
+});
 
 pub(crate) fn upload(report: &JsonReport) {
     if std::thread::panicking() {
@@ -211,8 +212,7 @@ fn url_encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use crate::lib_on::cloud::{
-        benchmark_name, is_truthy, map_status, upload_limit, url_encode, validate_benchmark_name,
-        APP_URL,
+        benchmark_name, is_truthy, map_status, url_encode, validate_benchmark_name, APP_URL,
     };
 
     #[test]
@@ -282,21 +282,6 @@ mod tests {
             let err = benchmark_name().unwrap_err();
             assert!(err.contains("not valid UTF-8"), "{err}");
         }
-        std::env::remove_var(var);
-    }
-
-    // All HOTPATH_UPLOAD_LIMIT cases live in one test so env access stays serialized.
-    #[test]
-    fn upload_limit_from_env() {
-        let var = "HOTPATH_UPLOAD_LIMIT";
-        std::env::remove_var(var);
-        assert_eq!(upload_limit(), 0);
-        std::env::set_var(var, " 7 ");
-        assert_eq!(upload_limit(), 7);
-        std::env::set_var(var, "garbage");
-        assert_eq!(upload_limit(), 0);
-        std::env::set_var(var, "-1");
-        assert_eq!(upload_limit(), 0);
         std::env::remove_var(var);
     }
 
