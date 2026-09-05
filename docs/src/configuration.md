@@ -106,3 +106,32 @@ Requires the `hotpath-prometheus` feature, see [Prometheus & Grafana](prometheus
 | `HOTPATH_MAX_LOG_LEN` | Maximum character length for logged return values (`log = true`). Values exceeding this limit are truncated with `...`. (default: `1536`) |
 | `HOTPATH_SHUTDOWN_MS` | If set a profiled program will shutdown after the specified ms timeout and print the performance report. (default: `''`). Use `before_shutdown` to specify before shutdown callback. |
 | `HOTPATH_SOURCE_ROOT` | Overrides the `source_root` value in the JSON report's `meta` object: the path prefix, relative to the repository root, that maps the report's relative source paths back to repository paths. Without it the value is derived by locating the build workspace root within the enclosing git checkout; when that fails (e.g. a nested workspace launched from the repository root, or running outside the checkout) `source_root` and `meta.git` are omitted rather than guessed. Setting this variable both supplies the prefix and asserts that the current checkout is the one the binary was built from. (default: derived) |
+
+## Report Provenance
+
+JSON reports carry a `meta` object describing the environment the run was measured in. Alongside `rustc`, `os`, `created_at` and `source_root`, two optional groups record where the measured code came from. Every field is omitted when the environment does not supply it, so a report produced outside a repository or outside CI simply has fewer keys.
+
+`meta.git` describes the **checkout that was built**, read directly from the `.git` directory (hotpath never shells out to `git`):
+
+| Field | Description |
+|-------|-------------|
+| `sha` | Commit that was checked out and measured. |
+| `ref` | Full ref name, e.g. `refs/heads/main`; absent on a detached `HEAD`. |
+| `base_sha` | Commit this run should be compared against. On a pull request run it is the pull request's base commit; absent otherwise. |
+| `repository` | `owner/name`, derived from the `origin` remote's URL. |
+
+`meta.ci` describes the **run** and appears only when a supported CI provider is detected. `provider` (currently `github-actions`) is the discriminator; the remaining field names are provider-neutral:
+
+| Field | Description |
+|-------|-------------|
+| `provider` | CI system that produced the run. |
+| `event` | Event that triggered it, e.g. `pull_request` or `push`. |
+| `pr_number` | Pull request number, on pull request runs. |
+| `base_ref` / `head_ref` | Bare branch names of the pull request's base and head, e.g. `main` and `feature-x`. |
+| `run_id` | Provider's run identifier. |
+| `workflow` | Workflow name. |
+| `actor` | User that triggered the run. |
+| `repository_id` | Provider's numeric repository id, which survives a repository rename. |
+
+The checkout, not the environment, is the source of truth for `meta.git.sha`: a job that checks out a specific commit rather than the default one is measuring *that* commit, so `git.ref` and `git.base_sha` are recorded only when the CI environment describes the commit that was actually built.
+

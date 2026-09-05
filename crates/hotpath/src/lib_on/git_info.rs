@@ -38,7 +38,11 @@ fn origin_repository(git_dir: &Path) -> Option<String> {
     for line in config.lines() {
         let line = line.trim();
         if line.starts_with('[') {
-            in_origin = line.replace(char::is_whitespace, "") == "[remote\"origin\"]";
+            // Git matches section names case-insensitively, subsections not.
+            let section = line.replace(char::is_whitespace, "");
+            in_origin = section
+                .strip_suffix("\"origin\"]")
+                .is_some_and(|name| name.eq_ignore_ascii_case("[remote"));
         } else if in_origin {
             if let Some((key, url)) = line.split_once('=') {
                 if key.trim() == "url" {
@@ -53,7 +57,15 @@ fn origin_repository(git_dir: &Path) -> Option<String> {
 fn owner_name(url: &str) -> Option<String> {
     let url = url.trim_end_matches('/');
     let url = url.strip_suffix(".git").unwrap_or(url);
-    let mut segments = url.rsplit(['/', ':']);
+    // Only a remote with a host names an owner; a filesystem remote
+    // ("/srv/repos/foo") would otherwise yield a plausible-looking
+    // "repos/foo".
+    let path = match url.split_once("://") {
+        Some(("file", _)) => return None,
+        Some((_, rest)) => rest.split_once('/')?.1,
+        None => url.split_once(':').filter(|(host, _)| !host.is_empty())?.1,
+    };
+    let mut segments = path.rsplit('/');
     let name = segments.next().filter(|s| !s.is_empty())?;
     let owner = segments.next().filter(|s| !s.is_empty())?;
     Some(format!("{owner}/{name}"))
@@ -230,8 +242,16 @@ mod tests {
                 "{url}"
             );
         }
-        assert_eq!(owner_name("hotpath-rs"), None);
-        assert_eq!(owner_name(""), None);
+        for url in [
+            "hotpath-rs",
+            "",
+            "/srv/repos/hotpath-rs",
+            "../repos/hotpath-rs",
+            "file:///srv/repos/hotpath-rs",
+            "https://github.com/pawurb",
+        ] {
+            assert_eq!(owner_name(url), None, "{url}");
+        }
     }
 
     #[test]

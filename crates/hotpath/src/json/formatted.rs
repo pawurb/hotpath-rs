@@ -1165,6 +1165,13 @@ pub struct JsonCiInfo {
     /// String, not u64: not every provider's run id is numeric.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    /// Bare branch names of a pull request's base and head ("main",
+    /// "feature-x") - not refs. The base one is what a baseline falls back to
+    /// when no report exists for `git.base_sha`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

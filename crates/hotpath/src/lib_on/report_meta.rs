@@ -61,10 +61,18 @@ fn local_git_info() -> Option<crate::json::JsonGitInfo> {
     crate::lib_on::git_info::read_git_info_at(&git_root)
 }
 
-/// CI values win over the checkout: on a pull request run the runner checks
-/// out `refs/pull/<n>/merge` detached, so `.git` reports no ref at all and a
-/// sha that only the provider can name. The checkout still fills the gaps a
-/// provider leaves.
+/// The checkout is the commit identity; the environment only describes the
+/// run. A job may build something other than the event commit -
+/// `actions/checkout` with `ref: <pull_request.head.sha>`, or a mid-job
+/// `git checkout <base sha>` - and `GITHUB_SHA` stays pinned to the merge
+/// commit throughout, so trusting it would attribute the measurements to a
+/// commit that was never compiled.
+///
+/// `GITHUB_REF` is still worth having when the environment does describe the
+/// checked-out commit, since a default pull request checkout is detached and
+/// `.git` then reports no ref at all. `base_sha` needs the same guard: a run
+/// that checked out the base commit is measuring the base, so pairing it with
+/// a base to compare against would be nonsense.
 #[cfg(feature = "hotpath-cloud")]
 fn merge_git_info(
     local: Option<crate::json::JsonGitInfo>,
@@ -73,15 +81,22 @@ fn merge_git_info(
     let Some(ci) = ci else {
         return local;
     };
-    let (sha, r#ref, base_sha, repository) = match local {
-        Some(git) => (Some(git.sha), git.r#ref, git.base_sha, git.repository),
-        None => (None, None, None, None),
+    let (sha, local_ref, repository) = match local {
+        Some(git) => (Some(git.sha), git.r#ref, git.repository),
+        None => (None, None, None),
     };
+    let sha = sha.or_else(|| ci.sha.clone())?;
+    let describes_checkout = ci.sha.as_deref() == Some(sha.as_str());
+
     Some(crate::json::JsonGitInfo {
-        sha: ci.sha.clone().or(sha)?,
-        r#ref: ci.r#ref.clone().or(r#ref),
-        base_sha: ci.base_sha.clone().or(base_sha),
-        repository: ci.repository.clone().or(repository),
+        r#ref: if describes_checkout {
+            ci.r#ref.clone().or(local_ref)
+        } else {
+            local_ref
+        },
+        base_sha: describes_checkout.then(|| ci.base_sha.clone()).flatten(),
+        repository: repository.or_else(|| ci.repository.clone()),
+        sha,
     })
 }
 
@@ -205,28 +220,47 @@ mod tests {
             }
         }
 
-        fn pull_request_ci() -> CiContext {
+        /// A default pull request run: the runner checks out the merge commit
+        /// `GITHUB_SHA` names, detached.
+        fn pull_request_ci(sha: &str) -> CiContext {
             CiContext {
                 ci: JsonCiInfo {
                     provider: "github-actions".to_string(),
                     event: Some("pull_request".to_string()),
                     pr_number: Some(42),
+                    base_ref: Some("main".to_string()),
+                    head_ref: Some("feature-x".to_string()),
                     ..JsonCiInfo::default()
                 },
-                sha: Some(CI_SHA.to_string()),
+                sha: Some(sha.to_string()),
                 r#ref: Some("refs/pull/42/merge".to_string()),
-                repository: Some("pawurb/hotpath-rs".to_string()),
+                repository: Some("pawurb/other-name".to_string()),
                 base_sha: Some(BASE_SHA.to_string()),
             }
         }
 
         #[test]
-        fn ci_values_win_over_the_checkout() {
-            let git =
-                merge_git_info(Some(detached_local()), Some(&pull_request_ci())).expect("git info");
-            assert_eq!(git.sha, CI_SHA);
+        fn env_describes_the_commit_it_checked_out() {
+            let git = merge_git_info(Some(detached_local()), Some(&pull_request_ci(LOCAL_SHA)))
+                .expect("git info");
+            assert_eq!(git.sha, LOCAL_SHA);
+            // The checkout is detached, so only the environment names a ref.
             assert_eq!(git.r#ref.as_deref(), Some("refs/pull/42/merge"));
             assert_eq!(git.base_sha.as_deref(), Some(BASE_SHA));
+            // `origin` is the checkout's own answer, so it outranks the env.
+            assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
+        }
+
+        /// A job that checked out `pull_request.head.sha` (or the base commit)
+        /// built something `GITHUB_SHA` does not name, so nothing derived from
+        /// the environment describes what was measured.
+        #[test]
+        fn checkout_of_another_commit_discards_env_ref_and_base() {
+            let git = merge_git_info(Some(detached_local()), Some(&pull_request_ci(CI_SHA)))
+                .expect("git info");
+            assert_eq!(git.sha, LOCAL_SHA);
+            assert_eq!(git.r#ref, None);
+            assert_eq!(git.base_sha, None);
         }
 
         #[test]
@@ -251,11 +285,15 @@ mod tests {
             assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
         }
 
+        /// An unreadable `.git` leaves the environment as the only source, and
+        /// then it does describe the checkout by default.
         #[test]
         fn ci_alone_still_yields_git_info() {
-            let git = merge_git_info(None, Some(&pull_request_ci())).expect("git info");
+            let git = merge_git_info(None, Some(&pull_request_ci(CI_SHA))).expect("git info");
             assert_eq!(git.sha, CI_SHA);
-            assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
+            assert_eq!(git.r#ref.as_deref(), Some("refs/pull/42/merge"));
+            assert_eq!(git.base_sha.as_deref(), Some(BASE_SHA));
+            assert_eq!(git.repository.as_deref(), Some("pawurb/other-name"));
 
             assert!(merge_git_info(None, None).is_none());
         }
@@ -290,21 +328,23 @@ mod tests {
                 os: "macos-aarch64".to_string(),
                 created_at: "2026-08-27T10:15:42Z".to_string(),
                 source_root: Some(String::new()),
-                git: merge_git_info(Some(detached_local()), Some(&pull_request_ci())),
-                ci: Some(pull_request_ci().ci),
+                git: merge_git_info(Some(detached_local()), Some(&pull_request_ci(LOCAL_SHA))),
+                ci: Some(pull_request_ci(LOCAL_SHA).ci),
                 benchmark: Some("ci".to_string()),
             };
             let json = serde_json::to_string(&meta).unwrap();
             let back: JsonMeta = serde_json::from_str(&json).unwrap();
 
             let git = back.git.expect("git info");
-            assert_eq!(git.sha, CI_SHA);
+            assert_eq!(git.sha, LOCAL_SHA);
             assert_eq!(git.base_sha.as_deref(), Some(BASE_SHA));
             assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
             let ci = back.ci.expect("ci info");
             assert_eq!(ci.provider, "github-actions");
             assert_eq!(ci.event.as_deref(), Some("pull_request"));
             assert_eq!(ci.pr_number, Some(42));
+            assert_eq!(ci.base_ref.as_deref(), Some("main"));
+            assert_eq!(ci.head_ref.as_deref(), Some("feature-x"));
             assert_eq!(back.benchmark.as_deref(), Some("ci"));
         }
 

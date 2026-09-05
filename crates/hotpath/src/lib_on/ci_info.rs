@@ -41,6 +41,8 @@ fn github_actions() -> CiContext {
             event,
             pr_number: pull_request.as_ref().and_then(|pr| pr.number),
             run_id: env("GITHUB_RUN_ID"),
+            base_ref: env("GITHUB_BASE_REF"),
+            head_ref: env("GITHUB_HEAD_REF"),
             workflow: env("GITHUB_WORKFLOW"),
             actor: env("GITHUB_ACTOR"),
             repository_id: env("GITHUB_REPOSITORY_ID"),
