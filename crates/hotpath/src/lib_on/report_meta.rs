@@ -62,17 +62,16 @@ fn local_git_info() -> Option<crate::json::JsonGitInfo> {
 }
 
 /// The checkout is the commit identity; the environment only describes the
-/// run. A job may build something other than the event commit -
-/// `actions/checkout` with `ref: <pull_request.head.sha>`, or a mid-job
-/// `git checkout <base sha>` - and `GITHUB_SHA` stays pinned to the merge
-/// commit throughout, so trusting it would attribute the measurements to a
-/// commit that was never compiled.
+/// run. A job may build something other than the event commit - a mid-job
+/// `git checkout <base sha>`, or `actions/checkout` with
+/// `ref: <pull_request.head.sha>` - while `GITHUB_SHA` stays pinned to the
+/// merge commit, so trusting it attributes measurements to a commit that was
+/// never compiled.
 ///
-/// `GITHUB_REF` is still worth having when the environment does describe the
-/// checked-out commit, since a default pull request checkout is detached and
-/// `.git` then reports no ref at all. `base_sha` needs the same guard: a run
-/// that checked out the base commit is measuring the base, so pairing it with
-/// a base to compare against would be nonsense.
+/// `GITHUB_REF` and `base_sha` apply only when the environment does describe
+/// the checked-out commit: a default pull request checkout is detached, so
+/// then it is the only source of a ref, but a run that built the base commit
+/// is measuring the base and has no base to compare against.
 #[cfg(feature = "hotpath-cloud")]
 fn merge_git_info(
     local: Option<crate::json::JsonGitInfo>,
@@ -247,13 +246,11 @@ mod tests {
             // The checkout is detached, so only the environment names a ref.
             assert_eq!(git.r#ref.as_deref(), Some("refs/pull/42/merge"));
             assert_eq!(git.base_sha.as_deref(), Some(BASE_SHA));
-            // `origin` is the checkout's own answer, so it outranks the env.
             assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
         }
 
-        /// A job that checked out `pull_request.head.sha` (or the base commit)
-        /// built something `GITHUB_SHA` does not name, so nothing derived from
-        /// the environment describes what was measured.
+        /// Nothing derived from `GITHUB_SHA` describes a checkout it does
+        /// not name.
         #[test]
         fn checkout_of_another_commit_discards_env_ref_and_base() {
             let git = merge_git_info(Some(detached_local()), Some(&pull_request_ci(CI_SHA)))
@@ -298,7 +295,6 @@ mod tests {
             assert!(merge_git_info(None, None).is_none());
         }
 
-        /// An old consumer must see no new keys.
         #[test]
         fn absent_fields_add_no_keys() {
             let meta = JsonMeta {

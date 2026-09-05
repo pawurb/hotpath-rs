@@ -1,7 +1,7 @@
-//! Reads CI provenance from the environment: the `meta.ci` object plus the
-//! CI-supplied overrides for `meta.git`. The environment describes the run,
-//! while `.git` describes the checkout - on a pull request run those differ,
-//! since the runner checks out `refs/pull/<n>/merge` detached.
+//! Reads CI provenance from the environment: the `meta.ci` object plus what
+//! the environment claims about `meta.git`. Those claims hold only for a run
+//! that built the commit the event names, so `report_meta::merge_git_info`
+//! decides which of them survive.
 //!
 //! Every field is best-effort: a missing variable, an unreadable event file
 //! or an unexpected payload shape omits a field, never fails the run.
@@ -12,8 +12,7 @@ use serde::Deserialize;
 
 use crate::json::JsonCiInfo;
 
-/// The `meta.ci` object plus the `meta.git` fields the provider knows better
-/// than the checkout does.
+/// The `meta.ci` object plus the commit identity the environment claims.
 pub(crate) struct CiContext {
     pub(crate) ci: JsonCiInfo,
     pub(crate) sha: Option<String>,
