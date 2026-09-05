@@ -1,6 +1,6 @@
 use crate::instant::Instant;
 
-use crate::output::format_debug_truncated;
+use crate::output_on::format_debug_truncated;
 
 /// Wrapper guards are never sampled - their exact total is the `%` denominator.
 /// Unsampled guards skip the start clock read and send a `None` duration;

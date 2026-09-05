@@ -90,11 +90,10 @@ use std::io::Write;
 
 use crate::json::{JsonCpuBaseline, JsonFunctionsList, JsonReport};
 use crate::metrics_server::METRICS_SERVER_PORT;
-use crate::output::{
-    format_duration, resolve_output_path, FunctionLog, FunctionLogsList, OutputDestination,
-};
+use crate::output::{format_duration, FunctionLog, FunctionLogsList};
 use crate::output_on::{
-    display_functions_table_to, display_no_measurements_message_to, write_report_header,
+    display_functions_table_to, display_no_measurements_message_to, resolve_output_path,
+    write_report_header, OutputDestination,
 };
 
 #[cfg(feature = "hotpath-prometheus")]
@@ -1048,7 +1047,7 @@ impl Drop for HotpathGuard {
         };
 
         let output = OutputDestination::from_path(self.output_path.take());
-        crate::output::set_use_colors(
+        crate::output_on::set_use_colors(
             matches!(output, OutputDestination::Stdout)
                 && std::env::var("NO_COLOR").is_err()
                 && std::io::IsTerminal::is_terminal(&std::io::stdout()),

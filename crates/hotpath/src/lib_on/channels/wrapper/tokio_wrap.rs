@@ -948,7 +948,7 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
         _capacity: Option<usize>,
         iter: bool,
     ) -> Self::Output {
-        let log_fn: fn(&T) -> String = |m| crate::output::format_debug_truncated(m);
+        let log_fn: fn(&T) -> String = |m| crate::output_on::format_debug_truncated(m);
         build_bounded(self, source, label, Some(log_fn), iter)
     }
 }
@@ -964,7 +964,7 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
         _capacity: Option<usize>,
         iter: bool,
     ) -> Self::Output {
-        let log_fn: fn(&T) -> String = |m| crate::output::format_debug_truncated(m);
+        let log_fn: fn(&T) -> String = |m| crate::output_on::format_debug_truncated(m);
         build_unbounded(source, label, Some(log_fn), iter)
     }
 }

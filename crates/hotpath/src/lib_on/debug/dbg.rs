@@ -22,7 +22,7 @@ fn get_thread_id() -> Option<u64> {
 pub fn log_dbg<T: Debug>(id: u32, source: &'static str, expression: &'static str, value: &T) {
     init_debug_state();
 
-    let value_str = crate::output::format_debug_truncated(value);
+    let value_str = crate::output_on::format_debug_truncated(value);
     let timestamp = Instant::now();
     let tid = get_thread_id();
 

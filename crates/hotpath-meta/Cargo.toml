@@ -33,8 +33,8 @@ hotpath-meta = [
   "dep:libc",
 ]
 hotpath-alloc-meta = ["dep:tokio"]
-hotpath-cloud-meta = ["json", "dep:ureq", "ureq/rustls", "ureq/json", "hdrhistogram/serialization", "dep:base64"]
-hotpath-cpu-meta = ["dep:object", "dep:rustc-demangle", "dep:flate2", "dep:serde", "dep:serde_json"]
+hotpath-cloud-meta = ["dep:ureq", "ureq/rustls", "ureq/json", "hdrhistogram/serialization", "dep:base64"]
+hotpath-cpu-meta = ["dep:object", "dep:rustc-demangle", "dep:flate2"]
 tui = ["json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:base64", "dep:regex", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "tokio/time"]
 futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:futures-channel"]

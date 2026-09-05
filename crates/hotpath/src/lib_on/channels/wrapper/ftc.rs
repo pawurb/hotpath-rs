@@ -76,7 +76,7 @@ pub(crate) fn wrap_channel_log<T: Send + std::fmt::Debug + 'static>(
     iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
     wrap_channel_impl(inner, source, label, capacity, iter, |msg| {
-        Some(crate::output::format_debug_truncated(msg))
+        Some(crate::output_on::format_debug_truncated(msg))
     })
 }
 
@@ -146,7 +146,7 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     iter: bool,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     wrap_unbounded_impl(inner, source, label, iter, |msg| {
-        Some(crate::output::format_debug_truncated(msg))
+        Some(crate::output_on::format_debug_truncated(msg))
     })
 }
 
@@ -230,7 +230,7 @@ pub(crate) fn wrap_oneshot_log<T: Send + std::fmt::Debug + 'static>(
     iter: bool,
 ) -> (oneshot::Sender<T>, oneshot::Receiver<T>) {
     wrap_oneshot_impl(inner, source, label, iter, |msg| {
-        Some(crate::output::format_debug_truncated(msg))
+        Some(crate::output_on::format_debug_truncated(msg))
     })
 }
 

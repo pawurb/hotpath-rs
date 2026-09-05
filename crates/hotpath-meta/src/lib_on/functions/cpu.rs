@@ -244,7 +244,7 @@ pub(crate) fn build_cpu_json(
 }
 
 fn print_table<W: Write>(table: &Table, writer: &mut W) {
-    let _ = table.print(writer, crate::output::use_colors());
+    let _ = table.print(writer, crate::output_on::use_colors());
 }
 
 pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFunctionsCpuList) {
@@ -278,7 +278,7 @@ pub(crate) fn report_functions_cpu_table<W: Write>(writer: &mut W, list: &JsonFu
     let _ = writeln!(
         writer,
         "{}",
-        crate::output::cyan(&format!("samply load {}", list.profile_path))
+        crate::output_on::cyan(&format!("samply load {}", list.profile_path))
     );
     let _ = writeln!(writer);
 }
