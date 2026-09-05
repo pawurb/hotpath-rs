@@ -353,6 +353,8 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
             current_elapsed_ns: 0,
             sample_interval_ms: *THREADS_INTERVAL_MS,
             data: Vec::new(),
+            total_count: 0,
+            included_count: 0,
             thread_count: 0,
             rss_bytes: get_rss_bytes().map(format_bytes),
             total_alloc_bytes: None,
@@ -406,6 +408,8 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
             .iter()
             .map(|m| JsonThreadEntry::from(*m))
             .collect(),
+        total_count: sorted_metrics.len(),
+        included_count: sorted_metrics.len(),
         thread_count: current_metrics.len(),
         rss_bytes: raw.rss_bytes.map(format_bytes),
         total_alloc_bytes,

@@ -118,11 +118,11 @@ pub struct JsonFunctionsList {
     pub caller_name: String,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonFunctionEntry>,
-    #[serde(skip)]
-    pub displayed_count: usize,
-    /// Total number of measured functions, including ones truncated from
-    /// `data` by the display limit.
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
     pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,11 +143,11 @@ pub struct JsonFunctionsCpuList {
     pub caller_name: String,
     pub data: Vec<JsonFunctionCpuEntry>,
     pub profile_path: String,
-    #[serde(skip)]
-    pub displayed_count: usize,
-    /// Total number of attributed functions, including ones truncated from
-    /// `data` by the display limit.
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
     pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -322,6 +322,11 @@ pub struct JsonChannelsList {
     pub current_elapsed_ns: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonChannelEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -369,6 +374,11 @@ pub struct JsonRwLocksList {
     pub current_elapsed_ns: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonRwLockEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +417,11 @@ pub struct JsonMutexesList {
     pub current_elapsed_ns: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonMutexEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -439,6 +454,11 @@ pub struct JsonSqlList {
     pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonSqlEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -508,6 +528,11 @@ pub struct JsonHttpList {
     pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonHttpEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -581,6 +606,11 @@ pub struct JsonServerList {
     pub total_calls: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonServerEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -614,6 +644,11 @@ pub struct JsonIoList {
     pub current_elapsed_ns: u64,
     pub percentiles: Vec<f64>,
     pub data: Vec<JsonIoEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -746,6 +781,11 @@ fn format_received_log_entry(entry: &DataFlowLogEntry, current_elapsed_ns: u64) 
 pub struct JsonStreamsList {
     pub current_elapsed_ns: u64,
     pub data: Vec<JsonStreamEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -792,6 +832,11 @@ impl JsonStreamLogsList {
 pub struct JsonFuturesList {
     pub current_elapsed_ns: u64,
     pub data: Vec<JsonFutureEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -921,6 +966,11 @@ pub struct JsonThreadsList {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alloc_dealloc_diff: Option<String>,
     pub data: Vec<JsonThreadEntry>,
+    /// Number of entries measured, including ones truncated from `data` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `data`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -946,6 +996,11 @@ impl DebugEntryType {
 pub struct JsonDebugList {
     pub current_elapsed_ns: u64,
     pub entries: Vec<JsonDebugEntry>,
+    /// Number of entries measured, including ones truncated from `entries` by
+    /// the limit.
+    pub total_count: usize,
+    /// Number of entries in `entries`.
+    pub included_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1210,7 +1265,7 @@ mod parse_tests {
             "time_elapsed":"1s","total_elapsed_ns":1,
             "total_samples":10,"attributed_samples":5,
             "description":"d","caller_name":"main","data":[],
-            "profile_path":"/tmp/hp.json.gz","total_count":0
+            "profile_path":"/tmp/hp.json.gz","total_count":0,"included_count":0
         }"#;
         match serde_json::from_str::<JsonFunctionsCpu>(result).unwrap() {
             JsonFunctionsCpu::Ok(list) => assert_eq!(list.caller_name, "main"),

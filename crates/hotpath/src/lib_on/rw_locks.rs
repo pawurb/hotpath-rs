@@ -271,6 +271,7 @@ pub(crate) fn get_rw_locks_json() -> crate::json::JsonRwLocksList {
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
     crate::lib_on::report::collect_rw_locks_json(
         &entries,
+        0,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
         false,

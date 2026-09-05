@@ -76,7 +76,7 @@ pub(crate) fn build_functions_list_alloc(
     });
 
     let total_count = entries.len();
-    let displayed_count = if config.limit > 0 && config.limit < total_count {
+    let included_count = if config.limit > 0 && config.limit < total_count {
         config.limit
     } else {
         total_count
@@ -185,7 +185,7 @@ pub(crate) fn build_functions_list_alloc(
         caller_name: config.caller_name.to_string(),
         percentiles: config.percentiles.clone(),
         data,
-        displayed_count,
+        included_count,
         total_count,
     }
 }
@@ -224,7 +224,7 @@ pub(crate) fn build_functions_list_timing(
     });
 
     let total_count = entries.len();
-    let displayed_count = if config.limit > 0 && config.limit < total_count {
+    let included_count = if config.limit > 0 && config.limit < total_count {
         config.limit
     } else {
         total_count
@@ -297,7 +297,7 @@ pub(crate) fn build_functions_list_timing(
         caller_name: config.caller_name.to_string(),
         percentiles: config.percentiles.clone(),
         data,
-        displayed_count,
+        included_count,
         total_count,
     }
 }

@@ -708,7 +708,7 @@ mod test {
             description: "Time metrics".to_string(),
             caller_name: "test::main".to_string(),
             percentiles: vec![95.0],
-            displayed_count: count,
+            included_count: count,
             total_count: count,
             data,
         }
@@ -752,7 +752,7 @@ mod test {
             description: "Alloc metrics".to_string(),
             caller_name: "test::main".to_string(),
             percentiles: vec![95.0],
-            displayed_count: count,
+            included_count: count,
             total_count: count,
             data,
         }
@@ -865,6 +865,8 @@ mod test {
             current_elapsed_ns: 1_000_000_000,
             sample_interval_ms: 1000,
             thread_count,
+            total_count: thread_count,
+            included_count: thread_count,
             rss_bytes: None,
             total_alloc_bytes: None,
             total_dealloc_bytes: None,

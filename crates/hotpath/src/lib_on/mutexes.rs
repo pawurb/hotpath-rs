@@ -200,6 +200,7 @@ pub(crate) fn get_mutexes_json() -> crate::json::JsonMutexesList {
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
     crate::lib_on::report::collect_mutexes_json(
         &entries,
+        0,
         elapsed,
         &crate::lib_on::hotpath_guard::configured_percentiles(),
         false,

@@ -549,13 +549,15 @@ pub(crate) fn get_sorted_future_stats() -> Vec<FutureEntry> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn get_futures_json() -> crate::json::JsonFuturesList {
-    let data = get_sorted_future_stats()
+    let data: Vec<JsonFutureEntry> = get_sorted_future_stats()
         .iter()
         .map(JsonFutureEntry::from)
         .collect();
 
     crate::json::JsonFuturesList {
         current_elapsed_ns: crate::lib_on::current_elapsed_ns(),
+        total_count: data.len(),
+        included_count: data.len(),
         data,
     }
 }

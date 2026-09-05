@@ -66,11 +66,12 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
     Ok(name)
 }
 
-/// Function limit for the uploaded report. Defaults to `0` (unlimited) so the
-/// server receives every measured function: it diffs reports by function name
-/// and can truncate for display itself, while a client-side top-N cannot be
-/// undone. Overrides `HOTPATH_LIMIT`, `HOTPATH_FUNCTIONS_LIMIT` and the
-/// builder limit for the upload only; unparsable values fall back to `0`.
+/// Per-section entry limit for the uploaded report. Defaults to `0`
+/// (unlimited) so the server receives every measured entry: it diffs reports
+/// by name and can truncate for display itself, while a client-side top-N
+/// cannot be undone. Replaces `HOTPATH_LIMIT`, every `HOTPATH_<SECTION>_LIMIT`
+/// and the builder limits for the upload only; unparsable values fall back
+/// to `0`.
 pub(crate) fn upload_limit() -> usize {
     std::env::var("HOTPATH_UPLOAD_LIMIT")
         .ok()
