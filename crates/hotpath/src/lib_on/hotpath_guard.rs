@@ -1298,7 +1298,7 @@ impl Drop for HotpathGuard {
                         }
                     }
                     Section::Debug => {
-                        let json = report::collect_debug_json(elapsed);
+                        let json = report::collect_debug_json(elapsed, limit_for(0));
                         if !json.entries.is_empty() {
                             report.debug = Some(json);
                         }

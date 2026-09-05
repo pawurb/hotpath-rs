@@ -144,6 +144,9 @@ mod tests {
         if let Some(l) = &report.threads {
             push("threads", l.total_count, l.included_count, l.data.len());
         }
+        if let Some(l) = &report.debug {
+            push("debug", l.total_count, l.included_count, l.entries.len());
+        }
         assert!(!out.is_empty(), "report has no limited sections");
         out
     }

@@ -1612,7 +1612,10 @@ pub(crate) fn report_debug_table(writer: &mut dyn Write) {
     let _ = writeln!(writer);
 }
 
-pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::JsonDebugList {
+pub(crate) fn collect_debug_json(
+    elapsed: std::time::Duration,
+    limit: usize,
+) -> crate::json::JsonDebugList {
     let mut entries: Vec<JsonDebugEntry> = Vec::new();
     entries.extend(
         get_sorted_debug_dbg_entries()
@@ -1630,9 +1633,11 @@ pub(crate) fn collect_debug_json(elapsed: std::time::Duration) -> crate::json::J
             .map(JsonDebugEntry::from),
     );
 
+    let total_count = entries.len();
+    entries.truncate(apply_limit(total_count, limit));
     crate::json::JsonDebugList {
         current_elapsed_ns: elapsed.as_nanos() as u64,
-        total_count: entries.len(),
+        total_count,
         included_count: entries.len(),
         entries,
     }
