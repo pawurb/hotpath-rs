@@ -27,14 +27,14 @@ jobs:
           HOTPATH_META_UPLOAD: "1"
           HOTPATH_META_BENCHMARK: meta
           HOTPATH_META_EXCLUDE_WRAPPER: "true"
-          HOTPATH_META_LIMIT: "25"
+          HOTPATH_META_OUTPUT_FORMAT: none
           HOTPATH_OUTPUT_FORMAT: none
         run: |
           set -o pipefail
           cargo run -q --release -p test-all-features --example benchmark_meta \
             --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta 2>&1 | tee run.log
-          grep -q '^hotpath: uploaded report ' run.log
+          grep -q '^hotpath-meta: uploaded report ' run.log
           {
             echo "## hotpath.rs meta benchmark"
-            echo '```'; grep '^hotpath: upload' run.log; echo '```'
+            echo '```'; grep '^hotpath-meta: upload' run.log; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
