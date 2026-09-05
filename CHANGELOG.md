@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.25.1] - 2026-09-05
+
+### 🚀 Features
+
+- Customize classic prometheus buckets
+
+
+### ⚡ Performance
+
+- Remove prettytable-rs dependency
+
+- Reduce dependencies
+
+- Reduce futures dependency scope
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.25.1
+
+
 ## [0.25.0] - 2026-09-03
 
 ### 🚀 Features
