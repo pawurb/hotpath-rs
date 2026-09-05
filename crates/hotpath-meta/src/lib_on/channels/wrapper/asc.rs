@@ -82,7 +82,7 @@ pub(crate) fn wrap_bounded_log<T: Send + std::fmt::Debug + 'static>(
     iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
     wrap_bounded_impl(inner, source, label, capacity, iter, |msg| {
-        Some(crate::output::format_debug_truncated(msg))
+        Some(crate::output_on::format_debug_truncated(msg))
     })
 }
 
@@ -160,7 +160,7 @@ pub(crate) fn wrap_unbounded_log<T: Send + std::fmt::Debug + 'static>(
     iter: bool,
 ) -> (Sender<T>, Receiver<T>) {
     wrap_unbounded_impl(inner, source, label, iter, |msg| {
-        Some(crate::output::format_debug_truncated(msg))
+        Some(crate::output_on::format_debug_truncated(msg))
     })
 }
 

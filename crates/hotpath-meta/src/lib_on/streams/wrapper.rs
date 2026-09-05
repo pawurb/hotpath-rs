@@ -1,4 +1,4 @@
-use crate::output::format_debug_truncated;
+use crate::output_on::format_debug_truncated;
 use crate::streams::{register_stream, send_stream_event, StreamEvent};
 use futures_util::Stream;
 use pin_project_lite::pin_project;

@@ -21,9 +21,8 @@ use crate::json::{
 use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
     format_bytes, format_duration, format_percentile_header, format_percentile_key, format_rate,
-    format_throughput,
 };
-use crate::output_on::write_section_header;
+use crate::output_on::{format_throughput, write_section_header};
 use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS_STATE};
 use crate::server::{compare_server_entries, ServerEntry, SERVER_STATE};
 use crate::sql::{compare_sql_entries, SqlEntry, SQL_STATE};
@@ -39,7 +38,7 @@ fn format_sampled_duration(nanos: u64, sampled_count: u64, count: u64) -> String
 }
 
 fn print_table(table: &Table, writer: &mut dyn Write) {
-    let _ = table.print(writer, crate::output::use_colors());
+    let _ = table.print(writer, crate::output_on::use_colors());
 }
 
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {

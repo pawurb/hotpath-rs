@@ -1,6 +1,6 @@
 //! Instrumented Future wrapper that tracks lifecycle events.
 
-use crate::output::format_debug_truncated;
+use crate::output_on::format_debug_truncated;
 
 use crate::functions::AsyncAllocBridge;
 use crate::lib_on::futures::{

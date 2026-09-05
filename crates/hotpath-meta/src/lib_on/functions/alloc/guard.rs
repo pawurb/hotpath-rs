@@ -332,7 +332,7 @@ impl MeasurementGuardSyncWithLog {
             .start
             .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
-        let result_str = crate::output::format_debug_truncated(result);
+        let result_str = crate::output_on::format_debug_truncated(result);
         let cross_thread = crate::tid::current_tid() != self.tid;
 
         if self.caller_scoped && !cross_thread {
@@ -437,7 +437,7 @@ impl MeasurementGuardAsyncWithLog {
             .start
             .map(|start| end.duration_since(start).as_nanos() as u64);
         let elapsed_since_start_ns = crate::lib_on::elapsed_since_start_ns(end);
-        let result_str = crate::output::format_debug_truncated(result);
+        let result_str = crate::output_on::format_debug_truncated(result);
         let (bytes_total, count_total) = self
             .alloc_bridge
             .as_ref()
