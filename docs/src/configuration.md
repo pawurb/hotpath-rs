@@ -81,16 +81,6 @@ Requires the `hotpath-prometheus` feature, see [Prometheus & Grafana](prometheus
 | `HOTPATH_PROMETHEUS_FAST_BUCKETS` | Classic histogram bucket upper bounds, in seconds, for function, lock, channel, future and I/O durations. Comma-separated, positive, strictly ascending, at most `1000`; `+Inf` is always appended and invalid input panics at startup. Only affects the text (classic) exposition, native histograms are unaffected. (default: log-spaced 1-3 steps from `0.00000025` to `10`) |
 | `HOTPATH_PROMETHEUS_SLOW_BUCKETS` | Same as `HOTPATH_PROMETHEUS_FAST_BUCKETS`, for SQL query, outbound HTTP request and server response durations. (default: log-spaced 1-3 steps from `0.0001` to `60`) |
 
-## Cloud Uploads
-
-Requires the `hotpath-cloud` feature. Reports are uploaded to [hotpath.rs](https://hotpath.rs) from GitHub Actions jobs with `id-token: write` permission.
-
-| Variable | Description |
-|----------|-------------|
-| `HOTPATH_UPLOAD` | Set to `true` or `1` to upload the final report to hotpath.rs when the profiled program exits. (default: `false`) |
-| `HOTPATH_BENCHMARK` | Name of the benchmark series the uploaded report belongs to: 1-64 characters from `[A-Za-z0-9._-]`. (default: `default`) |
-| `HOTPATH_UPLOAD_LIMIT` | Maximum number of entries per section included in the uploaded report. Replaces `HOTPATH_LIMIT`, every per-section `HOTPATH_*_LIMIT` and the builder limits for the upload only, so the server receives complete data by default. Set to `0` for unlimited. (default: `0`) |
-
 ## TUI
 
 | Variable | Description |
