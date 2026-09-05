@@ -62,11 +62,11 @@ diesel = ["dep:diesel"]
 "reqwest-0-12" = ["dep:reqwest-012", "dep:reqwest-middleware-04", "reqwest-middleware-04/multipart", "reqwest-middleware-04/json", "dep:async-trait", "dep:http"]
 "reqwest-0-13" = ["dep:reqwest", "dep:reqwest-middleware-05", "reqwest-middleware-05/multipart", "reqwest-middleware-05/json", "reqwest-middleware-05/query", "reqwest-middleware-05/form", "dep:async-trait", "dep:http"]
 "ureq-3" = ["dep:ureq"]
-"axum-0-8" = ["dep:axum", "dep:tower-layer", "dep:tower-service", "dep:pin-project-lite"]
+"axum-0-8" = ["dep:axum", "axum/matched-path", "dep:tower-layer", "dep:tower-service", "dep:pin-project-lite"]
 threads = []
 dev = ["dep:time"]
 hotpath-cpu = ["hotpath-macros/hotpath-cpu", "dep:object", "dep:rustc-demangle", "dep:flate2"]
-hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
+hotpath-mcp = ["hotpath", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "axum/http1", "axum/tokio", "dep:tokio-util", "dep:schemars"]
 hotpath-prometheus = ["hotpath", "dep:prost"]
 
 [dependencies]
@@ -110,7 +110,7 @@ libsqlite3-sys = { version = "0.30", features = ["bundled"], optional = true }
 prost = { version = "0.14", optional = true }
 rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
-axum = { version = "0.8", optional = true }
+axum = { version = "0.8", default-features = false, optional = true }
 tower-layer = { version = "0.3", optional = true }
 tower-service = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", optional = true }
