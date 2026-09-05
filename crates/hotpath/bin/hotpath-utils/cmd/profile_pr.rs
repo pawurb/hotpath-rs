@@ -139,12 +139,6 @@ fn format_diff_markdown(
         "**Total Elapsed Time:** {}\n",
         diff.total_elapsed_diff.format_with_emoji(emoji_threshold)
     ));
-    if let Some(cpu_baseline) = &diff.cpu_baseline_diff {
-        markdown.push_str(&format!(
-            "**CPU Baseline:** {}\n",
-            cpu_baseline.format_with_emoji(emoji_threshold)
-        ));
-    }
     if let Some(id) = benchmark_id {
         markdown.push_str(&format!("**Benchmark ID:** {}\n", id));
     }

@@ -1115,8 +1115,6 @@ pub struct JsonReport {
     pub threads: Option<JsonThreadsList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug: Option<JsonDebugList>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cpu_baseline: Option<JsonCpuBaseline>,
 }
 
 impl Default for JsonReport {
@@ -1141,14 +1139,8 @@ impl Default for JsonReport {
             io: None,
             threads: None,
             debug: None,
-            cpu_baseline: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JsonCpuBaseline {
-    pub avg: String,
 }
 
 #[cfg(test)]

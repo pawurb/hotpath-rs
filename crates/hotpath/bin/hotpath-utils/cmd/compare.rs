@@ -61,9 +61,6 @@ fn print_diff(diff: &JsonReportDiff) {
     }
 
     println!("Total Elapsed: {}", diff.total_elapsed_diff);
-    if let Some(cpu_baseline) = &diff.cpu_baseline_diff {
-        println!("CPU Baseline: {}", cpu_baseline);
-    }
     println!();
 
     if let Some(comparison) = &diff.functions_timing {
