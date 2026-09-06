@@ -37,7 +37,7 @@ Features:
   - `meta.benchmark` mirrors `cloud.rs::benchmark_name()` (`HOTPATH_BENCHMARK`, default `default`) and is set on every report, not only uploads. `cloud.rs` still sends the `?benchmark=` query parameter; the server prefers `meta.benchmark` and falls back to the parameter.
   - None of this is authorization: the server derives the repository from the upload credential. `ci.repository_id` is compared against the verified claim (mismatch rejected as a misdirected upload) and `git.repository` mismatches only warn, since a rename keeps the id but changes the name.
   - The server treats the report as the *only* source of run context, with no fallback to the OIDC claims, so `git.sha` is required and `ci.pr_number`/`ci.base_ref` are required on `pull_request` uploads (a missing one is a 400, not a silent degradation). This client release therefore has to ship before the backend starts requiring them.
-  - User-facing docs: `docs/src/configuration.md` ("Report Provenance") describes `meta.git.*`/`meta.ci.*` only. `meta.benchmark` is deliberately absent there, since it is `HOTPATH_BENCHMARK` and cloud is not user-documented yet.
+  - Not user-documented: `meta.git.*`, `meta.ci.*` and `meta.benchmark` are all cloud-only, so they stay in `dev_docs/` and out of the mdBook under `docs/` until cloud ships. `docs/src/configuration.md` mentions `meta.git` only in passing, in its pre-existing `HOTPATH_SOURCE_ROOT` row.
 
 Macros:
 - `#[measure]` `label = "..."`: duplicate labels panic at runtime. `impl_type = "Type"` is required for correct `hotpath-cpu` attribution on bare-annotated impl methods (`#[measure_all]` on inherent impls auto-injects it; trait impl methods never match, see `dev_docs/architecture.md`).
