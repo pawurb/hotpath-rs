@@ -8,6 +8,22 @@ mod tests {
     use hotpath::json::{JsonFunctionsList, JsonReport};
 
     fn run_example(package: &str, example: &str, report: Option<&str>, upload: bool) -> Output {
+        run_with_features(package, example, "hotpath,hotpath-cloud", report, upload)
+    }
+
+    /// Histograms exist only with the cloud feature compiled in, so absence is
+    /// tested against a build without it rather than against `HOTPATH_UPLOAD`.
+    fn run_without_cloud(package: &str, example: &str, report: Option<&str>) -> Output {
+        run_with_features(package, example, "hotpath", report, false)
+    }
+
+    fn run_with_features(
+        package: &str,
+        example: &str,
+        features: &str,
+        report: Option<&str>,
+        upload: bool,
+    ) -> Output {
         let mut cmd = Command::new("cargo");
         cmd.args([
             "run",
@@ -16,7 +32,7 @@ mod tests {
             "--example",
             example,
             "--features",
-            "hotpath,hotpath-cloud",
+            features,
         ])
         .env("HOTPATH_OUTPUT_FORMAT", "json")
         .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
@@ -104,8 +120,15 @@ mod tests {
     }
 
     #[test]
-    fn histograms_absent_without_upload() {
-        let list = run_all_features(false);
+    fn histograms_absent_without_the_cloud_feature() {
+        let output = run_without_cloud(
+            "test-all-features",
+            "basic_all_features",
+            Some("functions-timing"),
+        );
+        let list = parse_report(&String::from_utf8_lossy(&output.stdout))
+            .functions_timing
+            .expect("No functions_timing section in report");
         assert!(!list.data.is_empty());
         assert!(list.data.iter().all(|e| e.histogram.is_none()));
     }
@@ -151,8 +174,8 @@ mod tests {
     }
 
     #[test]
-    fn server_sql_http_histograms_absent_without_upload() {
-        let output = run_example("test-axum", "route_scope", None, false);
+    fn server_sql_http_histograms_absent_without_the_cloud_feature() {
+        let output = run_without_cloud("test-axum", "route_scope", None);
         let report = parse_report(&String::from_utf8_lossy(&output.stdout));
 
         let server = report.server.expect("No server section in report");
@@ -192,8 +215,8 @@ mod tests {
     }
 
     #[test]
-    fn mutex_histograms_absent_without_upload() {
-        let output = run_example("test-mutex-std", "basic_mutex_std", None, false);
+    fn mutex_histograms_absent_without_the_cloud_feature() {
+        let output = run_without_cloud("test-mutex-std", "basic_mutex_std", None);
         let report = parse_report(&String::from_utf8_lossy(&output.stdout));
 
         let mutexes = report.mutexes.expect("No mutexes section in report");

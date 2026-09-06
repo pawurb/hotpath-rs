@@ -1008,7 +1008,16 @@ impl Drop for HotpathGuard {
             self.threads_limit = v;
         }
         #[cfg(feature = "hotpath-cloud-meta")]
-        let cloud_report = crate::lib_on::cloud::report_enabled();
+        let upload_enabled = crate::lib_on::cloud::enabled();
+        #[cfg(not(feature = "hotpath-cloud-meta"))]
+        let upload_enabled = false;
+
+        let is_json = matches!(format, Format::Json | Format::JsonPretty);
+        // With the cloud feature on, a JSON report is an upload payload -
+        // complete lists and histograms - whether this process posts it or a
+        // job that has no OIDC token writes it out for a trusted one to post.
+        #[cfg(feature = "hotpath-cloud-meta")]
+        let cloud_report = upload_enabled || is_json;
         #[cfg(not(feature = "hotpath-cloud-meta"))]
         let cloud_report = false;
 
@@ -1017,16 +1026,14 @@ impl Drop for HotpathGuard {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Failed to create output writer: {}", e);
-                if !cloud_report {
+                if !upload_enabled {
                     return;
                 }
                 Box::new(std::io::sink())
             }
         };
 
-        let is_json = matches!(format, Format::Json | Format::JsonPretty);
-
-        if is_json || cloud_report {
+        if is_json || upload_enabled {
             let mut report = JsonReport {
                 meta: crate::lib_on::report_meta::build_meta(),
                 label: std::env::var("HOTPATH_META_REPORT_LABEL")
@@ -1242,13 +1249,8 @@ impl Drop for HotpathGuard {
             }
 
             #[cfg(feature = "hotpath-cloud-meta")]
-            {
-                if let Some(path) = crate::lib_on::cloud::UPLOAD_PATH.as_deref() {
-                    crate::lib_on::cloud::write_payload(path, &report);
-                }
-                if crate::lib_on::cloud::post_enabled() {
-                    crate::lib_on::cloud::upload(&report);
-                }
+            if upload_enabled {
+                crate::lib_on::cloud::upload(&report);
             }
         }
 
