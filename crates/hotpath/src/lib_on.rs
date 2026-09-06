@@ -71,6 +71,8 @@ pub use sql::toasty_tracing_layer;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 #[cfg(feature = "hotpath-cloud")]
+pub(crate) mod ci_info;
+#[cfg(feature = "hotpath-cloud")]
 pub(crate) mod cloud;
 #[cfg(feature = "hotpath-cloud")]
 pub(crate) mod git_info;
