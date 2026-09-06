@@ -12,7 +12,7 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
     // surface as dead links on the server.
     #[cfg(feature = "hotpath-cloud")]
     if source_root.is_none()
-        && crate::lib_on::cloud::enabled()
+        && crate::lib_on::cloud::report_enabled()
         && crate::lib_on::locations::any_relative_file().is_some()
     {
         eprintln!(

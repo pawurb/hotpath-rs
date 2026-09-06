@@ -5,10 +5,17 @@
 //! The target base URL is `https://hotpath.rs` unless `HOTPATH_META_UPLOAD_URL`
 //! overrides it.
 //!
+//! `HOTPATH_META_UPLOAD_PATH` writes the same payload to a file instead of - or
+//! as well as - posting it. That is the path for a job which measures untrusted
+//! code and therefore gets no OIDC token: a fork pull request builds the
+//! report, a trusted job uploads the artifact on its behalf. Either variable
+//! puts the report at upload fidelity: every entry, plus histograms.
+//!
 //! Runs synchronously from the guard's `Drop`, after the runtime may already
 //! be gone, so it never spawns tasks. Failures are reported on stderr and never
 //! affect the process exit code.
 
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -43,10 +50,30 @@ fn normalize_upload_url(raw: Option<String>) -> String {
         .unwrap_or_else(|| DEFAULT_UPLOAD_URL.to_string())
 }
 
-pub(crate) fn enabled() -> bool {
+/// Path the report is written to, from `HOTPATH_META_UPLOAD_PATH`. Relative
+/// paths resolve against the working directory, blank or unset writes nothing.
+pub(crate) static UPLOAD_PATH: LazyLock<Option<PathBuf>> =
+    LazyLock::new(|| parse_upload_path(std::env::var("HOTPATH_META_UPLOAD_PATH").ok()));
+
+fn parse_upload_path(raw: Option<String>) -> Option<PathBuf> {
+    raw.map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(crate::output_on::resolve_output_path)
+}
+
+/// Whether this process posts the report itself.
+pub(crate) fn post_enabled() -> bool {
     std::env::var("HOTPATH_META_UPLOAD")
         .map(|v| is_truthy(&v))
         .unwrap_or(false)
+}
+
+/// Whether the report is built at upload fidelity - every entry, plus
+/// histograms - whether or not this process is the one posting it. Writing the
+/// payload for another job to post must produce the same document an in-process
+/// upload would have sent, so both variables select it.
+pub(crate) fn report_enabled() -> bool {
+    post_enabled() || UPLOAD_PATH.is_some()
 }
 
 fn is_truthy(v: &str) -> bool {
@@ -94,6 +121,37 @@ pub(crate) static UPLOAD_LIMIT: LazyLock<usize> = LazyLock::new(|| {
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0)
 });
+
+/// Writes the exact bytes `upload` would post, so a trusted job can forward
+/// the file with only the run context re-asserted. Failures are reported on
+/// stderr and never affect the exit code, like the upload itself.
+pub(crate) fn write_payload(path: &Path, report: &JsonReport) {
+    let benchmark = match benchmark_name() {
+        Ok(name) => name,
+        Err(msg) => {
+            eprintln!("hotpath-meta: upload payload not written: {msg}");
+            return;
+        }
+    };
+    let result = serde_json::to_vec(report)
+        .map_err(|e| format!("failed to serialize report: {e}"))
+        .and_then(|body| {
+            if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
+            }
+            std::fs::write(path, body)
+                .map_err(|e| format!("failed to write {}: {e}", path.display()))
+        });
+
+    match result {
+        Ok(()) => eprintln!(
+            "hotpath-meta: wrote upload payload to {} (benchmark {benchmark})",
+            path.display()
+        ),
+        Err(reason) => eprintln!("hotpath-meta: upload payload not written: {reason}"),
+    }
+}
 
 pub(crate) fn upload(report: &JsonReport) {
     if std::thread::panicking() {
@@ -227,7 +285,7 @@ fn url_encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use crate::lib_on::cloud::{
-        benchmark_name, is_truthy, map_status, normalize_upload_url, url_encode,
+        benchmark_name, is_truthy, map_status, normalize_upload_url, parse_upload_path, url_encode,
         validate_benchmark_name, APP_URL, DEFAULT_UPLOAD_URL,
     };
 
@@ -313,6 +371,20 @@ mod tests {
             assert!(err.contains("not valid UTF-8"), "{err}");
         }
         std::env::remove_var(var);
+    }
+
+    #[test]
+    fn upload_path_is_optional_and_absolute() {
+        assert_eq!(parse_upload_path(None), None);
+        assert_eq!(parse_upload_path(Some("   ".into())), None);
+        let path = parse_upload_path(Some(" report.json ".into())).expect("path");
+        assert!(path.is_absolute(), "{} should be absolute", path.display());
+        assert!(path.ends_with("report.json"));
+        #[cfg(unix)]
+        assert_eq!(
+            parse_upload_path(Some("/tmp/report.json".into())),
+            Some(std::path::PathBuf::from("/tmp/report.json"))
+        );
     }
 
     #[test]

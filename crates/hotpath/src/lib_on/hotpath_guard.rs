@@ -1126,17 +1126,19 @@ impl Drop for HotpathGuard {
         if let Some(v) = parse_usize_env("HOTPATH_THREADS_LIMIT") {
             self.threads_limit = v;
         }
+        // Upload fidelity, not "this process uploads": a report written for
+        // another job to post must carry the same entries and histograms.
         #[cfg(feature = "hotpath-cloud")]
-        let cloud_enabled = crate::lib_on::cloud::enabled();
+        let cloud_report = crate::lib_on::cloud::report_enabled();
         #[cfg(not(feature = "hotpath-cloud"))]
-        let cloud_enabled = false;
+        let cloud_report = false;
 
         // An unusable local output must not block the cloud upload.
         let mut writer: Box<dyn Write> = match output.writer() {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Failed to create output writer: {}", e);
-                if !cloud_enabled {
+                if !cloud_report {
                     return;
                 }
                 Box::new(std::io::sink())
@@ -1145,7 +1147,7 @@ impl Drop for HotpathGuard {
 
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
 
-        if is_json || cloud_enabled {
+        if is_json || cloud_report {
             let mut report = JsonReport {
                 meta: crate::lib_on::report_meta::build_meta(),
                 label: std::env::var("HOTPATH_REPORT_LABEL")
@@ -1159,7 +1161,7 @@ impl Drop for HotpathGuard {
             let upload_limit = *crate::lib_on::cloud::UPLOAD_LIMIT;
             #[cfg(not(feature = "hotpath-cloud"))]
             let upload_limit = 0;
-            let limit_for = |display: usize| if cloud_enabled { upload_limit } else { display };
+            let limit_for = |display: usize| if cloud_report { upload_limit } else { display };
 
             for section in &sections {
                 match section {
@@ -1172,7 +1174,7 @@ impl Drop for HotpathGuard {
                                     &state_guard,
                                     total_elapsed,
                                     limit_for,
-                                    cloud_enabled,
+                                    cloud_report,
                                 );
                                 report.functions_timing =
                                     Some(build_timing_list(stats, &config, elapsed_ns));
@@ -1186,7 +1188,7 @@ impl Drop for HotpathGuard {
                                     if let Ok(state_guard) = state.read() {
                                         let total_elapsed = end_time.duration_since(state_guard.start_time);
                                         let elapsed_ns = total_elapsed.as_nanos() as u64;
-                                        let config = make_functions_config(&state_guard, total_elapsed, limit_for, cloud_enabled);
+                                        let config = make_functions_config(&state_guard, total_elapsed, limit_for, cloud_report);
                                         report.functions_alloc = Some(
                                             build_functions_list_alloc(stats, &config, elapsed_ns),
                                         );
@@ -1208,7 +1210,7 @@ impl Drop for HotpathGuard {
                                         &state_guard,
                                         total_elapsed,
                                         limit_for,
-                                        cloud_enabled,
+                                        cloud_report,
                                     );
                                     let list = crate::functions::cpu::build_cpu_json(
                                         cpu,
@@ -1235,7 +1237,7 @@ impl Drop for HotpathGuard {
                                 limit_for(self.channels_limit),
                                 elapsed,
                                 &percentiles,
-                                cloud_enabled,
+                                cloud_report,
                             ));
                         }
                     }
@@ -1264,7 +1266,7 @@ impl Drop for HotpathGuard {
                                 limit_for(self.rw_locks_limit),
                                 elapsed,
                                 &percentiles,
-                                cloud_enabled,
+                                cloud_report,
                             ));
                         }
                     }
@@ -1275,7 +1277,7 @@ impl Drop for HotpathGuard {
                                 limit_for(self.mutexes_limit),
                                 elapsed,
                                 &percentiles,
-                                cloud_enabled,
+                                cloud_report,
                             ));
                         }
                     }
@@ -1286,7 +1288,7 @@ impl Drop for HotpathGuard {
                                 limit_for(self.sql_limit),
                                 elapsed,
                                 &percentiles,
-                                cloud_enabled,
+                                cloud_report,
                             ));
                         }
                     }
@@ -1297,7 +1299,7 @@ impl Drop for HotpathGuard {
                                 limit_for(self.http_limit),
                                 elapsed,
                                 &percentiles,
-                                cloud_enabled,
+                                cloud_report,
                             ));
                         }
                     }
@@ -1309,7 +1311,7 @@ impl Drop for HotpathGuard {
                                 elapsed,
                                 &percentiles,
                                 report::ServerColumns::from_state(),
-                                cloud_enabled,
+                                cloud_report,
                             ));
                         }
                     }
@@ -1320,7 +1322,7 @@ impl Drop for HotpathGuard {
                                 limit_for(self.io_limit),
                                 elapsed,
                                 &percentiles,
-                                cloud_enabled,
+                                cloud_report,
                             ));
                         }
                     }
@@ -1361,8 +1363,13 @@ impl Drop for HotpathGuard {
             }
 
             #[cfg(feature = "hotpath-cloud")]
-            if cloud_enabled {
-                crate::lib_on::cloud::upload(&report);
+            {
+                if let Some(path) = crate::lib_on::cloud::UPLOAD_PATH.as_deref() {
+                    crate::lib_on::cloud::write_payload(path, &report);
+                }
+                if crate::lib_on::cloud::post_enabled() {
+                    crate::lib_on::cloud::upload(&report);
+                }
             }
         }
 
