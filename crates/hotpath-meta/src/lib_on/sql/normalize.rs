@@ -9,7 +9,7 @@
 //! - runs of `?` inside an `IN (...)` list -> `IN (?)`
 //! - collapse all whitespace to single spaces
 
-use regex::Regex;
+use regex_lite::Regex;
 use std::sync::LazyLock;
 
 // Single-quoted literal, with '' as an escaped quote inside.

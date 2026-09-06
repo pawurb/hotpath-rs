@@ -1,7 +1,7 @@
-//! Reads `sha` and `ref` for the report `meta.git` object straight from the
-//! `.git` directory - never shells out to git. In CI the server trusts OIDC
-//! claims over this data; it mainly serves local repo-token uploads and
-//! offline reports.
+//! Reads `sha`, `ref` and `repository` for the report `meta.git` object
+//! straight from the `.git` directory - never shells out to git. In CI the
+//! environment supplies the same fields more precisely (see `ci_info`); this
+//! reader serves local repo-token uploads and offline reports.
 
 use std::path::{Path, PathBuf};
 
@@ -9,22 +9,66 @@ pub(crate) fn read_git_info_at(root: &Path) -> Option<crate::json::JsonGitInfo> 
     let git_dir = resolve_git_dir(root)?;
     let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
     let head = head.trim();
-    if let Some(ref_name) = head.strip_prefix("ref: ") {
+    let (sha, ref_name) = if let Some(ref_name) = head.strip_prefix("ref: ") {
         let ref_name = ref_name.trim().to_string();
-        let sha = resolve_ref(&git_dir, &ref_name)?;
-        Some(crate::json::JsonGitInfo {
-            sha,
-            r#ref: Some(ref_name),
-        })
+        (resolve_ref(&git_dir, &ref_name)?, Some(ref_name))
     } else if is_sha(head) {
         // Detached HEAD holds the commit directly.
-        Some(crate::json::JsonGitInfo {
-            sha: head.to_string(),
-            r#ref: None,
-        })
+        (head.to_string(), None)
     } else {
-        None
+        return None;
+    };
+    Some(crate::json::JsonGitInfo {
+        sha,
+        r#ref: ref_name,
+        // TODO: a merge base against the default branch needs a commit-graph
+        // walk this pure `.git` reader deliberately does not do.
+        base_sha: None,
+        repository: origin_repository(&git_dir),
+    })
+}
+
+/// "owner/name" from the `origin` remote's URL, for both the SSH
+/// (`git@host:owner/name.git`) and HTTPS (`https://host/owner/name.git`)
+/// forms. Informational only - the server authorizes from the upload
+/// credential.
+fn origin_repository(git_dir: &Path) -> Option<String> {
+    let config = std::fs::read_to_string(common_dir(git_dir).join("config")).ok()?;
+    let mut in_origin = false;
+    for line in config.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            // Git matches section names case-insensitively, subsections not.
+            let section = line.replace(char::is_whitespace, "");
+            in_origin = section
+                .strip_suffix("\"origin\"]")
+                .is_some_and(|name| name.eq_ignore_ascii_case("[remote"));
+        } else if in_origin {
+            if let Some((key, url)) = line.split_once('=') {
+                if key.trim() == "url" {
+                    return owner_name(url.trim());
+                }
+            }
+        }
     }
+    None
+}
+
+fn owner_name(url: &str) -> Option<String> {
+    let url = url.trim_end_matches('/');
+    let url = url.strip_suffix(".git").unwrap_or(url);
+    // Only a remote with a host names an owner; a filesystem remote
+    // ("/srv/repos/foo") would otherwise yield a plausible-looking
+    // "repos/foo".
+    let path = match url.split_once("://") {
+        Some(("file", _)) => return None,
+        Some((_, rest)) => rest.split_once('/')?.1,
+        None => url.split_once(':').filter(|(host, _)| !host.is_empty())?.1,
+    };
+    let mut segments = path.rsplit('/');
+    let name = segments.next().filter(|s| !s.is_empty())?;
+    let owner = segments.next().filter(|s| !s.is_empty())?;
+    Some(format!("{owner}/{name}"))
 }
 
 /// `.git` is a plain directory for regular checkouts; worktrees and
@@ -48,18 +92,7 @@ fn resolve_git_dir(root: &Path) -> Option<PathBuf> {
 /// Loose ref first (in the git dir, then the common dir shared between
 /// worktrees), falling back to `packed-refs`.
 fn resolve_ref(git_dir: &Path, ref_name: &str) -> Option<String> {
-    let common_dir = match std::fs::read_to_string(git_dir.join("commondir")) {
-        Ok(rel) => {
-            let rel = rel.trim();
-            let path = Path::new(rel);
-            if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                git_dir.join(rel)
-            }
-        }
-        Err(_) => git_dir.to_path_buf(),
-    };
+    let common_dir = common_dir(git_dir);
 
     for dir in [git_dir, common_dir.as_path()] {
         if let Ok(contents) = std::fs::read_to_string(dir.join(ref_name)) {
@@ -84,13 +117,30 @@ fn resolve_ref(git_dir: &Path, ref_name: &str) -> Option<String> {
     None
 }
 
+/// A worktree's git dir holds only its own HEAD; refs, `packed-refs` and
+/// `config` live in the common dir it points at.
+fn common_dir(git_dir: &Path) -> PathBuf {
+    match std::fs::read_to_string(git_dir.join("commondir")) {
+        Ok(rel) => {
+            let rel = rel.trim();
+            let path = Path::new(rel);
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                git_dir.join(rel)
+            }
+        }
+        Err(_) => git_dir.to_path_buf(),
+    }
+}
+
 fn is_sha(s: &str) -> bool {
     (s.len() == 40 || s.len() == 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::lib_on::git_info::read_git_info_at;
+    use crate::lib_on::git_info::{owner_name, read_git_info_at};
     use std::path::PathBuf;
 
     fn temp_repo(name: &str) -> PathBuf {
@@ -149,6 +199,62 @@ mod tests {
         assert_eq!(info.sha, SHA);
         assert_eq!(info.r#ref, None);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reads_origin_repository() {
+        let root = temp_repo("origin");
+        let git = root.join(".git");
+        std::fs::create_dir_all(&git).unwrap();
+        std::fs::write(git.join("HEAD"), format!("{SHA}\n")).unwrap();
+        std::fs::write(
+            git.join("config"),
+            "[core]\n\turl = not-a-remote\n[remote \"upstream\"]\n\turl = git@github.com:other/repo.git\n[remote \"origin\"]\n\turl = git@github.com:pawurb/hotpath-rs.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
+        )
+        .unwrap();
+
+        let info = read_git_info_at(&root).unwrap();
+        assert_eq!(info.repository.as_deref(), Some("pawurb/hotpath-rs"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn origin_repository_absent_without_config() {
+        let root = temp_repo("no-config");
+        let git = root.join(".git");
+        std::fs::create_dir_all(&git).unwrap();
+        std::fs::write(git.join("HEAD"), format!("{SHA}\n")).unwrap();
+
+        let info = read_git_info_at(&root).unwrap();
+        assert_eq!(info.repository, None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn owner_name_url_forms() {
+        for url in [
+            "git@github.com:pawurb/hotpath-rs.git",
+            "https://github.com/pawurb/hotpath-rs.git",
+            "https://github.com/pawurb/hotpath-rs",
+            "ssh://git@github.com/pawurb/hotpath-rs.git",
+            "https://github.com/pawurb/hotpath-rs/",
+        ] {
+            assert_eq!(
+                owner_name(url).as_deref(),
+                Some("pawurb/hotpath-rs"),
+                "{url}"
+            );
+        }
+        for url in [
+            "hotpath-rs",
+            "",
+            "/srv/repos/hotpath-rs",
+            "../repos/hotpath-rs",
+            "file:///srv/repos/hotpath-rs",
+            "https://github.com/pawurb",
+        ] {
+            assert_eq!(owner_name(url), None, "{url}");
+        }
     }
 
     #[test]
