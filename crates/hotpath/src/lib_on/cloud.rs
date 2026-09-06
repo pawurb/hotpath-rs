@@ -1,7 +1,8 @@
 //! Uploads the JSON report to hotpath.rs from GitHub Actions, authenticated
 //! with the job's OIDC token. Enabled at runtime by `HOTPATH_UPLOAD=1`; the
 //! benchmark name comes from `HOTPATH_BENCHMARK` (default `default`, validated
-//! by `validate_benchmark_name` - invalid names skip the upload).
+//! by `validate_benchmark_name` - invalid names skip the upload). The target
+//! base URL is `https://hotpath.rs` unless `HOTPATH_UPLOAD_URL` overrides it.
 //!
 //! Runs synchronously from the guard's `Drop`, after the runtime may already
 //! be gone, so it never spawns tasks. Failures are reported on stderr and never
@@ -14,7 +15,7 @@ use serde::Deserialize;
 
 use crate::json::JsonReport;
 
-const UPLOAD_URL: &str = "https://hotpath.rs";
+const DEFAULT_UPLOAD_URL: &str = "https://hotpath.rs";
 const AUDIENCE: &str = "hotpath.rs";
 const APP_URL: &str = "https://github.com/apps/hotpath-rs";
 const MINT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -26,6 +27,19 @@ pub(crate) struct UploadResponse {
     pub(crate) repository: String,
     pub(crate) benchmark: String,
     pub(crate) baseline: Option<String>,
+}
+
+/// Base URL the report is posted to. `HOTPATH_UPLOAD_URL` overrides it for
+/// staging or self-hosted backends; trailing slashes are trimmed so the
+/// `/api/v1/reports` path is appended cleanly. Blank or unset falls back to
+/// the default.
+pub(crate) static UPLOAD_URL: LazyLock<String> =
+    LazyLock::new(|| normalize_upload_url(std::env::var("HOTPATH_UPLOAD_URL").ok()));
+
+fn normalize_upload_url(raw: Option<String>) -> String {
+    raw.map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_UPLOAD_URL.to_string())
 }
 
 pub(crate) fn enabled() -> bool {
@@ -108,7 +122,7 @@ pub(crate) fn upload(report: &JsonReport) {
     let result = mint_token(&request_url, &request_token).and_then(|token| {
         let body =
             serde_json::to_vec(report).map_err(|e| format!("failed to serialize report: {e}"))?;
-        post_report(UPLOAD_URL, &token, &benchmark, &body)
+        post_report(&UPLOAD_URL, &token, &benchmark, &body)
     });
 
     match result {
@@ -212,7 +226,8 @@ fn url_encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use crate::lib_on::cloud::{
-        benchmark_name, is_truthy, map_status, url_encode, validate_benchmark_name, APP_URL,
+        benchmark_name, is_truthy, map_status, normalize_upload_url, url_encode,
+        validate_benchmark_name, APP_URL, DEFAULT_UPLOAD_URL,
     };
 
     #[test]
@@ -223,6 +238,20 @@ mod tests {
         assert!(!is_truthy("0"));
         assert!(!is_truthy("false"));
         assert!(!is_truthy(""));
+    }
+
+    #[test]
+    fn upload_url_override() {
+        assert_eq!(normalize_upload_url(None), DEFAULT_UPLOAD_URL);
+        assert_eq!(normalize_upload_url(Some("   ".into())), DEFAULT_UPLOAD_URL);
+        assert_eq!(
+            normalize_upload_url(Some(" http://localhost:3000/// ".into())),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_upload_url(Some("https://staging.hotpath.rs".into())),
+            "https://staging.hotpath.rs"
+        );
     }
 
     #[test]
