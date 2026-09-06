@@ -61,6 +61,24 @@ mod tests {
         )
     }
 
+    // Display limits only survive without the cloud feature: with it on, a JSON
+    // report is an upload payload and carries every entry.
+    // cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-alloc
+    fn run_all_features_no_cloud(env: &[(&str, &str)]) -> JsonReport {
+        run_example(
+            "test-all-features",
+            "basic_all_features",
+            "hotpath,hotpath-alloc",
+            false,
+            env,
+        )
+    }
+
+    // cargo run -p test-axum --example route_scope --features hotpath
+    fn run_route_scope_no_cloud(env: &[(&str, &str)]) -> JsonReport {
+        run_example("test-axum", "route_scope", "hotpath", false, env)
+    }
+
     // cargo run -p test-axum --example route_scope --features hotpath,hotpath-cloud
     fn run_route_scope(upload: bool, env: &[(&str, &str)]) -> JsonReport {
         run_example(
@@ -179,7 +197,7 @@ mod tests {
 
     #[test]
     fn display_limit_truncates_every_section() {
-        let report = run_all_features(false, &[("HOTPATH_LIMIT", "1")]);
+        let report = run_all_features_no_cloud(&[("HOTPATH_LIMIT", "1")]);
         assert_limited(
             &report,
             1,
@@ -198,9 +216,25 @@ mod tests {
             "example must measure several functions"
         );
 
-        let report = run_route_scope(false, &[("HOTPATH_LIMIT", "1")]);
+        let report = run_route_scope_no_cloud(&[("HOTPATH_LIMIT", "1")]);
         assert_limited(&report, 1, &["sql", "http", "server"]);
         assert!(report.sql.unwrap().total_count > 1);
+    }
+
+    /// The fork case: a job with no OIDC token writes the JSON report for a
+    /// trusted job to upload, so it must carry what an upload would have sent.
+    #[test]
+    fn json_report_ignores_display_limits_without_uploading() {
+        let report = run_all_features(
+            false,
+            &[("HOTPATH_LIMIT", "1"), ("HOTPATH_FUNCTIONS_LIMIT", "1")],
+        );
+        assert_limited(
+            &report,
+            0,
+            &["functions_timing", "functions_alloc", "threads"],
+        );
+        assert!(report.functions_timing.unwrap().included_count > 1);
     }
 
     #[test]
