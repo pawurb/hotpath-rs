@@ -1157,21 +1157,16 @@ pub struct JsonGitInfo {
 pub struct JsonCiInfo {
     /// "github-actions", later "gitlab-ci", "buildkite", ...
     pub provider: String,
-    /// "pull_request", "push", ...
+    /// Raw provider event name: "pull_request", "push", "workflow_dispatch",
+    /// ... Deliberately a string, not an enum: an event we do not model must
+    /// round-trip rather than fail the whole report.
+    pub event: String,
+    /// Present exactly when `event` names a pull request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub event: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pr_number: Option<u64>,
+    pub pull_request: Option<JsonPullRequest>,
     /// String, not u64: not every provider's run id is numeric.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
-    /// Bare branch names of a pull request's base and head ("main",
-    /// "feature-x") - not refs. The base one is what a baseline falls back to
-    /// when no report exists for `git.base_sha`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub head_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1181,6 +1176,26 @@ pub struct JsonCiInfo {
     /// rejects a mismatch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository_id: Option<String>,
+}
+
+/// Grouped rather than left as fields that happen to appear together: a pull
+/// request always has a number and two branch names, so they are present or
+/// absent as a unit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonPullRequest {
+    pub number: u64,
+    /// Bare branch names ("main", "feature-x"), not refs. `base_ref` is what
+    /// a baseline falls back to when no report exists for `git.base_sha`.
+    pub base_ref: String,
+    pub head_ref: String,
+    /// The commit a default `refs/pull/<n>/merge` checkout merged in, and the
+    /// anchor a trusted job compares against `workflow_run.head_sha` when
+    /// relaying a fork's report. Best-effort, unlike the rest: only the event
+    /// payload names it (`GITHUB_SHA` is the merge commit, and there is no
+    /// `GITHUB_HEAD_SHA`), so requiring it would let an unreadable payload
+    /// drop the whole object and take `base_ref` with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

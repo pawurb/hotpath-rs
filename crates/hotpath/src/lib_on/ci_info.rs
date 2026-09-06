@@ -10,7 +10,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::json::JsonCiInfo;
+use crate::json::{JsonCiInfo, JsonPullRequest};
 
 /// The `meta.ci` object plus the commit identity the environment claims.
 pub(crate) struct CiContext {
@@ -22,37 +22,64 @@ pub(crate) struct CiContext {
 }
 
 pub(crate) fn detect() -> Option<CiContext> {
-    (env("GITHUB_ACTIONS").as_deref() == Some("true")).then(github_actions)
+    if env("GITHUB_ACTIONS").as_deref() != Some("true") {
+        return None;
+    }
+    // Every Actions run names its event; without one there is no run to
+    // describe, so `ci` is omitted rather than filled with a placeholder.
+    Some(github_actions(env("GITHUB_EVENT_NAME")?))
 }
 
-fn github_actions() -> CiContext {
-    let event = env("GITHUB_EVENT_NAME");
-    let pull_request = match event.as_deref() {
-        Some("pull_request") => {
-            env("GITHUB_EVENT_PATH").and_then(|path| read_pull_request(Path::new(&path)))
-        }
-        _ => None,
-    };
+fn github_actions(event: String) -> CiContext {
+    let git_ref = env("GITHUB_REF");
+    let is_pull_request = event == "pull_request";
+    let payload = is_pull_request
+        .then(|| env("GITHUB_EVENT_PATH").and_then(|path| read_pull_request(Path::new(&path))))
+        .flatten();
 
     CiContext {
         ci: JsonCiInfo {
             provider: "github-actions".to_string(),
             event,
-            pr_number: pull_request.as_ref().and_then(|pr| pr.number),
+            pull_request: is_pull_request
+                .then(|| pull_request(git_ref.as_deref(), payload.as_ref()))
+                .flatten(),
             run_id: env("GITHUB_RUN_ID"),
-            base_ref: env("GITHUB_BASE_REF"),
-            head_ref: env("GITHUB_HEAD_REF"),
             workflow: env("GITHUB_WORKFLOW"),
             actor: env("GITHUB_ACTOR"),
             repository_id: env("GITHUB_REPOSITORY_ID"),
         },
         sha: env("GITHUB_SHA"),
-        r#ref: env("GITHUB_REF"),
+        r#ref: git_ref,
         repository: env("GITHUB_REPOSITORY"),
-        base_sha: pull_request
-            .and_then(|pr| pr.base)
-            .and_then(|base| base.sha),
+        base_sha: payload.and_then(|pr| pr.base).and_then(|base| base.sha),
     }
+}
+
+/// `GITHUB_REF` (`refs/pull/<n>/merge`) is tried before the event file so all
+/// three fields come from the environment. Otherwise a payload that failed to
+/// parse would cost `base_ref` as well as `git.base_sha` - and `base_ref` is
+/// the server's fallback for exactly that missing sha.
+fn pull_request(git_ref: Option<&str>, payload: Option<&PullRequest>) -> Option<JsonPullRequest> {
+    Some(JsonPullRequest {
+        number: git_ref
+            .and_then(pr_number_from_ref)
+            .or_else(|| payload.and_then(|pr| pr.number))?,
+        base_ref: env("GITHUB_BASE_REF")?,
+        head_ref: env("GITHUB_HEAD_REF")?,
+        head_sha: payload
+            .and_then(|pr| pr.head.as_ref())
+            .and_then(|head| head.sha.clone()),
+    })
+}
+
+fn pr_number_from_ref(git_ref: &str) -> Option<u64> {
+    git_ref
+        .strip_prefix("refs/pull/")?
+        .split('/')
+        .next()?
+        .parse()
+        .ok()
 }
 
 #[derive(Deserialize)]
@@ -63,11 +90,12 @@ struct EventPayload {
 #[derive(Deserialize)]
 struct PullRequest {
     number: Option<u64>,
-    base: Option<EventBase>,
+    base: Option<EventCommit>,
+    head: Option<EventCommit>,
 }
 
 #[derive(Deserialize)]
-struct EventBase {
+struct EventCommit {
     sha: Option<String>,
 }
 
@@ -90,7 +118,7 @@ fn env(name: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::lib_on::ci_info::read_pull_request;
+    use crate::lib_on::ci_info::{pr_number_from_ref, read_pull_request};
     use std::path::PathBuf;
 
     fn write_event(name: &str, contents: &str) -> PathBuf {
@@ -127,6 +155,22 @@ mod tests {
             pr.base.and_then(|b| b.sha).as_deref(),
             Some("2222222222222222222222222222222222222222")
         );
+        assert_eq!(
+            pr.head.and_then(|h| h.sha).as_deref(),
+            Some("1111111111111111111111111111111111111111")
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn payload_without_head_still_parses() {
+        let path = write_event(
+            "no_head",
+            r#"{"pull_request":{"number":42,"base":{"sha":"2222222222222222222222222222222222222222"}}}"#,
+        );
+        let pr = read_pull_request(&path).expect("pull_request parsed");
+        assert_eq!(pr.number, Some(42));
+        assert!(pr.head.is_none());
         let _ = std::fs::remove_file(&path);
     }
 
@@ -138,6 +182,21 @@ mod tests {
         );
         assert!(read_pull_request(&path).is_none());
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn parses_pr_number_from_the_merge_ref() {
+        assert_eq!(pr_number_from_ref("refs/pull/42/merge"), Some(42));
+        assert_eq!(pr_number_from_ref("refs/pull/7/head"), Some(7));
+        for git_ref in [
+            "refs/heads/main",
+            "refs/pull//merge",
+            "refs/pull/not-a-number/merge",
+            "refs/tags/v1.0",
+            "",
+        ] {
+            assert_eq!(pr_number_from_ref(git_ref), None, "{git_ref}");
+        }
     }
 
     #[test]

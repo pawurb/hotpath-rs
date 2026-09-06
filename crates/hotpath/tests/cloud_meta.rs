@@ -7,6 +7,7 @@ mod tests {
 
     const OTHER_SHA: &str = "2222222222222222222222222222222222222222";
     const BASE_SHA: &str = "3333333333333333333333333333333333333333";
+    const PR_HEAD_SHA: &str = "4444444444444444444444444444444444444444";
 
     /// The commit the test process actually has checked out, i.e. what the
     /// profiled example measures. `GITHUB_SHA` only describes the checkout
@@ -71,17 +72,24 @@ mod tests {
             .meta
     }
 
+    fn write_event_payload(name: &str, base_sha: &str) -> PathBuf {
+        write_event(name, base_sha, Some(PR_HEAD_SHA))
+    }
+
     /// `name` keeps concurrently running tests off each other's payload: they
     /// delete the file once their subprocess exits.
-    fn write_event_payload(name: &str, base_sha: &str) -> PathBuf {
+    fn write_event(name: &str, base_sha: &str, head_sha: Option<&str>) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
             "hotpath-cloud-meta-event-{}-{name}.json",
             std::process::id()
         ));
+        let head = head_sha
+            .map(|sha| format!(r#","head":{{"sha":"{sha}"}}"#))
+            .unwrap_or_default();
         std::fs::write(
             &path,
             format!(
-                r#"{{"action":"synchronize","pull_request":{{"number":42,"base":{{"ref":"main","sha":"{base_sha}"}}}}}}"#
+                r#"{{"action":"synchronize","pull_request":{{"number":42,"base":{{"ref":"main","sha":"{base_sha}"}}{head}}}}}"#
             ),
         )
         .expect("event payload written");
@@ -138,10 +146,12 @@ mod tests {
 
         let ci = meta.ci.expect("ci info");
         assert_eq!(ci.provider, "github-actions");
-        assert_eq!(ci.event.as_deref(), Some("pull_request"));
-        assert_eq!(ci.pr_number, Some(42));
-        assert_eq!(ci.base_ref.as_deref(), Some("main"));
-        assert_eq!(ci.head_ref.as_deref(), Some("feature-x"));
+        assert_eq!(ci.event, "pull_request");
+        let pr = ci.pull_request.expect("pull request info");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.base_ref, "main");
+        assert_eq!(pr.head_ref, "feature-x");
+        assert_eq!(pr.head_sha.as_deref(), Some(PR_HEAD_SHA));
         assert_eq!(ci.run_id.as_deref(), Some("987654321"));
         assert_eq!(ci.workflow.as_deref(), Some("benchmarks"));
         assert_eq!(ci.actor.as_deref(), Some("pawurb"));
@@ -176,10 +186,12 @@ mod tests {
 
         // `ci.*` describes the run, not the checkout, so it stays intact.
         let ci = meta.ci.expect("ci info");
-        assert_eq!(ci.event.as_deref(), Some("pull_request"));
-        assert_eq!(ci.pr_number, Some(42));
-        assert_eq!(ci.base_ref.as_deref(), Some("main"));
-        assert_eq!(ci.head_ref.as_deref(), Some("feature-x"));
+        assert_eq!(ci.event, "pull_request");
+        let pr = ci.pull_request.expect("pull request info");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.base_ref, "main");
+        assert_eq!(pr.head_ref, "feature-x");
+        assert_eq!(pr.head_sha.as_deref(), Some(PR_HEAD_SHA));
     }
 
     /// The `git checkout <base sha>` step `docs/src/github_ci.md` documents:
@@ -195,6 +207,7 @@ mod tests {
             ("GITHUB_EVENT_NAME", "pull_request"),
             ("GITHUB_EVENT_PATH", &event_path.to_string_lossy()),
             ("GITHUB_BASE_REF", "main"),
+            ("GITHUB_HEAD_REF", "feature-x"),
         ]);
         let _ = std::fs::remove_file(&event_path);
 
@@ -204,8 +217,67 @@ mod tests {
 
         // The run is still a pull request run whatever it checked out.
         let ci = meta.ci.expect("ci info");
-        assert_eq!(ci.event.as_deref(), Some("pull_request"));
-        assert_eq!(ci.base_ref.as_deref(), Some("main"));
+        assert_eq!(ci.event, "pull_request");
+        assert_eq!(ci.pull_request.expect("pull request info").base_ref, "main");
+    }
+
+    /// The number comes from `GITHUB_REF`, so an unreadable event file costs
+    /// only `base_sha`. Grouping the branch names with the number must not let
+    /// one bad payload take out `base_ref`, the server's fallback for exactly
+    /// the sha that payload was carrying.
+    #[test]
+    fn unreadable_event_file_keeps_the_pull_request_branches() {
+        let head = head_sha();
+        let meta = run_example(&[
+            ("GITHUB_ACTIONS", "true"),
+            ("GITHUB_SHA", &head),
+            ("GITHUB_REF", "refs/pull/42/merge"),
+            ("GITHUB_EVENT_NAME", "pull_request"),
+            ("GITHUB_EVENT_PATH", "/nonexistent/event.json"),
+            ("GITHUB_BASE_REF", "main"),
+            ("GITHUB_HEAD_REF", "feature-x"),
+        ]);
+
+        assert_eq!(meta.git.expect("git info").base_sha, None);
+
+        let ci = meta.ci.expect("ci info");
+        let pr = ci.pull_request.expect("pull request info");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.base_ref, "main");
+        assert_eq!(pr.head_ref, "feature-x");
+        assert_eq!(pr.head_sha, None);
+    }
+
+    /// `head_sha` is the one field in the group with no environment fallback,
+    /// so a payload that omits the head must still leave the rest of it.
+    #[test]
+    fn event_payload_without_head_keeps_the_rest() {
+        let head = head_sha();
+        let event_path = write_event("no-head", BASE_SHA, None);
+        let meta = run_example(&[
+            ("GITHUB_ACTIONS", "true"),
+            ("GITHUB_SHA", &head),
+            ("GITHUB_REF", "refs/pull/42/merge"),
+            ("GITHUB_EVENT_NAME", "pull_request"),
+            ("GITHUB_EVENT_PATH", &event_path.to_string_lossy()),
+            ("GITHUB_BASE_REF", "main"),
+            ("GITHUB_HEAD_REF", "feature-x"),
+        ]);
+        let _ = std::fs::remove_file(&event_path);
+
+        assert_eq!(
+            meta.git.expect("git info").base_sha.as_deref(),
+            Some(BASE_SHA)
+        );
+        let pr = meta
+            .ci
+            .expect("ci info")
+            .pull_request
+            .expect("pull request info");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.base_ref, "main");
+        assert_eq!(pr.head_ref, "feature-x");
+        assert_eq!(pr.head_sha, None);
     }
 
     #[test]
@@ -225,8 +297,7 @@ mod tests {
         assert_eq!(git.base_sha, None);
 
         let ci = meta.ci.expect("ci info");
-        assert_eq!(ci.event.as_deref(), Some("push"));
-        assert_eq!(ci.pr_number, None);
-        assert_eq!(ci.base_ref, None);
+        assert_eq!(ci.event, "push");
+        assert!(ci.pull_request.is_none());
     }
 }
