@@ -47,8 +47,6 @@ mod tests {
         path
     }
 
-    /// The fork relay case: a job with no OIDC token prepares the report that a
-    /// trusted job posts, so the file must carry everything an upload would.
     #[test]
     fn payload_is_written_at_upload_fidelity_without_uploading() {
         let path = payload_path("hotpath_cloud_payload_test.json");
@@ -67,8 +65,7 @@ mod tests {
         let body = std::fs::read_to_string(&path).expect("payload file was not written");
         let report: JsonReport = serde_json::from_str(&body).expect("payload is not a JSON report");
 
-        let meta = report.meta;
-        assert_eq!(meta.benchmark.as_deref(), Some("fork-test"));
+        assert_eq!(report.meta.benchmark.as_deref(), Some("fork-test"));
 
         let functions = report
             .functions_timing

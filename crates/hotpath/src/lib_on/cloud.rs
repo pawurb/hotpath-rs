@@ -4,11 +4,10 @@
 //! by `validate_benchmark_name` - invalid names skip the upload). The target
 //! base URL is `https://hotpath.rs` unless `HOTPATH_UPLOAD_URL` overrides it.
 //!
-//! `HOTPATH_UPLOAD_PATH` writes the same payload to a file instead of - or as
-//! well as - posting it. That is the path for a job which measures untrusted
-//! code and therefore gets no OIDC token: a fork pull request builds the
-//! report, a trusted job uploads the artifact on its behalf. Either variable
-//! puts the report at upload fidelity: every entry, plus histograms.
+//! `HOTPATH_UPLOAD_PATH` writes the payload to a file instead of posting it,
+//! for a job that gets no OIDC token because it runs untrusted code: a fork
+//! pull request writes the report, a trusted job uploads it. Either variable
+//! builds the report at upload fidelity - every entry, plus histograms.
 //!
 //! Runs synchronously from the guard's `Drop`, after the runtime may already
 //! be gone, so it never spawns tasks. Failures are reported on stderr and never
@@ -60,17 +59,14 @@ fn parse_upload_path(raw: Option<String>) -> Option<PathBuf> {
         .map(crate::output_on::resolve_output_path)
 }
 
-/// Whether this process posts the report itself.
 pub(crate) fn post_enabled() -> bool {
     std::env::var("HOTPATH_UPLOAD")
         .map(|v| is_truthy(&v))
         .unwrap_or(false)
 }
 
-/// Whether the report is built at upload fidelity - every entry, plus
-/// histograms - whether or not this process is the one posting it. Writing the
-/// payload for another job to post must produce the same document an in-process
-/// upload would have sent, so both variables select it.
+/// Either variable: a payload written for another job to post must match what
+/// an in-process upload would have sent.
 pub(crate) fn report_enabled() -> bool {
     post_enabled() || UPLOAD_PATH.is_some()
 }
@@ -121,9 +117,8 @@ pub(crate) static UPLOAD_LIMIT: LazyLock<usize> = LazyLock::new(|| {
         .unwrap_or(0)
 });
 
-/// Writes the exact bytes `upload` would post, so a trusted job can forward
-/// the file with only the run context re-asserted. Failures are reported on
-/// stderr and never affect the exit code, like the upload itself.
+/// Writes the exact bytes `upload` would post, so a trusted job can forward the
+/// file unchanged.
 pub(crate) fn write_payload(path: &Path, report: &JsonReport) {
     let benchmark = match benchmark_name() {
         Ok(name) => name,
@@ -135,7 +130,7 @@ pub(crate) fn write_payload(path: &Path, report: &JsonReport) {
     let result = serde_json::to_vec(report)
         .map_err(|e| format!("failed to serialize report: {e}"))
         .and_then(|body| {
-            if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
             }

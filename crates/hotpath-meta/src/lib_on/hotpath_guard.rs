@@ -1007,8 +1007,6 @@ impl Drop for HotpathGuard {
         if let Some(v) = parse_usize_env("HOTPATH_META_THREADS_LIMIT") {
             self.threads_limit = v;
         }
-        // Upload fidelity, not "this process uploads": a report written for
-        // another job to post must carry the same entries and histograms.
         #[cfg(feature = "hotpath-cloud-meta")]
         let cloud_report = crate::lib_on::cloud::report_enabled();
         #[cfg(not(feature = "hotpath-cloud-meta"))]
