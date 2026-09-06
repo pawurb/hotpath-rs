@@ -25,6 +25,9 @@ test_all:
     cargo run -p test-all-features --example all_noop
     cargo test --features hotpath --test guards -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
+    cargo test --features hotpath --test locations -- --nocapture --test-threads=1
+    cargo test --features hotpath --test time_sampling -- --nocapture --test-threads=1
+    cargo test --features hotpath --test metrics_auth -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_cpu -- --nocapture --test-threads=1
     cargo test --features hotpath --test streams -- --nocapture --test-threads=1
@@ -53,6 +56,7 @@ test_all:
     cargo test --features hotpath --test http_reqwest -- --nocapture --test-threads=1
     cargo test --features hotpath --test http_ureq -- --nocapture --test-threads=1
     cargo test --features hotpath --test server_axum -- --nocapture --test-threads=1
+    cargo test --features hotpath --test server_axum_route_scope -- --nocapture --test-threads=1
     cargo test --features hotpath --test sql_sqlite -- --nocapture --test-threads=1
     cargo test --features hotpath --test sql_pg -- --nocapture --test-threads=1
     cargo test --features hotpath --test diesel -- --nocapture --test-threads=1
