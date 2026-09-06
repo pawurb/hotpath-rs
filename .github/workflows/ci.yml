@@ -6,33 +6,10 @@ on:
   pull_request:
 
 jobs:
-  build:
-    name: test ${{ matrix.rust }}
+  checks:
+    name: checks ${{ matrix.rust }}
     runs-on: ubuntu-latest
-    timeout-minutes: 18
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: hotpath
-          POSTGRES_PASSWORD: hotpath
-          POSTGRES_DB: hotpath
-        ports:
-          - 5439:5432
-        options: >-
-          --health-cmd "pg_isready -U hotpath"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 15
-      redis:
-        image: redis:7
-        ports:
-          - 6390:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 15
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -104,6 +81,33 @@ jobs:
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui
+      - name: Update dependencies
+        run: |
+          cargo update
+      - name: Build all features (updated deps)
+        if: matrix.rust != '1.89'
+        run: |
+          cargo build --all-features
+
+  test-core:
+    name: core tests ${{ matrix.rust }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - 1.89
+          - stable
+          - nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust }}
       - name: Run guards tests
         run: |
           cargo test --features hotpath --test guards -- --nocapture --test-threads=1
@@ -139,15 +143,38 @@ jobs:
       - name: Run streams tests
         run: |
           cargo test --features hotpath --test streams -- --nocapture --test-threads=1
-      - name: Run prometheus tests
+      - name: Run tokio runtime tests
         run: |
-          cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
-          cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
-          cargo test --features hotpath,hotpath-prometheus --test prometheus_subsystems -- --nocapture --test-threads=1
-          cargo test --features hotpath,hotpath-prometheus --test prometheus_flow -- --nocapture --test-threads=1
-          cargo test --features hotpath,hotpath-prometheus --test prometheus_io -- --nocapture --test-threads=1
-          cargo test --features hotpath,hotpath-prometheus --test prometheus_alloc -- --nocapture --test-threads=1
-          cargo test --features hotpath,hotpath-prometheus --test prometheus_system -- --nocapture --test-threads=1
+          cargo test --features hotpath --test tokio_runtime -- --nocapture --test-threads=1
+      - name: Run threads tests
+        run: |
+          cargo test --features hotpath --test threads -- --nocapture --test-threads=1
+      - name: Run futures tests
+        run: |
+          cargo test --features hotpath --test futures -- --nocapture --test-threads=1
+      - name: Run debug tests
+        run: |
+          cargo test --features hotpath --test debug -- --nocapture --test-threads=1
+
+  test-channels-locks:
+    name: channels & locks tests ${{ matrix.rust }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - 1.89
+          - stable
+          - nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust }}
       - name: Run channels crossbeam tests
         run: |
           cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
@@ -199,15 +226,58 @@ jobs:
       - name: Run mutex async_lock tests
         run: |
           cargo test --features hotpath --test mutex_async_lock -- --nocapture --test-threads=1
-      - name: Run tokio runtime tests
+
+  test-integrations:
+    name: integration tests ${{ matrix.rust }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: hotpath
+          POSTGRES_PASSWORD: hotpath
+          POSTGRES_DB: hotpath
+        ports:
+          - 5439:5432
+        options: >-
+          --health-cmd "pg_isready -U hotpath"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+      redis:
+        image: redis:7
+        ports:
+          - 6390:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - 1.89
+          - stable
+          - nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust }}
+      - name: Run prometheus tests
         run: |
-          cargo test --features hotpath --test tokio_runtime -- --nocapture --test-threads=1
-      - name: Run threads tests
-        run: |
-          cargo test --features hotpath --test threads -- --nocapture --test-threads=1
-      - name: Run futures tests
-        run: |
-          cargo test --features hotpath --test futures -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_subsystems -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_flow -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_io -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_alloc -- --nocapture --test-threads=1
+          cargo test --features hotpath,hotpath-prometheus --test prometheus_system -- --nocapture --test-threads=1
       - name: Run io tests
         run: |
           cargo test --features hotpath --test io -- --nocapture --test-threads=1
@@ -249,16 +319,6 @@ jobs:
         if: matrix.rust != '1.89'
         run: |
           cargo test --features hotpath --test toasty_pg -- --nocapture --test-threads=1
-      - name: Run debug tests
-        run: |
-          cargo test --features hotpath --test debug -- --nocapture --test-threads=1
-      - name: Update dependencies
-        run: |
-          cargo update
-      - name: Build all features (updated deps)
-        if: matrix.rust != '1.89'
-        run: |
-          cargo build --all-features
 
   cpu-macos:
     name: cpu tests (macOS)
