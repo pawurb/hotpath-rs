@@ -7,14 +7,19 @@ on:
 
 # Self-benchmark of the profiler: `benchmark_meta` drives every instrumented
 # subsystem a fixed number of times while `hotpath-meta` profiles hotpath's own
-# hot paths, then uploads that report to hotpath.rs using this job's OIDC token.
-# Skipped on fork PRs, which get no token.
+# hot paths.
+#
+# Pushes upload in process with the job's OIDC token. Pull requests cannot: a
+# fork PR gets a read-only token and no `id-token: write` whatever this file
+# asks for, so it writes the report to an artifact and
+# `cloud-meta-benchmark-relay.yml` uploads it from a job that never runs the
+# pull request's code.
 jobs:
-  cloud-meta-benchmark:
-    name: cloud meta benchmark
+  upload:
+    name: cloud meta benchmark (push)
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       id-token: write
@@ -38,3 +43,42 @@ jobs:
             echo "## hotpath.rs meta benchmark"
             echo '```'; grep '^hotpath-meta: upload' run.log; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  report:
+    name: cloud meta benchmark (pull request)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Builds and runs the pull request's code, a fork's build scripts and proc
+    # macros included, so it holds nothing worth stealing.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Measure the contributor's commit, not a merge preview: the merge
+          # ref's sha appears in no field of the relay's `workflow_run` payload,
+          # so the relay could not honestly say which commit was measured.
+          # `head_sha` it does have.
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # With `hotpath-cloud-meta` compiled in, the JSON report is the upload
+      # payload: complete lists, histograms and provenance, no token needed.
+      - name: Run meta benchmark and write report
+        env:
+          HOTPATH_META_BENCHMARK: meta
+          HOTPATH_META_EXCLUDE_WRAPPER: "true"
+          HOTPATH_META_OUTPUT_FORMAT: json
+          HOTPATH_META_OUTPUT_PATH: meta-report.json
+          HOTPATH_OUTPUT_FORMAT: none
+        run: |
+          cargo run -q --release -p test-all-features --example benchmark_meta \
+            --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta
+          test -s meta-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meta-report
+          path: meta-report.json
+          retention-days: 1
+          if-no-files-found: error

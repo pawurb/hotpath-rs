@@ -1,0 +1,154 @@
+name: Cloud meta benchmark relay
+
+on:
+  workflow_run:
+    workflows: ["Cloud meta benchmark"]
+    types: [completed]
+
+# Uploads the report a pull request job produced. That job runs the pull
+# request's code and gets no OIDC token; this one holds the token and never
+# checks out or executes anything from the pull request - it unzips an
+# artifact, rewrites the run context with `jq` and makes one HTTP request.
+#
+# `workflow_run` only ever runs the copy of this file on the default branch, so
+# changes here do nothing until they are merged.
+
+concurrency:
+  # The pull request number is only known after the API lookup below, so the
+  # fork branch identifies the run instead.
+  group: meta-relay-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  relay:
+    name: relay meta benchmark
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read # download the artifact from the benchmark run
+      contents: read
+      id-token: write # mint the token hotpath.rs authenticates
+      pull-requests: read # resolve the pull request from its head sha
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Download the report
+        uses: actions/download-artifact@v4
+        with:
+          name: meta-report
+          path: artifact
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      # `workflow_run.pull_requests` is empty for fork pull requests, so the
+      # head sha is the only handle on which pull request this was.
+      - name: Resolve the pull request
+        id: pr
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" > commit-pulls.json
+          jq --arg sha "$HEAD_SHA" \
+            '[.[] | select(.state == "open" and .head.sha == $sha)]' commit-pulls.json > pulls.json
+          count=$(jq 'length' pulls.json)
+          if [ "$count" -eq 0 ]; then
+            echo "No open pull request for $HEAD_SHA, nothing to upload"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$count" -gt 1 ]; then
+            echo "::error::$count open pull requests share $HEAD_SHA, refusing to guess which one to comment on"
+            exit 1
+          fi
+          {
+            echo "found=true"
+            echo "number=$(jq -r '.[0].number' pulls.json)"
+            echo "base_ref=$(jq -r '.[0].base.ref' pulls.json)"
+            echo "head_ref=$(jq -r '.[0].head.ref' pulls.json)"
+            echo "base_sha=$(jq -r '.[0].base.sha' pulls.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      # The artifact is a document the pull request wrote, so every field that
+      # decides where the report lands is replaced with this job's own context.
+      # Left alone, a fork could claim `event: push` on `refs/heads/main` and
+      # become the baseline every later pull request is compared against, or
+      # aim the comment at somebody else's pull request. Only the measurements
+      # survive: lying in those distorts nothing but its own comment.
+      - name: Rewrite the run context
+        if: steps.pr.outputs.found == 'true'
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
+        run: |
+          set -euo pipefail
+          size=$(stat -c %s artifact/meta-report.json)
+          if [ "$size" -gt 5000000 ]; then
+            echo "::error::report is $size bytes, over the server's 5 MiB limit"
+            exit 1
+          fi
+          jq -e 'type == "object"' artifact/meta-report.json > /dev/null
+
+          ci=$(jq -n \
+            --arg number "$PR_NUMBER" \
+            --arg base_ref "$BASE_REF" \
+            --arg head_ref "$HEAD_REF" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg run_id "$RUN_ID" \
+            --arg workflow "$WORKFLOW" \
+            --arg actor "$ACTOR" \
+            --arg repository_id "$GITHUB_REPOSITORY_ID" \
+            '{
+              provider: "github-actions",
+              event: "pull_request",
+              pull_request: {
+                number: ($number | tonumber),
+                base_ref: $base_ref,
+                head_ref: $head_ref,
+                head_sha: $head_sha
+              },
+              run_id: $run_id,
+              workflow: $workflow,
+              actor: $actor,
+              repository_id: $repository_id
+            }')
+
+          jq \
+            --arg sha "$HEAD_SHA" \
+            --arg ref "refs/pull/$PR_NUMBER/head" \
+            --arg base_sha "$BASE_SHA" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --argjson ci "$ci" \
+            '.meta.git.sha = $sha
+             | .meta.git.ref = $ref
+             | .meta.git.base_sha = $base_sha
+             | .meta.git.repository = $repository
+             | .meta.source_root = ""
+             | .meta.ci = $ci' \
+            artifact/meta-report.json > upload.json
+
+      - name: Upload to hotpath.rs
+        if: steps.pr.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          # `ACTIONS_ID_TOKEN_REQUEST_URL` always carries an `api-version`
+          # query, so the audience is appended with `&`.
+          token=$(curl -sS --fail \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=hotpath.rs" | jq -r .value)
+          curl -sS --fail-with-body -X POST \
+            "https://hotpath.rs/api/v1/reports?benchmark=meta" \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            --data-binary @upload.json > response.json
+          {
+            echo "## hotpath.rs meta benchmark"
+            echo '```'; jq . response.json; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
