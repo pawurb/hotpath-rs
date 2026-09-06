@@ -8,6 +8,35 @@ use std::thread;
 pub(crate) static CONFIGURED_PERCENTILES: std::sync::OnceLock<Vec<f64>> =
     std::sync::OnceLock::new();
 
+/// Upper bound on configured percentiles. Every percentile adds a column to each
+/// report table and a full histogram scan per entry on every metrics request, so
+/// the ceiling is set by what a table can legibly render. Kept in sync with
+/// `MAX_PERCENTILES` in `hotpath-macros-meta`.
+pub(crate) const MAX_PERCENTILES: usize = 10;
+
+/// Sorts and deduplicates the configured percentiles. Panics on values outside
+/// `0..=100` (NaN included) and on more than [`MAX_PERCENTILES`] distinct values.
+pub(crate) fn normalize_percentiles(percentiles: &[f64]) -> Vec<f64> {
+    for &p in percentiles {
+        if !(0.0..=100.0).contains(&p) {
+            panic!("Invalid percentile {p} (must be 0..=100)");
+        }
+    }
+
+    let mut normalized = percentiles.to_vec();
+    normalized.sort_by(|a, b| a.partial_cmp(b).expect("percentiles are not NaN"));
+    normalized.dedup();
+
+    if normalized.len() > MAX_PERCENTILES {
+        panic!(
+            "Too many percentiles: {} (max {MAX_PERCENTILES})",
+            normalized.len()
+        );
+    }
+
+    normalized
+}
+
 pub(crate) fn configured_percentiles() -> Vec<f64> {
     CONFIGURED_PERCENTILES
         .get()
@@ -369,6 +398,8 @@ impl HotpathGuardBuilder {
     }
 
     pub fn build(self) -> HotpathGuard {
+        crate::lib_on::functions::init_focus_filter();
+
         crate::lib_on::sampling::init_time_sampling_rate(&self.time_sampling);
 
         #[cfg(feature = "axum-0-8")]
@@ -381,10 +412,11 @@ impl HotpathGuardBuilder {
         }
 
         let sections_mode = self.resolve_sections_mode();
+        let percentiles = normalize_percentiles(&self.percentiles);
 
         HotpathGuard::new(
             self.caller_name,
-            &self.percentiles,
+            &percentiles,
             self.functions_limit,
             self.format,
             self.output_path,
@@ -1475,7 +1507,9 @@ impl Drop for HotpathGuard {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::lib_on::hotpath_guard::{bounded_key_with_limit, OVERFLOW_ENTRY};
+    use crate::lib_on::hotpath_guard::{
+        bounded_key_with_limit, normalize_percentiles, MAX_PERCENTILES, OVERFLOW_ENTRY,
+    };
 
     #[test]
     fn bounded_key_folds_new_keys_into_overflow_once_full() {
@@ -1506,5 +1540,43 @@ mod tests {
             bounded_key_with_limit(&map, 3, "d".to_string(), overflow),
             OVERFLOW_ENTRY
         );
+    }
+
+    #[test]
+    fn normalize_percentiles_sorts_and_deduplicates() {
+        assert_eq!(
+            normalize_percentiles(&[99.0, 50.0, 95.0, 50.0]),
+            vec![50.0, 95.0, 99.0]
+        );
+        assert_eq!(normalize_percentiles(&[]), Vec::<f64>::new());
+    }
+
+    #[test]
+    fn normalize_percentiles_counts_distinct_values_against_the_limit() {
+        let at_limit: Vec<f64> = (0..MAX_PERCENTILES).map(|i| i as f64).collect();
+        assert_eq!(normalize_percentiles(&at_limit).len(), MAX_PERCENTILES);
+
+        // Duplicates collapse before the limit is applied.
+        let repeated = vec![95.0; MAX_PERCENTILES + 5];
+        assert_eq!(normalize_percentiles(&repeated), vec![95.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Too many percentiles")]
+    fn normalize_percentiles_rejects_too_many() {
+        let values: Vec<f64> = (0..=MAX_PERCENTILES).map(|i| i as f64).collect();
+        normalize_percentiles(&values);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be 0..=100")]
+    fn normalize_percentiles_rejects_out_of_range() {
+        normalize_percentiles(&[50.0, 101.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be 0..=100")]
+    fn normalize_percentiles_rejects_nan() {
+        normalize_percentiles(&[f64::NAN]);
     }
 }

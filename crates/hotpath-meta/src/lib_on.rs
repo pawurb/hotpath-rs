@@ -65,6 +65,8 @@ pub use server::AxumLayer;
 pub use streams::{InstrumentStream, InstrumentStreamLog};
 
 #[cfg(feature = "hotpath-cloud-meta")]
+pub(crate) mod ci_info;
+#[cfg(feature = "hotpath-cloud-meta")]
 pub(crate) mod cloud;
 #[cfg(feature = "hotpath-cloud-meta")]
 pub(crate) mod git_info;

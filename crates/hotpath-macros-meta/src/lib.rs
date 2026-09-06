@@ -18,7 +18,7 @@ mod lib_off;
 ///
 /// # Parameters
 ///
-/// * `percentiles` - Array of percentile values (0.0-100.0) to compute, e.g. `[50, 95, 99.9]`. Default: `[95]`
+/// * `percentiles` - Array of percentile values (0.0-100.0) to compute, e.g. `[50, 95, 99.9]`. Sorted and deduplicated, at most 10. Default: `[95]`
 /// * `format` - Output format: `"table"` (default), `"json"`, `"json-pretty"`, or `"none"`
 /// * `limit` - Global maximum number of items shown in each report section (functions, channels, streams, futures, threads). `0` = unlimited.
 /// * `functions_limit` - Maximum number of functions shown in the report. Overrides `limit` for functions.

@@ -1121,9 +1121,17 @@ pub struct JsonMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_root: Option<String>,
     /// Only present with the `hotpath-cloud-meta` feature; read straight from
-    /// the `.git` directory, no git binary involved.
+    /// the `.git` directory and the CI environment, no git binary involved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git: Option<JsonGitInfo>,
+    /// How the run was produced; only present with the `hotpath-cloud-meta`
+    /// feature and only when a recognized CI provider is detected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci: Option<JsonCiInfo>,
+    /// Benchmark name, so identity travels with the report instead of the
+    /// upload URL. Same validation as `HOTPATH_META_BENCHMARK`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1132,6 +1140,62 @@ pub struct JsonGitInfo {
     /// Full ref name (`refs/heads/main`); `None` on a detached HEAD.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
+    /// The commit this run should be compared against: the pull request's base
+    /// commit in CI, `merge-base(HEAD, <default branch>)` locally. A commit, not
+    /// a forge concept, which is why it lives here and not under `ci`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_sha: Option<String>,
+    /// "owner/name", from the `origin` remote. Informational - the server
+    /// authorizes from the upload credential, never from this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+}
+
+/// How the run was produced. Field names are provider-neutral; `provider` is
+/// the discriminator, so supporting a new CI system is a change here only.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct JsonCiInfo {
+    /// "github-actions", later "gitlab-ci", "buildkite", ...
+    pub provider: String,
+    /// Raw provider event name: "pull_request", "push", "workflow_dispatch",
+    /// ... Deliberately a string, not an enum: an event we do not model must
+    /// round-trip rather than fail the whole report.
+    pub event: String,
+    /// Present exactly when `event` names a pull request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_request: Option<JsonPullRequest>,
+    /// String, not u64: not every provider's run id is numeric.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    /// Forge repository id - `GITHUB_REPOSITORY_ID` on Actions. Numeric and
+    /// rename-proof; the server compares it against its verified claim and
+    /// rejects a mismatch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository_id: Option<String>,
+}
+
+/// Grouped rather than left as fields that happen to appear together: a pull
+/// request always has a number and two branch names, so they are present or
+/// absent as a unit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonPullRequest {
+    pub number: u64,
+    /// Bare branch names ("main", "feature-x"), not refs. `base_ref` is what
+    /// a baseline falls back to when no report exists for `git.base_sha`.
+    pub base_ref: String,
+    pub head_ref: String,
+    /// The commit a default `refs/pull/<n>/merge` checkout merged in, and the
+    /// anchor a trusted job compares against `workflow_run.head_sha` when
+    /// relaying a fork's report. Best-effort, unlike the rest: only the event
+    /// payload names it (`GITHUB_SHA` is the merge commit, and there is no
+    /// `GITHUB_HEAD_SHA`), so requiring it would let an unreadable payload
+    /// drop the whole object and take `base_ref` with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
