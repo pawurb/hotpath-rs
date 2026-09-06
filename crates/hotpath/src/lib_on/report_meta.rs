@@ -206,7 +206,7 @@ mod tests {
 
     #[cfg(feature = "hotpath-cloud")]
     mod cloud {
-        use crate::json::{JsonCiInfo, JsonGitInfo, JsonMeta};
+        use crate::json::{JsonCiInfo, JsonGitInfo, JsonMeta, JsonPullRequest};
         use crate::lib_on::ci_info::CiContext;
         use crate::lib_on::report_meta::merge_git_info;
 
@@ -229,10 +229,12 @@ mod tests {
             CiContext {
                 ci: JsonCiInfo {
                     provider: "github-actions".to_string(),
-                    event: Some("pull_request".to_string()),
-                    pr_number: Some(42),
-                    base_ref: Some("main".to_string()),
-                    head_ref: Some("feature-x".to_string()),
+                    event: "pull_request".to_string(),
+                    pull_request: Some(JsonPullRequest {
+                        number: 42,
+                        base_ref: "main".to_string(),
+                        head_ref: "feature-x".to_string(),
+                    }),
                     ..JsonCiInfo::default()
                 },
                 sha: Some(sha.to_string()),
@@ -364,10 +366,11 @@ mod tests {
             assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
             let ci = back.ci.expect("ci info");
             assert_eq!(ci.provider, "github-actions");
-            assert_eq!(ci.event.as_deref(), Some("pull_request"));
-            assert_eq!(ci.pr_number, Some(42));
-            assert_eq!(ci.base_ref.as_deref(), Some("main"));
-            assert_eq!(ci.head_ref.as_deref(), Some("feature-x"));
+            assert_eq!(ci.event, "pull_request");
+            let pr = ci.pull_request.expect("pull request info");
+            assert_eq!(pr.number, 42);
+            assert_eq!(pr.base_ref, "main");
+            assert_eq!(pr.head_ref, "feature-x");
             assert_eq!(back.benchmark.as_deref(), Some("ci"));
         }
 

@@ -138,10 +138,11 @@ mod tests {
 
         let ci = meta.ci.expect("ci info");
         assert_eq!(ci.provider, "github-actions");
-        assert_eq!(ci.event.as_deref(), Some("pull_request"));
-        assert_eq!(ci.pr_number, Some(42));
-        assert_eq!(ci.base_ref.as_deref(), Some("main"));
-        assert_eq!(ci.head_ref.as_deref(), Some("feature-x"));
+        assert_eq!(ci.event, "pull_request");
+        let pr = ci.pull_request.expect("pull request info");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.base_ref, "main");
+        assert_eq!(pr.head_ref, "feature-x");
         assert_eq!(ci.run_id.as_deref(), Some("987654321"));
         assert_eq!(ci.workflow.as_deref(), Some("benchmarks"));
         assert_eq!(ci.actor.as_deref(), Some("pawurb"));
@@ -176,10 +177,11 @@ mod tests {
 
         // `ci.*` describes the run, not the checkout, so it stays intact.
         let ci = meta.ci.expect("ci info");
-        assert_eq!(ci.event.as_deref(), Some("pull_request"));
-        assert_eq!(ci.pr_number, Some(42));
-        assert_eq!(ci.base_ref.as_deref(), Some("main"));
-        assert_eq!(ci.head_ref.as_deref(), Some("feature-x"));
+        assert_eq!(ci.event, "pull_request");
+        let pr = ci.pull_request.expect("pull request info");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.base_ref, "main");
+        assert_eq!(pr.head_ref, "feature-x");
     }
 
     /// The `git checkout <base sha>` step `docs/src/github_ci.md` documents:
@@ -195,6 +197,7 @@ mod tests {
             ("GITHUB_EVENT_NAME", "pull_request"),
             ("GITHUB_EVENT_PATH", &event_path.to_string_lossy()),
             ("GITHUB_BASE_REF", "main"),
+            ("GITHUB_HEAD_REF", "feature-x"),
         ]);
         let _ = std::fs::remove_file(&event_path);
 
@@ -204,8 +207,34 @@ mod tests {
 
         // The run is still a pull request run whatever it checked out.
         let ci = meta.ci.expect("ci info");
-        assert_eq!(ci.event.as_deref(), Some("pull_request"));
-        assert_eq!(ci.base_ref.as_deref(), Some("main"));
+        assert_eq!(ci.event, "pull_request");
+        assert_eq!(ci.pull_request.expect("pull request info").base_ref, "main");
+    }
+
+    /// The number comes from `GITHUB_REF`, so an unreadable event file costs
+    /// only `base_sha`. Grouping the branch names with the number must not let
+    /// one bad payload take out `base_ref`, the server's fallback for exactly
+    /// the sha that payload was carrying.
+    #[test]
+    fn unreadable_event_file_keeps_the_pull_request_branches() {
+        let head = head_sha();
+        let meta = run_example(&[
+            ("GITHUB_ACTIONS", "true"),
+            ("GITHUB_SHA", &head),
+            ("GITHUB_REF", "refs/pull/42/merge"),
+            ("GITHUB_EVENT_NAME", "pull_request"),
+            ("GITHUB_EVENT_PATH", "/nonexistent/event.json"),
+            ("GITHUB_BASE_REF", "main"),
+            ("GITHUB_HEAD_REF", "feature-x"),
+        ]);
+
+        assert_eq!(meta.git.expect("git info").base_sha, None);
+
+        let ci = meta.ci.expect("ci info");
+        let pr = ci.pull_request.expect("pull request info");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.base_ref, "main");
+        assert_eq!(pr.head_ref, "feature-x");
     }
 
     #[test]
@@ -225,8 +254,7 @@ mod tests {
         assert_eq!(git.base_sha, None);
 
         let ci = meta.ci.expect("ci info");
-        assert_eq!(ci.event.as_deref(), Some("push"));
-        assert_eq!(ci.pr_number, None);
-        assert_eq!(ci.base_ref, None);
+        assert_eq!(ci.event, "push");
+        assert!(ci.pull_request.is_none());
     }
 }
