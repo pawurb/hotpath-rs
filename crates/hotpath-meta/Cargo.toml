@@ -19,33 +19,31 @@ json = ["dep:serde", "dep:serde_json"]
 hotpath-meta = [
   "hotpath-macros-meta/hotpath-meta",
   "dep:arc-swap",
-  "dep:base64",
   "dep:cfg-if",
   "dep:crossbeam-channel",
   "dep:hdrhistogram",
-  "dep:prettytable-rs",
   "dep:quanta",
+  "dep:regex-lite",
   "json",
   "dep:tiny_http",
-  "dep:futures-util",
+  "dep:futures-core",
   "dep:pin-project-lite",
-  "dep:regex",
   "dep:libc",
 ]
-hotpath-alloc-meta = ["dep:tokio"]
+hotpath-alloc-meta = []
 hotpath-cloud-meta = ["dep:ureq", "ureq/rustls", "ureq/json", "hdrhistogram/serialization", "dep:base64"]
 hotpath-cpu-meta = ["dep:object", "dep:rustc-demangle", "dep:flate2"]
-tui = ["json", "dep:eyre", "dep:clap", "dep:prettytable-rs", "dep:reqwest", "dep:crossterm", "dep:ratatui", "dep:base64", "dep:regex", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam"]
+tui = ["json", "dep:eyre", "dep:clap", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "crossbeam", "dep:futures-util"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "tokio/time"]
-futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:futures-channel"]
+futures = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:futures-channel", "dep:futures-util"]
 async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thread", "dep:async-channel"]
 crossbeam = []
 flume = ["dep:flume", "dep:tokio", "tokio/rt-multi-thread"]
 threads = []
 dev-meta = ["dep:time"]
-hotpath-mcp-meta = ["hotpath-meta", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "dep:tokio-util", "dep:schemars"]
+hotpath-mcp-meta = ["hotpath-meta", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "axum/http1", "axum/tokio", "dep:tokio-util", "dep:schemars"]
 hotpath-prometheus-meta = ["hotpath-meta", "dep:prost"]
-"axum-0-8" = ["dep:axum", "dep:tower-layer", "dep:tower-service", "dep:pin-project-lite"]
+"axum-0-8" = ["dep:axum", "axum/matched-path", "dep:tower-layer", "dep:tower-service", "dep:pin-project-lite"]
 
 [dependencies]
 arc-swap = { version = "1.7", optional = true }
@@ -58,32 +56,34 @@ crossterm = { version = "0.29", optional = true }
 eyre = { version = "0.6", optional = true }
 hdrhistogram = { version = "7", default-features = false, optional = true }
 hotpath-macros-meta = { workspace = true }
-prettytable-rs = { version = "0.10", default-features = false, optional = true }
+regex-lite = { version = "0.1", optional = true }
 prost = { version = "0.14", optional = true }
-quanta = { version = "0.12", optional = true }
 ratatui = { version = "0.29", optional = true }
 serde = { version = "1.0.130", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 tiny_http = { version = "0.12", optional = true }
 tokio = { version = "1", features = ["rt"], optional = true }
-ureq = { version = "3", features = ["json"], optional = true }
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
-futures-channel = { version = "0.3", features = ["sink"], optional = true }
+ureq = { version = "3", default-features = false, optional = true }
+reqwest = { version = "0.13", default-features = false, optional = true }
+futures-channel = { version = "0.3.31", features = ["sink"], optional = true }
 async-channel = { version = "2", optional = true }
-futures-util = { version = "0.3", features = ["sink"], optional = true }
+futures-core = { version = "0.3.31", optional = true }
+futures-util = { version = "0.3.31", default-features = false, features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
-regex = { version = "1", optional = true }
 libc = { version = "0.2.150", optional = true }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"], optional = true }
 rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
-axum = { version = "0.8", optional = true }
+axum = { version = "0.8", default-features = false, optional = true }
 tower-layer = { version = "0.3", optional = true }
 tower-service = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", optional = true }
 object = { version = "0.36", default-features = false, features = ["read", "std"], optional = true }
 rustc-demangle = { version = "0.1", optional = true }
 flate2 = { version = "1", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+quanta = { version = "0.12", optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
