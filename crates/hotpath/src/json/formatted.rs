@@ -1178,9 +1178,9 @@ pub struct JsonCiInfo {
     pub repository_id: Option<String>,
 }
 
-/// All three or none: a pull request always has a number and two branch
-/// names, so they are grouped rather than three fields that happen to appear
-/// together.
+/// Grouped rather than left as fields that happen to appear together: a pull
+/// request always has a number and two branch names, so they are present or
+/// absent as a unit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonPullRequest {
     pub number: u64,
@@ -1188,13 +1188,12 @@ pub struct JsonPullRequest {
     /// a baseline falls back to when no report exists for `git.base_sha`.
     pub base_ref: String,
     pub head_ref: String,
-    /// The pull request's head commit - what a default `refs/pull/<n>/merge`
-    /// checkout merged in, and the anchor a trusted job compares against
-    /// `workflow_run.head_sha` when relaying a fork's report. The one
-    /// best-effort field here: every pull request has a head commit, but only
-    /// the event payload names it (`GITHUB_SHA` is the merge commit and there
-    /// is no `GITHUB_HEAD_SHA`), so requiring it would let an unreadable
-    /// payload drop the whole object and take `base_ref` with it.
+    /// The commit a default `refs/pull/<n>/merge` checkout merged in, and the
+    /// anchor a trusted job compares against `workflow_run.head_sha` when
+    /// relaying a fork's report. Best-effort, unlike the rest: only the event
+    /// payload names it (`GITHUB_SHA` is the merge commit, and there is no
+    /// `GITHUB_HEAD_SHA`), so requiring it would let an unreadable payload
+    /// drop the whole object and take `base_ref` with it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_sha: Option<String>,
 }

@@ -72,12 +72,12 @@ mod tests {
             .meta
     }
 
-    /// `name` keeps concurrently running tests off each other's payload: they
-    /// delete the file once their subprocess exits.
     fn write_event_payload(name: &str, base_sha: &str) -> PathBuf {
         write_event(name, base_sha, Some(PR_HEAD_SHA))
     }
 
+    /// `name` keeps concurrently running tests off each other's payload: they
+    /// delete the file once their subprocess exits.
     fn write_event(name: &str, base_sha: &str, head_sha: Option<&str>) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
             "hotpath-cloud-meta-event-{}-{name}.json",
@@ -248,9 +248,8 @@ mod tests {
         assert_eq!(pr.head_sha, None);
     }
 
-    /// `head_sha` is the only field in the group with no environment
-    /// fallback, so a payload that simply omits the head must still leave the
-    /// rest of it intact.
+    /// `head_sha` is the one field in the group with no environment fallback,
+    /// so a payload that omits the head must still leave the rest of it.
     #[test]
     fn event_payload_without_head_keeps_the_rest() {
         let head = head_sha();

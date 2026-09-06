@@ -211,9 +211,9 @@ mod tests {
         use crate::lib_on::report_meta::merge_git_info;
 
         const LOCAL_SHA: &str = "1111111111111111111111111111111111111111";
-        const HEAD_SHA: &str = "4444444444444444444444444444444444444444";
         const CI_SHA: &str = "2222222222222222222222222222222222222222";
         const BASE_SHA: &str = "3333333333333333333333333333333333333333";
+        const HEAD_SHA: &str = "4444444444444444444444444444444444444444";
 
         fn detached_local(sha: &str) -> JsonGitInfo {
             JsonGitInfo {

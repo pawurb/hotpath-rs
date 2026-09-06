@@ -162,8 +162,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// `head_sha` has no environment fallback, so a payload without one is the
-    /// case that must still leave the rest of the object intact.
     #[test]
     fn payload_without_head_still_parses() {
         let path = write_event(
