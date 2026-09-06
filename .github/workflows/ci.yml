@@ -258,6 +258,14 @@ jobs:
           chmod +x ~/.cargo/bin/samply
           sudo chown root:wheel ~/.cargo/bin/samply
           sudo chmod u+s ~/.cargo/bin/samply
+      - name: Build hotpath-samply wrapper
+        run: |
+          cargo build -p hotpath --bin hotpath-samply --features "hotpath,hotpath-cpu"
+      - name: Run functions_cpu tests
+        env:
+          HOTPATH_SAMPLY_WRAPPER_BIN: ${{ github.workspace }}/target/debug/hotpath-samply
+        run: |
+          cargo test --features "hotpath,hotpath-cpu" --test functions_cpu -- --nocapture --test-threads=1
 
   cpu-linux:
     name: cpu tests (Linux)
