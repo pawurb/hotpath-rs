@@ -1487,8 +1487,6 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
 
     let mut header = vec![
         Cell::header("Thread"),
-        Cell::header("Status"),
-        Cell::header("CPU%"),
         Cell::header("Max%"),
         Cell::header("Avg%"),
     ];
@@ -1502,13 +1500,10 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
     table.add_row(header);
 
     for thread in &threads_json.data {
-        let cpu_pct = thread.cpu_percent.as_deref().unwrap_or("-");
         let cpu_pct_max = thread.cpu_percent_max.as_deref().unwrap_or("-");
         let cpu_pct_avg = thread.cpu_percent_avg.as_deref().unwrap_or("-");
         let mut row = vec![
             Cell::new(&thread.name),
-            Cell::new(&thread.status),
-            Cell::new(cpu_pct),
             Cell::new(cpu_pct_max),
             Cell::new(cpu_pct_avg),
         ];
