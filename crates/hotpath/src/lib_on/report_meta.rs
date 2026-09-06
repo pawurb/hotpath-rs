@@ -211,6 +211,7 @@ mod tests {
         use crate::lib_on::report_meta::merge_git_info;
 
         const LOCAL_SHA: &str = "1111111111111111111111111111111111111111";
+        const HEAD_SHA: &str = "4444444444444444444444444444444444444444";
         const CI_SHA: &str = "2222222222222222222222222222222222222222";
         const BASE_SHA: &str = "3333333333333333333333333333333333333333";
 
@@ -234,6 +235,7 @@ mod tests {
                         number: 42,
                         base_ref: "main".to_string(),
                         head_ref: "feature-x".to_string(),
+                        head_sha: Some(HEAD_SHA.to_string()),
                     }),
                     ..JsonCiInfo::default()
                 },
@@ -371,6 +373,7 @@ mod tests {
             assert_eq!(pr.number, 42);
             assert_eq!(pr.base_ref, "main");
             assert_eq!(pr.head_ref, "feature-x");
+            assert_eq!(pr.head_sha.as_deref(), Some(HEAD_SHA));
             assert_eq!(back.benchmark.as_deref(), Some("ci"));
         }
 

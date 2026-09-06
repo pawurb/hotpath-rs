@@ -67,6 +67,9 @@ fn pull_request(git_ref: Option<&str>, payload: Option<&PullRequest>) -> Option<
             .or_else(|| payload.and_then(|pr| pr.number))?,
         base_ref: env("GITHUB_BASE_REF")?,
         head_ref: env("GITHUB_HEAD_REF")?,
+        head_sha: payload
+            .and_then(|pr| pr.head.as_ref())
+            .and_then(|head| head.sha.clone()),
     })
 }
 
@@ -87,11 +90,12 @@ struct EventPayload {
 #[derive(Deserialize)]
 struct PullRequest {
     number: Option<u64>,
-    base: Option<EventBase>,
+    base: Option<EventCommit>,
+    head: Option<EventCommit>,
 }
 
 #[derive(Deserialize)]
-struct EventBase {
+struct EventCommit {
     sha: Option<String>,
 }
 
@@ -151,6 +155,24 @@ mod tests {
             pr.base.and_then(|b| b.sha).as_deref(),
             Some("2222222222222222222222222222222222222222")
         );
+        assert_eq!(
+            pr.head.and_then(|h| h.sha).as_deref(),
+            Some("1111111111111111111111111111111111111111")
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// `head_sha` has no environment fallback, so a payload without one is the
+    /// case that must still leave the rest of the object intact.
+    #[test]
+    fn payload_without_head_still_parses() {
+        let path = write_event(
+            "no_head",
+            r#"{"pull_request":{"number":42,"base":{"sha":"2222222222222222222222222222222222222222"}}}"#,
+        );
+        let pr = read_pull_request(&path).expect("pull_request parsed");
+        assert_eq!(pr.number, Some(42));
+        assert!(pr.head.is_none());
         let _ = std::fs::remove_file(&path);
     }
 
