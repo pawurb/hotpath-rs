@@ -71,15 +71,17 @@ mod tests {
             .meta
     }
 
-    fn write_event_payload() -> PathBuf {
+    /// `name` keeps concurrently running tests off each other's payload: they
+    /// delete the file once their subprocess exits.
+    fn write_event_payload(name: &str, base_sha: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "hotpath-cloud-meta-event-{}.json",
+            "hotpath-cloud-meta-event-{}-{name}.json",
             std::process::id()
         ));
         std::fs::write(
             &path,
             format!(
-                r#"{{"action":"synchronize","pull_request":{{"number":42,"base":{{"ref":"main","sha":"{BASE_SHA}"}}}}}}"#
+                r#"{{"action":"synchronize","pull_request":{{"number":42,"base":{{"ref":"main","sha":"{base_sha}"}}}}}}"#
             ),
         )
         .expect("event payload written");
@@ -110,7 +112,7 @@ mod tests {
     #[test]
     fn meta_in_github_actions_describes_the_run() {
         let head = head_sha();
-        let event_path = write_event_payload();
+        let event_path = write_event_payload("default-checkout", BASE_SHA);
         let meta = run_example(&[
             ("GITHUB_ACTIONS", "true"),
             ("GITHUB_SHA", &head),
@@ -148,12 +150,12 @@ mod tests {
         assert_eq!(meta.benchmark.as_deref(), Some("timing-linux"));
     }
 
-    /// A job that checked out `pull_request.head.sha`, or the base commit as
-    /// `docs/src/github_ci.md` documents: `GITHUB_SHA` still names the merge
-    /// commit, which is not what ran, so nothing derived from it survives.
+    /// A job that checked out `pull_request.head.sha` to avoid benchmarking
+    /// the synthetic merge commit: `GITHUB_SHA` names a commit that never ran,
+    /// so its ref goes, but the event's base is still the head's baseline.
     #[test]
-    fn checkout_of_another_commit_wins_over_the_environment() {
-        let event_path = write_event_payload();
+    fn head_checkout_wins_over_the_environment() {
+        let event_path = write_event_payload("head-checkout", BASE_SHA);
         let meta = run_example(&[
             ("GITHUB_ACTIONS", "true"),
             ("GITHUB_SHA", OTHER_SHA),
@@ -169,7 +171,7 @@ mod tests {
         let git = meta.git.expect("git info");
         assert_eq!(git.sha, head_sha());
         assert_ne!(git.r#ref.as_deref(), Some("refs/pull/42/merge"));
-        assert_eq!(git.base_sha, None);
+        assert_eq!(git.base_sha.as_deref(), Some(BASE_SHA));
         assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
 
         // `ci.*` describes the run, not the checkout, so it stays intact.
@@ -178,6 +180,32 @@ mod tests {
         assert_eq!(ci.pr_number, Some(42));
         assert_eq!(ci.base_ref.as_deref(), Some("main"));
         assert_eq!(ci.head_ref.as_deref(), Some("feature-x"));
+    }
+
+    /// The `git checkout <base sha>` step `docs/src/github_ci.md` documents:
+    /// this run measures the base itself, so it has no baseline of its own.
+    #[test]
+    fn base_checkout_carries_no_base_sha() {
+        let head = head_sha();
+        let event_path = write_event_payload("base-checkout", &head);
+        let meta = run_example(&[
+            ("GITHUB_ACTIONS", "true"),
+            ("GITHUB_SHA", OTHER_SHA),
+            ("GITHUB_REF", "refs/pull/42/merge"),
+            ("GITHUB_EVENT_NAME", "pull_request"),
+            ("GITHUB_EVENT_PATH", &event_path.to_string_lossy()),
+            ("GITHUB_BASE_REF", "main"),
+        ]);
+        let _ = std::fs::remove_file(&event_path);
+
+        let git = meta.git.expect("git info");
+        assert_eq!(git.sha, head);
+        assert_eq!(git.base_sha, None);
+
+        // The run is still a pull request run whatever it checked out.
+        let ci = meta.ci.expect("ci info");
+        assert_eq!(ci.event.as_deref(), Some("pull_request"));
+        assert_eq!(ci.base_ref.as_deref(), Some("main"));
     }
 
     #[test]
