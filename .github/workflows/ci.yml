@@ -80,6 +80,9 @@ jobs:
       - name: Run lib tests
         run: |
           cargo test --lib --features hotpath
+      - name: Run lib tests (all profiling features)
+        run: |
+          cargo test --lib --features hotpath,hotpath-alloc,hotpath-cloud,hotpath-cpu,hotpath-prometheus,hotpath-mcp
       - name: Check TUI build
         run: |
           cargo check -p hotpath --bin hotpath --features=tui
@@ -113,6 +116,12 @@ jobs:
       - name: Run locations tests
         run: |
           cargo test --features hotpath --test locations -- --nocapture --test-threads=1
+      - name: Run time sampling tests
+        run: |
+          cargo test --features hotpath --test time_sampling -- --nocapture --test-threads=1
+      - name: Run metrics auth tests
+        run: |
+          cargo test --features hotpath --test metrics_auth -- --nocapture --test-threads=1
       - name: Run cloud_histograms tests
         run: |
           cargo test --lib --features hotpath,hotpath-cloud
@@ -157,6 +166,9 @@ jobs:
       - name: Run channels async tests
         run: |
           cargo test --features hotpath --test channels_asc -- --nocapture --test-threads=1
+      - name: Run channels async wrap tests
+        run: |
+          cargo test --features hotpath --test channels_asc_wrap -- --nocapture --test-threads=1
       - name: Run channels std tests
         run: |
           cargo test --features hotpath --test channels_std -- --nocapture --test-threads=1
@@ -181,6 +193,12 @@ jobs:
       - name: Run mutex tokio tests
         run: |
           cargo test --features hotpath --test mutex_tokio -- --nocapture --test-threads=1
+      - name: Run mutex parking_lot tests
+        run: |
+          cargo test --features hotpath --test mutex_parking_lot -- --nocapture --test-threads=1
+      - name: Run mutex async_lock tests
+        run: |
+          cargo test --features hotpath --test mutex_async_lock -- --nocapture --test-threads=1
       - name: Run tokio runtime tests
         run: |
           cargo test --features hotpath --test tokio_runtime -- --nocapture --test-threads=1
@@ -205,6 +223,9 @@ jobs:
       - name: Run server axum tests
         run: |
           cargo test --features hotpath --test server_axum -- --nocapture --test-threads=1
+      - name: Run server axum route scope tests
+        run: |
+          cargo test --features hotpath --test server_axum_route_scope -- --nocapture --test-threads=1
       - name: Run sql sqlite tests
         # sqlx 0.9 (test-sqlx-09) has MSRV 1.94
         if: matrix.rust != '1.89'
