@@ -39,8 +39,6 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
     let _ = writeln!(writer);
 }
 
-/// Prints the `HOTPATH_USER_METADATA` / builder key-value pairs as a small
-/// two-column table right under the report header. Skipped when empty.
 pub(crate) fn write_user_metadata_table<W: Write>(
     writer: &mut W,
     metadata: &BTreeMap<String, String>,

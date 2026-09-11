@@ -26,12 +26,16 @@ mod tests {
         cmd.output().expect("Failed to execute command")
     }
 
-    fn parse_report(output: &Output) -> JsonReport {
+    fn assert_success(output: &Output) {
         assert!(
             output.status.success(),
             "Process did not exit successfully.\n\nstderr:\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    fn parse_report(output: &Output) -> JsonReport {
+        assert_success(output);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let json_start = stdout.find('{').expect("No JSON report in output");
         serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -76,11 +80,7 @@ mod tests {
     #[test]
     fn table_output_renders_metadata_table() {
         let output = run_example("table", Some("commit=abc123"));
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        assert_success(&output);
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
             stdout.contains("user_metadata - Custom report metadata."),
@@ -91,10 +91,10 @@ mod tests {
             ("source", "builder"),
             ("team", "core"),
         ] {
-            let row = stdout
-                .lines()
-                .find(|l| l.contains(key) && l.contains(value));
-            assert!(row.is_some(), "missing row {key}={value}:\n{stdout}");
+            assert!(
+                stdout.lines().any(|l| l.contains(key) && l.contains(value)),
+                "missing row {key}={value}:\n{stdout}"
+            );
         }
     }
 

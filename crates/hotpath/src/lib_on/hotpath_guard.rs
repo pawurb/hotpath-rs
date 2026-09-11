@@ -82,8 +82,7 @@ pub(crate) fn parse_user_metadata(raw: &str) -> Result<BTreeMap<String, String>,
 }
 
 /// Merges `HOTPATH_USER_METADATA` over the builder-supplied pairs; env values
-/// win per key. Panics on an unparsable env value, consistent with the other
-/// build-time validation.
+/// win per key. Panics on an unparsable env value.
 fn resolve_user_metadata(builder: HashMap<String, String>) -> BTreeMap<String, String> {
     let mut metadata: BTreeMap<String, String> = builder.into_iter().collect();
     let raw = match std::env::var("HOTPATH_USER_METADATA") {
