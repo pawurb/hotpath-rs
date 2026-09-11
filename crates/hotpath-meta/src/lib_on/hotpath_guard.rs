@@ -1,6 +1,6 @@
 use crate::instant::Instant;
 use crossbeam_channel::{bounded, unbounded, Select};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::thread;
@@ -42,6 +42,54 @@ pub(crate) fn configured_percentiles() -> Vec<f64> {
         .get()
         .cloned()
         .unwrap_or_else(|| vec![95.0])
+}
+
+pub(crate) fn parse_user_metadata(raw: &str) -> Result<BTreeMap<String, String>, String> {
+    let mut metadata = BTreeMap::new();
+    if raw.trim().is_empty() {
+        return Ok(metadata);
+    }
+
+    for segment in raw.split(',') {
+        let segment = segment.trim();
+        let Some((key, value)) = segment.split_once('=') else {
+            return Err(format!(
+                "invalid HOTPATH_META_USER_METADATA: expected 'key=value', got '{segment}'"
+            ));
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(format!(
+                "invalid HOTPATH_META_USER_METADATA: empty key in '{segment}'"
+            ));
+        }
+        if metadata
+            .insert(key.to_string(), value.trim().to_string())
+            .is_some()
+        {
+            return Err(format!(
+                "invalid HOTPATH_META_USER_METADATA: duplicate key '{key}'"
+            ));
+        }
+    }
+
+    Ok(metadata)
+}
+
+fn resolve_user_metadata(builder: HashMap<String, String>) -> BTreeMap<String, String> {
+    let mut metadata: BTreeMap<String, String> = builder.into_iter().collect();
+    let raw = match std::env::var("HOTPATH_META_USER_METADATA") {
+        Ok(raw) => raw,
+        Err(std::env::VarError::NotPresent) => return metadata,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            panic!("invalid HOTPATH_META_USER_METADATA: value is not valid UTF-8")
+        }
+    };
+    match parse_user_metadata(&raw) {
+        Ok(from_env) => metadata.extend(from_env),
+        Err(err) => panic!("{err}"),
+    }
+    metadata
 }
 
 const DEFAULT_DRAIN_INTERVAL_MS: u64 = 50;
@@ -121,7 +169,7 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{FunctionLog, FunctionLogsList};
 use crate::output_on::{
     display_functions_table_to, display_no_measurements_message_to, resolve_output_path,
-    write_report_header, OutputDestination,
+    write_report_header, write_user_metadata_table, OutputDestination,
 };
 
 #[cfg(feature = "hotpath-prometheus-meta")]
@@ -172,6 +220,7 @@ pub struct HotpathGuardBuilder {
     sections_mode: Option<SectionsMode>,
     before_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
     time_sampling: crate::lib_on::sampling::TimeSamplingConfig,
+    user_metadata: HashMap<String, String>,
 }
 
 impl HotpathGuardBuilder {
@@ -197,6 +246,7 @@ impl HotpathGuardBuilder {
             sections_mode: None,
             before_shutdown: None,
             time_sampling: crate::lib_on::sampling::TimeSamplingConfig::default(),
+            user_metadata: HashMap::new(),
         }
     }
 
@@ -389,6 +439,11 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn user_metadata(mut self, metadata: HashMap<String, String>) -> Self {
+        self.user_metadata = metadata;
+        self
+    }
+
     fn resolve_sections_mode(&self) -> SectionsMode {
         if let Some(env_mode) = SectionsMode::from_env() {
             return env_mode;
@@ -413,6 +468,7 @@ impl HotpathGuardBuilder {
 
         let sections_mode = self.resolve_sections_mode();
         let percentiles = normalize_percentiles(&self.percentiles);
+        let user_metadata = resolve_user_metadata(self.user_metadata);
 
         HotpathGuard::new(
             self.caller_name,
@@ -432,6 +488,7 @@ impl HotpathGuardBuilder {
             self.server_limit,
             self.io_limit,
             self.threads_limit,
+            user_metadata,
         )
     }
 
@@ -475,6 +532,7 @@ pub struct HotpathGuard {
     server_limit: usize,
     io_limit: usize,
     threads_limit: usize,
+    user_metadata: BTreeMap<String, String>,
 }
 
 impl HotpathGuard {
@@ -497,6 +555,7 @@ impl HotpathGuard {
         server_limit: usize,
         io_limit: usize,
         threads_limit: usize,
+        user_metadata: BTreeMap<String, String>,
     ) -> Self {
         let _suspend = crate::lib_on::SuspendAllocTracking::new();
 
@@ -796,6 +855,7 @@ impl HotpathGuard {
             server_limit,
             io_limit,
             threads_limit,
+            user_metadata,
         }
     }
 }
@@ -1040,6 +1100,7 @@ impl Drop for HotpathGuard {
                 label: std::env::var("HOTPATH_META_REPORT_LABEL")
                     .ok()
                     .filter(|s| !s.is_empty()),
+                user_metadata: (!self.user_metadata.is_empty()).then(|| self.user_metadata.clone()),
                 time_sampling: crate::lib_on::sampling::active_rates(),
                 ..Default::default()
             };
@@ -1264,6 +1325,7 @@ impl Drop for HotpathGuard {
                 if let Some(err) = crate::metrics_server::get_metrics_server_error() {
                     let _ = writeln!(writer, "[hotpath-meta - error] {}", err);
                 }
+                write_user_metadata_table(&mut writer, &self.user_metadata);
             }
 
             for section in &sections {
@@ -1519,8 +1581,36 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::lib_on::hotpath_guard::{
-        bounded_key_with_limit, normalize_percentiles, MAX_PERCENTILES, OVERFLOW_ENTRY,
+        bounded_key_with_limit, normalize_percentiles, parse_user_metadata, MAX_PERCENTILES,
+        OVERFLOW_ENTRY,
     };
+
+    #[test]
+    fn user_metadata_parses_pairs() {
+        let parsed = parse_user_metadata(" env = ci , commit=abc=def,empty=").unwrap();
+        let pairs: Vec<(&str, &str)> = parsed
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![("commit", "abc=def"), ("empty", ""), ("env", "ci")]
+        );
+        assert!(parse_user_metadata("").unwrap().is_empty());
+        assert!(parse_user_metadata("   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn user_metadata_rejects_malformed_input() {
+        let missing = parse_user_metadata("env").unwrap_err();
+        assert!(missing.contains("expected 'key=value'"), "{missing}");
+        let trailing = parse_user_metadata("env=ci,").unwrap_err();
+        assert!(trailing.contains("got ''"), "{trailing}");
+        let empty_key = parse_user_metadata("=ci").unwrap_err();
+        assert!(empty_key.contains("empty key"), "{empty_key}");
+        let duplicate = parse_user_metadata("env=ci,env=local").unwrap_err();
+        assert!(duplicate.contains("duplicate key 'env'"), "{duplicate}");
+    }
 
     #[test]
     fn bounded_key_folds_new_keys_into_overflow_once_full() {

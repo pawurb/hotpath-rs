@@ -29,6 +29,7 @@ jobs:
         env:
           HOTPATH_META_UPLOAD: "1"
           HOTPATH_META_BENCHMARK: meta
+          HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_META_EXCLUDE_WRAPPER: "true"
           HOTPATH_META_OUTPUT_FORMAT: none
           HOTPATH_OUTPUT_FORMAT: none
@@ -58,6 +59,7 @@ jobs:
       - name: Run meta benchmark and write report
         env:
           HOTPATH_META_BENCHMARK: meta
+          HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_META_EXCLUDE_WRAPPER: "true"
           HOTPATH_META_OUTPUT_FORMAT: json
           HOTPATH_META_OUTPUT_PATH: meta-report.json

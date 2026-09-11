@@ -343,6 +343,10 @@ impl HotpathGuardBuilder {
         self
     }
 
+    pub fn user_metadata(self, _metadata: std::collections::HashMap<String, String>) -> Self {
+        self
+    }
+
     pub fn build(self) -> HotpathGuard {
         HotpathGuard
     }
