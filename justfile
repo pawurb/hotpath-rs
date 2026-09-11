@@ -24,6 +24,7 @@ compare_meta before after:
 test_all:
     cargo run -p test-all-features --example all_noop
     cargo test --features hotpath --test guards -- --nocapture --test-threads=1
+    cargo test --features hotpath --test user_metadata -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
     cargo test --features hotpath --test locations -- --nocapture --test-threads=1
     cargo test --features hotpath --test time_sampling -- --nocapture --test-threads=1

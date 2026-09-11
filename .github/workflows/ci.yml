@@ -111,6 +111,9 @@ jobs:
       - name: Run guards tests
         run: |
           cargo test --features hotpath --test guards -- --nocapture --test-threads=1
+      - name: Run user_metadata tests
+        run: |
+          cargo test --features hotpath --test user_metadata -- --nocapture --test-threads=1
       - name: Run functions_timing tests
         run: |
           cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
