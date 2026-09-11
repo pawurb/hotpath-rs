@@ -4,7 +4,7 @@
 //! suitable for both LLM-based tools (MCP) and terminal UI display.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::json::{
     ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, HttpLogs, SqlLogs, StreamLogs,
@@ -1239,6 +1239,8 @@ pub struct JsonReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_metadata: Option<BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_sampling: Option<HashMap<String, f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub functions_timing: Option<JsonFunctionsList>,
@@ -1277,6 +1279,7 @@ impl Default for JsonReport {
             version: env!("CARGO_PKG_VERSION").to_string(),
             meta: JsonMeta::default(),
             label: None,
+            user_metadata: None,
             time_sampling: None,
             functions_timing: None,
             functions_alloc: None,
