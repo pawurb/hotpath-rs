@@ -5,6 +5,7 @@ use crate::output::{
 };
 use crate::shared::Section;
 use crate::table::{Cell, Table};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -35,6 +36,28 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
         "[hotpath] {:.2?} | {}{}{}",
         elapsed, sections_str, label_str, sampling_str,
     );
+    let _ = writeln!(writer);
+}
+
+/// Prints the `HOTPATH_USER_METADATA` / builder key-value pairs as a small
+/// two-column table right under the report header. Skipped when empty.
+pub(crate) fn write_user_metadata_table<W: Write>(
+    writer: &mut W,
+    metadata: &BTreeMap<String, String>,
+) {
+    if metadata.is_empty() {
+        return;
+    }
+
+    let mut table = Table::new();
+    table.add_row(vec![Cell::header("Key"), Cell::header("Value")]);
+    for (key, value) in metadata {
+        table.add_row(vec![Cell::new(key), Cell::new(value)]);
+    }
+
+    write_section_header(writer, "user_metadata", "Custom report metadata.");
+    let _ = writeln!(writer);
+    let _ = table.print(writer, use_colors());
     let _ = writeln!(writer);
 }
 

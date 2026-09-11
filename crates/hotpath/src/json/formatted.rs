@@ -4,7 +4,7 @@
 //! suitable for both LLM-based tools (MCP) and terminal UI display.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::json::{
     ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, HttpLogs, SqlLogs, StreamLogs,
@@ -1238,6 +1238,11 @@ pub struct JsonReport {
     pub meta: JsonMeta,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Free-form key/value pairs supplied by the profiled program via
+    /// `HotpathGuardBuilder::user_metadata` and/or `HOTPATH_USER_METADATA`.
+    /// Present only when at least one pair was configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_metadata: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_sampling: Option<HashMap<String, f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1277,6 +1282,7 @@ impl Default for JsonReport {
             version: env!("CARGO_PKG_VERSION").to_string(),
             meta: JsonMeta::default(),
             label: None,
+            user_metadata: None,
             time_sampling: None,
             functions_timing: None,
             functions_alloc: None,
