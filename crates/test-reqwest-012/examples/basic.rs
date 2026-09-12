@@ -44,7 +44,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let resp = client
             .get(format!("http://127.0.0.1:{port}/users/{id}?verbose=true"))
             .send()
-            .await?;
+            .await
+            // Pins the error alias the same way: reqwest-middleware's Error with
+            // `hotpath` enabled, raw reqwest::Error otherwise.
+            .map_err(|e: hotpath::wrap::reqwest::Error| e)?;
         assert_eq!(resp.status().as_u16(), 200);
     }
 

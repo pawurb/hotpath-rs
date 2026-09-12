@@ -32,7 +32,26 @@ struct App {
 }
 ```
 
-With `hotpath` enabled the type is `ClientWithMiddleware`; disabled the alias is the raw `reqwest::Client`. 
+With `hotpath` enabled the type is `ClientWithMiddleware`; disabled the alias is the raw `reqwest::Client`.
+
+The error type changes with it: `send()` on the wrapped client fails with reqwest-middleware's `Error` (an enum: `Reqwest(reqwest::Error)` or `Middleware(anyhow::Error)`), not with `reqwest::Error`. Code that only propagates with `?` into a `Box<dyn Error>` / `anyhow` / `eyre` result compiles unchanged, but code that names the type - a `map_err(reqwest::Error::without_url)`, a `fn(reqwest::Error)` helper - compiles in only one of the two configurations. Spell it through `hotpath::wrap::reqwest::Error`, which resolves the same way as `Client`, and match on the enum where the raw error is needed:
+
+```rust
+#[cfg(feature = "hotpath")]
+fn strip_url(e: hotpath::wrap::reqwest::Error) -> anyhow::Error {
+    match e {
+        hotpath::wrap::reqwest::Error::Reqwest(e) => e.without_url().into(),
+        hotpath::wrap::reqwest::Error::Middleware(e) => e,
+    }
+}
+
+#[cfg(not(feature = "hotpath"))]
+fn strip_url(e: hotpath::wrap::reqwest::Error) -> anyhow::Error {
+    e.without_url().into()
+}
+```
+
+hotpath's own middleware never fails on its own (it only times the request), so `Middleware` is unreachable unless you stack further middleware.
 
 ### Labels
 
