@@ -170,21 +170,20 @@ impl Level {
 /// One line at one level, plus the step summary block.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Rendered {
-    pub(crate) level: Level,
+    level: Level,
     /// Printed to stderr as `hotpath: <message>` and, in Actions, once more
     /// as `::<level>::hotpath: <message>`.
-    pub(crate) message: String,
+    message: String,
     /// Markdown appended to `GITHUB_STEP_SUMMARY`.
-    pub(crate) summary: String,
+    summary: String,
 }
 
-/// The bits of the process environment that decide how an outcome is shown.
 pub(crate) struct Env {
     /// `GITHUB_ACTIONS` is set: emit workflow commands.
-    pub(crate) actions: bool,
-    pub(crate) strict: bool,
+    actions: bool,
+    strict: bool,
     /// `GITHUB_STEP_SUMMARY`, when set and non-empty.
-    pub(crate) summary: Option<PathBuf>,
+    summary: Option<PathBuf>,
 }
 
 impl Env {
@@ -302,9 +301,8 @@ pub(crate) fn post_report(base_url: &str, token: &str, benchmark: &str, body: &[
     interpret(status, request_id, body)
 }
 
-/// Status plus body to an outcome. Pure, so the response shapes are testable
-/// without a server: a 2xx parses as `UploadCreated`, anything else tries
-/// `UploadError` and falls back to the raw body.
+/// A 2xx parses as `UploadCreated`, anything else tries `UploadError` and
+/// falls back to the raw body.
 pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -> Outcome {
     if (200..300).contains(&status) {
         return match serde_json::from_str::<UploadCreated>(&body) {
@@ -329,8 +327,7 @@ pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -
     })
 }
 
-/// One message at one level. Pure: `env` and `benchmark` are the only inputs
-/// besides the outcome.
+/// One message at one level.
 pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> Rendered {
     let (level, message, json) = match outcome {
         Outcome::Skipped(reason) => (Level::Notice, format!("upload skipped: {reason}"), None),
@@ -370,12 +367,9 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
         }
     };
 
-    let heading = match (outcome, benchmark) {
-        (Outcome::Uploaded { created, .. }, _) => {
-            format!("hotpath.rs {} benchmark", created.benchmark)
-        }
-        (_, Some(name)) => format!("hotpath.rs {name} benchmark"),
-        (_, None) => "hotpath.rs upload".to_string(),
+    let heading = match benchmark {
+        Some(name) => format!("hotpath.rs {name} benchmark"),
+        None => "hotpath.rs upload".to_string(),
     };
     let mut summary = format!("## {heading}\n\n{}: hotpath: {message}\n", level.as_str());
     if let Some(json) = json {
@@ -463,10 +457,9 @@ pub(crate) fn escape_annotation(message: &str) -> String {
         .replace('\n', "%0A")
 }
 
-/// Prints the rendered outcome. Workflow commands are read from stdout, the
-/// human line goes to stderr as before. Exits 1 on `Level::Error`, which only
-/// strict mode produces: this runs from `HotpathGuard::drop` and has no other
-/// way to fail the job, so remaining destructors are skipped by design.
+/// Workflow commands are read from stdout, the human line goes to stderr as
+/// before. Exits 1 on `Level::Error` (strict mode only): this runs from
+/// `HotpathGuard::drop` and has no other way to fail the job.
 fn emit(rendered: Rendered, env: &Env) {
     eprintln!("hotpath: {}", rendered.message);
     if env.actions {
@@ -488,7 +481,6 @@ fn emit(rendered: Rendered, env: &Env) {
     }
     if rendered.level == Level::Error {
         let _ = std::io::stdout().flush();
-        let _ = std::io::stderr().flush();
         std::process::exit(1);
     }
 }
