@@ -1226,6 +1226,11 @@ impl Drop for HotpathGuard {
             }
         };
 
+        // A failed upload under strict mode fails the process, but only after
+        // the local report below is written: the run's own results must not
+        // be lost to a cloud-side problem.
+        #[cfg(feature = "hotpath-cloud")]
+        let mut upload_failed = false;
         if is_json || upload_enabled {
             let mut report = JsonReport {
                 meta: crate::lib_on::report_meta::build_meta(),
@@ -1444,7 +1449,7 @@ impl Drop for HotpathGuard {
 
             #[cfg(feature = "hotpath-cloud")]
             if upload_enabled {
-                crate::lib_on::cloud::upload(&report);
+                upload_failed = crate::lib_on::cloud::upload(&report);
             }
         }
 
@@ -1708,6 +1713,13 @@ impl Drop for HotpathGuard {
 
         if let Some(arc_swap) = FUNCTIONS_STATE.get() {
             arc_swap.store(None);
+        }
+
+        #[cfg(feature = "hotpath-cloud")]
+        if upload_failed {
+            drop(writer);
+            let _ = std::io::stdout().flush();
+            std::process::exit(1);
         }
     }
 }
