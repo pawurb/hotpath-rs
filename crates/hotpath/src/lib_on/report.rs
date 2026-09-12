@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -48,6 +49,11 @@ fn print_table(table: &Table, writer: &mut dyn Write) {
     let _ = table.print(writer, crate::output_on::use_colors());
 }
 
+/// Stops the worker and moves its entries out for the final report. Every
+/// `shutdown_*` below has the same shape: once the completion signal arrives
+/// nothing writes to the map any more, so the entries (and the hdr histograms
+/// they carry) are taken rather than cloned - the live metrics path sees an
+/// empty section from here on, which only matters during process exit.
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
     crate::channels::stop_channel_events();
     CHANNELS_STATE
@@ -64,11 +70,11 @@ pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut channels| {
             channels.sort_by(compare_channel_entries);
@@ -187,7 +193,7 @@ pub(crate) fn report_channel_latency_table(
 }
 
 pub(crate) fn collect_channels_json(
-    channels: &[ChannelEntry],
+    channels: &[impl Borrow<ChannelEntry>],
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
@@ -203,7 +209,7 @@ pub(crate) fn collect_channels_json(
         percentiles: percentiles.to_vec(),
         data: channels
             .iter()
-            .map(|entry| channel_to_json(entry, percentiles, current_elapsed_ns, cloud))
+            .map(|entry| channel_to_json(entry.borrow(), percentiles, current_elapsed_ns, cloud))
             .collect(),
     }
 }
@@ -224,11 +230,11 @@ pub(crate) fn shutdown_rw_locks() -> Vec<RwLockEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut rw_locks| {
             rw_locks.sort_by(compare_rw_lock_entries);
@@ -414,7 +420,7 @@ fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64], cloud: bool) -> J
 }
 
 pub(crate) fn collect_rw_locks_json(
-    rw_locks: &[RwLockEntry],
+    rw_locks: &[impl Borrow<RwLockEntry>],
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
@@ -429,7 +435,7 @@ pub(crate) fn collect_rw_locks_json(
         percentiles: percentiles.to_vec(),
         data: rw_locks
             .iter()
-            .map(|rw_lock| rw_lock_to_json(rw_lock, percentiles, cloud))
+            .map(|rw_lock| rw_lock_to_json(rw_lock.borrow(), percentiles, cloud))
             .collect(),
     }
 }
@@ -450,11 +456,11 @@ pub(crate) fn shutdown_mutexes() -> Vec<MutexEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut mutexes| {
             mutexes.sort_by(compare_mutex_entries);
@@ -560,7 +566,7 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], cloud: bool) -> JsonMu
 }
 
 pub(crate) fn collect_mutexes_json(
-    mutexes: &[MutexEntry],
+    mutexes: &[impl Borrow<MutexEntry>],
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
@@ -575,7 +581,7 @@ pub(crate) fn collect_mutexes_json(
         percentiles: percentiles.to_vec(),
         data: mutexes
             .iter()
-            .map(|mutex| mutex_to_json(mutex, percentiles, cloud))
+            .map(|mutex| mutex_to_json(mutex.borrow(), percentiles, cloud))
             .collect(),
     }
 }
@@ -596,11 +602,11 @@ pub(crate) fn shutdown_sql() -> Vec<SqlEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut entries| {
             entries.sort_by(compare_sql_entries);
@@ -730,14 +736,14 @@ fn sql_to_json(
 }
 
 pub(crate) fn collect_sql_json(
-    entries: &[SqlEntry],
+    entries: &[impl Borrow<SqlEntry>],
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
     cloud: bool,
 ) -> JsonSqlList {
-    let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
-    let total_calls: u64 = entries.iter().map(|e| e.count).sum();
+    let reference_total: u64 = entries.iter().map(|e| e.borrow().total_nanos).sum();
+    let total_calls: u64 = entries.iter().map(|e| e.borrow().count).sum();
     let total_count = entries.len();
     let entries = &entries[..apply_limit(total_count, limit)];
     JsonSqlList {
@@ -749,7 +755,7 @@ pub(crate) fn collect_sql_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| sql_to_json(entry, reference_total, percentiles, cloud))
+            .map(|entry| sql_to_json(entry.borrow(), reference_total, percentiles, cloud))
             .collect(),
     }
 }
@@ -770,11 +776,11 @@ pub(crate) fn shutdown_http() -> Vec<HttpEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut entries| {
             entries.sort_by(compare_http_entries);
@@ -883,14 +889,14 @@ fn http_to_json(
 }
 
 pub(crate) fn collect_http_json(
-    entries: &[HttpEntry],
+    entries: &[impl Borrow<HttpEntry>],
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
     cloud: bool,
 ) -> JsonHttpList {
-    let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
-    let total_calls: u64 = entries.iter().map(|e| e.count).sum();
+    let reference_total: u64 = entries.iter().map(|e| e.borrow().total_nanos).sum();
+    let total_calls: u64 = entries.iter().map(|e| e.borrow().count).sum();
     let total_count = entries.len();
     let entries = &entries[..apply_limit(total_count, limit)];
     JsonHttpList {
@@ -902,7 +908,7 @@ pub(crate) fn collect_http_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| http_to_json(entry, reference_total, percentiles, cloud))
+            .map(|entry| http_to_json(entry.borrow(), reference_total, percentiles, cloud))
             .collect(),
     }
 }
@@ -923,11 +929,11 @@ pub(crate) fn shutdown_server() -> Vec<ServerEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut entries| {
             entries.sort_by(compare_server_entries);
@@ -1163,16 +1169,16 @@ fn server_to_json(
 }
 
 pub(crate) fn collect_server_json(
-    entries: &[ServerEntry],
+    entries: &[impl Borrow<ServerEntry>],
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
     columns: ServerColumns,
     cloud: bool,
 ) -> JsonServerList {
-    let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
-    let total_alloc_bytes: u64 = entries.iter().map(|e| e.alloc_bytes).sum();
-    let total_calls: u64 = entries.iter().map(|e| e.count).sum();
+    let reference_total: u64 = entries.iter().map(|e| e.borrow().total_nanos).sum();
+    let total_alloc_bytes: u64 = entries.iter().map(|e| e.borrow().alloc_bytes).sum();
+    let total_calls: u64 = entries.iter().map(|e| e.borrow().count).sum();
     let total_count = entries.len();
     let entries = &entries[..apply_limit(total_count, limit)];
     JsonServerList {
@@ -1187,7 +1193,7 @@ pub(crate) fn collect_server_json(
             .iter()
             .map(|entry| {
                 server_to_json(
-                    entry,
+                    entry.borrow(),
                     reference_total,
                     total_alloc_bytes,
                     percentiles,
@@ -1215,11 +1221,11 @@ pub(crate) fn shutdown_io() -> Vec<IoEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut entries| {
             entries.sort_by(compare_io_entries);
@@ -1374,7 +1380,7 @@ fn io_to_json(entry: &IoEntry, percentiles: &[f64], cloud: bool) -> JsonIoEntry 
 }
 
 pub(crate) fn collect_io_json(
-    entries: &[IoEntry],
+    entries: &[impl Borrow<IoEntry>],
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
@@ -1389,7 +1395,7 @@ pub(crate) fn collect_io_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| io_to_json(entry, percentiles, cloud))
+            .map(|entry| io_to_json(entry.borrow(), percentiles, cloud))
             .collect(),
     }
 }
@@ -1410,11 +1416,11 @@ pub(crate) fn shutdown_streams() -> Vec<StreamStats> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut streams| {
             streams.sort_by(compare_stream_stats);
@@ -1499,11 +1505,11 @@ pub(crate) fn shutdown_futures() -> Vec<FutureEntry> {
                 .ok()
                 .and_then(|mut guard| guard.take())
                 .and_then(|rx| rx.recv().ok());
-            state
-                .inner
-                .read()
-                .ok()
-                .map(|inner| inner.stats.values().cloned().collect::<Vec<_>>())
+            state.inner.write().ok().map(|mut inner| {
+                std::mem::take(&mut inner.stats)
+                    .into_values()
+                    .collect::<Vec<_>>()
+            })
         })
         .map(|mut futures| {
             futures.sort_by(compare_future_stats);

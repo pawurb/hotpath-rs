@@ -57,7 +57,7 @@ pub(crate) enum RwLockEvent {
 }
 
 /// Statistics for a single instrumented RwLock.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct RwLockEntry {
     pub(crate) id: u32,
     /// Column-including call-site key (`file:line:column`); the identity used
@@ -256,26 +256,24 @@ pub(crate) struct RwLocksState {
 
 pub(crate) static RW_LOCKS_STATE: OnceLock<RwLocksState> = OnceLock::new();
 
-pub(crate) fn get_sorted_rw_lock_entries() -> Vec<RwLockEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_rw_lock_entries<R>(f: impl FnOnce(&[&RwLockEntry]) -> R) -> R {
     let Some(state) = RW_LOCKS_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<RwLockEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_rw_lock_entries);
-    stats
+    let mut stats: Vec<&RwLockEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_rw_lock_entries(a, b));
+    f(&stats)
 }
 
 pub(crate) fn get_rw_locks_json() -> crate::json::JsonRwLocksList {
-    let entries = get_sorted_rw_lock_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    crate::lib_on::report::collect_rw_locks_json(
-        &entries,
-        0,
-        elapsed,
-        &crate::lib_on::hotpath_guard::configured_percentiles(),
-        false,
-    )
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    with_sorted_rw_lock_entries(|entries| {
+        crate::lib_on::report::collect_rw_locks_json(entries, 0, elapsed, &percentiles, false)
+    })
 }
 
 #[inline]

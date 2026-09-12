@@ -83,7 +83,7 @@ pub(crate) type SqlKey = (Option<&'static str>, Option<&'static str>, String);
 /// Aggregated statistics for a single normalized query executed from a single
 /// source function under a single axum route. The same statement called from
 /// two instrumented functions (or under two routes) produces two entries.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct SqlEntry {
     pub(crate) id: u32,
     pub(crate) query: String,
@@ -187,14 +187,16 @@ pub(crate) struct SqlState {
 
 pub(crate) static SQL_STATE: OnceLock<SqlState> = OnceLock::new();
 
-pub(crate) fn get_sorted_sql_entries() -> Vec<SqlEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_sql_entries<R>(f: impl FnOnce(&[&SqlEntry]) -> R) -> R {
     let Some(state) = SQL_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<SqlEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_sql_entries);
-    stats
+    let mut stats: Vec<&SqlEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_sql_entries(a, b));
+    f(&stats)
 }
 
 /// Returns recent executions of the entry with the given id, newest first.
@@ -209,15 +211,11 @@ pub(crate) fn get_sql_logs(id: u32) -> Option<SqlLogs> {
 }
 
 pub(crate) fn get_sql_json() -> crate::json::JsonSqlList {
-    let entries = get_sorted_sql_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    crate::lib_on::report::collect_sql_json(
-        &entries,
-        0,
-        elapsed,
-        &crate::lib_on::hotpath_guard::configured_percentiles(),
-        false,
-    )
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    with_sorted_sql_entries(|entries| {
+        crate::lib_on::report::collect_sql_json(entries, 0, elapsed, &percentiles, false)
+    })
 }
 
 static EVENT_QUEUES: EventQueueRegistry<SqlEvent> = EventQueueRegistry::new();

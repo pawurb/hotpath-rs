@@ -95,7 +95,7 @@ pub(crate) enum ServerEvent {
 }
 
 /// Aggregated statistics for a single route.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct ServerEntry {
     pub(crate) id: u32,
     pub(crate) route: String,
@@ -316,14 +316,16 @@ pub(crate) struct ServerState {
 
 pub(crate) static SERVER_STATE: OnceLock<ServerState> = OnceLock::new();
 
-pub(crate) fn get_sorted_server_entries() -> Vec<ServerEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_server_entries<R>(f: impl FnOnce(&[&ServerEntry]) -> R) -> R {
     let Some(state) = SERVER_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<ServerEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_server_entries);
-    stats
+    let mut stats: Vec<&ServerEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_server_entries(a, b));
+    f(&stats)
 }
 
 /// Returns recent requests of the route entry with the given id, newest first.
@@ -338,16 +340,19 @@ pub(crate) fn get_server_logs(id: u32) -> Option<HttpLogs> {
 }
 
 pub(crate) fn get_server_json() -> crate::json::JsonServerList {
-    let entries = get_sorted_server_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    crate::lib_on::report::collect_server_json(
-        &entries,
-        0,
-        elapsed,
-        &crate::lib_on::hotpath_guard::configured_percentiles(),
-        crate::lib_on::report::ServerColumns::from_state(),
-        false,
-    )
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    let columns = crate::lib_on::report::ServerColumns::from_state();
+    with_sorted_server_entries(|entries| {
+        crate::lib_on::report::collect_server_json(
+            entries,
+            0,
+            elapsed,
+            &percentiles,
+            columns,
+            false,
+        )
+    })
 }
 
 static EVENT_QUEUES: EventQueueRegistry<ServerEvent> = EventQueueRegistry::new();

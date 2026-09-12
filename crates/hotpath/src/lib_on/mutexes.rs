@@ -52,7 +52,7 @@ pub(crate) enum MutexEvent {
 }
 
 /// Statistics for a single instrumented Mutex.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct MutexEntry {
     pub(crate) id: u32,
     /// Column-including call-site key (`file:line:column`); the identity used
@@ -185,26 +185,24 @@ pub(crate) struct MutexesState {
 
 pub(crate) static MUTEXES_STATE: OnceLock<MutexesState> = OnceLock::new();
 
-pub(crate) fn get_sorted_mutex_entries() -> Vec<MutexEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_mutex_entries<R>(f: impl FnOnce(&[&MutexEntry]) -> R) -> R {
     let Some(state) = MUTEXES_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<MutexEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_mutex_entries);
-    stats
+    let mut stats: Vec<&MutexEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_mutex_entries(a, b));
+    f(&stats)
 }
 
 pub(crate) fn get_mutexes_json() -> crate::json::JsonMutexesList {
-    let entries = get_sorted_mutex_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    crate::lib_on::report::collect_mutexes_json(
-        &entries,
-        0,
-        elapsed,
-        &crate::lib_on::hotpath_guard::configured_percentiles(),
-        false,
-    )
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    with_sorted_mutex_entries(|entries| {
+        crate::lib_on::report::collect_mutexes_json(entries, 0, elapsed, &percentiles, false)
+    })
 }
 
 #[inline]
