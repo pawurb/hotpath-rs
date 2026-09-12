@@ -294,11 +294,11 @@ pub(crate) fn post_report(base_url: &str, token: &str, benchmark: &str, body: &[
     interpret(status, request_id, body)
 }
 
-/// A 2xx parses as `UploadCreated`, anything else tries `UploadError` and
-/// falls back to quoting the raw body.
+/// A 201 (or the 200 of an already stored run) parses as `UploadCreated`,
+/// anything else tries `UploadError` and falls back to quoting the raw body.
 pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -> Outcome {
     let request = |id: Option<&str>| id.map(|id| format!(", request {id}")).unwrap_or_default();
-    if (200..300).contains(&status) {
+    if matches!(status, 200 | 201) {
         return match serde_json::from_str::<UploadCreated>(&body) {
             Ok(created) => Outcome::Uploaded {
                 created,
@@ -598,7 +598,20 @@ mod tests {
             Outcome::Uploaded { .. }
         ));
 
-        // A 2xx whose body cannot be read is a failure that says "probably stored".
+        // Any other status is a failure even with a success-shaped body.
+        assert_eq!(
+            interpret(
+                202,
+                None,
+                r#"{"id":"r1","repository":"a/b","benchmark":"meta"}"#.into()
+            ),
+            Outcome::Failed {
+                message: r#"HTTP 202: {"id":"r1","repository":"a/b","benchmark":"meta"}"#.into(),
+                body: Some(r#"{"id":"r1","repository":"a/b","benchmark":"meta"}"#.into()),
+            }
+        );
+
+        // A success status whose body cannot be read is a failure that says "probably stored".
         assert_eq!(
             interpret(201, Some("abc".into()), r#"{"id":"r1","repo"#.into()),
             Outcome::Failed {
