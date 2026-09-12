@@ -13,7 +13,7 @@ exec into bash. Run from repo root:
 ```
 
 `perf_event_paranoid=-1` enables hardware events for non-root; `kptr_restrict=0`
-resolves kernel symbols. Both reset on Docker Desktop VM restart — re-run the
+resolves kernel symbols. Both reset on Docker Desktop VM restart - re-run the
 script.
 
 `HOTPATH_SAMPLY_WRAPPER_BIN` baked into container env so every `cargo run` of
