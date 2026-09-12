@@ -45,8 +45,6 @@ Propagation with `?` into `anyhow`, `eyre`, or `Box<dyn std::error::Error>` need
 
 The alias is reqwest-middleware's `Error` with profiling on and `reqwest::Error` with it off.
 
-If both reqwest versions are enabled, `wrap::reqwest` selects 0.13. Use `wrap::reqwest_012::{Client, Error}` for a 0.12 client in that configuration.
-
 ### Labels
 
 An optional `label` prefixes every endpoint key produced by the client:
