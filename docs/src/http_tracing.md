@@ -13,7 +13,7 @@ Add `hotpath` with the feature matching your `reqwest` crate version to your `Ca
 hotpath = { version = "{{HOTPATH_VERSION}}", features = ["reqwest-0-13"] } # or "reqwest-0-12"
 ```
 
-Wrap the client once at creation with the `http!` macro - every request sent through it is then profiled, with no other code changes required:
+Wrap the client once at creation with the `http!` macro to profile requests sent through it:
 
 ```rust
 let client = hotpath::http!(reqwest::Client::new());
@@ -22,9 +22,9 @@ let client = hotpath::http!(reqwest::Client::new());
 let resp = client.get("https://example.com/users/1").send().await?;
 ```
 
-Under the hood the macro wraps the client with [reqwest-middleware](https://github.com/TrueLayer/reqwest-middleware)'s `ClientWithMiddleware` and attaches hotpath's timing middleware. The wrapped client mirrors the full reqwest API (`get`, `post`, `json`, `header`, ...), so existing request-building code compiles unchanged.
+Under the hood the macro wraps the client with [reqwest-middleware](https://github.com/TrueLayer/reqwest-middleware)'s `ClientWithMiddleware` and attaches hotpath's timing middleware. Common request-building methods (`get`, `post`, `json`, `header`, ...) work as usual.
 
-To store the client in a struct with a type that stays the same whether profiling is on or off, use the `hotpath::wrap` prefix:
+To store the client in a struct, use an alias that works with profiling on or off:
 
 ```rust
 struct App {
@@ -34,24 +34,18 @@ struct App {
 
 With `hotpath` enabled the type is `ClientWithMiddleware`; disabled the alias is the raw `reqwest::Client`.
 
-The error type changes with it: `send()` on the wrapped client fails with reqwest-middleware's `Error` (an enum: `Reqwest(reqwest::Error)` or `Middleware(anyhow::Error)`), not with `reqwest::Error`. Code that only propagates with `?` into a `Box<dyn Error>` / `anyhow` / `eyre` result compiles unchanged, but code that names the type - a `map_err(reqwest::Error::without_url)`, a `fn(reqwest::Error)` helper - compiles in only one of the two configurations. Spell it through `hotpath::wrap::reqwest::Error`, which resolves the same way as `Client`, and match on the enum where the raw error is needed:
+If you name the error type returned by `send()` or `execute()`, use `hotpath::wrap::reqwest::Error`. For example, stripping URLs from errors works in both profiling modes:
 
 ```rust
-#[cfg(feature = "hotpath")]
-fn strip_url(e: hotpath::wrap::reqwest::Error) -> anyhow::Error {
-    match e {
-        hotpath::wrap::reqwest::Error::Reqwest(e) => e.without_url().into(),
-        hotpath::wrap::reqwest::Error::Middleware(e) => e,
-    }
-}
-
-#[cfg(not(feature = "hotpath"))]
-fn strip_url(e: hotpath::wrap::reqwest::Error) -> anyhow::Error {
-    e.without_url().into()
-}
+let resp = client.get("https://example.com/users/1").send().await
+    .map_err(hotpath::wrap::reqwest::Error::without_url)?;
 ```
 
-hotpath's own middleware never fails on its own (it only times the request), so `Middleware` is unreachable unless you stack further middleware.
+Propagation with `?` into `anyhow`, `eyre`, or `Box<dyn std::error::Error>` needs no changes. Response methods such as `json()`, `text()`, and `error_for_status()` still return raw `reqwest::Error`.
+
+The alias is reqwest-middleware's `Error` with profiling on and `reqwest::Error` with it off.
+
+If both reqwest versions are enabled, `wrap::reqwest` selects 0.13. Use `wrap::reqwest_012::{Client, Error}` for a 0.12 client in that configuration.
 
 ### Labels
 

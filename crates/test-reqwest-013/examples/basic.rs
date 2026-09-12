@@ -60,7 +60,8 @@ impl Data {
                 self.port
             ))
             .send()
-            .await?;
+            .await
+            .map_err(hotpath::wrap::reqwest_013::Error::without_url)?;
         assert_eq!(resp.status().as_u16(), 200);
         Ok(())
     }

@@ -266,11 +266,10 @@ pub mod wrap {
     /// otherwise `http!` is a no-op and `Client` is the raw `reqwest::Client`,
     /// so the alias resolves the same way regardless of feature configuration.
     ///
-    /// `Error` follows the client: what `send()` fails with. With `hotpath`
-    /// enabled that is reqwest-middleware's enum (`Reqwest(reqwest::Error)` /
-    /// `Middleware(anyhow::Error)`), otherwise the raw `reqwest::Error` - so
-    /// code that names the error type spells it through this alias and does
-    /// not have to depend on reqwest-middleware itself.
+    /// `Error` is the error returned by `send()` and `execute()`: reqwest-middleware's
+    /// `Error` with profiling on, or `reqwest::Error` with it off. Methods such as
+    /// `without_url()` work in both modes. Response methods still return raw
+    /// `reqwest::Error`.
     #[cfg(feature = "reqwest-0-12")]
     pub mod reqwest_012 {
         pub use reqwest_012::Response;
@@ -285,11 +284,10 @@ pub mod wrap {
     /// otherwise `http!` is a no-op and `Client` is the raw `reqwest::Client`,
     /// so the alias resolves the same way regardless of feature configuration.
     ///
-    /// `Error` follows the client: what `send()` fails with. With `hotpath`
-    /// enabled that is reqwest-middleware's enum (`Reqwest(reqwest::Error)` /
-    /// `Middleware(anyhow::Error)`), otherwise the raw `reqwest::Error` - so
-    /// code that names the error type spells it through this alias and does
-    /// not have to depend on reqwest-middleware itself.
+    /// `Error` is the error returned by `send()` and `execute()`: reqwest-middleware's
+    /// `Error` with profiling on, or `reqwest::Error` with it off. Methods such as
+    /// `without_url()` work in both modes. Response methods still return raw
+    /// `reqwest::Error`.
     #[cfg(feature = "reqwest-0-13")]
     pub mod reqwest_013 {
         pub use reqwest::Response;

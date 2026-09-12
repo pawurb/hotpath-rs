@@ -45,9 +45,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .get(format!("http://127.0.0.1:{port}/users/{id}?verbose=true"))
             .send()
             .await
-            // Pins the error alias the same way: reqwest-middleware's Error with
-            // `hotpath` enabled, raw reqwest::Error otherwise.
-            .map_err(|e: hotpath::wrap::reqwest::Error| e)?;
+            // The versioned error alias works with profiling on or off.
+            .map_err(hotpath::wrap::reqwest_012::Error::without_url)?;
         assert_eq!(resp.status().as_u16(), 200);
     }
 
