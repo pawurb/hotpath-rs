@@ -142,8 +142,12 @@ jobs:
             exit 1
           fi
 
+          # The event is stamped, not trusted: this job's token is a
+          # `workflow_run` one, which the server accepts only for a
+          # `pull_request` report.
           jq --arg benchmark "$BENCHMARK" --arg source_root "$SOURCE_ROOT" \
-            '.meta.benchmark = $benchmark | .meta.source_root = $source_root' \
+            '.meta.benchmark = $benchmark | .meta.source_root = $source_root
+             | .meta.ci.event = "pull_request"' \
             "$REPORT_PATH" > upload.json
 
       - name: Upload the report
