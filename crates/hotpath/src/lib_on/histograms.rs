@@ -1,5 +1,10 @@
 /// HdrHistogram V2 deflate payload, base64-encoded. Decodable by any HdrHistogram
 /// implementation (`hdrhistogram::serialization::Deserializer`, hdr-histogram-js).
+///
+/// Only the final report on the cloud path (`HOTPATH_UPLOAD=1` or JSON output)
+/// calls this; the live metrics-server builders pass `cloud = false` and never
+/// encode, so the TUI and MCP server do not pay for the deflate pass. Without
+/// the `hotpath-cloud` feature the stub below always returns `None`.
 #[cfg(feature = "hotpath-cloud")]
 pub(crate) fn histogram_base64(hist: &hdrhistogram::Histogram<u64>) -> Option<String> {
     use base64::Engine;
