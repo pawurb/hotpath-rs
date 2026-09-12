@@ -153,10 +153,9 @@ jobs:
       # The server's answer is the one line that explains a failure, so it is
       # shown whatever the status: in the step summary in full, and in an
       # `::error::` annotation when the upload was rejected. The error body is
-      # `{code, error, hint, request_id}`; `request_id` (also the
-      # `x-request-id` header) matches the server's log line. On success a
-      # `comment.hint` means the server could not post or update the pull
-      # request comment for a reason the adopter can act on.
+      # `{error, request_id}`; `request_id` (also the `x-request-id` header)
+      # matches the server's log line. On success a `comment.error` means the
+      # server could not post or update the pull request comment.
       - name: Upload the report
         run: |
           set -euo pipefail
@@ -182,12 +181,11 @@ jobs:
             echo '```'; jq . response.json 2>/dev/null || cat response.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$status" != 201 ] && [ "$status" != 200 ]; then
-            detail=$(jq -r '.error + (if .hint then ". " + .hint else "" end) + " (" + (.code // "unknown") + ")"' response.json 2>/dev/null || cat response.json)
+            detail=$(jq -r '.error // empty' response.json 2>/dev/null || cat response.json)
             echo "::error::hotpath.rs rejected the report (HTTP $status, request ${request_id:--}): ${detail:-empty body}"
             exit 1
           fi
-          hint=$(jq -r '.comment.hint // empty' response.json 2>/dev/null || true)
-          if [ -n "$hint" ]; then
-            reason=$(jq -r '.comment.reason // "not posted"' response.json)
-            echo "::warning::hotpath.rs comment $reason: $hint"
+          comment_error=$(jq -r '.comment.error // empty' response.json 2>/dev/null || true)
+          if [ -n "$comment_error" ]; then
+            echo "::warning::hotpath.rs comment failed: $comment_error"
           fi

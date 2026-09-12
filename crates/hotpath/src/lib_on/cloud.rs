@@ -11,10 +11,10 @@
 //! level and emitted by `emit`: always to stderr as `hotpath: <message>`, and
 //! under GitHub Actions once more as a `::notice::` / `::warning::` /
 //! `::error::` workflow command on stdout plus a block appended to
-//! `GITHUB_STEP_SUMMARY`. The server owns the text: rejections are rendered
-//! from the `UploadError` body (`error`, `hint`, `code`, `request_id`) and a
-//! comment caveat from `comment.hint`; the client branches on nothing the
-//! server says. A failure is a warning by default and never changes the exit
+//! `GITHUB_STEP_SUMMARY`. The server owns the text: a rejection prints the
+//! `error` sentence of the `UploadError` body (plus status and request id)
+//! and a failed comment prints `comment.error`; the client branches on nothing
+//! the server says. A failure is a warning by default and never changes the exit
 //! code; `HOTPATH_UPLOAD_STRICT=1` turns it into an error and exits 1 after
 //! the line is printed. Skips never fail, even in strict mode.
 //!
@@ -125,28 +125,12 @@ pub(crate) enum Outcome {
         /// From the `x-request-id` response header.
         request_id: Option<String>,
     },
-    Failed(Failure),
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) enum Failure {
-    /// Before hotpath.rs was contacted: report serialization or OIDC minting.
-    /// The string says which.
-    Local(String),
-    /// The upload request did not complete (DNS, connect, TLS, read timeout).
-    /// The server may or may not have seen it.
-    Transport(String),
-    /// Any answer with a status. `error` is the parsed body when it parsed as
-    /// `UploadError`; otherwise `body` is rendered raw. A 2xx whose body does
-    /// not parse as `UploadCreated` lands here with `error: None` and is
-    /// reported as probably stored.
-    Response {
-        status: u16,
-        /// From the `x-request-id` header, so it survives an empty or
-        /// unparseable body.
-        request_id: Option<String>,
-        body: String,
-        error: Option<UploadError>,
+    Failed {
+        /// Built where the failure happened: the server's `error` sentence
+        /// for a rejection, the transport error otherwise.
+        message: String,
+        /// The response body, when there was one, for the step summary.
+        body: Option<String>,
     },
 }
 
@@ -228,12 +212,20 @@ fn run(report: &JsonReport) -> Outcome {
     };
     let token = match mint_token(&request_url, &request_token) {
         Ok(token) => token,
-        Err(msg) => return Outcome::Failed(Failure::Local(msg)),
+        Err(message) => {
+            return Outcome::Failed {
+                message,
+                body: None,
+            }
+        }
     };
     let body = match serde_json::to_vec(report) {
         Ok(body) => body,
         Err(e) => {
-            return Outcome::Failed(Failure::Local(format!("failed to serialize report: {e}")))
+            return Outcome::Failed {
+                message: format!("failed to serialize report: {e}"),
+                body: None,
+            }
         }
     };
     post_report(&UPLOAD_URL, &token, &benchmark, &body)
@@ -286,9 +278,10 @@ pub(crate) fn post_report(base_url: &str, token: &str, benchmark: &str, body: &[
     {
         Ok(resp) => resp,
         Err(e) => {
-            return Outcome::Failed(Failure::Transport(format!(
-                "request to {base_url} failed: {e}"
-            )))
+            return Outcome::Failed {
+                message: format!("request to {base_url} failed: {e}"),
+                body: None,
+            }
         }
     };
     let status = resp.status().as_u16();
@@ -302,34 +295,46 @@ pub(crate) fn post_report(base_url: &str, token: &str, benchmark: &str, body: &[
 }
 
 /// A 2xx parses as `UploadCreated`, anything else tries `UploadError` and
-/// falls back to the raw body.
+/// falls back to quoting the raw body.
 pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -> Outcome {
+    let request = |id: Option<&str>| id.map(|id| format!(", request {id}")).unwrap_or_default();
     if (200..300).contains(&status) {
         return match serde_json::from_str::<UploadCreated>(&body) {
             Ok(created) => Outcome::Uploaded {
                 created,
                 request_id,
             },
-            Err(_) => Outcome::Failed(Failure::Response {
-                status,
-                request_id,
-                body,
-                error: None,
-            }),
+            Err(_) => Outcome::Failed {
+                message: format!(
+                    "HTTP {status} but the response could not be read, the report was probably stored{}: {}",
+                    request(request_id.as_deref()),
+                    quote_body(&body)
+                ),
+                body: Some(body),
+            },
         };
     }
-    let error = serde_json::from_str::<UploadError>(&body).ok();
-    Outcome::Failed(Failure::Response {
-        status,
-        request_id,
-        body,
-        error,
-    })
+    let message = match serde_json::from_str::<UploadError>(&body) {
+        Ok(error) => format!(
+            "{} (HTTP {status}{})",
+            error.error,
+            request(error.request_id.as_deref().or(request_id.as_deref()))
+        ),
+        Err(_) => format!(
+            "HTTP {status}{}: {}",
+            request(request_id.as_deref()),
+            quote_body(&body)
+        ),
+    };
+    Outcome::Failed {
+        message,
+        body: Some(body),
+    }
 }
 
 /// One message at one level.
 pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> Rendered {
-    let (level, message, json) = match outcome {
+    let (level, message, body) = match outcome {
         Outcome::Skipped(reason) => (Level::Notice, format!("upload skipped: {reason}"), None),
         Outcome::Uploaded {
             created,
@@ -341,29 +346,32 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
                 created.repository,
                 created.benchmark,
                 created.baseline.as_deref().unwrap_or("none"),
-                request_suffix(request_id.as_deref()),
+                request_id
+                    .as_deref()
+                    .map(|id| format!(", request {id}"))
+                    .unwrap_or_default(),
             );
-            let level = match &created.comment.hint {
-                Some(hint) => {
-                    message.push_str(&format!(
-                        "; comment {}: {hint}",
-                        created.comment.reason.as_deref().unwrap_or("not posted")
-                    ));
+            let level = match &created.comment.error {
+                Some(error) => {
+                    message.push_str(&format!("; comment failed: {error}"));
                     Level::Warning
                 }
                 None => Level::Notice,
             };
-            let json = serde_json::to_string_pretty(created).ok();
-            (level, message, json)
+            (level, message, serde_json::to_string_pretty(created).ok())
         }
-        Outcome::Failed(failure) => {
+        Outcome::Failed { message, body } => {
             let level = if env.strict {
                 Level::Error
             } else {
                 Level::Warning
             };
-            let (detail, json) = describe(failure);
-            (level, format!("upload failed: {detail}"), json)
+            let body = body.as_deref().filter(|b| !b.trim().is_empty());
+            (
+                level,
+                format!("upload failed: {message}"),
+                body.map(str::to_string),
+            )
         }
     };
 
@@ -372,8 +380,8 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
         None => "hotpath.rs upload".to_string(),
     };
     let mut summary = format!("## {heading}\n\n{}: hotpath: {message}\n", level.as_str());
-    if let Some(json) = json {
-        summary.push_str(&format!("\n```json\n{json}\n```\n"));
+    if let Some(body) = body {
+        summary.push_str(&format!("\n```\n{body}\n```\n"));
     }
 
     Rendered {
@@ -381,60 +389,6 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
         message,
         summary,
     }
-}
-
-/// Message text for a failure plus, when there is a server body, its JSON
-/// for the summary block.
-fn describe(failure: &Failure) -> (String, Option<String>) {
-    match failure {
-        Failure::Local(msg) | Failure::Transport(msg) => (msg.clone(), None),
-        Failure::Response {
-            status,
-            request_id,
-            body,
-            error: Some(error),
-        } => {
-            let mut detail = error.error.clone();
-            if let Some(hint) = &error.hint {
-                detail.push_str(&format!(". {hint}"));
-            }
-            detail.push_str(&format!(
-                " ({}, HTTP {status}{})",
-                error.code,
-                request_suffix(error.request_id.as_deref().or(request_id.as_deref()))
-            ));
-            let json = serde_json::from_str::<serde_json::Value>(body)
-                .ok()
-                .and_then(|v| serde_json::to_string_pretty(&v).ok());
-            (detail, json)
-        }
-        Failure::Response {
-            status,
-            request_id,
-            body,
-            error: None,
-        } => {
-            let quoted = quote_body(body);
-            let detail = if (200..300).contains(status) {
-                format!(
-                    "HTTP {status} but the response could not be read, the report was probably stored{}: {quoted}",
-                    request_suffix(request_id.as_deref())
-                )
-            } else {
-                format!(
-                    "HTTP {status}{}: {quoted}",
-                    request_suffix(request_id.as_deref())
-                )
-            };
-            (detail, Some(body.clone()).filter(|b| !b.trim().is_empty()))
-        }
-    }
-}
-
-fn request_suffix(request_id: Option<&str>) -> String {
-    request_id
-        .map(|id| format!(", request {id}"))
-        .unwrap_or_default()
 }
 
 fn quote_body(body: &str) -> String {
@@ -507,7 +461,7 @@ mod tests {
     use crate::json::cloud_api::{CommentOutcome, UploadCreated};
     use crate::lib_on::cloud::{
         benchmark_name, escape_annotation, interpret, is_truthy, normalize_upload_url, render,
-        url_encode, validate_benchmark_name, Env, Failure, Level, Outcome, DEFAULT_UPLOAD_URL,
+        url_encode, validate_benchmark_name, Env, Level, Outcome, DEFAULT_UPLOAD_URL,
     };
 
     fn env(actions: bool, strict: bool) -> Env {
@@ -645,77 +599,61 @@ mod tests {
         ));
 
         // A 2xx whose body cannot be read is a failure that says "probably stored".
-        let truncated = interpret(201, Some("abc".into()), r#"{"id":"r1","repo"#.into());
         assert_eq!(
-            truncated,
-            Outcome::Failed(Failure::Response {
-                status: 201,
-                request_id: Some("abc".into()),
-                body: r#"{"id":"r1","repo"#.into(),
-                error: None,
-            })
+            interpret(201, Some("abc".into()), r#"{"id":"r1","repo"#.into()),
+            Outcome::Failed {
+                message: r#"HTTP 201 but the response could not be read, the report was probably stored, request abc: {"id":"r1","repo"#.into(),
+                body: Some(r#"{"id":"r1","repo"#.into()),
+            }
         );
     }
 
     #[test]
     fn interpret_error_bodies() {
-        let body = r#"{"code":"event_mismatch","error":"meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run","hint":"Forward it through hotpath-relay.yml.","request_id":"1bac4db9-15a"}"#;
-        match interpret(400, None, body.into()) {
-            Outcome::Failed(Failure::Response {
-                status: 400,
-                error: Some(error),
-                ..
-            }) => {
-                assert_eq!(error.code, "event_mismatch");
-                assert_eq!(error.request_id.as_deref(), Some("1bac4db9-15a"));
-            }
-            other => panic!("expected parsed rejection, got {other:?}"),
-        }
-
-        // Unknown code: still parsed, rendered from its text.
-        match interpret(
-            418,
-            None,
-            r#"{"code":"teapot","error":"short and stout"}"#.into(),
-        ) {
-            Outcome::Failed(Failure::Response {
-                error: Some(error), ..
-            }) => assert_eq!(error.code, "teapot"),
-            other => panic!("{other:?}"),
-        }
-
-        // Today's server: `{"error": ...}` without a code, kept raw.
-        let legacy = interpret(400, None, r#"{"error":"invalid JSON"}"#.into());
-        assert!(matches!(
-            legacy,
-            Outcome::Failed(Failure::Response {
-                status: 400,
-                error: None,
-                ..
-            })
-        ));
-
-        // Empty 408 from the router's timeout layer: only the header id survives.
-        let timeout = interpret(408, Some("deadbeef".into()), String::new());
+        let body = r#"{"error":"meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run. Forward it through hotpath-relay.yml.","request_id":"1bac4db9-15a"}"#;
         assert_eq!(
-            timeout,
-            Outcome::Failed(Failure::Response {
-                status: 408,
-                request_id: Some("deadbeef".into()),
-                body: String::new(),
-                error: None,
-            })
+            interpret(400, None, body.into()),
+            Outcome::Failed {
+                message: "meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run. Forward it through hotpath-relay.yml. (HTTP 400, request 1bac4db9-15a)".into(),
+                body: Some(body.into()),
+            }
         );
 
-        // A proxy's HTML.
-        assert!(matches!(
+        // The header id fills in when the body has none; extra fields are ignored.
+        assert_eq!(
+            interpret(
+                500,
+                Some("hdr".into()),
+                r#"{"error":"database error","code":"x"}"#.into()
+            ),
+            Outcome::Failed {
+                message: "database error (HTTP 500, request hdr)".into(),
+                body: Some(r#"{"error":"database error","code":"x"}"#.into()),
+            }
+        );
+
+        // Empty 408 from the router's timeout layer: only the header id survives.
+        assert_eq!(
+            interpret(408, Some("deadbeef".into()), String::new()),
+            Outcome::Failed {
+                message: "HTTP 408, request deadbeef: empty body".into(),
+                body: Some(String::new()),
+            }
+        );
+
+        // A proxy's HTML, and a body too long to quote whole.
+        assert_eq!(
             interpret(502, None, "<html>Bad Gateway</html>".into()),
-            Outcome::Failed(Failure::Response {
-                status: 502,
-                error: None,
-                ..
-            })
-        ));
+            Outcome::Failed {
+                message: "HTTP 502: <html>Bad Gateway</html>".into(),
+                body: Some("<html>Bad Gateway</html>".into()),
+            }
+        );
+        let Outcome::Failed { message, .. } = interpret(502, None, "x".repeat(2500)) else {
+            panic!()
+        };
+        assert!(message.ends_with("... (2500 bytes)"), "{message}");
+        assert!(message.len() < 2100);
     }
 
     #[test]
@@ -734,7 +672,7 @@ mod tests {
             .summary
             .starts_with("## hotpath.rs meta benchmark\n\nnotice: hotpath: uploaded report r1"));
         assert!(
-            r.summary.contains("```json\n{\n  \"id\": \"r1\""),
+            r.summary.contains("```\n{\n  \"id\": \"r1\""),
             "{}",
             r.summary
         );
@@ -759,13 +697,12 @@ mod tests {
     }
 
     #[test]
-    fn render_uploaded_with_comment_hint_is_one_warning() {
+    fn render_uploaded_with_comment_error_is_one_warning() {
         let outcome = Outcome::Uploaded {
             created: UploadCreated {
                 comment: CommentOutcome {
                     url: None,
-                    reason: Some("permission_not_approved".into()),
-                    hint: Some("approve \"Pull requests: write\" for the installation".into()),
+                    error: Some("approve \"Pull requests: write\" for the installation".into()),
                 },
                 ..created()
             },
@@ -775,42 +712,28 @@ mod tests {
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); comment permission_not_approved: approve \"Pull requests: write\" for the installation"
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); comment failed: approve \"Pull requests: write\" for the installation"
         );
 
-        // A caveat on a posted comment and a hint without a reason both render.
-        let outcome = Outcome::Uploaded {
-            created: UploadCreated {
-                comment: CommentOutcome {
-                    url: Some("https://github.com/c/1".into()),
-                    reason: None,
-                    hint: Some("the report does not parse".into()),
-                },
-                ..created()
+        // A comment that was posted, or nothing to post, is a plain notice.
+        for comment in [
+            CommentOutcome {
+                url: Some("https://github.com/c/1".into()),
+                error: None,
             },
-            request_id: None,
-        };
-        let r = render(&outcome, &env(true, false), Some("meta"));
-        assert_eq!(r.level, Level::Warning);
-        assert!(r
-            .message
-            .ends_with("; comment not posted: the report does not parse"));
-
-        // A reason without a hint is the server saying there is nothing to show.
-        let outcome = Outcome::Uploaded {
-            created: UploadCreated {
-                comment: CommentOutcome {
-                    url: None,
-                    reason: Some("not_a_pull_request".into()),
-                    hint: None,
+            CommentOutcome::default(),
+        ] {
+            let outcome = Outcome::Uploaded {
+                created: UploadCreated {
+                    comment,
+                    ..created()
                 },
-                ..created()
-            },
-            request_id: None,
-        };
-        let r = render(&outcome, &env(true, false), Some("meta"));
-        assert_eq!(r.level, Level::Notice);
-        assert!(!r.message.contains("comment"));
+                request_id: None,
+            };
+            let r = render(&outcome, &env(true, false), Some("meta"));
+            assert_eq!(r.level, Level::Notice);
+            assert!(!r.message.contains("comment"));
+        }
     }
 
     #[test]
@@ -837,9 +760,10 @@ mod tests {
 
     #[test]
     fn render_failed_levels() {
-        let outcome = Outcome::Failed(Failure::Transport(
-            "request to https://hotpath.rs failed: connection refused".into(),
-        ));
+        let outcome = Outcome::Failed {
+            message: "request to https://hotpath.rs failed: connection refused".into(),
+            body: None,
+        };
         let r = render(&outcome, &env(true, false), Some("meta"));
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
@@ -864,88 +788,20 @@ mod tests {
             Level::Error
         );
 
-        let local = Outcome::Failed(Failure::Local(
-            "OIDC token request returned HTTP 403: nope".into(),
-        ));
-        assert_eq!(
-            render(&local, &env(true, false), Some("meta")).message,
-            "upload failed: OIDC token request returned HTTP 403: nope"
-        );
-    }
-
-    #[test]
-    fn render_rejection_from_server_text() {
-        let body = r#"{"code":"event_mismatch","error":"meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run","hint":"Forward it through hotpath-relay.yml.","request_id":"1bac4db9-15a"}"#;
-        let outcome = interpret(400, Some("1bac4db9-15a".into()), body.into());
-        let r = render(&outcome, &env(true, false), Some("meta"));
-        assert_eq!(r.level, Level::Warning);
-        assert_eq!(
-            r.message,
-            "upload failed: meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run. Forward it through hotpath-relay.yml. (event_mismatch, HTTP 400, request 1bac4db9-15a)"
-        );
+        // A server body goes into the summary's fenced block; an empty one does not.
+        let rejected = interpret(403, None, r#"{"error":"not installed"}"#.into());
+        let r = render(&rejected, &env(true, false), Some("meta"));
+        assert_eq!(r.message, "upload failed: not installed (HTTP 403)");
         assert!(
             r.summary
-                .contains("```json\n{\n  \"code\": \"event_mismatch\""),
+                .ends_with("\n```\n{\"error\":\"not installed\"}\n```\n"),
             "{}",
             r.summary
         );
-
-        // No hint, no request id anywhere: still a readable line.
-        let outcome = interpret(
-            403,
-            None,
-            r#"{"code":"app_not_installed","error":"not installed"}"#.into(),
-        );
-        assert_eq!(
-            render(&outcome, &env(true, true), Some("meta")).message,
-            "upload failed: not installed (app_not_installed, HTTP 403)"
-        );
-        assert_eq!(
-            render(&outcome, &env(true, true), Some("meta")).level,
-            Level::Error
-        );
-
-        // Header id fills in when the body has none.
-        let outcome = interpret(
-            500,
-            Some("hdr".into()),
-            r#"{"code":"server_error","error":"database error"}"#.into(),
-        );
-        assert_eq!(
-            render(&outcome, &env(true, false), Some("meta")).message,
-            "upload failed: database error (server_error, HTTP 500, request hdr)"
-        );
-    }
-
-    #[test]
-    fn render_unreadable_responses() {
-        let legacy = interpret(400, None, r#"{"error":"invalid JSON"}"#.into());
-        assert_eq!(
-            render(&legacy, &env(true, false), Some("meta")).message,
-            r#"upload failed: HTTP 400: {"error":"invalid JSON"}"#
-        );
-
         let timeout = interpret(408, Some("deadbeef".into()), String::new());
-        let r = render(&timeout, &env(true, false), Some("meta"));
-        assert_eq!(
-            r.message,
-            "upload failed: HTTP 408, request deadbeef: empty body"
-        );
-        assert!(
-            !r.summary.contains("```"),
-            "no fenced block for an empty body"
-        );
-
-        let stored = interpret(201, Some("abc".into()), "<html>".into());
-        assert_eq!(
-            render(&stored, &env(true, false), Some("meta")).message,
-            "upload failed: HTTP 201 but the response could not be read, the report was probably stored, request abc: <html>"
-        );
-
-        let long = interpret(502, None, "x".repeat(2500));
-        let message = render(&long, &env(true, false), Some("meta")).message;
-        assert!(message.ends_with("... (2500 bytes)"), "{message}");
-        assert!(message.len() < 2100);
+        assert!(!render(&timeout, &env(true, false), Some("meta"))
+            .summary
+            .contains("```"));
     }
 
     #[test]
