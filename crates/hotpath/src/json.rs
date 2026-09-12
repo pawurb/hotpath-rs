@@ -4,6 +4,7 @@
 //! It is gated behind the `json` feature (implied by `hotpath`, `utils`, and
 //! `tui`), so consumers can parse reports without the profiler.
 
+pub mod cloud_api;
 mod formatted;
 pub use formatted::*;
 

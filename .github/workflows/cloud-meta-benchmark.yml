@@ -25,9 +25,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # The uploader reports its own outcome: one `::notice::` / `::warning::`
+      # / `::error::` annotation plus a step summary block, and with
+      # `HOTPATH_META_UPLOAD_STRICT=1` a failed upload exits 1. The grep is a
+      # second guard that also covers a silently missing upload line.
       - name: Run meta benchmark and upload report
         env:
           HOTPATH_META_UPLOAD: "1"
+          HOTPATH_META_UPLOAD_STRICT: "1"
           HOTPATH_META_BENCHMARK: meta
           HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_META_EXCLUDE_WRAPPER: "true"
@@ -38,10 +43,6 @@ jobs:
           cargo run -q --release -p test-all-features --example benchmark_meta \
             --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta,hotpath-prometheus 2>&1 | tee run.log
           grep -q '^hotpath-meta: uploaded report ' run.log
-          {
-            echo "## hotpath.rs meta benchmark"
-            echo '```'; grep '^hotpath-meta: upload' run.log; echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
 
   report:
     name: cloud meta benchmark (pull request)

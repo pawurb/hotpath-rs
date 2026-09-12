@@ -150,6 +150,13 @@ jobs:
              | .meta.ci.event = "pull_request"' \
             "$REPORT_PATH" > upload.json
 
+      # The server's answer is the one line that explains a failure, so it is
+      # shown whatever the status: in the step summary in full, and in an
+      # `::error::` annotation when the upload was rejected. The error body is
+      # `{code, error, hint, request_id}`; `request_id` (also the
+      # `x-request-id` header) matches the server's log line. On success a
+      # `comment.hint` means the server could not post or update the pull
+      # request comment for a reason the adopter can act on.
       - name: Upload the report
         run: |
           set -euo pipefail
@@ -158,12 +165,29 @@ jobs:
           token=$(curl -sS --fail \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=hotpath.rs" | jq -r .value)
-          curl -sS --fail-with-body -X POST \
+          if ! curl -sS -X POST \
             "$UPLOAD_URL/api/v1/reports?benchmark=$BENCHMARK" \
             -H "Authorization: Bearer $token" \
             -H "Content-Type: application/json" \
-            --data-binary @upload.json > response.json
+            --data-binary @upload.json \
+            -w '%{http_code}' -o response.json -D headers.txt > status.txt; then
+            echo "::error::hotpath.rs unreachable at $UPLOAD_URL"
+            exit 1
+          fi
+          status=$(cat status.txt)
+          request_id=$(grep -i '^x-request-id:' headers.txt | tr -d '\r' | cut -d' ' -f2 || true)
           {
             echo "## hotpath.rs $BENCHMARK benchmark"
-            echo '```'; jq . response.json; echo '```'
+            echo "HTTP $status, request ${request_id:--}"
+            echo '```'; jq . response.json 2>/dev/null || cat response.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" != 201 ] && [ "$status" != 200 ]; then
+            detail=$(jq -r '.error + (if .hint then ". " + .hint else "" end) + " (" + (.code // "unknown") + ")"' response.json 2>/dev/null || cat response.json)
+            echo "::error::hotpath.rs rejected the report (HTTP $status, request ${request_id:--}): ${detail:-empty body}"
+            exit 1
+          fi
+          hint=$(jq -r '.comment.hint // empty' response.json 2>/dev/null || true)
+          if [ -n "$hint" ]; then
+            reason=$(jq -r '.comment.reason // "not posted"' response.json)
+            echo "::warning::hotpath.rs comment $reason: $hint"
+          fi
