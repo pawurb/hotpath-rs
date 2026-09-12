@@ -142,7 +142,7 @@ pub(crate) type HttpKey = (Option<&'static str>, Option<&'static str>, String);
 /// Aggregated statistics for a single normalized endpoint requested from a
 /// single source function under a single axum route. The same endpoint hit
 /// from two instrumented functions (or under two routes) produces two entries.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct HttpEntry {
     pub(crate) id: u32,
     pub(crate) endpoint: String,
@@ -248,14 +248,16 @@ pub(crate) struct HttpState {
 
 pub(crate) static HTTP_STATE: OnceLock<HttpState> = OnceLock::new();
 
-pub(crate) fn get_sorted_http_entries() -> Vec<HttpEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_http_entries<R>(f: impl FnOnce(&[&HttpEntry]) -> R) -> R {
     let Some(state) = HTTP_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<HttpEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_http_entries);
-    stats
+    let mut stats: Vec<&HttpEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_http_entries(a, b));
+    f(&stats)
 }
 
 /// Returns recent requests of the entry with the given id, newest first.
@@ -270,15 +272,11 @@ pub(crate) fn get_http_logs(id: u32) -> Option<HttpLogs> {
 }
 
 pub(crate) fn get_http_json() -> crate::json::JsonHttpList {
-    let entries = get_sorted_http_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    crate::lib_on::report::collect_http_json(
-        &entries,
-        0,
-        elapsed,
-        &crate::lib_on::hotpath_guard::configured_percentiles(),
-        false,
-    )
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    with_sorted_http_entries(|entries| {
+        crate::lib_on::report::collect_http_json(entries, 0, elapsed, &percentiles, false)
+    })
 }
 
 static EVENT_QUEUES: EventQueueRegistry<HttpEvent> = EventQueueRegistry::new();

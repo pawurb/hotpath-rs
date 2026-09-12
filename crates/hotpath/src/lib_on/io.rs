@@ -182,7 +182,7 @@ impl IoOpStats {
 
 /// Statistics for a single `io!` creation site (source location + concrete
 /// type). All wrapper instances from that site accumulate into one entry.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct IoEntry {
     pub(crate) id: u32,
     /// Column-including call-site key (`file:line:column`); the identity used
@@ -240,26 +240,24 @@ pub(crate) struct IoState {
 
 pub(crate) static IO_STATE: OnceLock<IoState> = OnceLock::new();
 
-pub(crate) fn get_sorted_io_entries() -> Vec<IoEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_io_entries<R>(f: impl FnOnce(&[&IoEntry]) -> R) -> R {
     let Some(state) = IO_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<IoEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_io_entries);
-    stats
+    let mut stats: Vec<&IoEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_io_entries(a, b));
+    f(&stats)
 }
 
 pub(crate) fn get_io_json() -> crate::json::JsonIoList {
-    let entries = get_sorted_io_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    crate::lib_on::report::collect_io_json(
-        &entries,
-        0,
-        elapsed,
-        &crate::lib_on::hotpath_guard::configured_percentiles(),
-        false,
-    )
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    with_sorted_io_entries(|entries| {
+        crate::lib_on::report::collect_io_json(entries, 0, elapsed, &percentiles, false)
+    })
 }
 
 #[inline]
