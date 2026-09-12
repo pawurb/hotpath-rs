@@ -44,7 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let resp = client
             .get(format!("http://127.0.0.1:{port}/users/{id}?verbose=true"))
             .send()
-            .await?;
+            .await
+            // The versioned error alias works with profiling on or off.
+            .map_err(hotpath::wrap::reqwest_012::Error::without_url)?;
         assert_eq!(resp.status().as_u16(), 200);
     }
 
