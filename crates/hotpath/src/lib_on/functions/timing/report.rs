@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::json::JsonFunctionEntry;
 use crate::json::JsonFunctionsList;
 use crate::lib_on::functions::FunctionStatsConfig;
-use crate::output::{format_duration, format_percentile_key, ProfilingMode};
+use crate::output::{format_percentile_key, Precision, ProfilingMode};
 
 use crate::lib_on::functions::timing::state::FunctionStats;
 
@@ -13,6 +13,7 @@ pub(crate) fn build_functions_list(
     current_elapsed_ns: u64,
 ) -> JsonFunctionsList {
     let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
+    let precision = Precision::for_cloud(config.cloud);
 
     let reference_total = if exclude_wrapper {
         stats
@@ -67,7 +68,7 @@ pub(crate) fn build_functions_list(
                 let value = if count_only {
                     "-".to_string()
                 } else {
-                    format_duration(s.percentile(p).as_nanos() as u64)
+                    precision.duration(s.percentile(p).as_nanos() as u64)
                 };
                 percentiles.insert(format_percentile_key(p), value);
             }
@@ -80,20 +81,20 @@ pub(crate) fn build_functions_list(
                 avg: if count_only {
                     "-".to_string()
                 } else {
-                    format_duration(s.avg_duration_ns())
+                    precision.duration(s.avg_duration_ns())
                 },
                 percentiles,
                 total: if count_only {
                     "-".to_string()
                 } else {
-                    format_duration(display_total)
+                    precision.duration(display_total)
                 },
                 percent_total: if count_only {
                     "-".to_string()
                 } else {
                     format!("{:.2}%", percentage)
                 },
-                histogram: if config.histograms {
+                histogram: if config.cloud {
                     s.histogram_base64()
                 } else {
                     None
@@ -107,7 +108,7 @@ pub(crate) fn build_functions_list(
 
     JsonFunctionsList {
         profiling_mode: ProfilingMode::Timing,
-        time_elapsed: format_duration(total_elapsed_ns),
+        time_elapsed: precision.duration(total_elapsed_ns),
         total_elapsed_ns: current_elapsed_ns,
         total_allocated: None,
         description: "Execution duration of functions.".to_string(),
