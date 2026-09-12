@@ -15,8 +15,9 @@
 //! `error` sentence of the `UploadError` body (plus status and request id)
 //! and a failed comment prints `comment.error`; the client branches on nothing
 //! the server says. A failure is a warning by default and never changes the exit
-//! code; `HOTPATH_UPLOAD_STRICT=1` turns it into an error and exits 1 after
-//! the line is printed. Skips never fail, even in strict mode.
+//! code; `HOTPATH_UPLOAD_STRICT=1` turns it into an error and `upload`
+//! returns `true`, on which the guard exits 1 once the local report is
+//! written. Skips never fail, even in strict mode.
 //!
 //! No retries yet: a retry is only safe once the server insert is idempotent
 //! per run, otherwise a timed-out upload that was in fact stored would be
@@ -184,11 +185,15 @@ impl Env {
     }
 }
 
-pub(crate) fn upload(report: &JsonReport) {
+/// Returns `true` when the caller must exit 1: a failed upload in strict mode.
+pub(crate) fn upload(report: &JsonReport) -> bool {
     let outcome = run(report);
     let env = Env::from_process();
     let benchmark = benchmark_name().ok();
-    emit(render(&outcome, &env, benchmark.as_deref()), &env);
+    let rendered = render(&outcome, &env, benchmark.as_deref());
+    let failed = rendered.level == Level::Error;
+    emit(rendered, &env);
+    failed
 }
 
 fn run(report: &JsonReport) -> Outcome {
@@ -412,8 +417,7 @@ pub(crate) fn escape_annotation(message: &str) -> String {
 }
 
 /// Workflow commands are read from stdout, the human line goes to stderr as
-/// before. Exits 1 on `Level::Error` (strict mode only): this runs from
-/// `HotpathGuard::drop` and has no other way to fail the job.
+/// before.
 fn emit(rendered: Rendered, env: &Env) {
     eprintln!("hotpath: {}", rendered.message);
     if env.actions {
@@ -432,10 +436,6 @@ fn emit(rendered: Rendered, env: &Env) {
         if let Err(e) = appended {
             eprintln!("hotpath: could not write {}: {e}", path.display());
         }
-    }
-    if rendered.level == Level::Error {
-        let _ = std::io::stdout().flush();
-        std::process::exit(1);
     }
 }
 
