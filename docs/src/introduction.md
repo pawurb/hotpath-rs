@@ -10,7 +10,7 @@
 <div class="hero-row">
   <img src="{{#asset-hash images/hotpath-ferris.webp}}" alt="hotpath-rs Rust profiler mascot Ferris the crab" class="ferris-img-hero">
   <div class="ssh-demo-container">
-    <p class="ssh-demo-label">Try the TUI demo via SSH - no installation required:</p>
+    <p class="ssh-demo-label">Try the TUI demo over SSH - nothing to install:</p>
     <div class="terminal-shell">
       <span class="terminal-prompt">$</span>
       <span class="terminal-command">ssh demo.hotpath.rs</span>

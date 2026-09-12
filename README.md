@@ -5,7 +5,7 @@ hotpath-rs is an easy-to-configure Rust performance profiler that shows exactly 
 
 It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, HTTP calls, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup. Built-in support for Prometheus metrics and Grafana dashboards.
 
-Try the TUI demo via SSH - no installation required:
+Try the TUI demo over SSH - nothing to install:
 
 ```
 ssh demo.hotpath.rs
