@@ -45,7 +45,9 @@ pub(crate) struct FunctionStatsConfig {
     pub(crate) caller_name: &'static str,
     pub(crate) limit: usize,
     /// Set only for the final static report, never for the live metrics server.
-    pub(crate) histograms: bool,
+    /// Cloud-report shape: histograms attached and values rendered with
+    /// `Precision::Exact` (see `output.rs`).
+    pub(crate) cloud: bool,
 }
 
 pub(crate) static FUNCTIONS_ID_COUNTER: AtomicU32 = AtomicU32::new(1);

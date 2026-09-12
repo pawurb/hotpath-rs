@@ -32,8 +32,26 @@ pub fn format_duration(ns: u64) -> String {
     }
 }
 
+/// Lossless variant of [`format_duration`]: the same unit bands, with enough
+/// decimals to carry every nanosecond (3 for µs, 6 for ms, 9 for s), so
+/// [`parse_duration`] recovers the exact value. Used for cloud reports, where
+/// the server diffs the numbers instead of a person reading them.
+#[cfg(feature = "hotpath-meta")]
+pub(crate) fn format_duration_exact(ns: u64) -> String {
+    if ns < 1_000 {
+        format!("{} ns", ns)
+    } else if ns < 1_000_000 {
+        format!("{:.3} µs", ns as f64 / 1_000.0)
+    } else if ns < 1_000_000_000 {
+        format!("{:.6} ms", ns as f64 / 1_000_000.0)
+    } else {
+        format!("{:.9} s", ns as f64 / 1_000_000_000.0)
+    }
+}
+
 /// Parses a human-readable duration string back to nanoseconds.
-/// Inverse of [`format_duration`].
+/// Inverse of [`format_duration`]; also reads the lossless form cloud
+/// reports carry (`1.004999 ms`).
 pub fn parse_duration(s: &str) -> Option<u64> {
     let s = s.trim();
     if let Some(num) = s.strip_suffix(" ns") {
@@ -96,13 +114,59 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Lossless variant of [`format_bytes`]: the plain byte count with the `B`
+/// unit, so [`parse_bytes`] recovers the exact value. A `KB` figure with one
+/// decimal is a 10% step just above 1 KB, which is coarser than the changes a
+/// cloud report is diffed for.
+#[cfg(feature = "hotpath-meta")]
+pub(crate) fn format_bytes_exact(bytes: u64) -> String {
+    format!("{} B", bytes)
+}
+
+/// How a report renders durations and byte counts. `Display` rounds for
+/// reading; `Exact` keeps every nanosecond and byte so a consumer can parse
+/// the value back without loss. Cloud reports (`HOTPATH_UPLOAD=1` or JSON
+/// output with `hotpath-cloud`) use `Exact`, everything else `Display`.
+#[cfg(feature = "hotpath-meta")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Precision {
+    Display,
+    Exact,
+}
+
+#[cfg(feature = "hotpath-meta")]
+impl Precision {
+    pub(crate) fn for_cloud(cloud: bool) -> Self {
+        if cloud {
+            Precision::Exact
+        } else {
+            Precision::Display
+        }
+    }
+
+    pub(crate) fn duration(self, ns: u64) -> String {
+        match self {
+            Precision::Display => format_duration(ns),
+            Precision::Exact => format_duration_exact(ns),
+        }
+    }
+
+    pub(crate) fn bytes(self, bytes: u64) -> String {
+        match self {
+            Precision::Display => format_bytes(bytes),
+            Precision::Exact => format_bytes_exact(bytes),
+        }
+    }
+}
+
 /// Formats an optional per-second rate to one decimal place, or `-` when absent.
 pub fn format_rate(rate: Option<f64>) -> String {
     rate.map_or_else(|| "-".to_string(), |v| format!("{v:.1}"))
 }
 
 /// Parses a human-readable byte string back to a byte count.
-/// Inverse of [`format_bytes`].
+/// Inverse of [`format_bytes`]; also reads the plain `N B` form cloud
+/// reports carry.
 pub fn parse_bytes(s: &str) -> Option<u64> {
     let s = s.trim();
     if let Some(num) = s.strip_suffix(" TB") {
@@ -340,6 +404,66 @@ mod parse_tests {
             let parsed = parse_count(&formatted);
             assert_eq!(
                 parsed,
+                Some(val),
+                "round-trip failed for {val}: formatted as '{formatted}'"
+            );
+        }
+    }
+}
+
+#[cfg(all(test, feature = "hotpath-meta"))]
+mod precision_tests {
+    use super::*;
+
+    #[test]
+    fn test_format_duration_exact_roundtrip() {
+        // Band edges, values the display format rounds away, and the
+        // 1000 s histogram ceiling.
+        for val in [
+            0,
+            1,
+            999,
+            1_000,
+            1_001,
+            999_999,
+            1_000_000,
+            1_004_999,
+            1_234_567,
+            999_999_999,
+            1_000_000_000,
+            1_000_000_001,
+            123_456_789_012,
+            1_000_000_000_000,
+        ] {
+            let formatted = format_duration_exact(val);
+            assert_eq!(
+                parse_duration(&formatted),
+                Some(val),
+                "round-trip failed for {val}: formatted as '{formatted}'"
+            );
+        }
+        assert_eq!(format_duration_exact(999), "999 ns");
+        assert_eq!(format_duration_exact(1_001), "1.001 µs");
+        assert_eq!(format_duration_exact(1_004_999), "1.004999 ms");
+        assert_eq!(format_duration_exact(1_000_000_001), "1.000000001 s");
+    }
+
+    #[test]
+    fn test_precision_selects_formatter() {
+        assert_eq!(Precision::for_cloud(false), Precision::Display);
+        assert_eq!(Precision::for_cloud(true), Precision::Exact);
+        assert_eq!(Precision::Display.duration(1_004_999), "1.00 ms");
+        assert_eq!(Precision::Exact.duration(1_004_999), "1.004999 ms");
+        assert_eq!(Precision::Display.bytes(1_075), "1.0 KB");
+        assert_eq!(Precision::Exact.bytes(1_075), "1075 B");
+    }
+
+    #[test]
+    fn test_format_bytes_exact_roundtrip() {
+        for val in [0, 1, 1_023, 1_024, 1_075, 65_229, 1_048_576, u64::MAX] {
+            let formatted = format_bytes_exact(val);
+            assert_eq!(
+                parse_bytes(&formatted),
                 Some(val),
                 "round-trip failed for {val}: formatted as '{formatted}'"
             );

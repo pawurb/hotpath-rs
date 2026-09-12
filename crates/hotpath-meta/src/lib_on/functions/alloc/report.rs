@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use crate::json::JsonFunctionEntry;
 use crate::json::JsonFunctionsList;
 use crate::lib_on::functions::FunctionStatsConfig;
-use crate::output::{
-    format_bytes, format_count, format_duration, format_percentile_key, ProfilingMode,
-};
+use crate::output::{format_count, format_percentile_key, Precision, ProfilingMode};
 
 use crate::lib_on::functions::alloc::state::FunctionStats;
 
@@ -18,6 +16,7 @@ pub(crate) fn build_functions_list_alloc(
 
     let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
     let use_count = *ALLOC_METRIC == AllocMetric::Count;
+    let precision = Precision::for_cloud(config.cloud);
 
     let bytes_cache: HashMap<u32, u64> = stats
         .iter()
@@ -90,7 +89,7 @@ pub(crate) fn build_functions_list_alloc(
         if use_count {
             format_count(count)
         } else {
-            format_bytes(bytes)
+            precision.bytes(bytes)
         }
     };
 
@@ -145,10 +144,7 @@ pub(crate) fn build_functions_list_alloc(
                 percentiles,
                 total,
                 percent_total,
-                histogram: config
-                    .histograms
-                    .then(|| s.alloc_histogram_base64())
-                    .flatten(),
+                histogram: config.cloud.then(|| s.alloc_histogram_base64()).flatten(),
                 location: crate::lib_on::locations::lookup_location(s.name),
             }
         })
@@ -174,10 +170,10 @@ pub(crate) fn build_functions_list_alloc(
 
     JsonFunctionsList {
         profiling_mode,
-        time_elapsed: format_duration(current_elapsed_ns),
+        time_elapsed: precision.duration(current_elapsed_ns),
         total_elapsed_ns: current_elapsed_ns,
         total_allocated: match profiling_mode {
-            ProfilingMode::AllocBytes => Some(format_bytes(grand_total)),
+            ProfilingMode::AllocBytes => Some(precision.bytes(grand_total)),
             ProfilingMode::AllocCount => Some(format_count(grand_total)),
             ProfilingMode::Timing => None,
         },
@@ -196,6 +192,7 @@ pub(crate) fn build_functions_list_timing(
     current_elapsed_ns: u64,
 ) -> JsonFunctionsList {
     let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
+    let precision = Precision::for_cloud(config.cloud);
 
     let reference_total = if exclude_wrapper {
         stats
@@ -250,7 +247,7 @@ pub(crate) fn build_functions_list_timing(
                 let value = if count_only {
                     "-".to_string()
                 } else {
-                    format_duration(s.duration_percentile(p))
+                    precision.duration(s.duration_percentile(p))
                 };
                 percentiles.insert(format_percentile_key(p), value);
             }
@@ -263,20 +260,20 @@ pub(crate) fn build_functions_list_timing(
                 avg: if count_only {
                     "-".to_string()
                 } else {
-                    format_duration(s.avg_duration_ns())
+                    precision.duration(s.avg_duration_ns())
                 },
                 percentiles,
                 total: if count_only {
                     "-".to_string()
                 } else {
-                    format_duration(display_total)
+                    precision.duration(display_total)
                 },
                 percent_total: if count_only {
                     "-".to_string()
                 } else {
                     format!("{:.2}%", percentage)
                 },
-                histogram: if config.histograms {
+                histogram: if config.cloud {
                     s.histogram_base64()
                 } else {
                     None
@@ -290,7 +287,7 @@ pub(crate) fn build_functions_list_timing(
 
     JsonFunctionsList {
         profiling_mode: ProfilingMode::Timing,
-        time_elapsed: format_duration(total_elapsed_ns),
+        time_elapsed: precision.duration(total_elapsed_ns),
         total_elapsed_ns: current_elapsed_ns,
         total_allocated: None,
         description: "Function execution time metrics.".to_string(),
