@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
 use std::{sync::LazyLock, sync::OnceLock, sync::RwLock, time::Duration};
 
+use arc_swap::ArcSwapOption;
 use crossbeam_channel::{bounded, Sender};
 
 use crate::json::JsonFunctionsList;
@@ -345,7 +345,8 @@ where
     result
 }
 
-pub(crate) static FUNCTIONS_STATE: OnceLock<Arc<RwLock<FunctionsState>>> = OnceLock::new();
+pub(crate) static FUNCTIONS_STATE: OnceLock<ArcSwapOption<RwLock<FunctionsState>>> =
+    OnceLock::new();
 
 pub(crate) static FUNCTIONS_QUERY_TX: OnceLock<crossbeam_channel::Sender<FunctionsQuery>> =
     OnceLock::new();
