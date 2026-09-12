@@ -243,8 +243,9 @@ pub(crate) fn channel_to_json(
     stats: &ChannelEntry,
     percentiles: &[f64],
     now_ns: u64,
-    histograms: bool,
+    cloud: bool,
 ) -> JsonChannelEntry {
+    let precision = crate::output::Precision::for_cloud(cloud);
     let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
     let mut proc_percentiles = HashMap::new();
@@ -253,14 +254,14 @@ pub(crate) fn channel_to_json(
         let value = if count_only {
             "-".to_string()
         } else {
-            crate::output::format_duration(stats.proc_percentile_nanos(p))
+            precision.duration(stats.proc_percentile_nanos(p))
         };
         proc_percentiles.insert(crate::output::format_percentile_key(p), value);
     }
     let proc_avg = if count_only {
         "-".to_string()
     } else {
-        crate::output::format_duration(stats.proc_avg_nanos())
+        precision.duration(stats.proc_avg_nanos())
     };
 
     JsonChannelEntry {
@@ -283,7 +284,7 @@ pub(crate) fn channel_to_json(
         proc_avg: Some(proc_avg),
         proc_percentiles,
         proc_sampled_count: Some(stats.proc_sampled_count),
-        proc_histogram: histograms.then(|| stats.proc_histogram_base64()).flatten(),
+        proc_histogram: cloud.then(|| stats.proc_histogram_base64()).flatten(),
         location: crate::lib_on::locations::location_for_key(stats.key),
         iter: stats.iter,
     }

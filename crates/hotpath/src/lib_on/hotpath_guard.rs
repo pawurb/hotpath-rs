@@ -722,7 +722,7 @@ impl HotpathGuard {
                                     percentiles: worker_percentiles.clone(),
                                     caller_name: worker_caller_name,
                                     limit: worker_limit,
-                                    histograms: false,
+                                    cloud: false,
                                 };
                                 let current_elapsed_ns = config.total_elapsed.as_nanos() as u64;
 
@@ -983,7 +983,7 @@ fn make_functions_config(
     state_guard: &FunctionsState,
     total_elapsed: std::time::Duration,
     limit_for: impl Fn(usize) -> usize,
-    histograms: bool,
+    cloud: bool,
 ) -> FunctionStatsConfig {
     let display_limit = parse_usize_env("HOTPATH_FUNCTIONS_LIMIT")
         .or_else(|| parse_usize_env("HOTPATH_LIMIT"))
@@ -994,7 +994,7 @@ fn make_functions_config(
         percentiles: state_guard.percentiles.clone(),
         caller_name: state_guard.caller_name,
         limit: limit_for(display_limit),
-        histograms,
+        cloud,
     }
 }
 

@@ -22,6 +22,7 @@ use crate::json::{
 use crate::mutexes::{compare_mutex_entries, MutexEntry, MUTEXES_STATE};
 use crate::output::{
     format_bytes, format_duration, format_percentile_header, format_percentile_key, format_rate,
+    Precision,
 };
 use crate::output_on::{format_throughput, write_section_header};
 use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS_STATE};
@@ -30,11 +31,16 @@ use crate::sql::{compare_sql_entries, SqlEntry, SQL_STATE};
 use crate::streams::{compare_stream_stats, StreamStats, STREAMS_STATE};
 
 /// `-` for entries with events but no measured duration (count-only sampling).
-fn format_sampled_duration(nanos: u64, sampled_count: u64, count: u64) -> String {
+fn format_sampled_duration(
+    precision: Precision,
+    nanos: u64,
+    sampled_count: u64,
+    count: u64,
+) -> String {
     if sampled_count == 0 && count > 0 {
         "-".to_string()
     } else {
-        format_duration(nanos)
+        precision.duration(nanos)
     }
 }
 
@@ -185,7 +191,7 @@ pub(crate) fn collect_channels_json(
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonChannelsList {
     let current_elapsed_ns = elapsed.as_nanos() as u64;
     let total_count = channels.len();
@@ -197,7 +203,7 @@ pub(crate) fn collect_channels_json(
         percentiles: percentiles.to_vec(),
         data: channels
             .iter()
-            .map(|entry| channel_to_json(entry, percentiles, current_elapsed_ns, histograms))
+            .map(|entry| channel_to_json(entry, percentiles, current_elapsed_ns, cloud))
             .collect(),
     }
 }
@@ -292,7 +298,12 @@ fn report_rw_locks_subtable(
     for rw_lock in rows {
         let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
         let fmt = |nanos: u64| {
-            format_sampled_duration(nanos, rw_lock.sampled_count(kind), rw_lock.count(kind))
+            format_sampled_duration(
+                Precision::Display,
+                nanos,
+                rw_lock.sampled_count(kind),
+                rw_lock.count(kind),
+            )
         };
         let mut row = vec![
             Cell::new(&label),
@@ -313,15 +324,17 @@ fn report_rw_locks_subtable(
     let _ = writeln!(writer);
 }
 
-fn rw_lock_to_json(
-    rw_lock: &RwLockEntry,
-    percentiles: &[f64],
-    histograms: bool,
-) -> JsonRwLockEntry {
+fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64], cloud: bool) -> JsonRwLockEntry {
+    let precision = Precision::for_cloud(cloud);
     let label = resolve_label(rw_lock.source, rw_lock.label.as_deref(), Some(rw_lock.iter));
 
     let fmt = |kind: RwLockKind, nanos: u64| {
-        format_sampled_duration(nanos, rw_lock.sampled_count(kind), rw_lock.count(kind))
+        format_sampled_duration(
+            precision,
+            nanos,
+            rw_lock.sampled_count(kind),
+            rw_lock.count(kind),
+        )
     };
     let mut read_wait_percentiles = HashMap::new();
     let mut write_wait_percentiles = HashMap::new();
@@ -383,16 +396,16 @@ fn rw_lock_to_json(
         write_wait_percentiles,
         read_acquire_percentiles,
         write_acquire_percentiles,
-        read_wait_histogram: histograms
+        read_wait_histogram: cloud
             .then(|| rw_lock.wait_histogram_base64(RwLockKind::Read))
             .flatten(),
-        write_wait_histogram: histograms
+        write_wait_histogram: cloud
             .then(|| rw_lock.wait_histogram_base64(RwLockKind::Write))
             .flatten(),
-        read_acquire_histogram: histograms
+        read_acquire_histogram: cloud
             .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Read))
             .flatten(),
-        write_acquire_histogram: histograms
+        write_acquire_histogram: cloud
             .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Write))
             .flatten(),
         location: crate::lib_on::locations::location_for_key(rw_lock.key),
@@ -405,7 +418,7 @@ pub(crate) fn collect_rw_locks_json(
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonRwLocksList {
     let total_count = rw_locks.len();
     let rw_locks = &rw_locks[..apply_limit(total_count, limit)];
@@ -416,7 +429,7 @@ pub(crate) fn collect_rw_locks_json(
         percentiles: percentiles.to_vec(),
         data: rw_locks
             .iter()
-            .map(|rw_lock| rw_lock_to_json(rw_lock, percentiles, histograms))
+            .map(|rw_lock| rw_lock_to_json(rw_lock, percentiles, cloud))
             .collect(),
     }
 }
@@ -491,7 +504,9 @@ pub(crate) fn report_mutexes_table(
 
     for mutex in rows {
         let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
-        let fmt = |nanos: u64| format_sampled_duration(nanos, mutex.sampled_count, mutex.count);
+        let fmt = |nanos: u64| {
+            format_sampled_duration(Precision::Display, nanos, mutex.sampled_count, mutex.count)
+        };
         let mut row = vec![
             Cell::new(&label),
             Cell::new(&mutex.count.to_string()),
@@ -511,10 +526,12 @@ pub(crate) fn report_mutexes_table(
     let _ = writeln!(writer);
 }
 
-fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], histograms: bool) -> JsonMutexEntry {
+fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], cloud: bool) -> JsonMutexEntry {
+    let precision = Precision::for_cloud(cloud);
     let label = resolve_label(mutex.source, mutex.label.as_deref(), Some(mutex.iter));
 
-    let fmt = |nanos: u64| format_sampled_duration(nanos, mutex.sampled_count, mutex.count);
+    let fmt =
+        |nanos: u64| format_sampled_duration(precision, nanos, mutex.sampled_count, mutex.count);
     let mut wait_percentiles = HashMap::new();
     let mut acquire_percentiles = HashMap::new();
     for &p in percentiles {
@@ -535,10 +552,8 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], histograms: bool) -> J
         acquire_avg: fmt(mutex.acquire_avg_nanos()),
         wait_percentiles,
         acquire_percentiles,
-        wait_histogram: histograms.then(|| mutex.wait_histogram_base64()).flatten(),
-        acquire_histogram: histograms
-            .then(|| mutex.acquire_histogram_base64())
-            .flatten(),
+        wait_histogram: cloud.then(|| mutex.wait_histogram_base64()).flatten(),
+        acquire_histogram: cloud.then(|| mutex.acquire_histogram_base64()).flatten(),
         location: crate::lib_on::locations::location_for_key(mutex.key),
         iter: mutex.iter,
     }
@@ -549,7 +564,7 @@ pub(crate) fn collect_mutexes_json(
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonMutexesList {
     let total_count = mutexes.len();
     let mutexes = &mutexes[..apply_limit(total_count, limit)];
@@ -560,7 +575,7 @@ pub(crate) fn collect_mutexes_json(
         percentiles: percentiles.to_vec(),
         data: mutexes
             .iter()
-            .map(|mutex| mutex_to_json(mutex, percentiles, histograms))
+            .map(|mutex| mutex_to_json(mutex, percentiles, cloud))
             .collect(),
     }
 }
@@ -686,13 +701,14 @@ fn sql_to_json(
     entry: &SqlEntry,
     reference_total: u64,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonSqlEntry {
+    let precision = Precision::for_cloud(cloud);
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
         percentile_map.insert(
             format_percentile_key(p),
-            format_duration(entry.percentile_nanos(p)),
+            precision.duration(entry.percentile_nanos(p)),
         );
     }
 
@@ -702,11 +718,11 @@ fn sql_to_json(
         source: entry.source.map(String::from),
         route: entry.route.map(String::from),
         count: entry.count,
-        avg: format_duration(entry.avg_nanos()),
-        total: format_duration(entry.total_nanos),
+        avg: precision.duration(entry.avg_nanos()),
+        total: precision.duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
-        histogram: histograms.then(|| entry.histogram_base64()).flatten(),
+        histogram: cloud.then(|| entry.histogram_base64()).flatten(),
         location: entry
             .source
             .and_then(crate::lib_on::locations::lookup_location),
@@ -718,7 +734,7 @@ pub(crate) fn collect_sql_json(
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonSqlList {
     let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
     let total_calls: u64 = entries.iter().map(|e| e.count).sum();
@@ -733,7 +749,7 @@ pub(crate) fn collect_sql_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| sql_to_json(entry, reference_total, percentiles, histograms))
+            .map(|entry| sql_to_json(entry, reference_total, percentiles, cloud))
             .collect(),
     }
 }
@@ -837,13 +853,14 @@ fn http_to_json(
     entry: &HttpEntry,
     reference_total: u64,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonHttpEntry {
+    let precision = Precision::for_cloud(cloud);
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
         percentile_map.insert(
             format_percentile_key(p),
-            format_duration(entry.percentile_nanos(p)),
+            precision.duration(entry.percentile_nanos(p)),
         );
     }
 
@@ -854,11 +871,11 @@ fn http_to_json(
         route: entry.route.map(String::from),
         count: entry.count,
         errors: entry.error_count,
-        avg: format_duration(entry.avg_nanos()),
-        total: format_duration(entry.total_nanos),
+        avg: precision.duration(entry.avg_nanos()),
+        total: precision.duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
-        histogram: histograms.then(|| entry.histogram_base64()).flatten(),
+        histogram: cloud.then(|| entry.histogram_base64()).flatten(),
         location: entry
             .source
             .and_then(crate::lib_on::locations::lookup_location),
@@ -870,7 +887,7 @@ pub(crate) fn collect_http_json(
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonHttpList {
     let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
     let total_calls: u64 = entries.iter().map(|e| e.count).sum();
@@ -885,7 +902,7 @@ pub(crate) fn collect_http_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| http_to_json(entry, reference_total, percentiles, histograms))
+            .map(|entry| http_to_json(entry, reference_total, percentiles, cloud))
             .collect(),
     }
 }
@@ -1086,13 +1103,14 @@ fn server_alloc_to_json(
     entry: &ServerEntry,
     reference_total: u64,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonServerAlloc {
+    let precision = Precision::for_cloud(cloud);
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
         percentile_map.insert(
             format_percentile_key(p),
-            format_bytes(entry.percentile_bytes(p)),
+            precision.bytes(entry.percentile_bytes(p)),
         );
     }
 
@@ -1100,11 +1118,11 @@ fn server_alloc_to_json(
         bytes_per_request: entry.bytes_per_request(),
         allocs_per_request: entry.allocs_per_request(),
         total_bytes: entry.alloc_bytes,
-        avg: format_bytes(entry.avg_bytes()),
-        total: format_bytes(entry.alloc_bytes),
+        avg: precision.bytes(entry.avg_bytes()),
+        total: precision.bytes(entry.alloc_bytes),
         percent_total: format_sql_percent(entry.alloc_bytes, reference_total),
         percentiles: percentile_map,
-        histogram: histograms.then(|| entry.alloc_histogram_base64()).flatten(),
+        histogram: cloud.then(|| entry.alloc_histogram_base64()).flatten(),
     }
 }
 
@@ -1114,13 +1132,14 @@ fn server_to_json(
     reference_alloc_bytes: u64,
     percentiles: &[f64],
     columns: ServerColumns,
-    histograms: bool,
+    cloud: bool,
 ) -> JsonServerEntry {
+    let precision = Precision::for_cloud(cloud);
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
         percentile_map.insert(
             format_percentile_key(p),
-            format_duration(entry.percentile_nanos(p)),
+            precision.duration(entry.percentile_nanos(p)),
         );
     }
 
@@ -1132,14 +1151,14 @@ fn server_to_json(
         status_5xx: entry.status_5xx,
         sql_per_request: columns.sql.then(|| entry.sql_per_request()).flatten(),
         http_per_request: columns.http.then(|| entry.http_per_request()).flatten(),
-        avg: format_duration(entry.avg_nanos()),
-        total: format_duration(entry.total_nanos),
+        avg: precision.duration(entry.avg_nanos()),
+        total: precision.duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
-        histogram: histograms.then(|| entry.histogram_base64()).flatten(),
+        histogram: cloud.then(|| entry.histogram_base64()).flatten(),
         alloc: columns
             .alloc
-            .then(|| server_alloc_to_json(entry, reference_alloc_bytes, percentiles, histograms)),
+            .then(|| server_alloc_to_json(entry, reference_alloc_bytes, percentiles, cloud)),
     }
 }
 
@@ -1149,7 +1168,7 @@ pub(crate) fn collect_server_json(
     elapsed: std::time::Duration,
     percentiles: &[f64],
     columns: ServerColumns,
-    histograms: bool,
+    cloud: bool,
 ) -> JsonServerList {
     let reference_total: u64 = entries.iter().map(|e| e.total_nanos).sum();
     let total_alloc_bytes: u64 = entries.iter().map(|e| e.alloc_bytes).sum();
@@ -1173,7 +1192,7 @@ pub(crate) fn collect_server_json(
                     total_alloc_bytes,
                     percentiles,
                     columns,
-                    histograms,
+                    cloud,
                 )
             })
             .collect(),
@@ -1281,7 +1300,9 @@ fn report_io_subtable(
     for entry in rows {
         let label = resolve_label(entry.source, entry.label.as_deref(), Some(entry.iter));
         let stats = entry.op(kind);
-        let fmt = |nanos: u64| format_sampled_duration(nanos, stats.sampled_count, stats.count);
+        let fmt = |nanos: u64| {
+            format_sampled_duration(Precision::Display, nanos, stats.sampled_count, stats.count)
+        };
         let mut row = vec![
             Cell::new(&label),
             Cell::new(&entry.instances.to_string()),
@@ -1308,8 +1329,10 @@ fn report_io_subtable(
     let _ = writeln!(writer);
 }
 
-fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64], histograms: bool) -> JsonIoOpStats {
-    let fmt = |nanos: u64| format_sampled_duration(nanos, stats.sampled_count, stats.count);
+fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64], cloud: bool) -> JsonIoOpStats {
+    let precision = Precision::for_cloud(cloud);
+    let fmt =
+        |nanos: u64| format_sampled_duration(precision, nanos, stats.sampled_count, stats.count);
     let mut percentile_map = HashMap::new();
     for &p in percentiles {
         percentile_map.insert(format_percentile_key(p), fmt(stats.percentile_nanos(p)));
@@ -1327,11 +1350,11 @@ fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64], histograms: bool)
             .map(|rate| format_throughput(Some(rate))),
         total_ns: stats.total_nanos,
         percentiles: percentile_map,
-        histogram: histograms.then(|| stats.histogram_base64()).flatten(),
+        histogram: cloud.then(|| stats.histogram_base64()).flatten(),
     }
 }
 
-fn io_to_json(entry: &IoEntry, percentiles: &[f64], histograms: bool) -> JsonIoEntry {
+fn io_to_json(entry: &IoEntry, percentiles: &[f64], cloud: bool) -> JsonIoEntry {
     let label = resolve_label(entry.source, entry.label.as_deref(), Some(entry.iter));
 
     JsonIoEntry {
@@ -1340,10 +1363,10 @@ fn io_to_json(entry: &IoEntry, percentiles: &[f64], histograms: bool) -> JsonIoE
         label,
         has_custom_label: entry.label.is_some(),
         type_name: entry.type_name.to_string(),
-        read: io_op_stats_to_json(&entry.read, percentiles, histograms),
-        write: io_op_stats_to_json(&entry.write, percentiles, histograms),
-        flush: io_op_stats_to_json(&entry.flush, percentiles, histograms),
-        shutdown: io_op_stats_to_json(&entry.shutdown, percentiles, histograms),
+        read: io_op_stats_to_json(&entry.read, percentiles, cloud),
+        write: io_op_stats_to_json(&entry.write, percentiles, cloud),
+        flush: io_op_stats_to_json(&entry.flush, percentiles, cloud),
+        shutdown: io_op_stats_to_json(&entry.shutdown, percentiles, cloud),
         instances: entry.instances,
         location: crate::lib_on::locations::location_for_key(entry.key),
         iter: entry.iter,
@@ -1355,7 +1378,7 @@ pub(crate) fn collect_io_json(
     limit: usize,
     elapsed: std::time::Duration,
     percentiles: &[f64],
-    histograms: bool,
+    cloud: bool,
 ) -> JsonIoList {
     let total_count = entries.len();
     let entries = &entries[..apply_limit(total_count, limit)];
@@ -1366,7 +1389,7 @@ pub(crate) fn collect_io_json(
         percentiles: percentiles.to_vec(),
         data: entries
             .iter()
-            .map(|entry| io_to_json(entry, percentiles, histograms))
+            .map(|entry| io_to_json(entry, percentiles, cloud))
             .collect(),
     }
 }
