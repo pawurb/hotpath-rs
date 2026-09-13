@@ -396,18 +396,6 @@ fn rw_lock_to_json(rw_lock: &RwLockEntry, percentiles: &[f64], cloud: bool) -> J
         write_wait_percentiles,
         read_acquire_percentiles,
         write_acquire_percentiles,
-        read_wait_histogram: cloud
-            .then(|| rw_lock.wait_histogram_base64(RwLockKind::Read))
-            .flatten(),
-        write_wait_histogram: cloud
-            .then(|| rw_lock.wait_histogram_base64(RwLockKind::Write))
-            .flatten(),
-        read_acquire_histogram: cloud
-            .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Read))
-            .flatten(),
-        write_acquire_histogram: cloud
-            .then(|| rw_lock.acquire_histogram_base64(RwLockKind::Write))
-            .flatten(),
         location: crate::lib_on::locations::location_for_key(rw_lock.key),
         iter: rw_lock.iter,
     }
@@ -552,8 +540,6 @@ fn mutex_to_json(mutex: &MutexEntry, percentiles: &[f64], cloud: bool) -> JsonMu
         acquire_avg: fmt(mutex.acquire_avg_nanos()),
         wait_percentiles,
         acquire_percentiles,
-        wait_histogram: cloud.then(|| mutex.wait_histogram_base64()).flatten(),
-        acquire_histogram: cloud.then(|| mutex.acquire_histogram_base64()).flatten(),
         location: crate::lib_on::locations::location_for_key(mutex.key),
         iter: mutex.iter,
     }
@@ -722,7 +708,6 @@ fn sql_to_json(
         total: precision.duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
-        histogram: cloud.then(|| entry.histogram_base64()).flatten(),
         location: entry
             .source
             .and_then(crate::lib_on::locations::lookup_location),
@@ -875,7 +860,6 @@ fn http_to_json(
         total: precision.duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
-        histogram: cloud.then(|| entry.histogram_base64()).flatten(),
         location: entry
             .source
             .and_then(crate::lib_on::locations::lookup_location),
@@ -1122,7 +1106,6 @@ fn server_alloc_to_json(
         total: precision.bytes(entry.alloc_bytes),
         percent_total: format_sql_percent(entry.alloc_bytes, reference_total),
         percentiles: percentile_map,
-        histogram: cloud.then(|| entry.alloc_histogram_base64()).flatten(),
     }
 }
 
@@ -1155,7 +1138,6 @@ fn server_to_json(
         total: precision.duration(entry.total_nanos),
         percent_total: format_sql_percent(entry.total_nanos, reference_total),
         percentiles: percentile_map,
-        histogram: cloud.then(|| entry.histogram_base64()).flatten(),
         alloc: columns
             .alloc
             .then(|| server_alloc_to_json(entry, reference_alloc_bytes, percentiles, cloud)),
@@ -1350,7 +1332,6 @@ fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64], cloud: bool) -> J
             .map(|rate| format_throughput(Some(rate))),
         total_ns: stats.total_nanos,
         percentiles: percentile_map,
-        histogram: cloud.then(|| stats.histogram_base64()).flatten(),
     }
 }
 

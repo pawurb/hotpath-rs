@@ -284,7 +284,6 @@ pub(crate) fn channel_to_json(
         proc_avg: Some(proc_avg),
         proc_percentiles,
         proc_sampled_count: Some(stats.proc_sampled_count),
-        proc_histogram: cloud.then(|| stats.proc_histogram_base64()).flatten(),
         location: crate::lib_on::locations::location_for_key(stats.key),
         iter: stats.iter,
     }
@@ -342,13 +341,6 @@ impl ChannelEntry {
         self.proc_hist
             .record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
             .unwrap();
-    }
-
-    pub(crate) fn proc_histogram_base64(&self) -> Option<String> {
-        if self.proc_sampled_count == 0 {
-            return None;
-        }
-        crate::lib_on::histograms::histogram_base64(&self.proc_hist)
     }
 
     /// Bucket projections of the sampled processing delays for the Prometheus
@@ -1356,31 +1348,5 @@ mod tests {
         // A repeat instance at the first site still gets the -2 suffix.
         process_channel_event(&mut state, created(3, "f.rs:1:14"));
         assert_eq!(state.stats[&3].iter, 1);
-    }
-}
-
-#[cfg(all(test, feature = "hotpath-cloud-meta"))]
-mod histogram_tests {
-    use crate::channels::{ChannelEntry, ChannelType};
-    use crate::lib_on::histograms::decode_histogram;
-
-    fn entry() -> ChannelEntry {
-        ChannelEntry::new(1, "key", "src", None, ChannelType::Unbounded, "u8", 1, 0)
-    }
-
-    #[test]
-    fn histogram_encodes_sampled_receives() {
-        let mut e = entry();
-        e.record_proc(1_000);
-        e.record_proc(2_000);
-
-        let hist = decode_histogram(&e.proc_histogram_base64().unwrap());
-        assert_eq!(hist.len(), 2);
-        assert_eq!(hist.max(), 2_000);
-    }
-
-    #[test]
-    fn histogram_absent_without_samples() {
-        assert!(entry().proc_histogram_base64().is_none());
     }
 }

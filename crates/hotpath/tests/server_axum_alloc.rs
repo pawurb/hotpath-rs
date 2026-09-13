@@ -74,7 +74,6 @@ pub mod tests {
         assert!(alloc.allocs_per_request.unwrap() >= 1.0, "{alloc:?}");
         assert!(alloc.total_bytes as f64 >= 3.0 * BIG_BYTES, "{alloc:?}");
         assert!(alloc.percentiles.contains_key("p95"), "{alloc:?}");
-        assert!(alloc.histogram.is_none(), "histograms are cloud-only");
 
         // Framework overhead only: far below the 1 MiB body.
         let small = by_route(&server.data, "GET /small");

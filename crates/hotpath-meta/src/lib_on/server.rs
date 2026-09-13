@@ -206,13 +206,6 @@ impl ServerEntry {
         }
     }
 
-    pub(crate) fn alloc_histogram_base64(&self) -> Option<String> {
-        if self.scoped_count == 0 {
-            return None;
-        }
-        crate::lib_on::histograms::histogram_base64(self.bytes_hist.as_ref()?)
-    }
-
     /// Sparse native-histogram buckets of bytes per scoped request.
     #[cfg(all(feature = "hotpath-prometheus-meta", feature = "hotpath-alloc-meta"))]
     pub(crate) fn alloc_native_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
@@ -262,13 +255,6 @@ impl ServerEntry {
             Some(ref hist) if self.count > 0 => hist.value_at_percentile(p.clamp(0.0, 100.0)),
             _ => 0,
         }
-    }
-
-    pub(crate) fn histogram_base64(&self) -> Option<String> {
-        if self.count == 0 {
-            return None;
-        }
-        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
     }
 
     /// Sparse native-histogram buckets of recorded durations, `(index, count)`
@@ -675,50 +661,5 @@ mod tests {
         let about = &state.stats["GET /pages/about"];
         assert_eq!(about.count, 1);
         assert!(!state.stats.keys().any(|k| k.contains("<unmatched>")));
-    }
-}
-
-#[cfg(all(test, feature = "hotpath-cloud-meta"))]
-mod histogram_tests {
-    use crate::lib_on::histograms::decode_histogram;
-    use crate::lib_on::server::ServerEntry;
-
-    #[test]
-    fn histogram_encodes_recorded_responses() {
-        let mut entry = ServerEntry::new(1, "GET /".to_string());
-        entry.count = 2;
-        entry.record(1_000);
-        entry.record(2_000);
-
-        let hist = decode_histogram(&entry.histogram_base64().unwrap());
-        assert_eq!(hist.len(), 2);
-        assert_eq!(hist.max(), 2_000);
-    }
-
-    #[test]
-    fn histogram_absent_without_responses() {
-        let entry = ServerEntry::new(1, "GET /".to_string());
-        assert!(entry.histogram_base64().is_none());
-        assert!(entry.alloc_histogram_base64().is_none());
-    }
-
-    #[cfg(feature = "hotpath-alloc-meta")]
-    #[test]
-    fn alloc_histogram_encodes_scoped_requests() {
-        use crate::lib_on::caller_stack::RequestAlloc;
-
-        let mut entry = ServerEntry::new(1, "GET /".to_string());
-        entry.count = 2;
-        entry.scoped_count = 2;
-        entry.record_alloc(RequestAlloc { bytes: 0, count: 0 });
-        entry.record_alloc(RequestAlloc {
-            bytes: 65_536,
-            count: 3,
-        });
-
-        let hist = decode_histogram(&entry.alloc_histogram_base64().unwrap());
-        assert_eq!(hist.len(), 2);
-        assert_eq!(hist.count_at(0), 1);
-        assert!(hist.equivalent(hist.max(), 65_536));
     }
 }

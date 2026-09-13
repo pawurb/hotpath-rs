@@ -144,7 +144,6 @@ pub(crate) fn build_functions_list_alloc(
                 percentiles,
                 total,
                 percent_total,
-                histogram: config.cloud.then(|| s.alloc_histogram_base64()).flatten(),
                 location: crate::lib_on::locations::lookup_location(s.name),
             }
         })
@@ -272,11 +271,6 @@ pub(crate) fn build_functions_list_timing(
                     "-".to_string()
                 } else {
                     format!("{:.2}%", percentage)
-                },
-                histogram: if config.cloud {
-                    s.histogram_base64()
-                } else {
-                    None
                 },
                 location: crate::lib_on::locations::lookup_location(s.name),
             }

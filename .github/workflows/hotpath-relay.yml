@@ -38,7 +38,7 @@ name: hotpath relay
 # `HOTPATH_OUTPUT_FORMAT=json` plus `HOTPATH_OUTPUT_PATH=<report_file>`, and
 # uploads that file as `<artifact_name>`. The feature is what makes a JSON report
 # an upload payload: without it `meta.git`, `meta.ci` and `meta.benchmark` are
-# absent and the report carries neither provenance nor histograms, so the check
+# absent and the report carries no provenance, so the check
 # below rejects it. No `HOTPATH_UPLOAD` is needed or wanted - that job has no
 # token to upload with, which is the reason this workflow exists.
 #

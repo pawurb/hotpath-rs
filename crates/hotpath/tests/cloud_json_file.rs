@@ -65,10 +65,6 @@ mod tests {
             functions.included_count, functions.total_count,
             "payload must ignore HOTPATH_LIMIT"
         );
-        assert!(
-            functions.data.iter().all(|e| e.histogram.is_some()),
-            "payload must carry histograms"
-        );
 
         let _ = std::fs::remove_file(&path);
     }

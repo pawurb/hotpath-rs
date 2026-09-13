@@ -97,12 +97,6 @@ pub struct JsonFunctionEntry {
     pub percentiles: HashMap<String, String>,
     pub total: String,
     pub percent_total: String,
-    /// Base64 HdrHistogram V2 (deflate) of sampled call durations in ns.
-    /// Present only in static reports with `hotpath-cloud-meta` upload enabled;
-    /// same convention for the `*histogram` fields on the other entry types
-    /// (see AGENTS.md).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub histogram: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<JsonLocation>,
 }
@@ -362,8 +356,6 @@ pub struct JsonChannelEntry {
     pub proc_percentiles: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proc_sampled_count: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub proc_histogram: Option<String>,
     pub location: JsonLocation,
     pub iter: u32,
 }
@@ -399,14 +391,6 @@ pub struct JsonRwLockEntry {
     pub write_wait_percentiles: HashMap<String, String>,
     pub read_acquire_percentiles: HashMap<String, String>,
     pub write_acquire_percentiles: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub read_wait_histogram: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub write_wait_histogram: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub read_acquire_histogram: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub write_acquire_histogram: Option<String>,
     pub location: JsonLocation,
     pub iter: u32,
 }
@@ -436,10 +420,6 @@ pub struct JsonMutexEntry {
     pub acquire_avg: String,
     pub wait_percentiles: HashMap<String, String>,
     pub acquire_percentiles: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wait_histogram: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub acquire_histogram: Option<String>,
     pub location: JsonLocation,
     pub iter: u32,
 }
@@ -477,8 +457,6 @@ pub struct JsonSqlEntry {
     pub total: String,
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub histogram: Option<String>,
     /// Location of the instrumented caller named in `source`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<JsonLocation>,
@@ -552,8 +530,6 @@ pub struct JsonHttpEntry {
     pub total: String,
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub histogram: Option<String>,
     /// Location of the instrumented caller named in `source`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<JsonLocation>,
@@ -639,8 +615,6 @@ pub struct JsonServerEntry {
     pub total: String,
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub histogram: Option<String>,
     /// Memory allocated by requests of this route, present only when the
     /// program was built with `hotpath-alloc`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -667,9 +641,6 @@ pub struct JsonServerAlloc {
     /// Share of `JsonServerList::total_alloc_bytes`.
     pub percent_total: String,
     pub percentiles: HashMap<String, String>,
-    /// Bytes-per-request histogram (base64 HdrHistogram), cloud path only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -717,8 +688,6 @@ pub struct JsonIoOpStats {
     pub throughput: Option<String>,
     pub total_ns: u64,
     pub percentiles: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub histogram: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
