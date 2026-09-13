@@ -45,8 +45,8 @@ pub(crate) struct FunctionStatsConfig {
     pub(crate) caller_name: &'static str,
     pub(crate) limit: usize,
     /// Set only for the final static report, never for the live metrics server.
-    /// Cloud-report shape: histograms attached and values rendered with
-    /// `Precision::Exact` (see `output.rs`).
+    /// Cloud-report shape: values rendered with `Precision::Exact` (see
+    /// `output.rs`).
     pub(crate) cloud: bool,
 }
 

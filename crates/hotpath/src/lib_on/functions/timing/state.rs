@@ -145,13 +145,6 @@ impl FunctionStats {
         Duration::from_nanos(v)
     }
 
-    pub(crate) fn histogram_base64(&self) -> Option<String> {
-        if self.sampled_count == 0 {
-            return None;
-        }
-        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
-    }
-
     /// Sparse native-histogram buckets of sampled durations, `(index, count)`
     /// at `schema`, for the Prometheus exporter.
     #[cfg(feature = "hotpath-prometheus")]

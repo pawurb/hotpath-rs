@@ -68,7 +68,6 @@ test_all:
     cargo test --features hotpath,hotpath-prometheus --test prometheus_io -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_alloc -- --nocapture --test-threads=1
     cargo test --features hotpath,hotpath-prometheus --test prometheus_system -- --nocapture --test-threads=1
-    cargo test --features hotpath --test cloud_histograms -- --nocapture --test-threads=1
     cargo test --features hotpath --test cloud_limit -- --nocapture --test-threads=1
     cargo test --features hotpath --test cloud_json_file -- --nocapture --test-threads=1
 
