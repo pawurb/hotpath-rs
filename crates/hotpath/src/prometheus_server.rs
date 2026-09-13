@@ -544,10 +544,17 @@ fn collect_functions_alloc(families: &mut Vec<Family>) -> Option<()> {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_io(families: &mut Vec<Family>) {
+    crate::lib_on::io::with_sorted_io_entries(|entries| collect_io_entries(families, entries));
+}
+
+fn collect_io_entries(families: &mut Vec<Family>, entries: &[&crate::lib_on::io::IoEntry]) {
     use crate::lib_on::io::IoOpKind;
 
-    let mut entries = crate::lib_on::io::get_sorted_io_entries();
-    entries.retain(|e| !e.key.is_empty());
+    let entries: Vec<&crate::lib_on::io::IoEntry> = entries
+        .iter()
+        .copied()
+        .filter(|e| !e.key.is_empty())
+        .collect();
     if entries.is_empty() {
         return;
     }
@@ -570,7 +577,7 @@ fn collect_io(families: &mut Vec<Family>) {
     // all-zero series; errors count as activity (a retryable-failing reader
     // records errors without any completed op).
     let op_samples =
-        |entries: &[crate::lib_on::io::IoEntry],
+        |entries: &[&crate::lib_on::io::IoEntry],
          value: &dyn Fn(&crate::lib_on::io::IoOpStats) -> SampleValue| {
             entries
                 .iter()
@@ -718,12 +725,24 @@ fn collect_futures(families: &mut Vec<Family>) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_mutexes(families: &mut Vec<Family>) {
+    crate::lib_on::mutexes::with_sorted_mutex_entries(|entries| {
+        collect_mutexes_entries(families, entries)
+    });
+}
+
+fn collect_mutexes_entries(
+    families: &mut Vec<Family>,
+    entries: &[&crate::lib_on::mutexes::MutexEntry],
+) {
     // An empty key marks a placeholder whose `Created` event has not been
     // processed yet: no identity labels, so exporting it would fabricate
     // series (and duplicates, given several placeholders). Its counts appear
     // once registration lands, at worst one sweep later.
-    let mut entries = crate::lib_on::mutexes::get_sorted_mutex_entries();
-    entries.retain(|e| !e.key.is_empty());
+    let entries: Vec<&crate::lib_on::mutexes::MutexEntry> = entries
+        .iter()
+        .copied()
+        .filter(|e| !e.key.is_empty())
+        .collect();
     if entries.is_empty() {
         return;
     }
@@ -792,10 +811,22 @@ fn collect_mutexes(families: &mut Vec<Family>) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_rw_locks(families: &mut Vec<Family>) {
+    crate::lib_on::rw_locks::with_sorted_rw_lock_entries(|entries| {
+        collect_rw_locks_entries(families, entries)
+    });
+}
+
+fn collect_rw_locks_entries(
+    families: &mut Vec<Family>,
+    entries: &[&crate::lib_on::rw_locks::RwLockEntry],
+) {
     use crate::lib_on::rw_locks::RwLockKind;
 
-    let mut entries = crate::lib_on::rw_locks::get_sorted_rw_lock_entries();
-    entries.retain(|e| !e.key.is_empty());
+    let entries: Vec<&crate::lib_on::rw_locks::RwLockEntry> = entries
+        .iter()
+        .copied()
+        .filter(|e| !e.key.is_empty())
+        .collect();
     if entries.is_empty() {
         return;
     }
@@ -875,8 +906,20 @@ fn collect_rw_locks(families: &mut Vec<Family>) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_channels(families: &mut Vec<Family>) {
-    let mut entries = crate::lib_on::channels::get_sorted_channel_entries();
-    entries.retain(|e| !e.key.is_empty());
+    crate::lib_on::channels::with_sorted_channel_entries(|entries| {
+        collect_channels_entries(families, entries)
+    });
+}
+
+fn collect_channels_entries(
+    families: &mut Vec<Family>,
+    entries: &[&crate::lib_on::channels::ChannelEntry],
+) {
+    let entries: Vec<&crate::lib_on::channels::ChannelEntry> = entries
+        .iter()
+        .copied()
+        .filter(|e| !e.key.is_empty())
+        .collect();
     if entries.is_empty() {
         return;
     }
@@ -1063,7 +1106,10 @@ fn collect_streams(families: &mut Vec<Family>) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_sql(families: &mut Vec<Family>) {
-    let entries = crate::lib_on::sql::get_sorted_sql_entries();
+    crate::lib_on::sql::with_sorted_sql_entries(|entries| collect_sql_entries(families, entries));
+}
+
+fn collect_sql_entries(families: &mut Vec<Family>, entries: &[&crate::lib_on::sql::SqlEntry]) {
     if entries.is_empty() {
         return;
     }
@@ -1136,7 +1182,12 @@ fn query_label(query: &str, cap: usize) -> String {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_http(families: &mut Vec<Family>) {
-    let entries = crate::lib_on::http::get_sorted_http_entries();
+    crate::lib_on::http::with_sorted_http_entries(|entries| {
+        collect_http_entries(families, entries)
+    });
+}
+
+fn collect_http_entries(families: &mut Vec<Family>, entries: &[&crate::lib_on::http::HttpEntry]) {
     if entries.is_empty() {
         return;
     }
@@ -1203,7 +1254,15 @@ fn collect_http(families: &mut Vec<Family>) {
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn collect_server(families: &mut Vec<Family>) {
-    let entries = crate::lib_on::server::get_sorted_server_entries();
+    crate::lib_on::server::with_sorted_server_entries(|entries| {
+        collect_server_entries(families, entries)
+    });
+}
+
+fn collect_server_entries(
+    families: &mut Vec<Family>,
+    entries: &[&crate::lib_on::server::ServerEntry],
+) {
     if entries.is_empty() {
         return;
     }
@@ -1300,14 +1359,14 @@ fn collect_server(families: &mut Vec<Family>) {
     });
 
     #[cfg(feature = "hotpath-alloc")]
-    collect_server_alloc(families, &entries);
+    collect_server_alloc(families, entries);
 }
 
 /// Per-route memory; without the counting allocator every value would be 0.
 #[cfg(feature = "hotpath-alloc")]
 fn collect_server_alloc(
     families: &mut Vec<Family>,
-    entries: &[crate::lib_on::server::ServerEntry],
+    entries: &[&crate::lib_on::server::ServerEntry],
 ) {
     let route_labels = |e: &crate::lib_on::server::ServerEntry| vec![("route", e.route.clone())];
 
