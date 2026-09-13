@@ -1653,7 +1653,6 @@ dependencies = [
  "arc-swap",
  "async-channel",
  "axum",
- "base64 0.22.1",
  "cfg-if",
  "clap",
  "crossbeam-channel",
