@@ -94,11 +94,6 @@ pub(crate) fn build_functions_list(
                 } else {
                     format!("{:.2}%", percentage)
                 },
-                histogram: if config.cloud {
-                    s.histogram_base64()
-                } else {
-                    None
-                },
                 location: crate::lib_on::locations::lookup_location(s.name),
             }
         })

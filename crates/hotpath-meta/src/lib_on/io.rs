@@ -150,13 +150,6 @@ impl IoOpStats {
         }
     }
 
-    pub(crate) fn histogram_base64(&self) -> Option<String> {
-        if self.sampled_count == 0 {
-            return None;
-        }
-        crate::lib_on::histograms::histogram_base64(self.hist.as_ref()?)
-    }
-
     /// Bucket projections of the sampled op durations for the Prometheus
     /// exporter (sparse native at `schema`, cumulative classic on
     /// `boundaries`).
@@ -591,29 +584,4 @@ macro_rules! io {
         $crate::__register_location!(IO_ID);
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, Some($label.to_string()), true)
     }};
-}
-
-#[cfg(all(test, feature = "hotpath-cloud-meta"))]
-mod histogram_tests {
-    use crate::lib_on::histograms::decode_histogram;
-    use crate::lib_on::io::IoOpStats;
-
-    #[test]
-    fn histogram_encodes_sampled_operations() {
-        let mut stats = IoOpStats::new();
-        stats.record(64, Some(1_000));
-        stats.record(64, Some(2_000));
-        stats.record(64, None);
-
-        let hist = decode_histogram(&stats.histogram_base64().unwrap());
-        assert_eq!(hist.len(), 2);
-        assert_eq!(hist.max(), 2_000);
-    }
-
-    #[test]
-    fn histogram_absent_without_sampled_operations() {
-        let mut stats = IoOpStats::new();
-        stats.record(64, None);
-        assert!(stats.histogram_base64().is_none());
-    }
 }
