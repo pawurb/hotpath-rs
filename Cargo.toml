@@ -2,6 +2,7 @@
 members = [
     "crates/hotpath-macros",
     "crates/hotpath",
+    "crates/hotpath-drain",
     "crates/test-tokio-async",
     "crates/test-smol-async",
     "crates/test-all-features",
@@ -45,6 +46,7 @@ exclude = ["crates/test-toasty"]
 
 [workspace.dependencies]
 hotpath-macros = { path = "./crates/hotpath-macros", version = "0.25.1" }
+hotpath-drain = { path = "./crates/hotpath-drain", version = "0.0.1" }
 hotpath = { path = "./crates/hotpath", version = "0.25.1" }
 hotpath-meta = { path = "./crates/hotpath-meta", version = "0.25.1" }
 hotpath-macros-meta = { path = "./crates/hotpath-macros-meta", version = "0.25.1" }

@@ -1630,6 +1630,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hotpath-drain"
+version = "0.0.1"
+
+[[package]]
 name = "hotpath-macros"
 version = "0.25.1"
 dependencies = [
