@@ -223,6 +223,14 @@ cargo clippy --all --features "hotpath,hotpath-alloc" -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc -p hotpath --no-deps --features hotpath,hotpath-alloc
 ```
 
+### Miri
+
+Checks the unsafe code in `hotpath-drain` (requires the nightly `miri` component: `rustup +nightly component add miri`):
+
+```bash
+cargo +nightly miri test -p hotpath-drain
+```
+
 ### Tests
 
 ```bash
