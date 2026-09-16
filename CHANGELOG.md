@@ -2,6 +2,97 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.26.0] - 2026-09-16
+
+### 🚀 Features
+
+- Add json feature flag
+
+- [**breaking**] Remove CPU baseline metric
+
+- [**breaking**] Full report data cloud uploads
+
+- [**breaking**] Adjust report payload for hotpath Cloud
+
+- Add HOTPATH_UPLOAD_URL config
+
+- Support forks meta benchmarks
+
+- Axum requests memory profiling
+
+- Add Tokio oneshot default channel mode
+
+- Add futures oneshot default channel mode
+
+- Add futures default channel mode
+
+- [**breaking**] Remove legacy channel proxy mode
+
+- Add recv to futures channel wrappers
+
+- Add custom user metadata support
+
+- Increase precision for cloud uploads
+
+- Cloud uploads contract enum
+
+
+### 🐛 Bug Fixes
+
+- Limit max percentiles config
+
+- Eager panic on invalid HOTPATH_FOCUS
+
+- Adjust threads ascii table display
+
+- Enable macOS CPU CI tests
+
+- Enable missing CI tests
+
+- Wrap reqwest error type
+
+- Hardcode fork provided event type
+
+
+### 🚜 Refactor
+
+- Simplify feature flag gates
+
+- [**breaking**] Nest pull request fields in meta.ci
+
+
+### ⚡ Performance
+
+- Limit axum flag features
+
+- Split CI build job into parallel jobs
+
+- Stop cloning report entries and their histograms
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Add cloud meta benchmark
+
+- Enable forks meta benchmark
+
+- Expand meta benchmark
+
+- Extract fork relay into a reusable workflow
+
+- Drop wrap naming from channel tests and benchmarks
+
+- [**breaking**] Remove hotpath-cloud full histogram data
+
+- Remove unused meta dep
+
+- Bump rustls to 0.23.45 (RUSTSEC-2026-0285)
+
+- Initial hotpath-drain config
+
+- Release 0.26.0
+
+
 ## [0.25.1] - 2026-09-05
 
 ### 🚀 Features
