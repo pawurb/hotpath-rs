@@ -12,6 +12,12 @@ keywords = ["lock-free", "spsc", "queue", "thread-local", "profiling"]
 [features]
 # Self-profiling: instruments the drain with hotpath-meta. Not for external use.
 hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta"]
+hotpath-alloc-meta = ["hotpath-meta", "hotpath-meta/hotpath-alloc-meta"]
 
 [dependencies]
 hotpath-meta = { workspace = true, optional = true }
+
+[lints.rust]
+# `hotpath_meta::main` checks `feature = "hotpath-alloc"` in the destination
+# crate; declare it so the check-cfg lint stays quiet on the examples.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("hotpath-alloc"))'] }
