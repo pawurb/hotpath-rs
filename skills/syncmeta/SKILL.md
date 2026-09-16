@@ -1,6 +1,6 @@
 ---
 name: syncmeta
-description: Sync changes from hotpath and hotpath-macros crates to their meta counterparts (hotpath-meta and hotpath-macros-meta). Use when meta crates need to be updated with recent changes.
+description: Sync changes from the hotpath, hotpath-macros and hotpath-drain crates to their meta counterparts (hotpath-meta, hotpath-macros-meta and hotpath-drain-meta). Use when meta crates need to be updated with recent changes.
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
@@ -18,6 +18,7 @@ The meta crates are copies of the main crates used to profile the profiler itsel
 - Crate imports: `hotpath_macros` → `hotpath_macros_meta`, `hotpath_drain` → `hotpath_drain_meta`
 - Environment variables: `HOTPATH_FOCUS` → `HOTPATH_META_FOCUS`, `HOTPATH_EXCLUDE_WRAPPER` → `HOTPATH_META_EXCLUDE_WRAPPER`, `HOTPATH_OUTPUT_PATH` → `HOTPATH_META_OUTPUT_PATH`
 - Self-instrumentation: lines like `#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]` exist in hotpath but must NOT exist in hotpath-meta
+- `hotpath-drain-meta` is the simplest mirror: it has no features and no dependencies, so syncing `hotpath-drain` means applying the diff and dropping the `#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(...))]` lines. Nothing else is renamed - there is no `hotpath-drain-meta` feature flag.
 
 **Instead, apply diffs to the existing meta files:**
 
@@ -34,10 +35,11 @@ git log --oneline -N
 git diff HEAD~N..HEAD --name-only -- crates/hotpath/src/ crates/hotpath-macros/src/ crates/hotpath-drain/src/
 ```
 
-2. **For each changed file**, get the hotpath diff:
+2. **For each changed file**, get the source diff:
 
 ```
 git diff HEAD~N..HEAD -- crates/hotpath/src/path/to/file.rs
+git diff HEAD~N..HEAD -- crates/hotpath-drain/src/lib.rs
 ```
 
 3. **Read the corresponding meta file** and apply the equivalent changes using Edit tool. The meta files are at:
@@ -62,7 +64,7 @@ The no-feature check covers the `lib_off` path. Every `*-meta` sub-feature (`hot
 
 ## Rules
 
-- Only sync `src/` files, never `Cargo.toml` or other config files.
+- Only sync `src/` files, never `Cargo.toml` or other config files. `examples/` and `tests/` (including the miri test in `hotpath-drain`) are not mirrored either.
 - If no changes were made to the source crates in the specified commits, report that and exit.
 - NEVER copy entire files and do bulk find-and-replace. Always apply diffs to existing meta files.
 - Preserve ALL meta-specific naming conventions (feature flags, env vars, crate names, self-instrumentation removal).

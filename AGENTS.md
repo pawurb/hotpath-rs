@@ -99,7 +99,7 @@ Every example in a test crate contains its exact cargo command in the top commen
 
 ## Other
 
-Never read hotpath-meta and hotpath-macros-meta crates when exploring and planning. Changes to `crates/hotpath` / `crates/hotpath-macros` must eventually be mirrored into their `-meta` counterparts (see CONTRIBUTING.md; the `syncmeta` skill applies the diffs), but perform that mirroring only when explicitly asked - it is triggered as a separate step, not as part of every change.
+Never read hotpath-meta, hotpath-macros-meta and hotpath-drain-meta crates when exploring and planning. Changes to `crates/hotpath` / `crates/hotpath-macros` / `crates/hotpath-drain` must eventually be mirrored into their `-meta` counterparts (see CONTRIBUTING.md; the `syncmeta` skill applies the diffs), but perform that mirroring only when explicitly asked - it is triggered as a separate step, not as part of every change.
 
 NEVER instrument hotpath-meta crates using hotpath_meta, it won't work.
 
