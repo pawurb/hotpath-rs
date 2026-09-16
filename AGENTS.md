@@ -9,9 +9,10 @@ hotpath-rs is a lightweight, feature-gated Rust profiler that tracks function ex
 Workspace layout:
 - `crates/hotpath` - Main library with profiling runtime, reporting, metrics/MCP servers, and the TUI/CLI binaries
 - `crates/hotpath-macros` - Procedural macros (`#[measure]`, `#[main]`, `#[future_fn]`, ...)
+- `crates/hotpath-drain` - Lock-free per-thread chunked SPSC event queues plus the single-consumer registry (`EventProducer`, `EventQueue`, `EventQueueRegistry`); re-exported inside hotpath as `crate::batch`
 - `crates/test-*` - One integration-test crate per instrumented subsystem or third-party integration; the current list is the `members` array in the root `Cargo.toml`
   - `test-toasty` is NOT a workspace member: toasty's rusqlite and the workspace's sqlx-sqlite have conflicting `links = "sqlite3"` values, so it's built via `cargo run --manifest-path crates/test-toasty/Cargo.toml ...`
-- `crates/hotpath-meta` / `crates/hotpath-macros-meta` - Copies of hotpath used to profile the profiler itself (not intended for external use)
+- `crates/hotpath-meta` / `crates/hotpath-macros-meta` / `crates/hotpath-drain-meta` - Copies of hotpath used to profile the profiler itself (not intended for external use)
 - `docs/` - mdBook source for the hotpath.rs documentation site (the Axum web server that builds/serves it lives in a separate private repo at `../hotpath-backend`)
 
 ## Reference Docs
@@ -51,7 +52,7 @@ TUI quickstart (details in `dev_docs/tui.md`): run a profiled example in one ter
 
 ## Architecture
 
-**Profiling pipeline**: Measurements flow from instrumented code -> per-thread lock-free chunked SPSC queue (`lib_on/batch.rs`) -> background worker thread (single consumer, sweeps all queues every 50ms and once more at shutdown) -> statistics aggregation -> report generation on program exit. The producer hot path is a plain slot store plus one `Release` publish of the chunk length - no mutex, no RMW atomic - and queues remain drainable from the worker at any moment, so events buffered on parked threads (e.g. idle tokio workers) still reach the final report. Producers are gated by a per-registry `active` flag so events cannot accumulate unbounded when no worker is consuming.
+**Profiling pipeline**: Measurements flow from instrumented code -> per-thread lock-free chunked SPSC queue (`crates/hotpath-drain`, aliased as `crate::batch`) -> background worker thread (single consumer, sweeps all queues every 50ms and once more at shutdown) -> statistics aggregation -> report generation on program exit. The producer hot path is a plain slot store plus one `Release` publish of the chunk length - no mutex, no RMW atomic - and queues remain drainable from the worker at any moment, so events buffered on parked threads (e.g. idle tokio workers) still reach the final report. Producers are gated by a per-registry `active` flag so events cannot accumulate unbounded when no worker is consuming.
 
 Each subsystem has a dedicated background worker thread named `hp-<subsystem>`, spawned from its `lib_on/<subsystem>.rs` - see `dev_docs/architecture.md`.
 

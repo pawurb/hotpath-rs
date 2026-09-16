@@ -26,7 +26,7 @@ pub(crate) fn current_elapsed_ns() -> u64 {
         .unwrap_or(0)
 }
 
-pub(crate) mod batch;
+pub(crate) use hotpath_drain as batch;
 pub(crate) mod caller_stack;
 pub(crate) mod channels;
 #[doc(hidden)]

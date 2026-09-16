@@ -27,6 +27,7 @@ default = ["threads"]
 json = ["dep:serde", "dep:serde_json"]
 hotpath = [
   "hotpath-macros/hotpath",
+  "dep:hotpath-drain",
   "dep:arc-swap",
   "dep:cfg-if",
   "dep:crossbeam-channel",
@@ -39,7 +40,7 @@ hotpath = [
   "dep:pin-project-lite",
   "dep:libc",
 ]
-hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/crossbeam"]
+hotpath-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/crossbeam", "hotpath-drain?/hotpath-meta"]
 hotpath-alloc-meta = ["dep:hotpath-meta", "hotpath-meta/hotpath-meta", "hotpath-meta/crossbeam", "hotpath-meta/hotpath-alloc-meta", "hotpath-macros/hotpath-alloc-meta"]
 hotpath-cloud-meta = ["hotpath-meta/hotpath-cloud-meta"]
 hotpath-mcp-meta = ["hotpath-meta/hotpath-mcp-meta", "hotpath-meta/axum-0-8"]
@@ -81,6 +82,7 @@ crossterm = { version = "0.29", optional = true }
 eyre = { version = "0.6", optional = true }
 hdrhistogram = { version = "7", default-features = false, optional = true }
 hotpath-macros = { workspace = true }
+hotpath-drain = { workspace = true, optional = true }
 ratatui = { version = "0.30", optional = true }
 regex-lite = { version = "0.1", optional = true }
 serde = { version = "1.0.130", features = ["derive"], optional = true }

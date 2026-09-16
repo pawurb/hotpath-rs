@@ -37,6 +37,7 @@ backup() {
 backup Cargo.toml
 backup Cargo.lock
 backup crates/hotpath/Cargo.toml
+backup crates/hotpath-drain/Cargo.toml
 
 python3 - <<'PY'
 import re, pathlib
@@ -44,6 +45,7 @@ import re, pathlib
 drop = (
     "crates/hotpath-meta",
     "crates/hotpath-macros-meta",
+    "crates/hotpath-drain-meta",
 )
 p = pathlib.Path("Cargo.toml")
 src = p.read_text()
@@ -52,6 +54,13 @@ for path in drop:
 src = re.sub(r'\s*"crates/test-[^"]*",', '', src)
 src = re.sub(r'^hotpath-meta\s*=.*\n', '', src, flags=re.MULTILINE)
 src = re.sub(r'^hotpath-macros-meta\s*=.*\n', '', src, flags=re.MULTILINE)
+src = re.sub(r'^hotpath-drain-meta\s*=.*\n', '', src, flags=re.MULTILINE)
+p.write_text(src)
+
+p = pathlib.Path("crates/hotpath-drain/Cargo.toml")
+src = p.read_text()
+# Drops the optional dependency plus the `hotpath-meta` / `hotpath-alloc-meta` feature lines.
+src = re.sub(r'^hotpath-(alloc-)?meta\s*=.*\n', '', src, flags=re.MULTILINE)
 p.write_text(src)
 
 p = pathlib.Path("crates/hotpath/Cargo.toml")
@@ -59,6 +68,7 @@ src = p.read_text()
 src = re.sub(r'^hotpath-meta\s*=.*\n', '', src, flags=re.MULTILINE)
 src = re.sub(r'"hotpath-meta\??/[^"]+",?\s*', '', src)
 src = re.sub(r'"dep:hotpath-meta",?\s*', '', src)
+src = re.sub(r'"hotpath-drain\?/hotpath-[^"]+",?\s*', '', src)
 extras = ("schemars", "rmcp", "axum", "tokio-util", "ureq", "reqwest",
           "reqwest-012", "reqwest-middleware-04", "reqwest-middleware-05",
           "async-trait", "http",
