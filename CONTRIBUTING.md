@@ -8,11 +8,11 @@
 
 ## `meta` crates explained
 
-Project maintains a complete copy of `hotpath` (`hotpath-meta`) and `hotpath-macros` (`hotpath-macros-meta`). All changes must be mirrored in their corresponding `-meta` crates. This adds some maintenance overhead, but it allows to benchmark the library using itself, which is an invaluable source of performance data and optimization insights.
+Project maintains a complete copy of `hotpath` (`hotpath-meta`), `hotpath-macros` (`hotpath-macros-meta`) and `hotpath-drain` (`hotpath-drain-meta`). All changes must be mirrored in their corresponding `-meta` crates. This adds some maintenance overhead, but it allows to benchmark the library using itself, which is an invaluable source of performance data and optimization insights.
 
 A full copy is needed because a crate cannot depend on itself. Extracting shared core is also impractical, because `hotpath` uses a custom instrumentation logic (like `#[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure_all)]` calls). If you have ideas for a cleaner way to implement self-profiling without full crate duplication, I'm open to suggestions.
 
-To mirror changes from the source crates into the meta crates, you can use the [`syncmeta`](skills/syncmeta/SKILL.md) LLM skill. It applies diffs from `hotpath`/`hotpath-macros` to their meta counterparts while preserving meta-specific naming (feature flags, env vars, crate imports).
+To mirror changes from the source crates into the meta crates, you can use the [`syncmeta`](skills/syncmeta/SKILL.md) LLM skill. It applies diffs from `hotpath`/`hotpath-macros`/`hotpath-drain` to their meta counterparts while preserving meta-specific naming (feature flags, env vars, crate imports).
 
 ## Benchmarking `hotpath` 
 
@@ -151,7 +151,7 @@ cargo run -p test-streams --example benchmark_stream --features hotpath --releas
 
 #### Event transport
 
-Every subsystem (functions, channels, streams, futures, rw_locks, mutexes, sql) records events into per-thread lock-free chunked SPSC queues (`crates/hotpath/src/lib_on/batch.rs`): the hot path is a plain slot store plus one `Release` publish, with no mutex or RMW atomic. Each subsystem's background worker is the single consumer and sweeps all queues every 50ms and once more at shutdown, so anything recorded on any thread - even one still parked at exit - appears in the report.
+Every subsystem (functions, channels, streams, futures, rw_locks, mutexes, sql) records events into per-thread lock-free chunked SPSC queues (the `hotpath-drain` crate, `crates/hotpath-drain/src/lib.rs`): the hot path is a plain slot store plus one `Release` publish, with no mutex or RMW atomic. Each subsystem's background worker is the single consumer and sweeps all queues every 50ms and once more at shutdown, so anything recorded on any thread - even one still parked at exit - appears in the report.
 
 ### Samply traces 
 
@@ -268,6 +268,8 @@ just test_all
 | `hotpath-meta` | Mirror of the `hotpath` library, used to profile the profiler itself. |
 | `hotpath-macros` | Procedural macros (`#[measure]`, `#[main]`, `#[future_fn]`, etc.) |
 | `hotpath-macros-meta` | Mirror of the `hotpath-macros` library, used to profile the profiler itself. |
+| `hotpath-drain` | Lock-free per-thread event queues with a single drain - the transport layer between instrumented code and the background workers |
+| `hotpath-drain-meta` | Mirror of the `hotpath-drain` library, used to profile the profiler itself. |
 | `test-tokio-async` | Integration tests and examples using the Tokio runtime |
 | `test-smol-async` | Integration tests and examples using the smol runtime |
 | `test-all-features` | Tests with all feature flags enabled |

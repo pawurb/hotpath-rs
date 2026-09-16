@@ -1596,6 +1596,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "hdrhistogram",
+ "hotpath-drain",
  "hotpath-macros",
  "hotpath-meta",
  "http",
@@ -1631,6 +1632,13 @@ dependencies = [
 
 [[package]]
 name = "hotpath-drain"
+version = "0.0.1"
+dependencies = [
+ "hotpath-meta",
+]
+
+[[package]]
+name = "hotpath-drain-meta"
 version = "0.0.1"
 
 [[package]]
@@ -1670,6 +1678,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "hdrhistogram",
+ "hotpath-drain-meta",
  "hotpath-macros-meta",
  "libc",
  "object",

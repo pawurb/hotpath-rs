@@ -26,7 +26,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-pub(crate) const CHUNK_SIZE: usize = 64;
+pub const CHUNK_SIZE: usize = 64;
 
 /// Caps how many chunks one sweep drains from a single queue, so a producer
 /// outpacing the consumer cannot pin the sweep in an endless tail chase.
@@ -53,7 +53,7 @@ impl<M> Chunk<M> {
 
 /// One thread's event queue: a linked list of chunks. The owning thread
 /// appends via its [`EventProducer`]; the registry's consumer drains.
-pub(crate) struct EventQueue<M> {
+pub struct EventQueue<M> {
     /// Oldest chunk with unconsumed events. Consumer-owned after creation.
     head: AtomicPtr<Chunk<M>>,
     /// Consumed slot count within `head`. Consumer-only.
@@ -154,7 +154,7 @@ impl<M> Drop for EventQueue<M> {
 }
 
 /// The owning thread's write handle, stored in a `thread_local`.
-pub(crate) struct EventProducer<M> {
+pub struct EventProducer<M> {
     queue: Arc<EventQueue<M>>,
     tail: Cell<*mut Chunk<M>>,
     len: Cell<usize>,
@@ -164,7 +164,7 @@ impl<M> EventProducer<M> {
     /// Appends one event: a plain slot store plus a `Release` publish of the
     /// new length. Allocates a fresh chunk every `CHUNK_SIZE` events.
     #[inline]
-    pub(crate) fn push(&self, m: M) {
+    pub fn push(&self, m: M) {
         let tail = self.tail.get();
         let i = self.len.get();
         // SAFETY: `tail` is the producer-owned live tail chunk (the consumer
@@ -197,13 +197,19 @@ impl<M> Drop for EventProducer<M> {
 
 /// All live per-thread queues for one event type, plus the gate that tells
 /// producers whether a worker is consuming.
-pub(crate) struct EventQueueRegistry<M> {
+pub struct EventQueueRegistry<M> {
     active: AtomicBool,
     queues: Mutex<Vec<Arc<EventQueue<M>>>>,
 }
 
+impl<M: Send> Default for EventQueueRegistry<M> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<M: Send> EventQueueRegistry<M> {
-    pub(crate) const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             active: AtomicBool::new(false),
             queues: Mutex::new(Vec::new()),
@@ -213,16 +219,16 @@ impl<M: Send> EventQueueRegistry<M> {
     /// Whether a worker is consuming. Producers check this before pushing so
     /// events cannot pile up unbounded when no one will ever drain them.
     #[inline]
-    pub(crate) fn is_active(&self) -> bool {
+    pub fn is_active(&self) -> bool {
         self.active.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn set_active(&self, active: bool) {
+    pub fn set_active(&self, active: bool) {
         self.active.store(active, Ordering::Release);
     }
 
     /// Creates and registers a queue for the calling thread.
-    pub(crate) fn register(&self) -> EventProducer<M> {
+    pub fn register(&self) -> EventProducer<M> {
         let first = Chunk::new_raw();
         let queue = Arc::new(EventQueue {
             head: AtomicPtr::new(first),
@@ -243,7 +249,7 @@ impl<M: Send> EventQueueRegistry<M> {
     /// producer thread has exited. Holding the registry lock for the whole
     /// sweep is what makes this the single consumer. Each queue is capped at
     /// `MAX_CHUNKS_PER_SWEEP`; leftovers are picked up on the next tick.
-    pub(crate) fn sweep(&self, out: &mut Vec<M>) {
+    pub fn sweep(&self, out: &mut Vec<M>) {
         self.sweep_inner(out, MAX_CHUNKS_PER_SWEEP);
     }
 
@@ -251,7 +257,7 @@ impl<M: Send> EventQueueRegistry<M> {
     /// next tick to pick up leftovers, so every queue is drained to its tail.
     /// Terminates because producers are deactivated (`set_active(false)`)
     /// before shutdown is signalled, so queues can no longer grow.
-    pub(crate) fn drain_all(&self, out: &mut Vec<M>) {
+    pub fn drain_all(&self, out: &mut Vec<M>) {
         self.sweep_inner(out, usize::MAX);
     }
 

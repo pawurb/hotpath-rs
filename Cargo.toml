@@ -36,6 +36,7 @@ members = [
     "crates/test-debug",
     "crates/hotpath-meta",
     "crates/hotpath-macros-meta",
+    "crates/hotpath-drain-meta",
 ]
 resolver = "2"
 # test-toasty is a standalone crate, not a workspace member: toasty's sqlite
@@ -50,6 +51,7 @@ hotpath-drain = { path = "./crates/hotpath-drain", version = "0.0.1" }
 hotpath = { path = "./crates/hotpath", version = "0.26.0" }
 hotpath-meta = { path = "./crates/hotpath-meta", version = "0.26.0" }
 hotpath-macros-meta = { path = "./crates/hotpath-macros-meta", version = "0.26.0" }
+hotpath-drain-meta = { path = "./crates/hotpath-drain-meta", version = "0.0.1" }
 proc-macro2 = "1.0.75"
 quote = "1.0.35"
 syn = { version = "2.0.52", features = ["full"] }
