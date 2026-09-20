@@ -18,6 +18,10 @@
 - [Tokio Runtime](./tokio_runtime.md)
 - [Debug & Metrics](./debug.md)
 
+# hotpath Diff
+
+- [Intro](./diff.md)
+
 # More
 
 - [Prometheus & Grafana](./prometheus_grafana.md)
