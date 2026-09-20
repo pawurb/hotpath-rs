@@ -18,7 +18,7 @@
 - [Tokio Runtime](./tokio_runtime.md)
 - [Debug & Metrics](./debug.md)
 
-# Diff
+# hotpath Diff
 
 - [Intro](./diff.md)
 
