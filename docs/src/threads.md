@@ -47,6 +47,8 @@ The view header shows process-wide numbers:
 
 **RSS** - Resident Set Size, the physical memory the process currently occupies. RSS includes code, thread stacks and allocator slack, so it can stay flat while the allocation Diff grows (the allocator reuses freed pages) or grow while Diff stays flat. Comparing the two tells you whether memory growth comes from your allocations or from elsewhere.
 
+**Max RSS** - the peak RSS the kernel has recorded for the process since it started, so a short spike between two refreshes is never missed. The TUI shows both; the final report keeps only Max RSS, since a snapshot taken at exit says little about the run.
+
 And per-thread metrics:
 
 **Thread Name** - the logical name set via `std::thread::Builder::name` or by the runtime (e.g. `tokio-runtime-w`). Unnamed threads show up as `thread_N`, so naming the threads you spawn makes this view far more useful.
@@ -70,7 +72,7 @@ And per-thread metrics:
 The final report prints a threads section like this:
 
 ```
-threads - Thread CPU and memory statistics. (RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc: 304.3 KB, Diff: 1.8 MB)
+threads - Thread CPU and memory statistics. (Max RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc: 304.3 KB, Diff: 1.8 MB)
 +----------+-------+-------+----------+---------+----------+
 | Thread   | Max%  | Avg%  | Alloc    | Dealloc | Diff     |
 +----------+-------+-------+----------+---------+----------+

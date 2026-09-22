@@ -132,6 +132,18 @@ mod tests {
             let proc_avg = entry.proc_avg.as_deref().expect("proc_avg");
             assert_exact_duration(proc_avg, &format!("{} proc_avg", entry.label));
         }
+
+        let threads = report.threads.expect("threads section");
+        for (what, value) in [
+            ("rss_bytes", &threads.rss_bytes),
+            ("peak_rss_bytes", &threads.peak_rss_bytes),
+        ] {
+            let value = value.as_deref().unwrap_or_else(|| panic!("threads {what}"));
+            assert!(
+                value.ends_with(" B") && parse_bytes(value).is_some(),
+                "threads {what}: {value:?} is not an exact byte count"
+            );
+        }
     }
 
     // cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-alloc
@@ -156,6 +168,13 @@ mod tests {
             big.total.ends_with(" KB") || big.total.ends_with(" MB"),
             "main total {:?} should use a rounded unit in display mode",
             big.total
+        );
+
+        let threads = report.threads.expect("threads section");
+        let peak = threads.peak_rss_bytes.as_deref().expect("peak_rss_bytes");
+        assert!(
+            !peak.ends_with(" B"),
+            "threads peak_rss_bytes {peak:?} is in the exact format without hotpath-cloud"
         );
     }
 }

@@ -1585,7 +1585,7 @@ pub(crate) fn collect_futures_json(
 
 #[cfg(feature = "threads")]
 pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
-    let mut threads_json = crate::threads::get_threads_json();
+    let mut threads_json = crate::threads::get_threads_json(Precision::Display);
 
     if threads_json.data.is_empty() {
         return;
@@ -1630,9 +1630,11 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
         table.add_row(row);
     }
 
+    // The report is printed once at exit, so the peak describes the run
+    // while a snapshot taken at that instant would not.
     let mut info_parts = Vec::new();
-    if let Some(rss) = &threads_json.rss_bytes {
-        info_parts.push(format!("RSS: {}", rss));
+    if let Some(peak) = &threads_json.peak_rss_bytes {
+        info_parts.push(format!("Max RSS: {}", peak));
     }
     if let Some(alloc) = &threads_json.total_alloc_bytes {
         info_parts.push(format!("Alloc: {}", alloc));
@@ -1658,8 +1660,8 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
 }
 
 #[cfg(feature = "threads")]
-pub(crate) fn collect_threads_json(limit: usize) -> crate::json::JsonThreadsList {
-    let mut json = crate::threads::get_threads_json();
+pub(crate) fn collect_threads_json(limit: usize, cloud: bool) -> crate::json::JsonThreadsList {
+    let mut json = crate::threads::get_threads_json(Precision::for_cloud(cloud));
     json.data.truncate(apply_limit(json.data.len(), limit));
     json.included_count = json.data.len();
     json

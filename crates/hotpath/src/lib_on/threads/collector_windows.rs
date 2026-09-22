@@ -258,38 +258,38 @@ pub(crate) fn is_thread_alive(_os_tid: u64) -> Option<bool> {
     None
 }
 
-/// Get the RSS (Resident Set Size) of the current process in bytes
-pub(crate) fn get_rss_bytes() -> Option<u64> {
-    use std::mem::MaybeUninit;
+#[repr(C)]
+struct PROCESS_MEMORY_COUNTERS_EX {
+    cb: DWORD,
+    page_fault_count: DWORD,
+    peak_working_set_size: usize,
+    working_set_size: usize,
+    quota_peak_paged_pool_usage: usize,
+    quota_paged_pool_usage: usize,
+    quota_peak_non_paged_pool_usage: usize,
+    quota_non_paged_pool_usage: usize,
+    pagefile_usage: usize,
+    peak_pagefile_usage: usize,
+    private_usage: usize,
+}
 
-    #[repr(C)]
-    struct PROCESS_MEMORY_COUNTERS_EX {
+#[link(name = "psapi")]
+unsafe extern "system" {
+    fn GetProcessMemoryInfo(
+        h_process: HANDLE,
+        ppsm_memcounters: *mut PROCESS_MEMORY_COUNTERS_EX,
         cb: DWORD,
-        page_fault_count: DWORD,
-        peak_working_set_size: usize,
-        working_set_size: usize,
-        quota_peak_paged_pool_usage: usize,
-        quota_paged_pool_usage: usize,
-        quota_peak_non_paged_pool_usage: usize,
-        quota_non_paged_pool_usage: usize,
-        pagefile_usage: usize,
-        peak_pagefile_usage: usize,
-        private_usage: usize,
-    }
+    ) -> BOOL;
+}
 
-    #[link(name = "psapi")]
-    unsafe extern "system" {
-        fn GetProcessMemoryInfo(
-            h_process: HANDLE,
-            ppsm_memcounters: *mut PROCESS_MEMORY_COUNTERS_EX,
-            cb: DWORD,
-        ) -> BOOL;
-    }
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GetCurrentProcess() -> HANDLE;
+}
 
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GetCurrentProcess() -> HANDLE;
-    }
+/// Process memory counters, the source of both the current and the peak RSS.
+fn process_memory_counters() -> Option<PROCESS_MEMORY_COUNTERS_EX> {
+    use std::mem::MaybeUninit;
 
     // SAFETY: GetCurrentProcess returns a pseudo-handle that is always valid.
     // `counters` is zeroed storage of the exact layout GetProcessMemoryInfo
@@ -306,13 +306,18 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
             mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as DWORD,
         );
 
-        if result != 0 {
-            let counters = counters.assume_init();
-            Some(counters.working_set_size as u64)
-        } else {
-            None
-        }
+        (result != 0).then(|| counters.assume_init())
     }
+}
+
+/// Current RSS (working set) of the process in bytes.
+pub(crate) fn get_rss_bytes() -> Option<u64> {
+    process_memory_counters().map(|c| c.working_set_size as u64)
+}
+
+/// Peak RSS (peak working set) of the process since it started, in bytes.
+pub(crate) fn get_peak_rss_bytes() -> Option<u64> {
+    process_memory_counters().map(|c| c.peak_working_set_size as u64)
 }
 
 #[cfg(all(test, target_os = "windows"))]
@@ -375,9 +380,9 @@ mod tests {
 
     #[test]
     fn windows_rss_test() {
-        let rss = get_rss_bytes();
-        assert!(rss.is_some(), "RSS should be available on Windows");
-        let rss_bytes = rss.unwrap();
-        assert!(rss_bytes > 0, "RSS should be greater than zero");
+        let rss = get_rss_bytes().expect("RSS should be available on Windows");
+        let peak = get_peak_rss_bytes().expect("peak RSS should be available on Windows");
+        assert!(rss > 0, "RSS should be greater than zero");
+        assert!(peak >= rss, "peak {peak} below current {rss}");
     }
 }

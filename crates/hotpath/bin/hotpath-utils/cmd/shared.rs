@@ -866,6 +866,7 @@ mod test {
             total_count: thread_count,
             included_count: thread_count,
             rss_bytes: None,
+            peak_rss_bytes: None,
             total_alloc_bytes: None,
             total_dealloc_bytes: None,
             alloc_dealloc_diff: None,

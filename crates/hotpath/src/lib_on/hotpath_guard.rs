@@ -1415,7 +1415,10 @@ impl Drop for HotpathGuard {
                     Section::Threads => {
                         #[cfg(feature = "threads")]
                         {
-                            let json = report::collect_threads_json(limit_for(self.threads_limit));
+                            let json = report::collect_threads_json(
+                                limit_for(self.threads_limit),
+                                cloud_report,
+                            );
                             if !json.data.is_empty() {
                                 report.threads = Some(json);
                             }
