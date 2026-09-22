@@ -84,7 +84,7 @@ fn consumer_loop(done: Arc<AtomicBool>) -> u64 {
     consumed
 }
 
-#[cfg_attr(feature = "hotpath-meta", hotpath_meta::main(percentiles = [50, 95, 99.9]))]
+#[cfg_attr(feature = "hotpath-meta", hotpath_meta::main(percentiles = [95, 99.9]))]
 fn main() {
     REGISTRY.set_active(true);
     let start = Instant::now();
