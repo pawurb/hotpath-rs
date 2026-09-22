@@ -36,7 +36,7 @@
 
 ## Time Sampling
 
-Measure durations for only a fraction of calls to reduce profiling overhead in extremely hot code paths. Rates are fractions in `[0.0, 1.0]`: `0.1` times 1 in 10 calls, `0.0` is count-only mode (counts, states, and queue sizes stay exact, no durations at all), `1.0` or unset measures everything. Per-resource variables take precedence over the global rate, and all env vars take precedence over the [`HotpathGuardBuilder`](https://docs.rs/hotpath/latest/hotpath/struct.HotpathGuardBuilder.html) setters. See [Profiling overhead](profiling_overhead.md#reducing-overhead-time-sampling) for details.
+Measure durations for only a fraction of calls to reduce profiling overhead in extremely hot code paths. Rates are fractions in `[0.0, 1.0]`: `0.1` times about 1 in 10 calls, `0.0` is count-only mode (counts, states, and queue sizes stay exact, no durations at all), `1.0` or unset measures everything. Per-resource variables take precedence over the global rate, and all env vars take precedence over the [`HotpathGuardBuilder`](https://docs.rs/hotpath/latest/hotpath/struct.HotpathGuardBuilder.html) setters. See [Profiling overhead](profiling_overhead.md#reducing-overhead-time-sampling) for details.
 
 | Variable | Description |
 |----------|-------------|

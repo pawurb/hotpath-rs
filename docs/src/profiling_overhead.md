@@ -102,7 +102,7 @@ The same config is available programmatically via [`HotpathGuardBuilder`](https:
 For a skipped call, the sampler cuts the **two `Instant::now()` calls** that bracket each measurement - the biggest single cost on the hot path. Locks skip both the wait and hold stamp pairs, and wrap channels skip the send/receive latency stamps for unsampled messages. What you keep and what you lose:
 
 - **Counts stay exact** - call counts, sent/received counts, queue sizes, and states are still recorded for every operation; only durations are sampled.
-- **Durations become statistical** - avg and percentiles are computed from the sampled subset. Sampling is deterministic 1-in-k (e.g. `0.1` keeps exactly every 10th call per thread), not random, and the report header shows the active rates.
+- **Durations become statistical** - avg and percentiles are computed from the sampled subset. Each call is timed independently at random with probability equal to the rate (e.g. `0.1` keeps about 1 in 10 calls), so periodic workloads cannot line up with a fixed sampling pattern, and the report header shows the active rates.
 - **`0.0` is count-only mode** - no durations at all, and the timing clock reads are skipped entirely.
 
 Sampling rates like `0.01`-`0.1` retain statistically useful latency distributions for high-frequency operations while removing most of the measurement cost. For low-frequency operations there is no reason to sample - the default (measure everything) gives exact numbers for free.

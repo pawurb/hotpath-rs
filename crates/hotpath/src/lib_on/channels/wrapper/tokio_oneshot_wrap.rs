@@ -31,18 +31,11 @@ use tokio::sync::oneshot;
 use tokio::sync::oneshot::error::{RecvError, TryRecvError};
 
 use crate::channels::{
-    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant,
+    register_channel, sample_stamp, send_channel_event, ChannelEvent, ChannelType, Instant,
     InstrumentChannelWrap, InstrumentChannelWrapLog,
 };
 
 type Payload<T> = (u64, Option<Instant>, T);
-
-/// Send-side sampling decision keyed on `msg_id % k`; `None` skips the clock
-/// read and travels in the payload so the receiver skips its read too.
-#[inline]
-fn sample_stamp(msg_id: u64) -> Option<Instant> {
-    crate::lib_on::sampling::channels_should_time(msg_id).then(Instant::now)
-}
 
 /// A `Some` payload stamp means the message is sampled: stamp `now`, compute the delay.
 #[inline]
@@ -82,7 +75,7 @@ impl<T> Sender<T> {
             .expect("oneshot sender endpoint is only taken by `send`");
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         if let Err((_, _, msg)) = inner.send((msg_id, sent_at, msg)) {
             return Err(msg);
         }

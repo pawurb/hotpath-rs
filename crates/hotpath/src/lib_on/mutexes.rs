@@ -201,13 +201,6 @@ pub(crate) fn wait_stamp() -> Option<Instant> {
     crate::lib_on::sampling::mutexes_should_time().then(Instant::now)
 }
 
-/// Rolls back a `wait_stamp` decision after a failed try-acquisition, so the
-/// sampling rate applies to acquisitions rather than attempts.
-#[inline]
-pub(crate) fn cancel_wait_stamp() {
-    crate::lib_on::sampling::mutexes_untime();
-}
-
 static EVENT_QUEUES: EventQueueRegistry<MutexEvent> = EventQueueRegistry::new();
 
 thread_local! {

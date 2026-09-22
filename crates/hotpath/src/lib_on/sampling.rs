@@ -1,27 +1,32 @@
 //! Time-sampling support: measure durations for only a fraction of calls while
 //! keeping every event flowing (counts, states, queue sizes stay exact).
 //!
-//! Rates are fractions in `[0.0, 1.0]`: `0.1` times 1 in 10 calls, `0.0` is
-//! count-only mode (no durations at all), `1.0` or unset measures everything.
+//! Rates are fractions in `[0.0, 1.0]`: `0.1` times about 1 in 10 calls, `0.0`
+//! is count-only mode (no durations at all), `1.0` or unset measures everything.
+//! Every decision is an independent random draw from a per-thread generator,
+//! so periodic workloads cannot lock onto a fixed phase (a deterministic
+//! 1-in-k counter would time only one of two functions alternating at rate
+//! 0.5, and never the other).
 //! Resolution happens once at guard build; events emitted before the guard
 //! exists are measured at 100%.
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Sampler {
     /// Count-only mode (rate 0): never measure durations.
     Never,
-    /// Measure 1 in `k` calls (`k >= 2`).
-    OneIn(u64),
+    /// Time each call independently with probability `rate`. `threshold` is
+    /// the rate scaled to the `u64` range, compared against one random draw.
+    Fraction { rate: f64, threshold: u64 },
 }
 
 impl Sampler {
-    /// `None` means "measure everything" (rate `1.0`, or a rate that rounds to
-    /// keep-every-call). Rates are converted to an integer keep-rate
-    /// `k = round(1 / rate)`, so e.g. `0.3` becomes exactly 1-in-3.
+    /// `None` means "measure everything" (rate `1.0`, or an invalid rate).
     pub(crate) fn from_rate(rate: f64) -> Option<Self> {
         if !rate.is_finite() || !(0.0..=1.0).contains(&rate) {
             return None;
@@ -29,38 +34,52 @@ impl Sampler {
         if rate == 0.0 {
             return Some(Sampler::Never);
         }
-        let k = (1.0 / rate).round() as u64;
-        if k <= 1 {
-            None
-        } else {
-            Some(Sampler::OneIn(k))
+        if rate >= 1.0 {
+            return None;
         }
+        // `u64::MAX as f64` rounds up to 2^64, so `threshold / 2^64 == rate`.
+        let threshold = (rate * u64::MAX as f64) as u64;
+        Some(Sampler::Fraction { rate, threshold })
     }
 
-    /// Effective fraction of calls timed (0.0 in count-only mode).
+    /// Fraction of calls timed (0.0 in count-only mode).
     pub(crate) fn effective_rate(&self) -> f64 {
         match self {
             Sampler::Never => 0.0,
-            Sampler::OneIn(k) => 1.0 / *k as f64,
+            Sampler::Fraction { rate, .. } => *rate,
         }
     }
 
-    /// Deterministic decision keyed on a monotonic id (wrap-channel `msg_id`).
-    /// Id 0 is always sampled, so every channel measures its first message.
+    /// One independent random decision.
     #[inline]
-    pub(crate) fn sample_id(&self, id: u64) -> bool {
+    fn sample(&self, rng: &Cell<u64>) -> bool {
         match self {
             Sampler::Never => false,
-            Sampler::OneIn(k) => id.is_multiple_of(*k),
+            Sampler::Fraction { threshold, .. } => next_u64(rng) < *threshold,
         }
     }
+}
 
-    #[inline]
-    fn sample_counter(&self, counter: &Cell<u64>) -> bool {
-        let n = counter.get();
-        counter.set(n.wrapping_add(1));
-        self.sample_id(n)
-    }
+/// wyrand step: one add and one 64x64 -> 128 multiply, any seed is valid.
+#[inline]
+fn next_u64(state: &Cell<u64>) -> u64 {
+    let s = state.get().wrapping_add(0xa076_1d64_78bd_642f);
+    state.set(s);
+    let t = u128::from(s) * u128::from(s ^ 0xe703_7ed1_a0b4_28db);
+    (t as u64) ^ ((t >> 64) as u64)
+}
+
+/// Per-thread seed: a process-wide counter keeps threads apart, the wall
+/// clock varies the sequence between runs. No thread-local or OS entropy
+/// access, so seeding is safe even when it happens during thread teardown.
+fn seed() -> u64 {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    nanos ^ seq.wrapping_mul(0x9e37_79b9_7f4a_7c15)
 }
 
 /// Per-resource sampling slot, set once at guard build. Unset means measure
@@ -94,107 +113,55 @@ pub(crate) static CHANNELS_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static IO_SAMPLING: ResourceSampling = ResourceSampling::new();
 
 thread_local! {
-    static FUNCTIONS_COUNTER: Cell<u64> = const { Cell::new(0) };
-    static MUTEXES_COUNTER: Cell<u64> = const { Cell::new(0) };
-    static RW_LOCKS_COUNTER: Cell<u64> = const { Cell::new(0) };
-    static FUTURES_COUNTER: Cell<u64> = const { Cell::new(0) };
-    // One counter per I/O operation kind (read/write/flush/shutdown): a shared
-    // counter would let deterministic 1-in-k sampling lock onto periodic
-    // workloads (e.g. an alternating write/read loop at rate 0.5 timing only
-    // writes) and bias per-kind stats.
-    static IO_COUNTERS: [Cell<u64>; 4] =
-        const { [Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0)] };
+    /// Generator state shared by every resource on the thread: draws are
+    /// independent, so one stream serves all of them.
+    static RNG: Cell<u64> = Cell::new(seed());
 }
 
-/// Thread-local counter decision: deterministic per thread, first call on a
-/// thread is always sampled. `try_with` because guards can drop during thread
-/// teardown when the thread-local is already destroyed.
+/// Independent per-call decision. `try_with` because guards can drop during
+/// thread teardown when the thread-local is already destroyed. A failed
+/// attempt (try-lock miss, retryable I/O error) needs no rollback: the next
+/// draw is independent of this one, so the rate still applies to completions.
 #[inline]
-fn should_time(
-    sampling: &ResourceSampling,
-    counter: &'static std::thread::LocalKey<Cell<u64>>,
-) -> bool {
+fn should_time(sampling: &ResourceSampling) -> bool {
     match sampling.sampler() {
         None => true,
-        // Count-only mode never times; skip the counter access entirely.
+        // Count-only mode never times; skip the generator access entirely.
         Some(Sampler::Never) => false,
-        Some(sampler) => counter
-            .try_with(|c| sampler.sample_counter(c))
-            .unwrap_or(false),
-    }
-}
-
-/// Rolls back the last decision after a failed try-acquisition, so the rate
-/// applies to acquisitions rather than attempts. Only `OneIn` consumes a
-/// counter tick in `should_time`, so only then is there anything to undo.
-#[inline]
-fn untime(sampling: &ResourceSampling, counter: &'static std::thread::LocalKey<Cell<u64>>) {
-    if matches!(sampling.sampler(), Some(Sampler::OneIn(_))) {
-        let _ = counter.try_with(|c| c.set(c.get().wrapping_sub(1)));
+        Some(sampler) => RNG.try_with(|rng| sampler.sample(rng)).unwrap_or(false),
     }
 }
 
 #[inline]
 pub(crate) fn functions_should_time() -> bool {
-    should_time(&FUNCTIONS_SAMPLING, &FUNCTIONS_COUNTER)
+    should_time(&FUNCTIONS_SAMPLING)
 }
 
 #[inline]
 pub(crate) fn mutexes_should_time() -> bool {
-    should_time(&MUTEXES_SAMPLING, &MUTEXES_COUNTER)
-}
-
-#[inline]
-pub(crate) fn mutexes_untime() {
-    untime(&MUTEXES_SAMPLING, &MUTEXES_COUNTER)
+    should_time(&MUTEXES_SAMPLING)
 }
 
 #[inline]
 pub(crate) fn rw_locks_should_time() -> bool {
-    should_time(&RW_LOCKS_SAMPLING, &RW_LOCKS_COUNTER)
-}
-
-#[inline]
-pub(crate) fn rw_locks_untime() {
-    untime(&RW_LOCKS_SAMPLING, &RW_LOCKS_COUNTER)
+    should_time(&RW_LOCKS_SAMPLING)
 }
 
 #[inline]
 pub(crate) fn futures_should_time() -> bool {
-    should_time(&FUTURES_SAMPLING, &FUTURES_COUNTER)
+    should_time(&FUTURES_SAMPLING)
 }
 
 #[inline]
-pub(crate) fn io_should_time(kind_idx: usize) -> bool {
-    match IO_SAMPLING.sampler() {
-        None => true,
-        // Count-only mode never times; skip the counter access entirely.
-        Some(Sampler::Never) => false,
-        Some(sampler) => IO_COUNTERS
-            .try_with(|counters| sampler.sample_counter(&counters[kind_idx]))
-            .unwrap_or(false),
-    }
+pub(crate) fn io_should_time() -> bool {
+    should_time(&IO_SAMPLING)
 }
 
+/// Wrap-channel decision, made once on the send side; the resulting stamp
+/// travels in the payload so the receiver needs no decision of its own.
 #[inline]
-pub(crate) fn io_untime(kind_idx: usize) {
-    if matches!(IO_SAMPLING.sampler(), Some(Sampler::OneIn(_))) {
-        let _ = IO_COUNTERS.try_with(|counters| {
-            let counter = &counters[kind_idx];
-            counter.set(counter.get().wrapping_sub(1));
-        });
-    }
-}
-
-/// Wrap-channel decision, keyed on the per-channel monotonic `msg_id` so both
-/// endpoints agree without extra state and tests are deterministic across
-/// sender threads.
-#[inline]
-pub(crate) fn channels_should_time(msg_id: u64) -> bool {
-    match CHANNELS_SAMPLING.sampler() {
-        None => true,
-        Some(sampler) => sampler.sample_id(msg_id),
-    }
+pub(crate) fn channels_should_time() -> bool {
+    should_time(&CHANNELS_SAMPLING)
 }
 
 /// Builder-provided rates, resolved against env vars at guard build.
@@ -273,35 +240,80 @@ pub(crate) fn active_rates() -> Option<HashMap<String, f64>> {
 mod tests {
     use super::*;
 
+    fn fraction(rate: f64) -> Sampler {
+        match Sampler::from_rate(rate) {
+            Some(s @ Sampler::Fraction { .. }) => s,
+            other => panic!("expected a Fraction sampler for {rate}, got {other:?}"),
+        }
+    }
+
     #[test]
     fn from_rate_bounds() {
         assert_eq!(Sampler::from_rate(1.0), None);
         assert_eq!(Sampler::from_rate(0.0), Some(Sampler::Never));
-        assert_eq!(Sampler::from_rate(0.5), Some(Sampler::OneIn(2)));
-        assert_eq!(Sampler::from_rate(0.1), Some(Sampler::OneIn(10)));
-        assert_eq!(Sampler::from_rate(0.001), Some(Sampler::OneIn(1000)));
-        assert_eq!(Sampler::from_rate(0.3), Some(Sampler::OneIn(3)));
         assert_eq!(Sampler::from_rate(-0.1), None);
         assert_eq!(Sampler::from_rate(1.5), None);
         assert_eq!(Sampler::from_rate(f64::NAN), None);
-        // Rounds to k = 1, which keeps every call: sampler disabled.
-        assert_eq!(Sampler::from_rate(0.9), None);
+        for rate in [0.001, 0.1, 0.3, 0.5, 0.9] {
+            assert_eq!(fraction(rate).effective_rate(), rate);
+        }
+        assert_eq!(
+            fraction(0.5),
+            Sampler::Fraction {
+                rate: 0.5,
+                threshold: 1 << 63
+            }
+        );
+    }
+
+    /// Sampled share over many draws lands near the rate: for n = 100_000 the
+    /// standard deviation is sqrt(n * p * (1 - p)) <= 158, and 1_500 is more
+    /// than nine sigmas at every rate tested.
+    #[test]
+    fn fraction_keeps_rate_on_average() {
+        let n = 100_000u64;
+        for rate in [0.01, 0.1, 0.5, 0.9] {
+            let s = fraction(rate);
+            let rng = Cell::new(seed());
+            let kept = (0..n).filter(|_| s.sample(&rng)).count() as f64;
+            let expected = rate * n as f64;
+            assert!(
+                (kept - expected).abs() < 1_500.0,
+                "rate {rate}: kept {kept}, expected {expected}"
+            );
+        }
+        let rng = Cell::new(seed());
+        assert!(!(0..n).any(|_| Sampler::Never.sample(&rng)));
+    }
+
+    /// The regression the random draw fixes: with a deterministic 1-in-2
+    /// counter, two functions alternating on one thread would put every
+    /// sampled call on the first one. Each of two interleaved streams must
+    /// receive a fair share of the decisions.
+    #[test]
+    fn interleaved_streams_are_both_sampled() {
+        let s = fraction(0.5);
+        let rng = Cell::new(seed());
+        let mut kept = [0u32; 2];
+        for i in 0..10_000 {
+            if s.sample(&rng) {
+                kept[i % 2] += 1;
+            }
+        }
+        for (stream, kept) in kept.iter().enumerate() {
+            assert!(
+                (2_000..=3_000).contains(kept),
+                "stream {stream} kept {kept} of 5_000"
+            );
+        }
     }
 
     #[test]
-    fn sample_id_keeps_one_in_k() {
-        let s = Sampler::OneIn(10);
-        let kept = (0..100).filter(|&i| s.sample_id(i)).count();
-        assert_eq!(kept, 10);
-        assert!(s.sample_id(0));
-        assert!(!Sampler::Never.sample_id(0));
-    }
-
-    #[test]
-    fn counter_sampling_is_deterministic() {
-        let s = Sampler::OneIn(3);
-        let c = Cell::new(0);
-        let pattern: Vec<bool> = (0..6).map(|_| s.sample_counter(&c)).collect();
-        assert_eq!(pattern, [true, false, false, true, false, false]);
+    fn threads_draw_different_sequences() {
+        let a = Cell::new(seed());
+        let b = Cell::new(seed());
+        let sa: Vec<u64> = (0..8).map(|_| next_u64(&a)).collect();
+        let sb: Vec<u64> = (0..8).map(|_| next_u64(&b)).collect();
+        assert_ne!(sa, sb);
     }
 }

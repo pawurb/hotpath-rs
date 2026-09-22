@@ -1,18 +1,29 @@
 //! Run with:
 //!   cargo run -p test-all-features --example time_sampling --features hotpath
 //!
-//! Deterministic single-threaded workload for time-sampling integration tests.
+//! Single-threaded workload for time-sampling integration tests.
 //!
-//! Counts are chosen so 1-in-k sampling yields exact sampled counts: the
-//! thread-local counters and the per-channel `msg_id` both start at 0 and 0 is
-//! always sampled, so rate 0.5 over 10 events samples exactly 5.
+//! Sampling decisions are random, so the tests check that sampled counts land
+//! near `rate * count` rather than on an exact value. `work_a` and `work_b`
+//! alternate on purpose: a deterministic 1-in-2 sampler would time every call
+//! of one and none of the other.
 
 use std::time::Duration;
 
+/// Events per resource; large enough for the sampled share to be checked
+/// statistically.
+const CALLS: u64 = 1000;
+
 #[hotpath::measure]
-fn work(i: u64) {
+fn work_a(i: u64) {
     std::hint::black_box(i);
-    std::thread::sleep(Duration::from_micros(50));
+    std::thread::sleep(Duration::from_micros(20));
+}
+
+#[hotpath::measure]
+fn work_b(i: u64) {
+    std::hint::black_box(i);
+    std::thread::sleep(Duration::from_micros(20));
 }
 
 fn parse_rate(name: &str) -> Option<f64> {
@@ -35,28 +46,29 @@ fn main() {
     }
     let _guard = builder.build();
 
-    for i in 0..10 {
-        work(i);
+    for i in 0..CALLS {
+        work_a(i);
+        work_b(i);
     }
 
     let mutex = hotpath::mutex!(std::sync::Mutex::new(0u64), label = "sampled_mutex");
-    for _ in 0..10 {
+    for _ in 0..CALLS {
         *mutex.lock().unwrap() += 1;
     }
 
     let rw = hotpath::rw_lock!(std::sync::RwLock::new(0u64), label = "sampled_rw");
-    for _ in 0..10 {
+    for _ in 0..CALLS {
         let _ = *rw.read().unwrap();
     }
-    for _ in 0..4 {
+    for _ in 0..CALLS / 2 {
         *rw.write().unwrap() += 1;
     }
 
     let (tx, rx) = hotpath::channel!(std::sync::mpsc::channel::<u64>(), label = "sampled_channel");
-    for i in 0..10u64 {
+    for i in 0..CALLS {
         tx.send(i).unwrap();
     }
-    for _ in 0..10 {
+    for _ in 0..CALLS {
         let _ = rx.recv().unwrap();
     }
     drop(tx);

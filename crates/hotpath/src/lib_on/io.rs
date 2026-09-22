@@ -37,18 +37,6 @@ pub(crate) enum IoOpKind {
     Shutdown,
 }
 
-impl IoOpKind {
-    /// Index into the per-kind thread-local sampling counters.
-    fn sampling_idx(self) -> usize {
-        match self {
-            IoOpKind::Read => 0,
-            IoOpKind::Write => 1,
-            IoOpKind::Flush => 2,
-            IoOpKind::Shutdown => 3,
-        }
-    }
-}
-
 /// Events sent to the background I/O statistics collection thread.
 #[derive(Debug)]
 pub(crate) enum IoEvent {
@@ -258,20 +246,10 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
-/// One sampling decision per operation; `None` skips both clock reads. Each
-/// operation kind samples from its own counter so periodic workloads can't
-/// bias which kinds get timed.
+/// One sampling decision per operation; `None` skips both clock reads.
 #[inline]
-pub(crate) fn op_stamp(kind: IoOpKind) -> Option<Instant> {
-    crate::lib_on::sampling::io_should_time(kind.sampling_idx()).then(Instant::now)
-}
-
-/// Rolls back an `op_stamp` decision after an operation that produced no
-/// measurement (retryable condition or error), so the sampling rate applies
-/// to completed operations.
-#[inline]
-pub(crate) fn cancel_op_stamp(kind: IoOpKind) {
-    crate::lib_on::sampling::io_untime(kind.sampling_idx());
+pub(crate) fn op_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::io_should_time().then(Instant::now)
 }
 
 static EVENT_QUEUES: EventQueueRegistry<IoEvent> = EventQueueRegistry::new();

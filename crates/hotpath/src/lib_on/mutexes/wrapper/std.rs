@@ -4,8 +4,7 @@ use std::sync::Mutex as StdMutex;
 
 use crate::instant::Instant;
 use crate::mutexes::{
-    cancel_wait_stamp, elapsed_nanos, register_mutex, send_mutex_event, wait_stamp,
-    InstrumentMutex, MutexEvent,
+    elapsed_nanos, register_mutex, send_mutex_event, wait_stamp, InstrumentMutex, MutexEvent,
 };
 
 /// Instrumented drop-in replacement for [`std::sync::Mutex`].
@@ -60,10 +59,7 @@ impl<T> Mutex<T> {
                     self.guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
                 )),
             ),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                cancel_wait_stamp();
-                Err(std::sync::TryLockError::WouldBlock)
-            }
+            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
         }
     }
 

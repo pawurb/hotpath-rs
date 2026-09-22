@@ -398,7 +398,7 @@ impl HotpathGuardBuilder {
     }
 
     /// Sets the fraction of calls whose duration is measured, in `[0.0, 1.0]`
-    /// (e.g. `0.1` times 1 in 10 calls, `0.0` keeps exact counts but no
+    /// (e.g. `0.1` times about 1 in 10 calls, `0.0` keeps exact counts but no
     /// durations). Applies to functions, mutexes, rw_locks, futures, and wrap
     /// channels; per-resource setters override it. Env vars
     /// (`HOTPATH_TIME_SAMPLING_RATE` and per-resource variants) take precedence.
