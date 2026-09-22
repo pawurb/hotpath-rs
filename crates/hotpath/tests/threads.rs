@@ -120,7 +120,7 @@ pub mod tests {
             "[hotpath]",
             "| threads",
             "Thread CPU and memory statistics.",
-            "RSS:",
+            "Max RSS:",
         ];
 
         for expected in expected_content {

@@ -243,7 +243,7 @@ alloc - Cumulative allocations during each function call (including nested calls
 | docs_example::async_function | 1000  | 0 B     | 0 B     | 0 B     | 0.00%   |
 +------------------------------+-------+---------+---------+---------+---------+
 
-threads - Thread CPU and memory statistics. (RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc: 304.3 KB, Diff: 1.8 MB)
+threads - Thread CPU and memory statistics. (Max RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc: 304.3 KB, Diff: 1.8 MB)
 +----------+------+------+----------+---------+----------+
 | Thread   | Max% | Avg% | Alloc    | Dealloc | Diff     |
 +----------+------+------+----------+---------+----------+

@@ -531,6 +531,7 @@ impl App {
                 included_count: 0,
                 thread_count: 0,
                 rss_bytes: None,
+                peak_rss_bytes: None,
                 total_alloc_bytes: None,
                 total_dealloc_bytes: None,
                 alloc_dealloc_diff: None,

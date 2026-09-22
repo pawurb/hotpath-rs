@@ -1630,9 +1630,11 @@ pub(crate) fn report_threads_table(writer: &mut dyn Write, limit: usize) {
         table.add_row(row);
     }
 
+    // The report is printed once at exit, so the peak describes the run
+    // while a snapshot taken at that instant would not.
     let mut info_parts = Vec::new();
-    if let Some(rss) = &threads_json.rss_bytes {
-        info_parts.push(format!("RSS: {}", rss));
+    if let Some(peak) = &threads_json.peak_rss_bytes {
+        info_parts.push(format!("Max RSS: {}", peak));
     }
     if let Some(alloc) = &threads_json.total_alloc_bytes {
         info_parts.push(format!("Alloc: {}", alloc));

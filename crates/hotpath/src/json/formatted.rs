@@ -958,8 +958,13 @@ pub struct JsonThreadsList {
     pub current_elapsed_ns: u64,
     pub sample_interval_ms: u64,
     pub thread_count: usize,
+    /// Resident set size at the time of the snapshot.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rss_bytes: Option<String>,
+    /// Peak resident set size over the whole process lifetime, from the
+    /// kernel's high-water mark.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub peak_rss_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub total_alloc_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
