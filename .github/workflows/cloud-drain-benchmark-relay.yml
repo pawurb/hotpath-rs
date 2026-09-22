@@ -1,0 +1,20 @@
+name: Cloud drain benchmark relay
+
+on:
+  workflow_run:
+    workflows: ["Cloud drain benchmark"]
+    types: [completed]
+
+# Twin of `cloud-meta-benchmark-relay.yml` for the `drain` series; see that
+# file for why the relay is referenced by full path and `@main`.
+jobs:
+  relay:
+    uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@main
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    with:
+      benchmark: drain
+      artifact_name: drain-report
+      report_file: drain-report.json

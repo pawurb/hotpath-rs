@@ -59,8 +59,8 @@ p.write_text(src)
 
 p = pathlib.Path("crates/hotpath-drain/Cargo.toml")
 src = p.read_text()
-# Drops the optional dependency plus the `hotpath-meta` / `hotpath-alloc-meta` feature lines.
-src = re.sub(r'^hotpath-(alloc-)?meta\s*=.*\n', '', src, flags=re.MULTILINE)
+# Drops the optional dependency plus every `hotpath-meta` / `hotpath-*-meta` feature line.
+src = re.sub(r'^hotpath-(\w+-)?meta\s*=.*\n', '', src, flags=re.MULTILINE)
 p.write_text(src)
 
 p = pathlib.Path("crates/hotpath/Cargo.toml")
