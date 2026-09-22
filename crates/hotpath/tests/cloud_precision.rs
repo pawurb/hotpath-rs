@@ -136,7 +136,7 @@ mod tests {
         let threads = report.threads.expect("threads section");
         for (what, value) in [
             ("rss_bytes", &threads.rss_bytes),
-            ("peak_rss_bytes", &threads.peak_rss_bytes),
+            ("rss_bytes_max", &threads.rss_bytes_max),
         ] {
             let value = value.as_deref().unwrap_or_else(|| panic!("threads {what}"));
             assert!(
@@ -171,10 +171,10 @@ mod tests {
         );
 
         let threads = report.threads.expect("threads section");
-        let peak = threads.peak_rss_bytes.as_deref().expect("peak_rss_bytes");
+        let max_rss = threads.rss_bytes_max.as_deref().expect("rss_bytes_max");
         assert!(
-            !peak.ends_with(" B"),
-            "threads peak_rss_bytes {peak:?} is in the exact format without hotpath-cloud"
+            !max_rss.ends_with(" B"),
+            "threads rss_bytes_max {max_rss:?} is in the exact format without hotpath-cloud"
         );
     }
 }

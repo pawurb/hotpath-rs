@@ -47,7 +47,7 @@ The view header shows process-wide numbers:
 
 **RSS** - Resident Set Size, the physical memory the process currently occupies. RSS includes code, thread stacks and allocator slack, so it can stay flat while the allocation Diff grows (the allocator reuses freed pages) or grow while Diff stays flat. Comparing the two tells you whether memory growth comes from your allocations or from elsewhere.
 
-**Max RSS** - the peak RSS the kernel has recorded for the process since it started, so a short spike between two refreshes is never missed. The TUI shows both; the final report keeps only Max RSS, since a snapshot taken at exit says little about the run.
+**Max RSS** - the highest RSS the kernel has recorded for the process since it started, so a short spike between two refreshes is never missed. The TUI shows both; the final report keeps only Max RSS, since a snapshot taken at exit says little about the run.
 
 And per-thread metrics:
 
