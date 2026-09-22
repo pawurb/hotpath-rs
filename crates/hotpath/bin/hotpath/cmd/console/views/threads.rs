@@ -38,7 +38,7 @@ pub(crate) fn render_threads_panel(
     thread_position: usize,
     total_threads: usize,
     rss_bytes: Option<&str>,
-    peak_rss_bytes: Option<&str>,
+    rss_bytes_max: Option<&str>,
     total_alloc_bytes: Option<&str>,
     total_dealloc_bytes: Option<&str>,
     alloc_dealloc_diff: Option<&str>,
@@ -50,7 +50,7 @@ pub(crate) fn render_threads_panel(
     let alloc_enabled = threads.iter().any(|t| t.alloc_bytes.is_some());
 
     let rss_str = rss_bytes.unwrap_or("-");
-    let peak_rss_str = peak_rss_bytes.unwrap_or("-");
+    let rss_max_str = rss_bytes_max.unwrap_or("-");
 
     let mut spans: Vec<Span> = Vec::new();
 
@@ -84,7 +84,7 @@ pub(crate) fn render_threads_panel(
     ));
     spans.push(Span::raw("  Max RSS: "));
     spans.push(Span::styled(
-        peak_rss_str,
+        rss_max_str,
         ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
     ));
 
