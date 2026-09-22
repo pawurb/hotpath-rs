@@ -1,0 +1,76 @@
+name: Cloud drain benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Transport-layer benchmark: the `hotpath-drain` `throughput` example runs
+# several producer threads against one consumer while `hotpath-meta` profiles
+# the queue's own hot paths (`push`, `sweep`, `drain_into`). Same shape as
+# `cloud-meta-benchmark.yml`, uploaded to the separate `drain` series.
+#
+# Pushes upload in process with the job's OIDC token. Fork PRs get no
+# `id-token: write`, so pull requests write the report to an artifact and
+# `cloud-drain-benchmark-relay.yml` uploads it.
+jobs:
+  upload:
+    name: cloud drain benchmark (push)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The uploader reports its own outcome: one `::notice::` / `::warning::`
+      # / `::error::` annotation plus a step summary block, and with
+      # `HOTPATH_META_UPLOAD_STRICT=1` a failed upload exits 1. The grep is a
+      # second guard that also covers a silently missing upload line.
+      - name: Run drain benchmark and upload report
+        env:
+          HOTPATH_META_UPLOAD: "1"
+          HOTPATH_META_UPLOAD_STRICT: "1"
+          HOTPATH_META_BENCHMARK: drain
+          HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
+          HOTPATH_META_EXCLUDE_WRAPPER: "true"
+          HOTPATH_META_OUTPUT_FORMAT: none
+        run: |
+          set -o pipefail
+          cargo run -q --release -p hotpath-drain --example throughput \
+            --features hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta 2>&1 | tee run.log
+          grep -q '^hotpath-meta: uploaded report ' run.log
+
+  report:
+    name: cloud drain benchmark (pull request)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run drain benchmark and write report
+        env:
+          HOTPATH_META_BENCHMARK: drain
+          HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
+          HOTPATH_META_EXCLUDE_WRAPPER: "true"
+          HOTPATH_META_OUTPUT_FORMAT: json
+          HOTPATH_META_OUTPUT_PATH: drain-report.json
+        run: |
+          cargo run -q --release -p hotpath-drain --example throughput \
+            --features hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta
+          test -s drain-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drain-report
+          path: drain-report.json
+          retention-days: 1
+          if-no-files-found: error
