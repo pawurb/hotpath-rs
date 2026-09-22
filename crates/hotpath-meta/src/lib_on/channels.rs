@@ -165,6 +165,13 @@ pub(crate) fn entry_msg_counter(id: u32) -> Arc<AtomicU64> {
     )
 }
 
+/// Send-side sampling decision; `None` skips the clock read and travels in
+/// the payload so the receiver skips its read too.
+#[inline]
+pub(crate) fn sample_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::channels_should_time().then(Instant::now)
+}
+
 /// Event timestamp for a wrap send. Unsampled events are stamped at worker
 /// drain time, except msg 0: its send always gets a real stamp so
 /// `first_msg_ns` anchors throughput rates exactly at every sampling rate,
@@ -181,7 +188,7 @@ pub(crate) fn timestamp_nanos(timestamp: Instant) -> u64 {
 }
 
 /// Statistics for a single instrumented channel.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct ChannelEntry {
     pub(crate) id: u32,
     /// Column-including call-site key (`file:line:column`); the identity used
@@ -971,23 +978,27 @@ pub(crate) fn compare_channel_entries(a: &ChannelEntry, b: &ChannelEntry) -> std
     }
 }
 
-pub(crate) fn get_sorted_channel_entries() -> Vec<ChannelEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_channel_entries<R>(f: impl FnOnce(&[&ChannelEntry]) -> R) -> R {
     let Some(state) = CHANNELS_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<ChannelEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_channel_entries);
-    stats
+    let mut stats: Vec<&ChannelEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_channel_entries(a, b));
+    f(&stats)
 }
 
 pub(crate) fn get_channels_json() -> crate::json::JsonChannelsList {
     let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
     let current_elapsed_ns = crate::lib_on::current_elapsed_ns();
-    let data: Vec<crate::json::JsonChannelEntry> = get_sorted_channel_entries()
-        .iter()
-        .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns, false))
-        .collect();
+    let data: Vec<crate::json::JsonChannelEntry> = with_sorted_channel_entries(|entries| {
+        entries
+            .iter()
+            .map(|entry| channel_to_json(entry, &percentiles, current_elapsed_ns, false))
+            .collect()
+    });
 
     crate::json::JsonChannelsList {
         current_elapsed_ns,

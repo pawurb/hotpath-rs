@@ -504,7 +504,7 @@ Sampled at configurable interval (HOTPATH_META_THREADS_INTERVAL_MS env var, defa
     async fn threads(&self) -> Result<CallToolResult, McpError> {
         log_debug("Tool called: threads");
 
-        let threads = get_threads_json();
+        let threads = get_threads_json(crate::output::Precision::Display);
         Ok(CallToolResult::success(vec![Content::text(to_json(
             &threads,
         )?)]))

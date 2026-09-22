@@ -250,7 +250,7 @@ fn handle_request(request: Request) {
         },
         #[cfg(feature = "threads")]
         Ok(Route::Threads) => {
-            let threads = crate::threads::get_threads_json();
+            let threads = crate::threads::get_threads_json(crate::output::Precision::Display);
             respond_json(request, &threads);
         }
         #[cfg(not(feature = "threads"))]
