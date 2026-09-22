@@ -940,6 +940,7 @@ impl HotpathGuard {
         #[cfg(feature = "hotpath-meta")]
         let _meta_guard = {
             let builder = hotpath_meta::HotpathGuardBuilder::new("hotpath-meta")
+                .percentiles(&[95.0, 99.0, 99.9])
                 .functions_limit(10)
                 .threads_limit(5);
             if std::env::var("HOTPATH_META_SHUTDOWN_MS").is_ok() {
