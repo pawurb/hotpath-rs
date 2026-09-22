@@ -264,13 +264,6 @@ pub(crate) fn wait_stamp() -> Option<Instant> {
     crate::lib_on::sampling::rw_locks_should_time().then(Instant::now)
 }
 
-/// Rolls back a `wait_stamp` decision after a failed try-acquisition, so the
-/// sampling rate applies to acquisitions rather than attempts.
-#[inline]
-pub(crate) fn cancel_wait_stamp() {
-    crate::lib_on::sampling::rw_locks_untime();
-}
-
 static EVENT_QUEUES: EventQueueRegistry<RwLockEvent> = EventQueueRegistry::new();
 
 thread_local! {

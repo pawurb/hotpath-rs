@@ -4,8 +4,11 @@ pub mod tests {
 
     use hotpath::json::{JsonFunctionEntry, JsonReport};
 
-    /// Runs the deterministic time-sampling example and parses the JSON report.
-    /// Clears sampling env vars first so the host environment cannot leak in.
+    /// Events per resource in the example workload.
+    const CALLS: u64 = 1000;
+
+    /// Runs the time-sampling example and parses the JSON report. Clears
+    /// sampling env vars first so the host environment cannot leak in.
     fn run_example_with_features(features: &str, envs: &[(&str, &str)]) -> JsonReport {
         let mut cmd = Command::new("cargo");
         cmd.args([
@@ -52,6 +55,18 @@ pub mod tests {
         run_example_with_features("hotpath", envs)
     }
 
+    /// Sampling is random: the timed share must land within six standard
+    /// deviations of `rate * total`.
+    fn assert_sampled_near(label: &str, sampled: u64, total: u64, rate: f64) {
+        let expected = rate * total as f64;
+        let tolerance = 6.0 * (total as f64 * rate * (1.0 - rate)).sqrt();
+        let diff = (sampled as f64 - expected).abs();
+        assert!(
+            diff <= tolerance,
+            "{label}: sampled {sampled} of {total} at rate {rate}, expected {expected:.0} +/- {tolerance:.0}"
+        );
+    }
+
     fn function_entry<'a>(report: &'a JsonReport, name: &str) -> &'a JsonFunctionEntry {
         report
             .functions_timing
@@ -69,17 +84,17 @@ pub mod tests {
         let report = run_example(&[]);
 
         assert!(report.time_sampling.is_none());
-        let work = function_entry(&report, "work");
-        assert_eq!(work.calls, 10);
-        assert_eq!(work.sampled_calls, 10);
+        let work = function_entry(&report, "work_a");
+        assert_eq!(work.calls, CALLS);
+        assert_eq!(work.sampled_calls, CALLS);
 
         let mutex = &report.mutexes.as_ref().expect("No mutexes section").data[0];
-        assert_eq!(mutex.count, 10);
-        assert_eq!(mutex.sampled_count, 10);
+        assert_eq!(mutex.count, CALLS);
+        assert_eq!(mutex.sampled_count, CALLS);
 
         let channel = &report.channels.as_ref().expect("No channels section").data[0];
-        assert_eq!(channel.received_count, 10);
-        assert_eq!(channel.proc_sampled_count, Some(10));
+        assert_eq!(channel.received_count, CALLS);
+        assert_eq!(channel.proc_sampled_count, Some(CALLS));
     }
 
     #[test]
@@ -91,32 +106,32 @@ pub mod tests {
             assert_eq!(rates.get(resource), Some(&0.5), "rate for {resource}");
         }
 
-        // Thread-local counter starts at 0, 0 is sampled: indices 0,2,4,6,8.
-        let work = function_entry(&report, "work");
-        assert_eq!(work.calls, 10);
-        assert_eq!(work.sampled_calls, 5);
+        // `work_a` and `work_b` alternate on one thread; both must get their share.
+        for name in ["work_a", "work_b"] {
+            let work = function_entry(&report, name);
+            assert_eq!(work.calls, CALLS);
+            assert_sampled_near(name, work.sampled_calls, work.calls, 0.5);
+        }
 
         // The wrapper guard is exempt from sampling.
         let main = function_entry(&report, "main");
         assert_eq!(main.sampled_calls, main.calls);
 
         let mutex = &report.mutexes.as_ref().expect("No mutexes section").data[0];
-        assert_eq!(mutex.count, 10);
-        assert_eq!(mutex.sampled_count, 5);
+        assert_eq!(mutex.count, CALLS);
+        assert_sampled_near("mutex", mutex.sampled_count, mutex.count, 0.5);
 
-        // One shared counter across kinds: 10 reads (5 sampled) then 4 writes
-        // at counter values 10..13 (10 and 12 sampled).
         let rw = &report.rw_locks.as_ref().expect("No rw_locks section").data[0];
-        assert_eq!(rw.read_count, 10);
-        assert_eq!(rw.read_sampled_count, 5);
-        assert_eq!(rw.write_count, 4);
-        assert_eq!(rw.write_sampled_count, 2);
+        assert_eq!(rw.read_count, CALLS);
+        assert_sampled_near("rw read", rw.read_sampled_count, rw.read_count, 0.5);
+        assert_eq!(rw.write_count, CALLS / 2);
+        assert_sampled_near("rw write", rw.write_sampled_count, rw.write_count, 0.5);
 
-        // Wrap channel keyed on msg_id: 0,2,4,6,8 sampled.
         let channel = &report.channels.as_ref().expect("No channels section").data[0];
-        assert_eq!(channel.sent_count, 10);
-        assert_eq!(channel.received_count, 10);
-        assert_eq!(channel.proc_sampled_count, Some(5));
+        assert_eq!(channel.sent_count, CALLS);
+        assert_eq!(channel.received_count, CALLS);
+        let proc_sampled = channel.proc_sampled_count.expect("No proc_sampled_count");
+        assert_sampled_near("channel", proc_sampled, channel.received_count, 0.5);
         assert_ne!(channel.proc_avg.as_deref(), Some("-"));
     }
 
@@ -124,8 +139,8 @@ pub mod tests {
     fn test_rate_zero_is_count_only() {
         let report = run_example(&[("HOTPATH_TIME_SAMPLING_RATE", "0")]);
 
-        let work = function_entry(&report, "work");
-        assert_eq!(work.calls, 10);
+        let work = function_entry(&report, "work_a");
+        assert_eq!(work.calls, CALLS);
         assert_eq!(work.sampled_calls, 0);
         assert_eq!(work.avg, "-");
         assert_eq!(work.total, "-");
@@ -137,12 +152,12 @@ pub mod tests {
         assert_eq!(main.sampled_calls, 1);
 
         let mutex = &report.mutexes.as_ref().expect("No mutexes section").data[0];
-        assert_eq!(mutex.count, 10);
+        assert_eq!(mutex.count, CALLS);
         assert_eq!(mutex.sampled_count, 0);
         assert_eq!(mutex.wait_avg, "-");
 
         let channel = &report.channels.as_ref().expect("No channels section").data[0];
-        assert_eq!(channel.received_count, 10);
+        assert_eq!(channel.received_count, CALLS);
         assert_eq!(channel.proc_sampled_count, Some(0));
         assert_eq!(channel.proc_avg.as_deref(), Some("-"));
     }
@@ -154,8 +169,8 @@ pub mod tests {
             ("HOTPATH_FUNCTIONS_TIME_SAMPLING_RATE", "1.0"),
         ]);
 
-        let work = function_entry(&report, "work");
-        assert_eq!(work.sampled_calls, 10);
+        let work = function_entry(&report, "work_a");
+        assert_eq!(work.sampled_calls, CALLS);
 
         let mutex = &report.mutexes.as_ref().expect("No mutexes section").data[0];
         assert_eq!(mutex.sampled_count, 0);
@@ -165,12 +180,12 @@ pub mod tests {
     fn test_builder_rate_applies() {
         let report = run_example(&[("TEST_BUILDER_TIME_SAMPLING_RATE", "0.5")]);
 
-        let work = function_entry(&report, "work");
-        assert_eq!(work.calls, 10);
-        assert_eq!(work.sampled_calls, 5);
+        let work = function_entry(&report, "work_a");
+        assert_eq!(work.calls, CALLS);
+        assert_sampled_near("work_a", work.sampled_calls, work.calls, 0.5);
 
         let mutex = &report.mutexes.as_ref().expect("No mutexes section").data[0];
-        assert_eq!(mutex.sampled_count, 5);
+        assert_sampled_near("mutex", mutex.sampled_count, mutex.count, 0.5);
     }
 
     #[test]
@@ -180,8 +195,8 @@ pub mod tests {
             ("HOTPATH_FUNCTIONS_TIME_SAMPLING_RATE", "1.0"),
         ]);
 
-        let work = function_entry(&report, "work");
-        assert_eq!(work.sampled_calls, 10);
+        let work = function_entry(&report, "work_a");
+        assert_eq!(work.sampled_calls, CALLS);
     }
 
     // Under hotpath-alloc the guards measure both allocations and time:
@@ -196,9 +211,9 @@ pub mod tests {
         let rates = report.time_sampling.as_ref().expect("No time_sampling");
         assert_eq!(rates.get("functions"), Some(&0.5));
 
-        let work = function_entry(&report, "work");
-        assert_eq!(work.calls, 10);
-        assert_eq!(work.sampled_calls, 5);
+        let work = function_entry(&report, "work_a");
+        assert_eq!(work.calls, CALLS);
+        assert_sampled_near("work_a", work.sampled_calls, work.calls, 0.5);
         assert_ne!(work.avg, "-");
 
         let alloc_work = report
@@ -207,10 +222,10 @@ pub mod tests {
             .expect("No functions_alloc section")
             .data
             .iter()
-            .find(|f| f.name.contains("work"))
-            .expect("No `work` entry in functions_alloc");
-        assert_eq!(alloc_work.calls, 10);
-        assert_eq!(alloc_work.sampled_calls, 10);
+            .find(|f| f.name.contains("work_a"))
+            .expect("No `work_a` entry in functions_alloc");
+        assert_eq!(alloc_work.calls, CALLS);
+        assert_eq!(alloc_work.sampled_calls, CALLS);
     }
 
     // Poll counts vary with runtime scheduling, so only count-only mode

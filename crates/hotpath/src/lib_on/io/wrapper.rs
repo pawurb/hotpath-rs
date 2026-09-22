@@ -3,9 +3,7 @@
 use std::io::{IoSlice, IoSliceMut, Read, Write};
 
 use crate::instant::Instant;
-use crate::io::{
-    cancel_op_stamp, elapsed_nanos, op_stamp, register_io, send_io_event, IoEvent, IoOpKind,
-};
+use crate::io::{elapsed_nanos, op_stamp, register_io, send_io_event, IoEvent, IoOpKind};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "tokio")] {
@@ -107,8 +105,6 @@ impl<T> std::ops::DerefMut for InstrumentedIo<T> {
 
 /// Records a completed synchronous operation. Retryable conditions
 /// (`WouldBlock`, `Interrupted`) produce no event; other errors are counted.
-/// Both roll back the sampling decision so the rate applies to completed
-/// operations.
 fn record_sync_op(
     id: u32,
     kind: IoOpKind,
@@ -122,19 +118,14 @@ fn record_sync_op(
             bytes,
             duration_nanos: start.map(elapsed_nanos),
         }),
-        Err(std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {
-            cancel_op_stamp(kind)
-        }
-        Err(_) => {
-            cancel_op_stamp(kind);
-            send_io_event(IoEvent::Error { id, kind });
-        }
+        Err(std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {}
+        Err(_) => send_io_event(IoEvent::Error { id, kind }),
     }
 }
 
 impl<T: Read> Read for InstrumentedIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let start = op_stamp(IoOpKind::Read);
+        let start = op_stamp();
         let result = self.inner.read(buf);
         record_sync_op(
             self.id,
@@ -146,7 +137,7 @@ impl<T: Read> Read for InstrumentedIo<T> {
     }
 
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> std::io::Result<usize> {
-        let start = op_stamp(IoOpKind::Read);
+        let start = op_stamp();
         let result = self.inner.read_vectored(bufs);
         record_sync_op(
             self.id,
@@ -160,7 +151,7 @@ impl<T: Read> Read for InstrumentedIo<T> {
 
 impl<T: Write> Write for InstrumentedIo<T> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let start = op_stamp(IoOpKind::Write);
+        let start = op_stamp();
         let result = self.inner.write(buf);
         record_sync_op(
             self.id,
@@ -172,7 +163,7 @@ impl<T: Write> Write for InstrumentedIo<T> {
     }
 
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> std::io::Result<usize> {
-        let start = op_stamp(IoOpKind::Write);
+        let start = op_stamp();
         let result = self.inner.write_vectored(bufs);
         record_sync_op(
             self.id,
@@ -184,7 +175,7 @@ impl<T: Write> Write for InstrumentedIo<T> {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let start = op_stamp(IoOpKind::Flush);
+        let start = op_stamp();
         let result = self.inner.flush();
         record_sync_op(
             self.id,
@@ -201,9 +192,9 @@ impl<T: Write> Write for InstrumentedIo<T> {
 /// `Ready` spans the whole operation including suspended time.
 #[cfg(feature = "tokio")]
 #[inline]
-fn begin_async_op(op: &mut Option<Option<Instant>>, kind: IoOpKind) {
+fn begin_async_op(op: &mut Option<Option<Instant>>) {
     if op.is_none() {
-        *op = Some(op_stamp(kind));
+        *op = Some(op_stamp());
     }
 }
 
@@ -238,13 +229,6 @@ fn finish_async_op<R>(
         }
         Poll::Ready(Err(e)) => {
             *op = None;
-            // Parity with the sync path: roll back the sampling decision
-            // consumed at op start so the rate applies to completed
-            // operations. Best-effort under task migration - the decision
-            // may have been consumed on another thread's counter, in which
-            // case the rollback shifts this thread's phase by one, which
-            // is statistically neutral.
-            cancel_op_stamp(kind);
             match e.kind() {
                 std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => {}
                 _ => send_io_event(IoEvent::Error { id, kind }),
@@ -262,7 +246,7 @@ impl<T: AsyncRead> AsyncRead for InstrumentedIo<T> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        begin_async_op(this.read_op, IoOpKind::Read);
+        begin_async_op(this.read_op);
         let before = buf.filled().len();
         let poll = this.inner.poll_read(cx, buf);
         finish_async_op(this.read_op, *this.id, IoOpKind::Read, poll, |_| {
@@ -279,7 +263,7 @@ impl<T: AsyncWrite> AsyncWrite for InstrumentedIo<T> {
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
         let this = self.project();
-        begin_async_op(this.write_op, IoOpKind::Write);
+        begin_async_op(this.write_op);
         let poll = this.inner.poll_write(cx, buf);
         finish_async_op(this.write_op, *this.id, IoOpKind::Write, poll, |n| {
             *n as u64
@@ -292,7 +276,7 @@ impl<T: AsyncWrite> AsyncWrite for InstrumentedIo<T> {
         bufs: &[IoSlice<'_>],
     ) -> Poll<std::io::Result<usize>> {
         let this = self.project();
-        begin_async_op(this.write_op, IoOpKind::Write);
+        begin_async_op(this.write_op);
         let poll = this.inner.poll_write_vectored(cx, bufs);
         finish_async_op(this.write_op, *this.id, IoOpKind::Write, poll, |n| {
             *n as u64
@@ -305,14 +289,14 @@ impl<T: AsyncWrite> AsyncWrite for InstrumentedIo<T> {
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        begin_async_op(this.flush_op, IoOpKind::Flush);
+        begin_async_op(this.flush_op);
         let poll = this.inner.poll_flush(cx);
         finish_async_op(this.flush_op, *this.id, IoOpKind::Flush, poll, |_| 0)
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        begin_async_op(this.shutdown_op, IoOpKind::Shutdown);
+        begin_async_op(this.shutdown_op);
         let poll = this.inner.poll_shutdown(cx);
         finish_async_op(this.shutdown_op, *this.id, IoOpKind::Shutdown, poll, |_| 0)
     }

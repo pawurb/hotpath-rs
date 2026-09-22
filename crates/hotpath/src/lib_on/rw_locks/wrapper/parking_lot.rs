@@ -4,8 +4,8 @@ use parking_lot::RwLock as PlRwLock;
 
 use crate::instant::Instant;
 use crate::rw_locks::{
-    cancel_wait_stamp, elapsed_nanos, register_rw_lock, send_rw_lock_event, wait_stamp,
-    InstrumentRwLock, RwLockEvent, RwLockKind,
+    elapsed_nanos, register_rw_lock, send_rw_lock_event, wait_stamp, InstrumentRwLock, RwLockEvent,
+    RwLockKind,
 };
 
 /// Instrumented drop-in replacement for [`parking_lot::RwLock`].
@@ -50,9 +50,6 @@ impl<T> RwLock<T> {
     pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
         let wait_start = wait_stamp();
         let inner = self.inner.try_read();
-        if inner.is_none() {
-            cancel_wait_stamp();
-        }
         inner.map(|inner| self.read_guard(inner, wait_start.map(elapsed_nanos)))
     }
 
@@ -65,9 +62,6 @@ impl<T> RwLock<T> {
     pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
         let wait_start = wait_stamp();
         let inner = self.inner.try_write();
-        if inner.is_none() {
-            cancel_wait_stamp();
-        }
         inner.map(|inner| self.write_guard(inner, wait_start.map(elapsed_nanos)))
     }
 

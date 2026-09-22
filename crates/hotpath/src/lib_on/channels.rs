@@ -169,6 +169,13 @@ pub(crate) fn entry_msg_counter(id: u32) -> Arc<AtomicU64> {
     )
 }
 
+/// Send-side sampling decision; `None` skips the clock read and travels in
+/// the payload so the receiver skips its read too.
+#[inline]
+pub(crate) fn sample_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::channels_should_time().then(Instant::now)
+}
+
 /// Event timestamp for a wrap send. Unsampled events are stamped at worker
 /// drain time, except msg 0: its send always gets a real stamp so
 /// `first_msg_ns` anchors throughput rates exactly at every sampling rate,

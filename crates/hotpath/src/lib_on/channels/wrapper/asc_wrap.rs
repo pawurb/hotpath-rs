@@ -33,7 +33,7 @@ use async_channel::{
 };
 
 use crate::channels::{
-    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant,
+    register_channel, sample_stamp, send_channel_event, ChannelEvent, ChannelType, Instant,
     InstrumentChannelWrap, InstrumentChannelWrapLog,
 };
 
@@ -43,13 +43,6 @@ type Payload<T> = (u64, Option<Instant>, T);
 #[inline]
 fn delay_nanos(send_ts: Instant, now: Instant) -> u64 {
     now.duration_since(send_ts).as_nanos() as u64
-}
-
-/// Send-side sampling decision keyed on `msg_id % k`; `None` skips the clock
-/// read and travels in the payload so the receiver skips its read too.
-#[inline]
-fn sample_stamp(msg_id: u64) -> Option<Instant> {
-    crate::lib_on::sampling::channels_should_time(msg_id).then(Instant::now)
 }
 
 /// A `Some` payload stamp means the message is sampled: stamp `now`, compute the delay.
@@ -96,7 +89,7 @@ impl<T> Sender<T> {
         // Stamp before publishing: a consumer could receive and timestamp the message the
         // instant `inner.send` enqueues it, so stamping after would race the receive and
         // read recv < send. Here send_ts <= recv_ts by construction.
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         self.inner
             .send((msg_id, sent_at, msg))
             .await
@@ -108,7 +101,7 @@ impl<T> Sender<T> {
     pub fn send_blocking(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         self.inner
             .send_blocking((msg_id, sent_at, msg))
             .map_err(|e| SendError(e.into_inner().2))?;
@@ -119,7 +112,7 @@ impl<T> Sender<T> {
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         self.inner
             .try_send((msg_id, sent_at, msg))
             .map_err(|e| match e {

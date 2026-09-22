@@ -4,8 +4,7 @@ use tokio::sync::Mutex as TokioMutex;
 
 use crate::instant::Instant;
 use crate::mutexes::{
-    cancel_wait_stamp, elapsed_nanos, register_mutex, send_mutex_event, wait_stamp,
-    InstrumentMutex, MutexEvent,
+    elapsed_nanos, register_mutex, send_mutex_event, wait_stamp, InstrumentMutex, MutexEvent,
 };
 
 /// Instrumented drop-in replacement for [`tokio::sync::Mutex`].
@@ -50,9 +49,6 @@ impl<T> Mutex<T> {
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, tokio::sync::TryLockError> {
         let wait_start = wait_stamp();
         let inner = self.inner.try_lock();
-        if inner.is_err() {
-            cancel_wait_stamp();
-        }
         inner.map(|inner| self.guard(inner, wait_start.map(elapsed_nanos)))
     }
 
