@@ -4,9 +4,7 @@
 //! Rates are fractions in `[0.0, 1.0]`: `0.1` times about 1 in 10 calls, `0.0`
 //! is count-only mode (no durations at all), `1.0` or unset measures everything.
 //! Every decision is an independent random draw from a per-thread generator,
-//! so periodic workloads cannot lock onto a fixed phase (a deterministic
-//! 1-in-k counter would time only one of two functions alternating at rate
-//! 0.5, and never the other).
+//! so periodic workloads cannot lock onto a fixed phase.
 //! Resolution happens once at guard build; events emitted before the guard
 //! exists are measured at 100%.
 
@@ -20,8 +18,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) enum Sampler {
     /// Count-only mode (rate 0): never measure durations.
     Never,
-    /// Time each call independently with probability `rate`. `threshold` is
-    /// the rate scaled to the `u64` range, compared against one random draw.
+    /// Time each call independently with probability `rate`; `threshold` is
+    /// the rate scaled to the `u64` range.
     Fraction { rate: f64, threshold: u64 },
 }
 
@@ -69,9 +67,9 @@ fn next_u64(state: &Cell<u64>) -> u64 {
     (t as u64) ^ ((t >> 64) as u64)
 }
 
-/// Per-thread seed: a process-wide counter keeps threads apart, the wall
-/// clock varies the sequence between runs. No thread-local or OS entropy
-/// access, so seeding is safe even when it happens during thread teardown.
+/// Per-thread seed: the counter keeps threads apart, the wall clock varies
+/// runs. No thread-local or OS entropy access, so it is safe during thread
+/// teardown.
 fn seed() -> u64 {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
@@ -113,15 +111,14 @@ pub(crate) static CHANNELS_SAMPLING: ResourceSampling = ResourceSampling::new();
 pub(crate) static IO_SAMPLING: ResourceSampling = ResourceSampling::new();
 
 thread_local! {
-    /// Generator state shared by every resource on the thread: draws are
-    /// independent, so one stream serves all of them.
+    /// Generator state shared by every resource on the thread.
     static RNG: Cell<u64> = Cell::new(seed());
 }
 
 /// Independent per-call decision. `try_with` because guards can drop during
 /// thread teardown when the thread-local is already destroyed. A failed
-/// attempt (try-lock miss, retryable I/O error) needs no rollback: the next
-/// draw is independent of this one, so the rate still applies to completions.
+/// attempt (try-lock miss, retryable I/O error) needs no rollback since the
+/// next draw is independent.
 #[inline]
 fn should_time(sampling: &ResourceSampling) -> bool {
     match sampling.sampler() {
@@ -266,9 +263,8 @@ mod tests {
         );
     }
 
-    /// Sampled share over many draws lands near the rate: for n = 100_000 the
-    /// standard deviation is sqrt(n * p * (1 - p)) <= 158, and 1_500 is more
-    /// than nine sigmas at every rate tested.
+    /// Standard deviation is at most 158 for n = 100_000, so 1_500 is over
+    /// nine sigmas at every rate tested.
     #[test]
     fn fraction_keeps_rate_on_average() {
         let n = 100_000u64;
@@ -286,10 +282,8 @@ mod tests {
         assert!(!(0..n).any(|_| Sampler::Never.sample(&rng)));
     }
 
-    /// The regression the random draw fixes: with a deterministic 1-in-2
-    /// counter, two functions alternating on one thread would put every
-    /// sampled call on the first one. Each of two interleaved streams must
-    /// receive a fair share of the decisions.
+    /// Two interleaved streams must both receive a fair share of the
+    /// decisions (a 1-in-2 counter would sample only the first).
     #[test]
     fn interleaved_streams_are_both_sampled() {
         let s = fraction(0.5);

@@ -4,14 +4,12 @@
 //! Single-threaded workload for time-sampling integration tests.
 //!
 //! Sampling decisions are random, so the tests check that sampled counts land
-//! near `rate * count` rather than on an exact value. `work_a` and `work_b`
-//! alternate on purpose: a deterministic 1-in-2 sampler would time every call
-//! of one and none of the other.
+//! near `rate * count`. `work_a` and `work_b` alternate so a periodic sampler
+//! would be caught timing only one of them.
 
 use std::time::Duration;
 
-/// Events per resource; large enough for the sampled share to be checked
-/// statistically.
+/// Events per resource.
 const CALLS: u64 = 1000;
 
 #[hotpath::measure]

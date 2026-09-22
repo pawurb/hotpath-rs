@@ -55,10 +55,8 @@ pub mod tests {
         run_example_with_features("hotpath", envs)
     }
 
-    /// Sampling is random, so the timed share is checked statistically: it
-    /// must land within six standard deviations of `rate * total` (a miss is
-    /// a ~2e-9 event), which for the workload sizes here also rules out the
-    /// "all" and "none" extremes.
+    /// Sampling is random: the timed share must land within six standard
+    /// deviations of `rate * total`.
     fn assert_sampled_near(label: &str, sampled: u64, total: u64, rate: f64) {
         let expected = rate * total as f64;
         let tolerance = 6.0 * (total as f64 * rate * (1.0 - rate)).sqrt();
@@ -108,8 +106,7 @@ pub mod tests {
             assert_eq!(rates.get(resource), Some(&0.5), "rate for {resource}");
         }
 
-        // `work_a` and `work_b` alternate on one thread; both must get their
-        // share (a deterministic 1-in-2 counter timed only `work_a`).
+        // `work_a` and `work_b` alternate on one thread; both must get their share.
         for name in ["work_a", "work_b"] {
             let work = function_entry(&report, name);
             assert_eq!(work.calls, CALLS);
