@@ -23,7 +23,7 @@ mod collector;
 
 pub(crate) use crate::json::ThreadMetrics;
 use crate::json::{format_bytes_signed, JsonThreadEntry, JsonThreadsList};
-use crate::output::format_bytes;
+use crate::output::{format_bytes, Precision};
 
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn thread_metrics_with_percentage(
@@ -360,9 +360,11 @@ pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
     })
 }
 
-/// Get current thread metrics as JSON
+/// Get current thread metrics as JSON. `precision` applies to the process
+/// RSS fields, which the cloud diff reads back; per-thread cells stay in
+/// display form.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
-pub(crate) fn get_threads_json() -> JsonThreadsList {
+pub(crate) fn get_threads_json(precision: Precision) -> JsonThreadsList {
     let Some(raw) = get_threads_raw() else {
         return JsonThreadsList {
             current_elapsed_ns: 0,
@@ -371,8 +373,8 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
             total_count: 0,
             included_count: 0,
             thread_count: 0,
-            rss_bytes: get_rss_bytes().map(format_bytes),
-            peak_rss_bytes: get_peak_rss_bytes().map(format_bytes),
+            rss_bytes: get_rss_bytes().map(|b| precision.bytes(b)),
+            peak_rss_bytes: get_peak_rss_bytes().map(|b| precision.bytes(b)),
             total_alloc_bytes: None,
             total_dealloc_bytes: None,
             alloc_dealloc_diff: None,
@@ -427,8 +429,8 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
         total_count: sorted_metrics.len(),
         included_count: sorted_metrics.len(),
         thread_count: current_metrics.len(),
-        rss_bytes: raw.rss_bytes.map(format_bytes),
-        peak_rss_bytes: raw.peak_rss_bytes.map(format_bytes),
+        rss_bytes: raw.rss_bytes.map(|b| precision.bytes(b)),
+        peak_rss_bytes: raw.peak_rss_bytes.map(|b| precision.bytes(b)),
         total_alloc_bytes,
         total_dealloc_bytes,
         alloc_dealloc_diff,

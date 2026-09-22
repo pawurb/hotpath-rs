@@ -962,7 +962,8 @@ pub struct JsonThreadsList {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rss_bytes: Option<String>,
     /// Peak resident set size over the whole process lifetime, from the
-    /// kernel's high-water mark.
+    /// kernel's high-water mark. Exact (`N B`) in cloud reports so the diff
+    /// can parse it back without loss.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub peak_rss_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
