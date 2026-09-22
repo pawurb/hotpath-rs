@@ -37,18 +37,6 @@ pub(crate) enum IoOpKind {
     Shutdown,
 }
 
-impl IoOpKind {
-    /// Index into the per-kind thread-local sampling counters.
-    fn sampling_idx(self) -> usize {
-        match self {
-            IoOpKind::Read => 0,
-            IoOpKind::Write => 1,
-            IoOpKind::Flush => 2,
-            IoOpKind::Shutdown => 3,
-        }
-    }
-}
-
 /// Events sent to the background I/O statistics collection thread.
 #[derive(Debug)]
 pub(crate) enum IoEvent {
@@ -175,7 +163,7 @@ impl IoOpStats {
 
 /// Statistics for a single `io!` creation site (source location + concrete
 /// type). All wrapper instances from that site accumulate into one entry.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct IoEntry {
     pub(crate) id: u32,
     /// Column-including call-site key (`file:line:column`); the identity used
@@ -233,26 +221,24 @@ pub(crate) struct IoState {
 
 pub(crate) static IO_STATE: OnceLock<IoState> = OnceLock::new();
 
-pub(crate) fn get_sorted_io_entries() -> Vec<IoEntry> {
+/// Runs `f` on the entries sorted for display, borrowed under the read lock:
+/// nothing is cloned, so the per-entry histograms stay in the map.
+pub(crate) fn with_sorted_io_entries<R>(f: impl FnOnce(&[&IoEntry]) -> R) -> R {
     let Some(state) = IO_STATE.get() else {
-        return Vec::new();
+        return f(&[]);
     };
     let guard = state.inner.read().unwrap();
-    let mut stats: Vec<IoEntry> = guard.stats.values().cloned().collect();
-    stats.sort_by(compare_io_entries);
-    stats
+    let mut stats: Vec<&IoEntry> = guard.stats.values().collect();
+    stats.sort_by(|a, b| compare_io_entries(a, b));
+    f(&stats)
 }
 
 pub(crate) fn get_io_json() -> crate::json::JsonIoList {
-    let entries = get_sorted_io_entries();
     let elapsed = std::time::Duration::from_nanos(crate::lib_on::current_elapsed_ns());
-    crate::lib_on::report::collect_io_json(
-        &entries,
-        0,
-        elapsed,
-        &crate::lib_on::hotpath_guard::configured_percentiles(),
-        false,
-    )
+    let percentiles = crate::lib_on::hotpath_guard::configured_percentiles();
+    with_sorted_io_entries(|entries| {
+        crate::lib_on::report::collect_io_json(entries, 0, elapsed, &percentiles, false)
+    })
 }
 
 #[inline]
@@ -260,20 +246,10 @@ pub(crate) fn elapsed_nanos(start: Instant) -> u64 {
     start.elapsed().as_nanos() as u64
 }
 
-/// One sampling decision per operation; `None` skips both clock reads. Each
-/// operation kind samples from its own counter so periodic workloads can't
-/// bias which kinds get timed.
+/// One sampling decision per operation; `None` skips both clock reads.
 #[inline]
-pub(crate) fn op_stamp(kind: IoOpKind) -> Option<Instant> {
-    crate::lib_on::sampling::io_should_time(kind.sampling_idx()).then(Instant::now)
-}
-
-/// Rolls back an `op_stamp` decision after an operation that produced no
-/// measurement (retryable condition or error), so the sampling rate applies
-/// to completed operations.
-#[inline]
-pub(crate) fn cancel_op_stamp(kind: IoOpKind) {
-    crate::lib_on::sampling::io_untime(kind.sampling_idx());
+pub(crate) fn op_stamp() -> Option<Instant> {
+    crate::lib_on::sampling::io_should_time().then(Instant::now)
 }
 
 static EVENT_QUEUES: EventQueueRegistry<IoEvent> = EventQueueRegistry::new();

@@ -18,6 +18,7 @@ use types::*;
 
 const KERN_SUCCESS: kern_return_t = 0;
 const THREAD_BASIC_INFO: libc::c_int = 3;
+const MACH_TASK_BASIC_INFO: libc::c_uint = 20;
 
 // Mach thread run states (from <mach/thread_info.h>)
 const TH_STATE_RUNNING: i32 = 1;
@@ -59,8 +60,27 @@ struct thread_basic_info {
     sleep_time: integer_t,
 }
 
+/// `<mach/task_info.h>` `mach_task_basic_info`; only `resident_size` is read.
+#[repr(C)]
+struct mach_task_basic_info {
+    virtual_size: u64,
+    resident_size: u64,
+    resident_size_max: u64,
+    user_time: [integer_t; 2],
+    system_time: [integer_t; 2],
+    policy: integer_t,
+    suspend_count: integer_t,
+}
+
 extern "C" {
     fn mach_task_self() -> mach_port_t;
+
+    fn task_info(
+        target_task: mach_port_t,
+        flavor: libc::c_uint,
+        task_info_out: *mut integer_t,
+        task_info_outCnt: *mut mach_msg_type_number_t,
+    ) -> kern_return_t;
 
     fn task_threads(
         target_task: mach_port_t,
@@ -202,26 +222,48 @@ pub(crate) fn is_thread_alive(os_tid: u64) -> Option<bool> {
     }
 }
 
-/// Get the RSS (Resident Set Size) of the current process in bytes
+/// Current RSS (Resident Set Size) of the process in bytes.
 pub(crate) fn get_rss_bytes() -> Option<u64> {
-    // Use rusage to get RSS - this is the most reliable cross-platform approach
+    // SAFETY: `info` is zeroed storage of the exact layout `task_info` fills
+    // for `MACH_TASK_BASIC_INFO`, with `count` set to its size in
+    // `integer_t` units; fields are read only after the call reports success.
+    unsafe {
+        let mut info: mach_task_basic_info = mem::zeroed();
+        let mut count = (mem::size_of::<mach_task_basic_info>() / mem::size_of::<integer_t>())
+            as mach_msg_type_number_t;
+        let kr = task_info(
+            mach_task_self(),
+            MACH_TASK_BASIC_INFO,
+            &mut info as *mut _ as *mut integer_t,
+            &mut count,
+        );
+        (kr == KERN_SUCCESS).then_some(info.resident_size)
+    }
+}
+
+/// Max RSS of the process since it started, in bytes, as tracked by the
+/// kernel (`ru_maxrss`, which macOS reports in bytes).
+pub(crate) fn get_rss_bytes_max() -> Option<u64> {
     // SAFETY: `rusage` is zero-initialized with the layout getrusage expects,
     // and its fields are read only after the call reports success.
     unsafe {
-        let mut rusage: libc::rusage = std::mem::zeroed();
-        if libc::getrusage(libc::RUSAGE_SELF, &mut rusage) == 0 {
-            // On macOS, ru_maxrss is in bytes
-            Some(rusage.ru_maxrss as u64)
-        } else {
-            None
-        }
+        let mut rusage: libc::rusage = mem::zeroed();
+        (libc::getrusage(libc::RUSAGE_SELF, &mut rusage) == 0).then_some(rusage.ru_maxrss as u64)
     }
 }
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::*;
+    use crate::lib_on::threads::collector::*;
     use std::time::Duration;
+
+    #[test]
+    fn macos_rss_test() {
+        let rss = get_rss_bytes().expect("RSS should be available on macOS");
+        let max_rss = get_rss_bytes_max().expect("max RSS should be available on macOS");
+        assert!(rss > 0);
+        assert!(max_rss >= rss, "max {max_rss} below current {rss}");
+    }
 
     #[test]
     fn macos_thread_metrics_smoke_test() {

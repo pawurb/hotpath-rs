@@ -328,7 +328,7 @@ pub(crate) struct FunctionLogsList {
 
 #[cfg(test)]
 mod parse_tests {
-    use super::*;
+    use crate::output::*;
 
     #[test]
     fn test_parse_duration_units() {
@@ -413,7 +413,7 @@ mod parse_tests {
 
 #[cfg(all(test, feature = "hotpath-meta"))]
 mod precision_tests {
-    use super::*;
+    use crate::output::*;
 
     #[test]
     fn test_format_duration_exact_roundtrip() {

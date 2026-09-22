@@ -960,7 +960,7 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::lib_on::channels::wrapper::tokio_wrap::*;
     use std::future::poll_fn;
 
     fn bounded<T: Send + 'static>(capacity: usize) -> (Sender<T>, Receiver<T>) {

@@ -4,8 +4,8 @@ use std::sync::RwLock as StdRwLock;
 
 use crate::instant::Instant;
 use crate::rw_locks::{
-    cancel_wait_stamp, elapsed_nanos, register_rw_lock, send_rw_lock_event, wait_stamp,
-    InstrumentRwLock, RwLockEvent, RwLockKind,
+    elapsed_nanos, register_rw_lock, send_rw_lock_event, wait_stamp, InstrumentRwLock, RwLockEvent,
+    RwLockKind,
 };
 
 /// Instrumented drop-in replacement for [`std::sync::RwLock`].
@@ -59,10 +59,7 @@ impl<T> RwLock<T> {
                     self.read_guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
                 )),
             ),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                cancel_wait_stamp();
-                Err(std::sync::TryLockError::WouldBlock)
-            }
+            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
         }
     }
 
@@ -85,10 +82,7 @@ impl<T> RwLock<T> {
                     self.write_guard(poison.into_inner(), wait_start.map(elapsed_nanos)),
                 )),
             ),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                cancel_wait_stamp();
-                Err(std::sync::TryLockError::WouldBlock)
-            }
+            Err(std::sync::TryLockError::WouldBlock) => Err(std::sync::TryLockError::WouldBlock),
         }
     }
 

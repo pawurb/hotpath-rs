@@ -958,8 +958,14 @@ pub struct JsonThreadsList {
     pub current_elapsed_ns: u64,
     pub sample_interval_ms: u64,
     pub thread_count: usize,
+    /// Resident set size at the time of the snapshot.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rss_bytes: Option<String>,
+    /// Maximum resident set size over the whole process lifetime, from the
+    /// kernel's high-water mark. Exact (`N B`) in cloud reports so the diff
+    /// can parse it back without loss.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub rss_bytes_max: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub total_alloc_bytes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -1270,7 +1276,7 @@ impl Default for JsonReport {
 
 #[cfg(test)]
 mod parse_tests {
-    use super::*;
+    use crate::json::formatted::*;
 
     #[test]
     fn test_parse_delay_units() {

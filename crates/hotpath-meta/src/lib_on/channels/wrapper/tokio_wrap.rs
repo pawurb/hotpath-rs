@@ -38,7 +38,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 use crate::channels::{
-    register_channel, send_channel_event, ChannelEvent, ChannelType, Instant,
+    register_channel, sample_stamp, send_channel_event, ChannelEvent, ChannelType, Instant,
     InstrumentChannelWrap, InstrumentChannelWrapLog,
 };
 
@@ -48,13 +48,6 @@ type Payload<T> = (u64, Option<Instant>, T);
 #[inline]
 fn delay_nanos(send_ts: Instant, now: Instant) -> u64 {
     now.duration_since(send_ts).as_nanos() as u64
-}
-
-/// Send-side sampling decision keyed on `msg_id % k`; `None` skips the clock
-/// read and travels in the payload so the receiver skips its read too.
-#[inline]
-fn sample_stamp(msg_id: u64) -> Option<Instant> {
-    crate::lib_on::sampling::channels_should_time(msg_id).then(Instant::now)
 }
 
 /// A `Some` payload stamp means the message is sampled: stamp `now`, compute the delay.
@@ -165,7 +158,7 @@ impl<T> Sender<T> {
     pub async fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
         let mut rollback = DepthRollback {
             depth: &self.depth,
@@ -184,7 +177,7 @@ impl<T> Sender<T> {
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
         match self.inner.try_send((msg_id, sent_at, msg)) {
             Ok(()) => {
@@ -204,7 +197,7 @@ impl<T> Sender<T> {
     pub async fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
         let mut rollback = DepthRollback {
             depth: &self.depth,
@@ -232,7 +225,7 @@ impl<T> Sender<T> {
     pub fn blocking_send(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         let queue_len = (self.depth.fetch_add(1, Ordering::Relaxed) + 1).min(self.capacity);
         match self.inner.blocking_send((msg_id, sent_at, msg)) {
             Ok(()) => {
@@ -533,7 +526,7 @@ impl<T> UnboundedSender<T> {
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let log = self.log_fn.map(|f| f(&msg));
         let msg_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let sent_at = sample_stamp(msg_id);
+        let sent_at = sample_stamp();
         let queue_len = self.depth.fetch_add(1, Ordering::Relaxed) + 1;
         match self.inner.send((msg_id, sent_at, msg)) {
             Ok(()) => {
@@ -967,7 +960,7 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::lib_on::channels::wrapper::tokio_wrap::*;
     use std::future::poll_fn;
 
     fn bounded<T: Send + 'static>(capacity: usize) -> (Sender<T>, Receiver<T>) {

@@ -125,7 +125,7 @@ pub(crate) fn is_thread_alive(os_tid: u64) -> Option<bool> {
     Some(std::path::Path::new(&format!("/proc/self/task/{os_tid}")).exists())
 }
 
-/// Get the RSS (Resident Set Size) of the current process in bytes
+/// Current RSS (Resident Set Size) of the process in bytes.
 pub(crate) fn get_rss_bytes() -> Option<u64> {
     // Read from /proc/self/statm - second field is RSS in pages
     let statm = fs::read_to_string("/proc/self/statm").ok()?;
@@ -140,11 +140,31 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
     }
 }
 
+/// Max RSS of the process since it started, in bytes, as tracked by the
+/// kernel (`ru_maxrss`, which Linux reports in kilobytes).
+pub(crate) fn get_rss_bytes_max() -> Option<u64> {
+    // SAFETY: `rusage` is zero-initialized with the layout getrusage expects,
+    // and its fields are read only after the call reports success.
+    unsafe {
+        let mut rusage: libc::rusage = std::mem::zeroed();
+        (libc::getrusage(libc::RUSAGE_SELF, &mut rusage) == 0)
+            .then_some(rusage.ru_maxrss as u64 * 1024)
+    }
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::*;
+    use crate::lib_on::threads::collector::*;
     use std::collections::HashMap;
     use std::time::Duration;
+
+    #[test]
+    fn linux_rss_test() {
+        let rss = get_rss_bytes().expect("RSS should be available on Linux");
+        let max_rss = get_rss_bytes_max().expect("max RSS should be available on Linux");
+        assert!(rss > 0);
+        assert!(max_rss >= rss, "max {max_rss} below current {rss}");
+    }
 
     #[test]
     fn linux_thread_metrics_smoke_test() {

@@ -235,7 +235,7 @@ pub(crate) fn active_rates() -> Option<HashMap<String, f64>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::lib_on::sampling::*;
 
     fn fraction(rate: f64) -> Sampler {
         match Sampler::from_rate(rate) {

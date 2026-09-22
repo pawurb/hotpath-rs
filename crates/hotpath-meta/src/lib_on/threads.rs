@@ -21,7 +21,7 @@ mod collector;
 
 pub(crate) use crate::json::ThreadMetrics;
 use crate::json::{format_bytes_signed, JsonThreadEntry, JsonThreadsList};
-use crate::output::format_bytes;
+use crate::output::{format_bytes, Precision};
 
 pub(crate) fn thread_metrics_with_percentage(
     mut metrics: ThreadMetrics,
@@ -240,6 +240,18 @@ fn get_rss_bytes() -> Option<u64> {
     None
 }
 
+/// Max RSS over the whole process lifetime (not just since the guard was
+/// built), read from the kernel's high-water mark, so no sample can miss it.
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+fn get_rss_bytes_max() -> Option<u64> {
+    collector::get_rss_bytes_max()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn get_rss_bytes_max() -> Option<u64> {
+    None
+}
+
 /// Raw thread snapshot behind both the JSON list and the Prometheus
 /// exporter: live sampled metrics with per-thread allocation stats joined in.
 pub(crate) struct ThreadsRaw {
@@ -252,6 +264,7 @@ pub(crate) struct ThreadsRaw {
     #[cfg_attr(not(feature = "hotpath-prometheus-meta"), allow(dead_code))]
     pub(crate) live_count: usize,
     pub(crate) rss_bytes: Option<u64>,
+    pub(crate) rss_bytes_max: Option<u64>,
     pub(crate) current_elapsed_ns: u64,
     pub(crate) sample_interval_ms: u64,
     /// Bytes allocated/deallocated by threads that never got an allocation
@@ -264,6 +277,7 @@ pub(crate) struct ThreadsRaw {
 /// `None` until the thread monitor has started.
 pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
     let rss_bytes = get_rss_bytes();
+    let rss_bytes_max = get_rss_bytes_max();
     let state = THREADS_STATE.get()?;
     let state_guard = state.read().ok()?;
     let current_elapsed_ns = state_guard.start_time.elapsed().as_nanos() as u64;
@@ -330,6 +344,7 @@ pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
         metrics: current_metrics,
         live_count,
         rss_bytes,
+        rss_bytes_max,
         current_elapsed_ns,
         sample_interval_ms: state_guard.sample_interval.as_millis() as u64,
         overflow_alloc_bytes,
@@ -337,8 +352,10 @@ pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
     })
 }
 
-/// Get current thread metrics as JSON
-pub(crate) fn get_threads_json() -> JsonThreadsList {
+/// Get current thread metrics as JSON. `precision` applies to the process
+/// RSS fields, which the cloud diff reads back; per-thread cells stay in
+/// display form.
+pub(crate) fn get_threads_json(precision: Precision) -> JsonThreadsList {
     let Some(raw) = get_threads_raw() else {
         return JsonThreadsList {
             current_elapsed_ns: 0,
@@ -347,7 +364,8 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
             total_count: 0,
             included_count: 0,
             thread_count: 0,
-            rss_bytes: get_rss_bytes().map(format_bytes),
+            rss_bytes: get_rss_bytes().map(|b| precision.bytes(b)),
+            rss_bytes_max: get_rss_bytes_max().map(|b| precision.bytes(b)),
             total_alloc_bytes: None,
             total_dealloc_bytes: None,
             alloc_dealloc_diff: None,
@@ -402,7 +420,8 @@ pub(crate) fn get_threads_json() -> JsonThreadsList {
         total_count: sorted_metrics.len(),
         included_count: sorted_metrics.len(),
         thread_count: current_metrics.len(),
-        rss_bytes: raw.rss_bytes.map(format_bytes),
+        rss_bytes: raw.rss_bytes.map(|b| precision.bytes(b)),
+        rss_bytes_max: raw.rss_bytes_max.map(|b| precision.bytes(b)),
         total_alloc_bytes,
         total_dealloc_bytes,
         alloc_dealloc_diff,
