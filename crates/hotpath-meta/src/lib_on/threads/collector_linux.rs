@@ -140,9 +140,9 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
     }
 }
 
-/// Peak RSS of the process since it started, in bytes, as tracked by the
+/// Max RSS of the process since it started, in bytes, as tracked by the
 /// kernel (`ru_maxrss`, which Linux reports in kilobytes).
-pub(crate) fn get_peak_rss_bytes() -> Option<u64> {
+pub(crate) fn get_rss_bytes_max() -> Option<u64> {
     // SAFETY: `rusage` is zero-initialized with the layout getrusage expects,
     // and its fields are read only after the call reports success.
     unsafe {
@@ -161,9 +161,9 @@ mod tests {
     #[test]
     fn linux_rss_test() {
         let rss = get_rss_bytes().expect("RSS should be available on Linux");
-        let peak = get_peak_rss_bytes().expect("peak RSS should be available on Linux");
+        let max_rss = get_rss_bytes_max().expect("max RSS should be available on Linux");
         assert!(rss > 0);
-        assert!(peak >= rss, "peak {peak} below current {rss}");
+        assert!(max_rss >= rss, "max {max_rss} below current {rss}");
     }
 
     #[test]

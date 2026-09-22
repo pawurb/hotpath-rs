@@ -287,7 +287,7 @@ unsafe extern "system" {
     fn GetCurrentProcess() -> HANDLE;
 }
 
-/// Process memory counters, the source of both the current and the peak RSS.
+/// Process memory counters, the source of both the current and the max RSS.
 fn process_memory_counters() -> Option<PROCESS_MEMORY_COUNTERS_EX> {
     use std::mem::MaybeUninit;
 
@@ -315,8 +315,8 @@ pub(crate) fn get_rss_bytes() -> Option<u64> {
     process_memory_counters().map(|c| c.working_set_size as u64)
 }
 
-/// Peak RSS (peak working set) of the process since it started, in bytes.
-pub(crate) fn get_peak_rss_bytes() -> Option<u64> {
+/// Max RSS (peak working set) of the process since it started, in bytes.
+pub(crate) fn get_rss_bytes_max() -> Option<u64> {
     process_memory_counters().map(|c| c.peak_working_set_size as u64)
 }
 
@@ -381,8 +381,8 @@ mod tests {
     #[test]
     fn windows_rss_test() {
         let rss = get_rss_bytes().expect("RSS should be available on Windows");
-        let peak = get_peak_rss_bytes().expect("peak RSS should be available on Windows");
+        let max_rss = get_rss_bytes_max().expect("max RSS should be available on Windows");
         assert!(rss > 0, "RSS should be greater than zero");
-        assert!(peak >= rss, "peak {peak} below current {rss}");
+        assert!(max_rss >= rss, "max {max_rss} below current {rss}");
     }
 }
