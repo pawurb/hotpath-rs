@@ -254,7 +254,7 @@ pub(crate) fn get_peak_rss_bytes() -> Option<u64> {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::*;
+    use crate::lib_on::threads::collector::*;
     use std::time::Duration;
 
     #[test]

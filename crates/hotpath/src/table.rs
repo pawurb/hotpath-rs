@@ -191,7 +191,7 @@ fn char_width(c: char) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::table::*;
 
     fn render(table: &Table, colors: bool) -> String {
         let mut buf = Vec::new();

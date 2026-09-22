@@ -933,7 +933,7 @@ fn log_debug(_msg: &str) {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::mcp_server::*;
 
     #[test]
     fn id_param_accepts_number_and_string() {

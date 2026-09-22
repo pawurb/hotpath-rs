@@ -302,7 +302,7 @@ pub fn format_debug_truncated(value: &impl std::fmt::Debug) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::output_on::*;
 
     #[test]
     fn test_format_debug_truncated() {

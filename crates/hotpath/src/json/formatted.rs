@@ -1279,7 +1279,7 @@ impl Default for JsonReport {
 
 #[cfg(test)]
 mod parse_tests {
-    use super::*;
+    use crate::json::formatted::*;
 
     #[test]
     fn test_parse_delay_units() {

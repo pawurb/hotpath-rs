@@ -322,7 +322,7 @@ pub(crate) fn get_rss_bytes_max() -> Option<u64> {
 
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use super::*;
+    use crate::lib_on::threads::collector::*;
     use std::collections::HashMap;
     use std::time::Duration;
 
