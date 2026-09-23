@@ -108,7 +108,7 @@ Requests are grouped by `METHOD host/path`. The query string, fragment, and cred
 - UUIDs (`/jobs/550e8400-e29b-41d4-a716-446655440000`)
 - hex strings of 16+ characters (`/blobs/deadbeefdeadbeef`)
 
-So `GET /users/1?verbose=true` and `GET /users/42` merge into one `GET example.com/users/{id}` bucket. Raw URLs never reach the report - only the normalized shape does.
+So `GET /users/1?verbose=true` and `GET /users/42` merge into one `GET example.com/users/{id}` bucket. An explicit port becomes `{port}` (`GET 127.0.0.1:{port}/users/{id}`), so a test server bound to a free port keys the same across runs; the host itself is kept as written. Raw URLs never reach the report - only the normalized shape does.
 
 ## Source function attribution
 

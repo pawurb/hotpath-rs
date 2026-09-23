@@ -2,9 +2,11 @@
 //! into one bucket by collapsing identifier-like path segments into `{id}`.
 //!
 //! Input is the raw `METHOD host[:port]/path` pre-key built by the middleware
-//! (query string, fragment, and credentials are already absent). Only path
-//! segments are rewritten - the method and host prefix is left untouched, so
-//! numeric hosts like `127.0.0.1:6770` survive.
+//! (query string, fragment, and credentials are already absent). The method
+//! and host are left untouched, so numeric hosts like `127.0.0.1` survive; an
+//! explicit port becomes `{port}`, since a port that is not the scheme's
+//! default is most often a test server bound to a free one, and two runs
+//! must key the same endpoint the same way to be comparable.
 //!
 //! A segment is treated as an identifier when it is:
 //! - all decimal digits (`/users/123`)
@@ -31,9 +33,10 @@ fn is_id_segment(segment: &str) -> bool {
 /// Normalize a raw `METHOD host[:port]/path` pre-key into a stable bucket key.
 pub(crate) fn normalize_endpoint(endpoint: &str) -> String {
     let Some(slash) = endpoint.find('/') else {
-        return endpoint.to_string();
+        return normalize_port(endpoint);
     };
     let (prefix, path) = endpoint.split_at(slash);
+    let prefix = normalize_port(prefix);
     let normalized_path = path
         .split('/')
         .map(|segment| {
@@ -46,6 +49,18 @@ pub(crate) fn normalize_endpoint(endpoint: &str) -> String {
         .collect::<Vec<_>>()
         .join("/");
     format!("{prefix}{normalized_path}")
+}
+
+/// `METHOD host:1234` -> `METHOD host:{port}`; a prefix without a port, or
+/// whose last `:` is not followed by digits (an IPv6 literal's last group),
+/// is returned as is.
+fn normalize_port(prefix: &str) -> String {
+    match prefix.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => {
+            format!("{host}:{{port}}")
+        }
+        _ => prefix.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -88,12 +103,28 @@ mod tests {
         );
     }
 
+    /// A host survives as written; an explicit port is a parameter, so a
+    /// test server bound to a free port keys the same across runs.
     #[test]
-    fn keeps_numeric_host_untouched() {
+    fn keeps_numeric_host_and_merges_ports() {
         assert_eq!(
             normalize_endpoint("GET 127.0.0.1:6770/users/5"),
-            "GET 127.0.0.1:6770/users/{id}",
+            "GET 127.0.0.1:{port}/users/{id}",
         );
+        assert_eq!(
+            normalize_endpoint("GET 127.0.0.1:6770/users/5"),
+            normalize_endpoint("GET 127.0.0.1:38607/users/9"),
+        );
+        assert_eq!(
+            normalize_endpoint("GET api.example.com:8443/health"),
+            "GET api.example.com:{port}/health",
+        );
+        assert_eq!(
+            normalize_endpoint("GET api.example.com/health"),
+            "GET api.example.com/health",
+        );
+        // an IPv6 literal without a port keeps its last group
+        assert_eq!(normalize_endpoint("GET [::1]/health"), "GET [::1]/health",);
     }
 
     #[test]
@@ -115,5 +146,6 @@ mod tests {
     #[test]
     fn no_path_passthrough() {
         assert_eq!(normalize_endpoint("GET nowhere"), "GET nowhere");
+        assert_eq!(normalize_endpoint("GET nowhere:80"), "GET nowhere:{port}");
     }
 }
