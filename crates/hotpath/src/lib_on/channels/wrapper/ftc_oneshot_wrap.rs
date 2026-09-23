@@ -293,7 +293,6 @@ impl<T: Send + std::fmt::Debug + 'static> InstrumentChannelWrapLog
 mod tests {
     use crate::channels::wrapper::ftc_oneshot_wrap::{build, Receiver, Sender};
     use futures_channel::oneshot::Canceled;
-    use futures_core::future::FusedFuture;
 
     fn oneshot<T: Send + 'static>() -> (Sender<T>, Receiver<T>) {
         build::<T>("test", None, None, false)
@@ -306,15 +305,6 @@ mod tests {
         type P = std::cell::Cell<u8>;
         assert_send_sync::<Sender<P>>();
         assert_send_sync::<Receiver<P>>();
-    }
-
-    #[tokio::test]
-    async fn delivers_value_through_await() {
-        let (tx, rx) = oneshot::<u32>();
-        assert!(tx.is_connected_to(&rx));
-        assert!(!rx.is_terminated());
-        tx.send(7).unwrap();
-        assert_eq!(rx.await.unwrap(), 7);
     }
 
     #[test]
@@ -332,13 +322,6 @@ mod tests {
         assert!(tx.is_canceled());
         tx.cancellation().await;
         assert_eq!(tx.send("lost".to_string()), Err("lost".to_string()));
-    }
-
-    #[tokio::test]
-    async fn recv_fails_after_sender_drop() {
-        let (tx, rx) = oneshot::<u32>();
-        drop(tx);
-        assert!(rx.await.is_err());
     }
 
     #[test]

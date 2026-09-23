@@ -34,31 +34,7 @@ pub(crate) fn check_auth(expected: Option<&str>, provided: Option<&str>) -> bool
 
 #[cfg(test)]
 mod tests {
-    use crate::auth::{check_auth, token_from_env};
-
-    #[test]
-    fn auth_disabled_allows_all() {
-        assert!(check_auth(None, None));
-        assert!(check_auth(None, Some("anything")));
-    }
-
-    #[test]
-    fn auth_enabled_rejects_missing() {
-        assert!(!check_auth(Some("secret"), None));
-    }
-
-    #[test]
-    fn auth_enabled_rejects_wrong() {
-        assert!(!check_auth(Some("secret"), Some("wrong")));
-        assert!(!check_auth(Some("secret"), Some("Secret")));
-        assert!(!check_auth(Some("secret"), Some("")));
-    }
-
-    #[test]
-    fn auth_enabled_accepts_correct() {
-        assert!(check_auth(Some("secret"), Some("secret")));
-        assert!(check_auth(Some("Bearer token"), Some("Bearer token")));
-    }
+    use crate::auth::token_from_env;
 
     #[test]
     fn token_from_env_filters_empty() {

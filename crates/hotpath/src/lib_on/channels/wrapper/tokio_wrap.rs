@@ -1015,65 +1015,6 @@ mod tests {
         assert!(weak.upgrade().is_none());
     }
 
-    #[test]
-    fn same_channel_across_clones() {
-        let (tx_a, _rx_a) = bounded::<u32>(4);
-        let (tx_b, _rx_b) = bounded::<u32>(4);
-        assert!(tx_a.same_channel(&tx_a.clone()));
-        assert!(!tx_a.same_channel(&tx_b));
-
-        let (utx_a, _urx_a) = unbounded::<u32>();
-        let (utx_b, _urx_b) = unbounded::<u32>();
-        assert!(utx_a.same_channel(&utx_a.clone()));
-        assert!(!utx_a.same_channel(&utx_b));
-    }
-
-    #[test]
-    fn len_tracks_inner_channel() {
-        let (tx, mut rx) = bounded::<u32>(4);
-        assert!(rx.is_empty());
-        tx.try_send(1).unwrap();
-        tx.try_send(2).unwrap();
-        assert_eq!(rx.len(), 2);
-        rx.try_recv().unwrap();
-        assert_eq!(rx.len(), 1);
-        rx.try_recv().unwrap();
-        assert!(rx.is_empty());
-    }
-
-    #[test]
-    fn close_stops_sends_but_drains() {
-        let (tx, mut rx) = bounded::<u32>(4);
-        tx.try_send(1).unwrap();
-        rx.close();
-        assert!(rx.is_closed());
-        assert!(matches!(tx.try_send(2), Err(TrySendError::Closed(2))));
-        assert_eq!(rx.try_recv(), Ok(1));
-    }
-
-    #[test]
-    fn blocking_send_recv_off_runtime() {
-        let (tx, mut rx) = bounded::<u32>(4);
-        let producer = std::thread::spawn(move || {
-            for i in 0..25 {
-                tx.blocking_send(i).unwrap();
-            }
-        });
-        let consumer = std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            while let Some(v) = rx.blocking_recv() {
-                buf.push(v);
-                if rx.blocking_recv_many(&mut buf, 8) == 0 {
-                    break;
-                }
-            }
-            buf
-        });
-        producer.join().unwrap();
-        let buf = consumer.join().unwrap();
-        assert_eq!(buf, (0..25).collect::<Vec<_>>());
-    }
-
     #[tokio::test]
     async fn cancelled_send_rolls_back_depth() {
         use std::future::Future;

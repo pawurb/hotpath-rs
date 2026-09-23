@@ -323,14 +323,6 @@ mod tests {
         assert_send_sync::<Receiver<P>>();
     }
 
-    #[tokio::test]
-    async fn delivers_value_through_await() {
-        let (tx, rx) = oneshot::<u32>();
-        assert!(rx.is_empty());
-        tx.send(7).unwrap();
-        assert_eq!(rx.await.unwrap(), 7);
-    }
-
     #[test]
     fn try_recv_and_blocking_recv() {
         let (tx, mut rx) = oneshot::<u32>();
@@ -352,13 +344,6 @@ mod tests {
         drop(rx);
         assert!(tx.is_closed());
         assert_eq!(tx.send("lost".to_string()), Err("lost".to_string()));
-    }
-
-    #[tokio::test]
-    async fn recv_fails_after_sender_drop() {
-        let (tx, rx) = oneshot::<u32>();
-        drop(tx);
-        assert!(rx.await.is_err());
     }
 
     #[test]

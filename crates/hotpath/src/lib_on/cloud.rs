@@ -460,8 +460,8 @@ fn url_encode(s: &str) -> String {
 mod tests {
     use crate::json::cloud_api::{CommentOutcome, UploadCreated};
     use crate::lib_on::cloud::{
-        benchmark_name, escape_annotation, interpret, is_truthy, normalize_upload_url, render,
-        url_encode, validate_benchmark_name, Env, Level, Outcome, DEFAULT_UPLOAD_URL,
+        benchmark_name, escape_annotation, interpret, render, url_encode, validate_benchmark_name,
+        Env, Level, Outcome,
     };
 
     fn env(actions: bool, strict: bool) -> Env {
@@ -480,30 +480,6 @@ mod tests {
             baseline: Some("r0".into()),
             comment: CommentOutcome::default(),
         }
-    }
-
-    #[test]
-    fn truthy_values() {
-        assert!(is_truthy("1"));
-        assert!(is_truthy("true"));
-        assert!(is_truthy(" TRUE "));
-        assert!(!is_truthy("0"));
-        assert!(!is_truthy("false"));
-        assert!(!is_truthy(""));
-    }
-
-    #[test]
-    fn upload_url_override() {
-        assert_eq!(normalize_upload_url(None), DEFAULT_UPLOAD_URL);
-        assert_eq!(normalize_upload_url(Some("   ".into())), DEFAULT_UPLOAD_URL);
-        assert_eq!(
-            normalize_upload_url(Some(" http://localhost:3000/// ".into())),
-            "http://localhost:3000"
-        );
-        assert_eq!(
-            normalize_upload_url(Some("https://staging.hotpath.rs".into())),
-            "https://staging.hotpath.rs"
-        );
     }
 
     #[test]

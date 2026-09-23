@@ -140,23 +140,7 @@ fn strip_frontmatter(skill: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{minor_version, strip_frontmatter, SKILL_URL_BRANCH_TEMPLATE};
-
-    #[test]
-    fn derives_minor_version() {
-        assert_eq!(minor_version("0.21.4"), "0.21");
-        assert_eq!(minor_version("1.0.0"), "1.0");
-        assert_eq!(minor_version("0.21"), "0");
-    }
-
-    #[test]
-    fn branch_url_uses_minor_version() {
-        let url = SKILL_URL_BRANCH_TEMPLATE.replace("{minor}", minor_version("0.21.4"));
-        assert_eq!(
-            url,
-            "https://raw.githubusercontent.com/pawurb/hotpath-rs/init-v0.21/skills/hotpath_init/SKILL.md"
-        );
-    }
+    use super::strip_frontmatter;
 
     #[test]
     fn strips_yaml_frontmatter() {

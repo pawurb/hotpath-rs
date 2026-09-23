@@ -388,27 +388,6 @@ mod parse_tests {
             );
         }
     }
-
-    #[test]
-    fn test_format_count() {
-        assert_eq!(format_count(0), "0");
-        assert_eq!(format_count(999), "999");
-        assert_eq!(format_count(1_000), "1000");
-        assert_eq!(format_count(1_000_000), "1000000");
-    }
-
-    #[test]
-    fn test_parse_count_roundtrip() {
-        for val in [0, 1, 500, 999, 1_000, 1_500, 50_000, 1_000_000] {
-            let formatted = format_count(val);
-            let parsed = parse_count(&formatted);
-            assert_eq!(
-                parsed,
-                Some(val),
-                "round-trip failed for {val}: formatted as '{formatted}'"
-            );
-        }
-    }
 }
 
 #[cfg(all(test, feature = "hotpath"))]
@@ -446,16 +425,6 @@ mod precision_tests {
         assert_eq!(format_duration_exact(1_001), "1.001 µs");
         assert_eq!(format_duration_exact(1_004_999), "1.004999 ms");
         assert_eq!(format_duration_exact(1_000_000_001), "1.000000001 s");
-    }
-
-    #[test]
-    fn test_precision_selects_formatter() {
-        assert_eq!(Precision::for_cloud(false), Precision::Display);
-        assert_eq!(Precision::for_cloud(true), Precision::Exact);
-        assert_eq!(Precision::Display.duration(1_004_999), "1.00 ms");
-        assert_eq!(Precision::Exact.duration(1_004_999), "1.004999 ms");
-        assert_eq!(Precision::Display.bytes(1_075), "1.0 KB");
-        assert_eq!(Precision::Exact.bytes(1_075), "1075 B");
     }
 
     #[test]

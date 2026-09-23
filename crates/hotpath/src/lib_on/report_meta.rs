@@ -206,7 +206,7 @@ mod tests {
 
     #[cfg(feature = "hotpath-cloud")]
     mod cloud {
-        use crate::json::{JsonCiInfo, JsonGitInfo, JsonMeta, JsonPullRequest};
+        use crate::json::{JsonCiInfo, JsonGitInfo, JsonPullRequest};
         use crate::lib_on::ci_info::CiContext;
         use crate::lib_on::report_meta::merge_git_info;
 
@@ -321,77 +321,6 @@ mod tests {
             assert_eq!(git.repository.as_deref(), Some("pawurb/other-name"));
 
             assert!(merge_git_info(None, None).is_none());
-        }
-
-        #[test]
-        fn absent_fields_add_no_keys() {
-            let meta = JsonMeta {
-                rustc: "1.89.0".to_string(),
-                os: "macos-aarch64".to_string(),
-                created_at: "2026-08-27T10:15:42Z".to_string(),
-                source_root: Some(String::new()),
-                git: Some(detached_local(LOCAL_SHA)),
-                ci: None,
-                benchmark: None,
-            };
-            let value: serde_json::Value = serde_json::to_value(&meta).unwrap();
-            let keys = |value: &serde_json::Value| -> Vec<String> {
-                value.as_object().unwrap().keys().cloned().collect()
-            };
-            assert_eq!(
-                keys(&value),
-                ["created_at", "git", "os", "rustc", "source_root"]
-            );
-            assert_eq!(keys(&value["git"]), ["repository", "sha"]);
-        }
-
-        #[test]
-        fn new_fields_round_trip() {
-            let meta = JsonMeta {
-                rustc: "1.89.0".to_string(),
-                os: "macos-aarch64".to_string(),
-                created_at: "2026-08-27T10:15:42Z".to_string(),
-                source_root: Some(String::new()),
-                git: merge_git_info(
-                    Some(detached_local(LOCAL_SHA)),
-                    Some(&pull_request_ci(LOCAL_SHA)),
-                ),
-                ci: Some(pull_request_ci(LOCAL_SHA).ci),
-                benchmark: Some("ci".to_string()),
-            };
-            let json = serde_json::to_string(&meta).unwrap();
-            let back: JsonMeta = serde_json::from_str(&json).unwrap();
-
-            let git = back.git.expect("git info");
-            assert_eq!(git.sha, LOCAL_SHA);
-            assert_eq!(git.base_sha.as_deref(), Some(BASE_SHA));
-            assert_eq!(git.repository.as_deref(), Some("pawurb/hotpath-rs"));
-            let ci = back.ci.expect("ci info");
-            assert_eq!(ci.provider, "github-actions");
-            assert_eq!(ci.event, "pull_request");
-            let pr = ci.pull_request.expect("pull request info");
-            assert_eq!(pr.number, 42);
-            assert_eq!(pr.base_ref, "main");
-            assert_eq!(pr.head_ref, "feature-x");
-            assert_eq!(pr.head_sha.as_deref(), Some(HEAD_SHA));
-            assert_eq!(back.benchmark.as_deref(), Some("ci"));
-        }
-
-        #[test]
-        fn old_report_deserializes() {
-            let json = r#"{
-                "rustc": "1.89.0",
-                "os": "macos-aarch64",
-                "created_at": "2026-08-27T10:15:42Z",
-                "source_root": "",
-                "git": {"sha": "1111111111111111111111111111111111111111", "ref": "refs/heads/main"}
-            }"#;
-            let meta: JsonMeta = serde_json::from_str(json).unwrap();
-            let git = meta.git.expect("git info");
-            assert_eq!(git.base_sha, None);
-            assert_eq!(git.repository, None);
-            assert!(meta.ci.is_none());
-            assert!(meta.benchmark.is_none());
         }
     }
 

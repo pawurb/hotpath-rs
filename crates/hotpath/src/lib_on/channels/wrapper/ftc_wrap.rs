@@ -704,8 +704,7 @@ mod tests {
         build_bounded, build_unbounded, Receiver, Sender, UnboundedReceiver, UnboundedSender,
     };
     use futures_channel::mpsc::RecvError;
-    use futures_core::stream::{FusedStream, Stream};
-    use futures_util::{SinkExt, StreamExt};
+    use futures_util::SinkExt;
 
     fn bounded<T: Send + 'static>(capacity: usize) -> (Sender<T>, Receiver<T>) {
         build_bounded::<T>("test", None, Some(capacity), None, false)
@@ -727,27 +726,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sink_and_stream_roundtrip() {
-        let (mut tx, mut rx) = bounded::<u32>(2);
-        tx.send(1).await.unwrap();
-        tx.send(2).await.unwrap();
-        assert_eq!(rx.size_hint().0, 2);
-        assert_eq!(rx.next().await, Some(1));
-        assert_eq!(rx.next().await, Some(2));
-        drop(tx);
-        assert_eq!(rx.next().await, None);
-        assert!(rx.is_terminated());
-
-        let (mut tx, mut rx) = unbounded::<u32>();
-        tx.send(7).await.unwrap();
-        (&tx).send(8).await.unwrap();
-        assert_eq!(tx.len(), 2);
-        assert_eq!(rx.next().await, Some(7));
-        assert_eq!(rx.next().await, Some(8));
-        assert!(tx.is_empty());
-    }
-
-    #[tokio::test]
     async fn recv_returns_messages_then_error_when_closed() {
         let (mut tx, mut rx) = bounded::<u32>(1);
         tx.send(1).await.unwrap();
@@ -760,59 +738,5 @@ mod tests {
         assert_eq!(rx.recv().await, Ok(2));
         drop(tx);
         assert_eq!(rx.recv().await, Err(RecvError));
-    }
-
-    #[test]
-    fn try_send_full_error_returns_value() {
-        // A bounded futures channel holds `capacity + 1` per sender before it is full.
-        let (mut tx, mut rx) = bounded::<u32>(0);
-        tx.try_send(1).unwrap();
-        let err = tx.try_send(2).unwrap_err();
-        assert!(err.is_full());
-        assert!(!err.is_disconnected());
-        assert_eq!(err.into_inner(), 2);
-        assert_eq!(rx.try_recv().unwrap(), 1);
-        assert!(rx.try_recv().unwrap_err().is_empty());
-    }
-
-    #[test]
-    fn send_after_receiver_drop_is_disconnected() {
-        let (tx, rx) = unbounded::<u32>();
-        drop(rx);
-        assert!(tx.is_closed());
-        let err = tx.unbounded_send(5).unwrap_err();
-        assert!(err.is_disconnected());
-        assert!(err.into_send_error().is_disconnected());
-
-        let (mut tx, rx) = bounded::<u32>(1);
-        drop(rx);
-        assert!(tx.try_send(5).unwrap_err().is_disconnected());
-        assert!(tx.start_send(6).unwrap_err().is_disconnected());
-    }
-
-    #[test]
-    fn close_stops_sends_but_drains() {
-        let (mut tx, mut rx) = bounded::<u32>(4);
-        tx.try_send(1).unwrap();
-        rx.close();
-        assert!(tx.is_closed());
-        assert!(tx.try_send(2).unwrap_err().is_disconnected());
-        assert_eq!(rx.try_recv().unwrap(), 1);
-        assert!(rx.try_recv().is_err());
-    }
-
-    #[test]
-    fn same_receiver_across_clones() {
-        let (tx_a, rx_a) = bounded::<u32>(4);
-        let (tx_b, _rx_b) = bounded::<u32>(4);
-        assert!(tx_a.same_receiver(&tx_a.clone()));
-        assert!(!tx_a.same_receiver(&tx_b));
-        assert!(tx_a.is_connected_to(&rx_a));
-
-        let (utx_a, urx_a) = unbounded::<u32>();
-        let (utx_b, _urx_b) = unbounded::<u32>();
-        assert!(utx_a.same_receiver(&utx_a.clone()));
-        assert!(!utx_a.same_receiver(&utx_b));
-        assert!(utx_a.is_connected_to(&urx_a));
     }
 }

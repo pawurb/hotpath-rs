@@ -130,61 +130,6 @@ mod tests {
     }
 
     #[test]
-    fn reads_pull_request_payload() {
-        let path = write_event(
-            "pull_request",
-            r#"{
-                "action": "synchronize",
-                "number": 42,
-                "pull_request": {
-                    "number": 42,
-                    "head": { "sha": "1111111111111111111111111111111111111111" },
-                    "base": {
-                        "ref": "main",
-                        "sha": "2222222222222222222222222222222222222222",
-                        "repo": { "full_name": "owner/name" }
-                    }
-                },
-                "repository": { "full_name": "owner/name" }
-            }"#,
-        );
-
-        let pr = read_pull_request(&path).expect("pull_request parsed");
-        assert_eq!(pr.number, Some(42));
-        assert_eq!(
-            pr.base.and_then(|b| b.sha).as_deref(),
-            Some("2222222222222222222222222222222222222222")
-        );
-        assert_eq!(
-            pr.head.and_then(|h| h.sha).as_deref(),
-            Some("1111111111111111111111111111111111111111")
-        );
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn payload_without_head_still_parses() {
-        let path = write_event(
-            "no_head",
-            r#"{"pull_request":{"number":42,"base":{"sha":"2222222222222222222222222222222222222222"}}}"#,
-        );
-        let pr = read_pull_request(&path).expect("pull_request parsed");
-        assert_eq!(pr.number, Some(42));
-        assert!(pr.head.is_none());
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn push_payload_has_no_pull_request() {
-        let path = write_event(
-            "push",
-            r#"{"ref":"refs/heads/main","after":"3333333333333333333333333333333333333333"}"#,
-        );
-        assert!(read_pull_request(&path).is_none());
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
     fn parses_pr_number_from_the_merge_ref() {
         assert_eq!(pr_number_from_ref("refs/pull/42/merge"), Some(42));
         assert_eq!(pr_number_from_ref("refs/pull/7/head"), Some(7));

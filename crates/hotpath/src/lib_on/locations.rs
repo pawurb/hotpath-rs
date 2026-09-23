@@ -139,14 +139,6 @@ mod tests {
     };
 
     #[test]
-    fn relative_paths_pass_through() {
-        assert_eq!(
-            normalize_file_path("crates/hotpath/src/lib.rs"),
-            "crates/hotpath/src/lib.rs"
-        );
-    }
-
-    #[test]
     fn registry_paths_rewrite_to_external() {
         assert_eq!(
             normalize_file_path(

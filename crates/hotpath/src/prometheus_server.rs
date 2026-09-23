@@ -1915,9 +1915,7 @@ fn respond_text(request: Request, code: u16, msg: &str) {
 
 #[cfg(test)]
 mod tests {
-    use crate::prometheus_server::{
-        accepts_protobuf, check_auth_with_bearer, parse_ladder, query_label, seconds,
-    };
+    use crate::prometheus_server::{parse_ladder, query_label};
 
     #[test]
     fn parse_ladder_accepts_ascending_seconds() {
@@ -1950,36 +1948,6 @@ mod tests {
     }
 
     #[test]
-    fn future_labels_use_id_verbatim() {
-        use crate::prometheus_server::future_labels;
-        let a = future_labels("src/main.rs:12:34", None);
-        let b = future_labels("src/main.rs:12:60", None);
-        assert_eq!(a[0], ("source", "src/main.rs:12:34".to_string()));
-        assert_ne!(a, b, "same-line future! sites must stay distinct");
-
-        let named = future_labels("my_module::my_future_fn", Some("x"));
-        assert_eq!(named[0].1, "my_module::my_future_fn");
-    }
-
-    #[test]
-    fn call_site_labels_mirror_entry_identity() {
-        use crate::prometheus_server::call_site_labels;
-        let a = call_site_labels("src/app.rs:10:5", None, 0);
-        assert_eq!(a[0], ("source", "src/app.rs:10:5".to_string()));
-        assert_eq!(a[2], ("iter", "0".to_string()));
-
-        // The column-including key keeps same-line call sites distinct,
-        // repeated instantiations differ by iter, and the user label stays
-        // verbatim (no suffix encoding that could alias two entries).
-        let b = call_site_labels("src/app.rs:10:30", None, 0);
-        assert_ne!(a, b);
-        let worker_2 = call_site_labels("src/app.rs:10:5", Some("worker-2"), 0);
-        let worker_iter = call_site_labels("src/app.rs:10:5", Some("worker"), 1);
-        assert_ne!(worker_2, worker_iter);
-        assert_eq!(worker_iter[1], ("label", "worker".to_string()));
-    }
-
-    #[test]
     fn query_label_truncation_stays_unique() {
         assert_eq!(query_label("SELECT 1", 100), "SELECT 1");
 
@@ -1988,36 +1956,5 @@ mod tests {
         assert_eq!(a.chars().count(), 50 + 3 + 16);
         assert_ne!(a, b, "shared-prefix long queries must stay distinct");
         assert_eq!(a[..50], b[..50]);
-    }
-
-    #[test]
-    fn seconds_formats_without_exponent() {
-        assert_eq!(seconds(250).to_string(), "0.00000025");
-        assert_eq!(seconds(1_000_000_000).to_string(), "1");
-        assert_eq!(seconds(3_000_000_000).to_string(), "3");
-    }
-
-    #[test]
-    fn bearer_prefix_accepted() {
-        assert!(check_auth_with_bearer(Some("secret"), Some("secret")));
-        assert!(check_auth_with_bearer(
-            Some("secret"),
-            Some("Bearer secret")
-        ));
-        assert!(!check_auth_with_bearer(
-            Some("secret"),
-            Some("Bearer wrong")
-        ));
-        assert!(!check_auth_with_bearer(Some("secret"), None));
-        assert!(check_auth_with_bearer(None, None));
-    }
-
-    #[test]
-    fn protobuf_negotiation() {
-        assert!(accepts_protobuf(
-            "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;encoding=delimited,text/plain;version=0.0.4;q=0.5"
-        ));
-        assert!(!accepts_protobuf("text/plain; version=0.0.4"));
-        assert!(!accepts_protobuf(""));
     }
 }

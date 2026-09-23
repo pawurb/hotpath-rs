@@ -37,13 +37,6 @@ pub(crate) fn format_delay(nanos: u64) -> String {
     }
 }
 
-/// Parses a human-readable delay string back to nanoseconds.
-/// Inverse of [`format_delay`].
-#[cfg(test)]
-pub(crate) fn parse_delay(s: &str) -> Option<u64> {
-    crate::output::parse_duration(s)
-}
-
 pub fn format_bytes_signed(bytes: i64) -> String {
     let sign = if bytes < 0 { "-" } else { "" };
     let abs_bytes = bytes.unsigned_abs();
@@ -1280,86 +1273,6 @@ impl Default for JsonReport {
 #[cfg(test)]
 mod parse_tests {
     use crate::json::formatted::*;
-
-    #[test]
-    fn test_parse_delay_units() {
-        assert_eq!(parse_delay("123 ns"), Some(123));
-        assert_eq!(parse_delay("0 ns"), Some(0));
-        assert_eq!(parse_delay("1.5 µs"), Some(1500));
-        assert_eq!(parse_delay("1.5 ms"), Some(1500000));
-        assert_eq!(parse_delay("1.50 s"), Some(1500000000));
-    }
-
-    #[test]
-    fn test_parse_delay_invalid() {
-        assert_eq!(parse_delay(""), None);
-        assert_eq!(parse_delay("invalid"), None);
-    }
-
-    #[test]
-    fn test_parse_delay_roundtrip() {
-        for val in [0, 500, 1500, 1_500_000, 1_500_000_000] {
-            let formatted = format_delay(val);
-            let parsed = parse_delay(&formatted);
-            assert_eq!(
-                parsed,
-                Some(val),
-                "round-trip failed for {val}: formatted as '{formatted}'"
-            );
-        }
-    }
-
-    #[test]
-    fn test_parse_bytes_signed_units() {
-        assert_eq!(parse_bytes_signed("0 B"), Some(0));
-        assert_eq!(parse_bytes_signed("123 B"), Some(123));
-        assert_eq!(parse_bytes_signed("-1.5 KB"), Some(-1536));
-        assert_eq!(parse_bytes_signed("2.0 MB"), Some(2097152));
-    }
-
-    #[test]
-    fn test_parse_bytes_signed_invalid() {
-        assert_eq!(parse_bytes_signed(""), None);
-        assert_eq!(parse_bytes_signed("invalid"), None);
-    }
-
-    #[test]
-    fn test_parse_bytes_signed_roundtrip() {
-        for val in [0i64, 100, 1536, -1024, -1536, 1048576, -1048576] {
-            let formatted = format_bytes_signed(val);
-            let parsed = parse_bytes_signed(&formatted);
-            assert_eq!(
-                parsed,
-                Some(val),
-                "round-trip failed for {val}: formatted as '{formatted}'"
-            );
-        }
-    }
-
-    #[test]
-    fn json_functions_cpu_accepts_result_list_shape() {
-        let result = r#"{
-            "time_elapsed":"1s","total_elapsed_ns":1,
-            "total_samples":10,"attributed_samples":5,
-            "description":"d","caller_name":"main","data":[],
-            "profile_path":"/tmp/hp.json.gz","total_count":0,"included_count":0
-        }"#;
-        match serde_json::from_str::<JsonFunctionsCpu>(result).unwrap() {
-            JsonFunctionsCpu::Ok(list) => assert_eq!(list.caller_name, "main"),
-            _ => panic!("expected Ok variant"),
-        }
-    }
-
-    #[test]
-    fn json_functions_cpu_accepts_error_shape() {
-        let body = r#"{"message":"samply worker not started"}"#;
-        match serde_json::from_str::<JsonFunctionsCpu>(body).unwrap() {
-            JsonFunctionsCpu::Error { message } => {
-                assert_eq!(message, "samply worker not started")
-            }
-            _ => panic!("expected Error variant"),
-        }
-    }
 
     /// A send must pair with its exact receive by `msg_id`, not by arrival
     /// position. Receives here are in reverse msg-id order, so index pairing

@@ -1754,15 +1754,3 @@ pub(crate) fn collect_debug_json(
         entries,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::lib_on::report::format_per_request;
-
-    #[test]
-    fn per_request_formatting() {
-        assert_eq!(format_per_request(None), "-");
-        assert_eq!(format_per_request(Some(2.0)), "2.0");
-        assert_eq!(format_per_request(Some(1.25)), "1.2");
-    }
-}

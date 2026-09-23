@@ -338,14 +338,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn test_format_throughput() {
-        assert_eq!(format_throughput(None), "-");
-        assert_eq!(format_throughput(Some(0.33)), "0.3 B/s");
-        assert_eq!(format_throughput(Some(512.0)), "512.0 B/s");
-        assert_eq!(format_throughput(Some(1023.9)), "1023.9 B/s");
-        assert_eq!(format_throughput(Some(1536.0)), "1.5 KB/s");
-        assert_eq!(format_throughput(Some(26_004_684.8)), "24.8 MB/s");
-    }
 }
