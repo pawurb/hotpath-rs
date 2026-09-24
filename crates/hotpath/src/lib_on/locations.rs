@@ -16,17 +16,23 @@ pub struct Location {
     pub column: u32,
 }
 
-static LOCATIONS: OnceLock<crate::lib_on::MetaRwLock<HashMap<&'static str, &'static Location>>> =
-    OnceLock::new();
+type LocationsMap = crate::lib_on::MetaRwLock<HashMap<&'static str, &'static Location>>;
 
-/// Registers `location` under `name`. First registration wins: two call sites
-/// sharing one identity string (e.g. two `#[measure(label = "x")]` sites)
-/// already merge into a single stats entry, and its location is whichever
-/// site registered first.
+static LOCATIONS: OnceLock<LocationsMap> = OnceLock::new();
+
+/// Single initialization site for the registry: the meta lock label must be
+/// unique, so both registration paths go through here.
+fn locations() -> &'static LocationsMap {
+    LOCATIONS.get_or_init(|| crate::lib_on::meta_rw_lock!("locations", HashMap::new()))
+}
+
+/// Registers `location` under `name`. First registration wins: call sites that
+/// legitimately share one identity string (a `measure_block!` with a runtime
+/// label, or the same literal in different crates) merge into a single stats
+/// entry, and its location is whichever site registered first.
 #[doc(hidden)]
 pub fn register_location(name: &'static str, location: &'static Location) {
-    let map = LOCATIONS.get_or_init(|| crate::lib_on::meta_rw_lock!("locations", HashMap::new()));
-    if let Ok(mut w) = map.write() {
+    if let Ok(mut w) = locations().write() {
         w.entry(name).or_insert(location);
     }
 }
@@ -39,8 +45,7 @@ pub(crate) fn register_caller_location(
     key: &'static str,
     caller: &'static std::panic::Location<'static>,
 ) {
-    let map = LOCATIONS.get_or_init(|| crate::lib_on::meta_rw_lock!("locations", HashMap::new()));
-    if let Ok(mut w) = map.write() {
+    if let Ok(mut w) = locations().write() {
         w.entry(key).or_insert_with(|| {
             &*Box::leak(Box::new(Location {
                 file: caller.file(),

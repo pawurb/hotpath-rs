@@ -173,6 +173,14 @@ impl Drop for SuspendAllocTracking {
 /// * [`main`](hotpath_macros_meta::main) - Attribute macro that initializes profiling
 #[macro_export]
 macro_rules! measure_block {
+    // A literal label shares the functions namespace with `#[measure(label)]`,
+    // so both are checked for uniqueness under the `function` kind. The block
+    // wrapping turns the literal into a plain expression for the arm below.
+    ($label:literal, $expr:expr) => {{
+        $crate::__unique_label!(function, $label);
+        $crate::measure_block!({ $label }, $expr)
+    }};
+
     ($label:expr, $expr:expr) => {{
         let __hotpath_label: &'static str = $label;
         {
@@ -219,6 +227,39 @@ macro_rules! __register_location {
         static __HOTPATH_LOC_ONCE: std::sync::Once = std::sync::Once::new();
         __HOTPATH_LOC_ONCE.call_once(|| $crate::register_location($id, &__HOTPATH_LOC));
     }};
+}
+
+/// Rejects two call sites of one resource kind sharing the same literal label
+/// at build time. Every literal label expands to a one-byte static whose
+/// exported symbol name embeds the kind and the label, so a repeated pair
+/// defines the same symbol twice and rustc fails codegen with
+/// ``symbol `hotpath-meta: duplicate channel label "foo"` is already defined``,
+/// pointing at the second call site. The same label on different kinds is
+/// fine. Runtime label expressions never reach this macro and stay unchecked.
+/// The `hotpath-meta` prefix keeps these symbols apart from the ones the
+/// `hotpath` crate emits, so a meta label never clashes with a user label.
+///
+/// Only codegen sees the clash: `cargo build`/`test`/`run` report it,
+/// `cargo check`, clippy and rust-analyzer do not. Detection is per crate;
+/// the linker does not reliably flag the same symbol coming from a dependency.
+/// The static is dead-stripped from the final binary, so it costs nothing at
+/// runtime.
+// rustfmt re-indents the multi-line attribute argument on every run, so the
+// macro body is skipped.
+#[rustfmt::skip]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __unique_label {
+    ($kind:ident, $label:literal) => {
+        #[unsafe(export_name = concat!(
+            "hotpath-meta: duplicate ",
+            stringify!($kind),
+            " label \"",
+            $label,
+            "\""
+        ))]
+        static __HOTPATH_UNIQUE_LABEL: u8 = 0;
+    };
 }
 
 /// Debug macro that tracks debug output in the profiler.

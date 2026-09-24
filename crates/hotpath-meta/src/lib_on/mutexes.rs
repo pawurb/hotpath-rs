@@ -408,6 +408,13 @@ macro_rules! mutex {
         $crate::InstrumentMutex::instrument($expr, MUTEX_ID, None)
     }};
 
+    // A literal label is checked for uniqueness, then re-dispatched wrapped in
+    // a block so it takes the plain expression arm below.
+    ($expr:expr, label = $label:literal) => {{
+        $crate::__unique_label!(mutex, $label);
+        $crate::mutex!($expr, label = { $label })
+    }};
+
     ($expr:expr, label = $label:expr) => {{
         const MUTEX_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::__register_location!(MUTEX_ID);
