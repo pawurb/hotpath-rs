@@ -14,17 +14,12 @@ hotpath-meta = ["hotpath/hotpath-meta"]
 hotpath-alloc-meta = ["hotpath/hotpath-alloc-meta"]
 hotpath-cloud-meta = ["hotpath/hotpath-cloud-meta"]
 hotpath-prometheus = ["hotpath/hotpath-prometheus"]
-# Opts in to the examples that are expected to fail the build; only
-# `hotpath/tests/unique_labels.rs` enables it.
-dup-labels-fixture = []
 
-[[example]]
-name = "duplicate_labels_channel"
-required-features = ["hotpath", "dup-labels-fixture"]
-
-[[example]]
-name = "duplicate_labels_function"
-required-features = ["hotpath", "dup-labels-fixture"]
+# The `duplicate_labels_*` examples are expected to fail the build. Their
+# bodies sit behind this cfg (not a feature, so `--all-features` builds stay
+# green); `hotpath/tests/unique_labels.rs` sets it via `cargo rustc -- --cfg`.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(hotpath_dup_labels_fixture)'] }
 
 [dependencies]
 hotpath = { path = "../hotpath", features = ["tokio"] }

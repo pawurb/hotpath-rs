@@ -3,21 +3,26 @@ mod tests {
     use hotpath::json::JsonReport;
     use std::process::Command;
 
-    /// Builds one of the `dup-labels-fixture` examples and returns rustc's
-    /// stderr; the fixture is expected to fail codegen.
+    /// Builds one of the `duplicate_labels_*` fixture examples with its body
+    /// enabled and returns rustc's stderr; the fixture is expected to fail
+    /// codegen. `cargo rustc` hands the `--cfg` only to the example crate, so
+    /// hotpath and its dependencies keep their fingerprints.
     fn build_fixture(example: &str) -> String {
         let output = Command::new("cargo")
             .args([
-                "build",
+                "rustc",
                 "-p",
                 "test-all-features",
                 "--example",
                 example,
                 "--features",
-                "hotpath,dup-labels-fixture",
+                "hotpath",
+                "--",
+                "--cfg",
+                "hotpath_dup_labels_fixture",
             ])
             .output()
-            .expect("Failed to execute cargo build");
+            .expect("Failed to execute cargo rustc");
         assert!(
             !output.status.success(),
             "{example} built although it repeats a literal label"
@@ -25,7 +30,7 @@ mod tests {
         String::from_utf8_lossy(&output.stderr).into_owned()
     }
 
-    // cargo build -p test-all-features --example duplicate_labels_channel --features hotpath,dup-labels-fixture
+    // cargo rustc -p test-all-features --example duplicate_labels_channel --features hotpath -- --cfg hotpath_dup_labels_fixture
     #[test]
     fn test_duplicate_channel_label_fails_build() {
         let stderr = build_fixture("duplicate_labels_channel");
@@ -41,7 +46,7 @@ mod tests {
         );
     }
 
-    // cargo build -p test-all-features --example duplicate_labels_function --features hotpath,dup-labels-fixture
+    // cargo rustc -p test-all-features --example duplicate_labels_function --features hotpath -- --cfg hotpath_dup_labels_fixture
     #[test]
     fn test_measure_and_measure_block_share_function_namespace() {
         let stderr = build_fixture("duplicate_labels_function");
