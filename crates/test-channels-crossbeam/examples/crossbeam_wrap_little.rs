@@ -9,7 +9,7 @@
 //
 //   L  = time-average number of messages waiting in the channel
 //   lambda = arrival/throughput rate (messages drained / window seconds)
-//   W  = mean send->receive dwell time (the wrap channel's `proc_avg` histogram)
+//   W  = mean send->receive dwell time (the wrap channel's `delay_avg` histogram)
 //
 //   Case A "keeps up":     consumer faster than producer  -> tiny queue, tiny W
 //   Case B "falls behind": consumer slower than producer  -> backlog, large W
@@ -109,7 +109,7 @@ fn metrics_port() -> u16 {
         .unwrap_or(6770)
 }
 
-// Reads each channel's `proc_avg` (mean dwell time W) from the metrics endpoint,
+// Reads each channel's `delay_avg` (mean dwell time W) from the metrics endpoint,
 // keyed by label, in nanoseconds. Waits until every channel has fully drained
 // (`received_count == expected`) so the histogram includes the late, high-dwell
 // messages - crossbeam wrap events are batched per-thread and reach the worker a
@@ -126,7 +126,7 @@ fn fetch_dwell_nanos(expected: u64) -> std::collections::HashMap<String, u64> {
                     if all_drained {
                         for ch in list.data {
                             if let Some(avg) =
-                                ch.proc_avg.as_deref().and_then(hotpath::parse_duration)
+                                ch.delay_avg.as_deref().and_then(hotpath::parse_duration)
                             {
                                 out.insert(ch.label, avg);
                             }
@@ -200,7 +200,7 @@ fn main() {
         "\n  lambda*W tracks the observed average queue depth in both regimes - the\n  slow consumer's larger backlog is exactly its larger dwell time W.\n"
     );
 
-    // Report below prints the per-channel dwell-time histogram (Proc avg / p50 / p95 / p99).
+    // Report below prints the per-channel dwell-time histogram (Delay avg / p50 / p95 / p99).
     drop(guard);
 
     println!("\nExample completed!");

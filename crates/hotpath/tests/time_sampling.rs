@@ -94,7 +94,7 @@ pub mod tests {
 
         let channel = &report.channels.as_ref().expect("No channels section").data[0];
         assert_eq!(channel.received_count, CALLS);
-        assert_eq!(channel.proc_sampled_count, Some(CALLS));
+        assert_eq!(channel.delay_sampled_count, Some(CALLS));
     }
 
     #[test]
@@ -130,9 +130,9 @@ pub mod tests {
         let channel = &report.channels.as_ref().expect("No channels section").data[0];
         assert_eq!(channel.sent_count, CALLS);
         assert_eq!(channel.received_count, CALLS);
-        let proc_sampled = channel.proc_sampled_count.expect("No proc_sampled_count");
-        assert_sampled_near("channel", proc_sampled, channel.received_count, 0.5);
-        assert_ne!(channel.proc_avg.as_deref(), Some("-"));
+        let delay_sampled = channel.delay_sampled_count.expect("No delay_sampled_count");
+        assert_sampled_near("channel", delay_sampled, channel.received_count, 0.5);
+        assert_ne!(channel.delay_avg.as_deref(), Some("-"));
     }
 
     #[test]
@@ -158,8 +158,8 @@ pub mod tests {
 
         let channel = &report.channels.as_ref().expect("No channels section").data[0];
         assert_eq!(channel.received_count, CALLS);
-        assert_eq!(channel.proc_sampled_count, Some(0));
-        assert_eq!(channel.proc_avg.as_deref(), Some("-"));
+        assert_eq!(channel.delay_sampled_count, Some(0));
+        assert_eq!(channel.delay_avg.as_deref(), Some("-"));
     }
 
     #[test]

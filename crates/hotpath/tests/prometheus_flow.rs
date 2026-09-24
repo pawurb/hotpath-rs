@@ -150,7 +150,7 @@ pub mod tests {
                 "hotpath_channel_instances_created_total",
                 "hotpath_channel_instances_closed_total",
                 "hotpath_channel_max_queue_size",
-                "hotpath_channel_proc_seconds",
+                "hotpath_channel_delay_seconds",
                 "hotpath_stream_items_total",
                 "hotpath_stream_instances_created_total",
                 "hotpath_stream_instances_closed_total",
@@ -181,7 +181,7 @@ pub mod tests {
                 "hotpath_mutex_acquire_seconds",
                 "hotpath_rwlock_wait_seconds",
                 "hotpath_rwlock_acquire_seconds",
-                "hotpath_channel_proc_seconds",
+                "hotpath_channel_delay_seconds",
             ] {
                 assert_histogram_family(&body, family);
             }

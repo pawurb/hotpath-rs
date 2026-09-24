@@ -1022,28 +1022,28 @@ fn collect_channels_entries(
         });
     }
 
-    let proc: Vec<Sample> = entries
+    let delay: Vec<Sample> = entries
         .iter()
         .map(|e| Sample {
             labels: labels(e),
             value: SampleValue::Histogram(HistogramValue {
-                sample_count: e.proc_sampled_count,
-                sum: seconds(e.proc_total_nanos),
+                sample_count: e.delay_sampled_count,
+                sum: seconds(e.delay_total_nanos),
                 classic_buckets: classic_pairs(
                     &FAST_LADDER_NS,
-                    e.classic_proc_buckets(&FAST_LADDER_NS),
+                    e.classic_delay_buckets(&FAST_LADDER_NS),
                 ),
-                native_buckets: e.native_proc_buckets(NATIVE_SCHEMA),
+                native_buckets: e.native_delay_buckets(NATIVE_SCHEMA),
                 zero_count: 0,
             }),
         })
         .collect();
-    if !proc.is_empty() {
+    if !delay.is_empty() {
         families.push(Family {
-            name: "hotpath_channel_proc_seconds",
+            name: "hotpath_channel_delay_seconds",
             help: "Delay between send and sampled receive of a message.",
             kind: FamilyKind::Histogram,
-            samples: proc,
+            samples: delay,
         });
     }
 }

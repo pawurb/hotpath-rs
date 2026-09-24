@@ -731,7 +731,7 @@ pub mod tests {
         assert_eq!(entry.received_count, 60, "expected 60 receives");
         assert_eq!(entry.queue_size, Some(0), "expected drained queue");
         assert!(
-            entry.proc_avg.is_some(),
+            entry.delay_avg.is_some(),
             "expected populated delay histogram"
         );
 

@@ -169,7 +169,7 @@ pub(crate) fn report_channel_latency_table(
 
     for channel in rows {
         let label = resolve_label(channel.source, channel.label.as_deref(), Some(channel.iter));
-        let count_only = channel.proc_sampled_count == 0;
+        let count_only = channel.delay_sampled_count == 0;
         let duration_cell = |nanos: u64| {
             if count_only {
                 Cell::new("-")
@@ -180,10 +180,10 @@ pub(crate) fn report_channel_latency_table(
         let mut row = vec![
             Cell::new(&label),
             Cell::new(&channel.received_count.to_string()),
-            duration_cell(channel.proc_avg_nanos()),
+            duration_cell(channel.delay_avg_nanos()),
         ];
         for &p in percentiles {
-            row.push(duration_cell(channel.proc_percentile_nanos(p)));
+            row.push(duration_cell(channel.delay_percentile_nanos(p)));
         }
         table.add_row(row);
     }

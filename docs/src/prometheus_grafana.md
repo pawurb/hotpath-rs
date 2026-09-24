@@ -240,7 +240,7 @@ Requires [`hotpath::channel!`](data_flow.md) wrappers. `type` is the channel kin
 | `hotpath_channel_instances_closed_total` | counter | `source`, `label`, `iter`, `type`, `payload` | Instances that have closed |
 | `hotpath_channel_queue_size` | gauge | `source`, `label`, `iter`, `type`, `payload` | Messages sent but not yet received |
 | `hotpath_channel_max_queue_size` | gauge | `source`, `label`, `iter`, `type`, `payload` | Since-start high-water mark of the queue size |
-| `hotpath_channel_proc_seconds` | histogram | `source`, `label`, `iter`, `type`, `payload` | Delay between send and sampled receive (wrap mode only) |
+| `hotpath_channel_delay_seconds` | histogram | `source`, `label`, `iter`, `type`, `payload` | Delay between send and sampled receive (wrap mode only) |
 
 ### Streams
 

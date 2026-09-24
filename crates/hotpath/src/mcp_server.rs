@@ -280,7 +280,7 @@ Returns a JSON object with current_elapsed_ns, percentiles, and data: one entry 
 - sent_count / received_count: message counts
 - sent_per_sec / received_per_sec: throughput over the channel's active window (omitted when not derivable)
 - queue_size / max_queue_size: current and peak queued messages (when known)
-- proc_avg and proc_percentiles: formatted time between send and receive (when sampled)
+- delay_avg and delay_percentiles: formatted time between send and receive (when sampled)
 - type_name, type_size: message type
 
 The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).

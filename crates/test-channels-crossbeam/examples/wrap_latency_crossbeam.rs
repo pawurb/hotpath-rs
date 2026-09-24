@@ -1,8 +1,8 @@
 //! Run with:
 //!   cargo run -p test-channels-crossbeam --example wrap_latency_crossbeam --features hotpath
 // Demonstrates the channel processing-time histogram: each message is held in the
-// channel for a known delay before being received, so the report's `proc_avg` and
-// `proc_percentiles` reflect the exact send->receive latency.
+// channel for a known delay before being received, so the report's `delay_avg` and
+// `delay_percentiles` reflect the exact send->receive latency.
 use std::thread;
 use std::time::Duration;
 

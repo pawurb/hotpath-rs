@@ -156,11 +156,11 @@ pub(crate) fn render_channels_panel(
                 Cell::from(format!("{}/{}", entry.sent_count, entry.received_count)),
                 Cell::from(rate_text),
                 Cell::from(queue_text),
-                Cell::from(entry.proc_avg.clone().unwrap_or_else(|| "-".to_string())),
+                Cell::from(entry.delay_avg.clone().unwrap_or_else(|| "-".to_string())),
             ];
             for key in &percentile_keys {
                 let value = entry
-                    .proc_percentiles
+                    .delay_percentiles
                     .get(key)
                     .cloned()
                     .unwrap_or_else(|| "-".to_string());
