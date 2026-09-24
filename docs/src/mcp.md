@@ -24,42 +24,43 @@ These tools return aggregated performance summaries:
 
 | Tool | Description |
 |------|-------------|
-| `functions_timing` | Function timing statistics (calls, avg, p99, total time) |
-| `functions_alloc` | Function memory allocation statistics |
+| `functions_timing` | Function timing statistics (calls, avg, percentiles, total time) |
+| `functions_alloc` | Function memory allocation statistics (requires `hotpath-alloc` feature) |
 | `functions_cpu` | CPU sampling attribution per function (requires `hotpath-cpu` feature) |
 | `functions_cpu_snapshot` | Trigger an on-demand CPU sampling snapshot (requires `hotpath-cpu` feature) |
-| `channels` | Channel metrics (sends, receives, buffer usage) |
-| `streams` | Stream metrics (items processed, throughput) |
-| `futures` | Future execution statistics |
+| `channels` | Channel metrics (sends, receives, throughput, queue size) |
+| `streams` | Stream metrics (items yielded, state) |
+| `futures` | Future execution statistics (calls, polls, poll time) |
 | `rw_locks` | RwLock read/write wait & acquire-time statistics |
 | `mutexes` | Mutex wait & acquire-time statistics |
-| `sql` | SQL query execution-time statistics per normalized query (requires `sqlx_tracing_layer()`) |
-| `http` | Outgoing HTTP request statistics per normalized endpoint (requires `hotpath::http!(client)`) |
+| `io` | Byte-level I/O statistics per wrapped reader/writer (requires `hotpath::io!(expr)`) |
+| `sql` | SQL query execution-time statistics per normalized query (requires `sqlx_tracing_layer()`, `toasty_tracing_layer()` or `instrument_diesel_sql()`) |
+| `http` | Outgoing HTTP request statistics per normalized endpoint (requires `hotpath::http!(client)` on a reqwest client or ureq config builder) |
 | `server` | Served request response-time statistics per axum route (requires `hotpath::axum!(router)`) |
-| `threads` | Thread activity and timing |
-| `gauges` | Custom gauge values |
+| `threads` | Per-thread CPU usage and allocations, plus process RSS |
+| `gauges` | All `gauge!` entries with their current values |
 | `dbg_entries` | All `dbg!` debug entries |
 | `val_entries` | All `val!` value tracking entries |
 | `tokio_runtime` | Tokio runtime metrics snapshot (requires `tokio` feature) |
-| `profiler_status` | Profiler uptime status |
+| `profiler_status` | Profiler uptime and process id |
 
 ### Detailed log tools
 
-These tools accept parameters to retrieve detailed execution logs:
+These tools take an id returned by the matching summary tool and retrieve recent individual events:
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `function_timing_logs` | `function_name`, `limit` | Individual timing logs for a function |
-| `function_alloc_logs` | `function_name`, `limit` | Individual allocation logs for a function |
-| `channel_logs` | `channel_name`, `limit` | Channel operation logs |
-| `stream_logs` | `stream_name`, `limit` | Stream operation logs |
-| `future_logs` | `future_name`, `limit` | Future execution logs |
+| `function_timing_logs` | `function_id` | Individual timing logs for a function (id from `functions_timing`) |
+| `function_alloc_logs` | `function_id` | Individual allocation logs for a function (id from `functions_alloc`) |
+| `channel_logs` | `channel_id` | Channel send/receive logs |
+| `stream_logs` | `stream_id` | Stream yield logs |
+| `future_logs` | `future_id` | Future call and poll logs |
 | `sql_logs` | `sql_id` | Individual execution logs for a SQL query |
 | `http_logs` | `http_id` | Individual request logs for an outgoing HTTP endpoint |
 | `server_logs` | `server_id` | Individual request logs for a served axum route |
-| `gauge_logs` | `gauge_name`, `limit` | Gauge value history |
-| `dbg_logs` | `debug_id` | Detailed logs for a `dbg!` entry |
-| `val_logs` | `debug_id` | Detailed logs for a `val!` entry |
+| `gauge_logs` | `gauge_id` | Gauge value history |
+| `dbg_logs` | `debug_id` | Detailed logs for a `dbg!` entry (id from `dbg_entries`) |
+| `val_logs` | `debug_id` | Detailed logs for a `val!` entry (id from `val_entries`) |
 
 ## Configuration
 
