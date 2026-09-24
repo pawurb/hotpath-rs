@@ -1156,7 +1156,7 @@ fn render_io_bytes_subtable(
         Cell::from("Inst"),
         Cell::from(count_label),
         Cell::from("Bytes"),
-        Cell::from("Rate"),
+        Cell::from("Rate/s"),
         Cell::from("Avg"),
     ];
     for p in percentiles {
@@ -1187,8 +1187,8 @@ fn render_io_bytes_subtable(
                 Cell::from(
                     stats
                         .bytes_per_sec
-                        .as_deref()
-                        .map_or_else(|| "-".to_string(), |rate| format!("{rate}/s")),
+                        .clone()
+                        .unwrap_or_else(|| "-".to_string()),
                 ),
                 Cell::from(stats.avg.clone()),
             ];
