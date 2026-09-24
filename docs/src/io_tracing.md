@@ -41,7 +41,7 @@ stream.read_exact(&mut buf).await?; // +PONG\r\n
 
 See the [basic_redis_io](https://github.com/pawurb/hotpath-rs/blob/main/crates/test-io/examples/basic_redis_io.rs) example.
 
-The `label` parameter is optional; without it the wrapper is identified by `file:line`.
+The `label` parameter is optional; without it the wrapper is identified by `file:line`. Literal labels must be unique among `io!` sites within a crate: a repeated one fails `cargo build`/`test`/`run` with ``symbol `hotpath: duplicate io label "redis"` is already defined`` (`cargo check` does not report it), so give a paired reader and writer distinct labels such as `redis-read` / `redis-write`. Labels passed as runtime expressions are not checked.
 
 The wrapper derefs to the wrapped value, so its `&self`/`&mut self` methods are callable directly. For consuming methods (e.g. a codec's `finish(self)`), unwrap first with `hotpath::io_unwrap`:
 

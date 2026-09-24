@@ -130,6 +130,8 @@ let (tx, rx) = hotpath::channel!(mpsc::channel::<String>(100), iter = true);
 
 Label channels to display them on top of the list. By passing `log = true` TUI will display messages that a channel received.
 
+Literal labels must be unique per resource kind within a crate: two `channel!` sites sharing `label = "worker_queue"` fail `cargo build`/`test`/`run` with ``symbol `hotpath: duplicate channel label "worker_queue"` is already defined`` (`cargo check` does not report it). The same label on a channel and, say, a mutex is fine, and labels passed as runtime expressions are not checked. The same rule applies to `stream!` and `future!` below.
+
 <img loading="lazy" src="{{#asset-hash images/channels-log.png}}" alt="hotpath-rs TUI showing channel message flow monitoring with send and receive logs">
 
 ### Call-site aggregation and `iter = true`

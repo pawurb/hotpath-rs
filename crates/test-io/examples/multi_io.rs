@@ -99,14 +99,14 @@ fn file_section(chunk: &[u8]) -> Vec<u8> {
 
 // In-memory baseline over the same bytes the file section pushed through
 // syscalls: writes are Vec memcpys (plus the occasional realloc), reads are
-// slice copies out of a Cursor. The gap between the file-* and memory rows is
+// slice copies out of a Cursor. The gap between the file-* and memory-* rows is
 // the syscall and physical disk cost.
 fn memory_section(file_bytes: &[u8]) {
-    let mut sink = hotpath::io!(Vec::new(), label = "memory");
+    let mut sink = hotpath::io!(Vec::new(), label = "memory-write");
     write_chunks(&mut sink, &file_bytes[..MAX_CHUNK], MEM_TOTAL);
     drop(sink);
 
-    let mut source = hotpath::io!(std::io::Cursor::new(file_bytes), label = "memory");
+    let mut source = hotpath::io!(std::io::Cursor::new(file_bytes), label = "memory-read");
     read_chunks(&mut source);
 }
 
@@ -172,7 +172,7 @@ fn remote_tcp_section(chunk: &[u8]) {
 fn gzip_section(chunk: &[u8]) {
     let mut encoder = hotpath::io!(
         flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default()),
-        label = "gzip"
+        label = "gzip-write"
     );
     write_chunks(&mut encoder, chunk, COMPRESS_TOTAL);
     // Compress the buffered tail while still instrumented, then peel the
@@ -182,7 +182,7 @@ fn gzip_section(chunk: &[u8]) {
 
     let mut decoder = hotpath::io!(
         flate2::read::GzDecoder::new(&compressed[..]),
-        label = "gzip"
+        label = "gzip-read"
     );
     read_chunks(&mut decoder);
 }
@@ -190,7 +190,7 @@ fn gzip_section(chunk: &[u8]) {
 fn brotli_section(chunk: &[u8]) {
     let mut encoder = hotpath::io!(
         brotli::CompressorWriter::new(Vec::new(), 4096, 5, 22),
-        label = "brotli"
+        label = "brotli-write"
     );
     write_chunks(&mut encoder, chunk, COMPRESS_TOTAL);
     // Compress the buffered tail while still instrumented; into_inner then
@@ -200,7 +200,7 @@ fn brotli_section(chunk: &[u8]) {
 
     let mut decoder = hotpath::io!(
         brotli::Decompressor::new(&compressed[..], 4096),
-        label = "brotli"
+        label = "brotli-read"
     );
     read_chunks(&mut decoder);
 }

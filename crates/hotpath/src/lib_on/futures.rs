@@ -604,6 +604,21 @@ macro_rules! future {
         $crate::InstrumentFuture::instrument_future($fut, FUTURE_LOC, None)
     }};
 
+    // Literal labels are checked for uniqueness, then re-dispatched wrapped in
+    // a block so they take the plain expression arms below.
+    ($fut:expr, label = $label:literal) => {{
+        $crate::__unique_label!(future, $label);
+        $crate::future!($fut, label = { $label })
+    }};
+    ($fut:expr, label = $label:literal, log = true) => {{
+        $crate::__unique_label!(future, $label);
+        $crate::future!($fut, label = { $label }, log = true)
+    }};
+    ($fut:expr, log = true, label = $label:literal) => {{
+        $crate::__unique_label!(future, $label);
+        $crate::future!($fut, log = true, label = { $label })
+    }};
+
     ($fut:expr, label = $label:expr) => {{
         const FUTURE_LOC: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::__register_location!(FUTURE_LOC);

@@ -511,6 +511,13 @@ macro_rules! rw_lock {
         $crate::InstrumentRwLock::instrument($expr, RW_LOCK_ID, None)
     }};
 
+    // A literal label is checked for uniqueness, then re-dispatched wrapped in
+    // a block so it takes the plain expression arm below.
+    ($expr:expr, label = $label:literal) => {{
+        $crate::__unique_label!(rw_lock, $label);
+        $crate::rw_lock!($expr, label = { $label })
+    }};
+
     ($expr:expr, label = $label:expr) => {{
         const RW_LOCK_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::__register_location!(RW_LOCK_ID);
