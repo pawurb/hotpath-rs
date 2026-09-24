@@ -176,14 +176,19 @@ Use this first to identify performance hotspots. Look for high percentile values
     #[tool(
         description = r#"Get memory allocation metrics per function (requires hotpath-alloc-meta feature).
 
-Returns a JSON object with the same shape as functions_timing, plus total_allocated:
-- data: functions sorted by allocation, each with:
+Returns a JSON object with the same shape as functions_timing, plus:
+- profiling_mode: "alloc-bytes" (default) or "alloc-count" (HOTPATH_META_ALLOC_METRIC=count); selects the unit of every value below
+- description: whether values are exclusive to each function or cumulative including nested calls
+- total_allocated: grand total in the selected unit
+- data: functions sorted by total allocation in the selected unit, each with:
   - id: function id, input for function_alloc_logs
   - name: fully qualified function name
   - calls / sampled_calls: invocations and measured invocations
-  - avg, total, and one key per configured percentile (e.g. "p95"): formatted byte counts per call
-  - percent_total: share of all allocated bytes
+  - avg and one key per configured percentile (e.g. "p95"): formatted per-call bytes or allocation counts
+  - total: formatted cumulative bytes or allocation count across all calls
+  - percent_total: share of total_allocated
   - location: source file, line and column (when known)
+  - async functions report "N/A" for avg, total, percentiles, and percent_total
 - total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
 
 Returns error if hotpath-alloc-meta feature is not enabled. Cross-reference with functions_timing to find functions that are both slow and allocation-heavy."#
