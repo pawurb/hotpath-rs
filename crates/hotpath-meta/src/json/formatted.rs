@@ -351,11 +351,11 @@ pub struct JsonChannelEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_queue_size: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub proc_avg: Option<String>,
+    pub delay_avg: Option<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub proc_percentiles: HashMap<String, String>,
+    pub delay_percentiles: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub proc_sampled_count: Option<u64>,
+    pub delay_sampled_count: Option<u64>,
     pub location: JsonLocation,
     pub iter: u32,
 }
