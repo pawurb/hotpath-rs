@@ -1,6 +1,6 @@
 [package]
 name = "hotpath-drain"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 repository = "https://github.com/pawurb/hotpath-rs"
 description = "Lock-free per-thread event queues with a single drain. Transport layer of the hotpath profiler."

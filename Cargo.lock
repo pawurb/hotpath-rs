@@ -1632,14 +1632,14 @@ dependencies = [
 
 [[package]]
 name = "hotpath-drain"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "hotpath-meta",
 ]
 
 [[package]]
 name = "hotpath-drain-meta"
-version = "0.0.1"
+version = "0.0.2"
 
 [[package]]
 name = "hotpath-macros"
