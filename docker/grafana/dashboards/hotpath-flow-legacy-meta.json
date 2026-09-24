@@ -208,7 +208,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le, source, label) (rate(hotpath_channel_proc_seconds_bucket[1m])))",
+          "expr": "histogram_quantile(0.99, sum by (le, source, label) (rate(hotpath_channel_delay_seconds_bucket[1m])))",
           "legendFormat": "{{source}} {{label}}",
           "refId": "A"
         }
