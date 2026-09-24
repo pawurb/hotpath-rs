@@ -532,6 +532,21 @@ macro_rules! io {
         $crate::io::InstrumentedIo::__new_instrumented($expr, IO_ID, None, false)
     }};
 
+    // Literal labels are checked for uniqueness, then re-dispatched wrapped in
+    // a block so they take the plain expression arms below.
+    ($expr:expr, label = $label:literal) => {{
+        $crate::__unique_label!(io, $label);
+        $crate::io!($expr, label = { $label })
+    }};
+    ($expr:expr, label = $label:literal, iter = true) => {{
+        $crate::__unique_label!(io, $label);
+        $crate::io!($expr, label = { $label }, iter = true)
+    }};
+    ($expr:expr, iter = true, label = $label:literal) => {{
+        $crate::__unique_label!(io, $label);
+        $crate::io!($expr, iter = true, label = { $label })
+    }};
+
     ($expr:expr, label = $label:expr) => {{
         const IO_ID: &'static str = concat!(file!(), ":", line!(), ":", column!());
         $crate::__register_location!(IO_ID);

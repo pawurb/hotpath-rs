@@ -938,6 +938,12 @@ macro_rules! channel {
     (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $it:tt ;) => {
         $crate::channel!(@dispatch $id, $e ; $lbl $cap $log $it)
     };
+    // A literal label is checked for uniqueness, then re-munched wrapped in a
+    // block so it takes the plain expression arm below.
+    (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $it:tt ; label = $l:literal $(, $($r:tt)*)?) => {{
+        $crate::__unique_label!(channel, $l);
+        $crate::channel!(@munch $id, $e ; $lbl $cap $log $it ; label = { $l } $(, $($r)*)?)
+    }};
     (@munch $id:ident, $e:expr ; $lbl:tt $cap:tt $log:tt $it:tt ; label = $l:expr $(, $($r:tt)*)?) => {
         $crate::channel!(@munch $id, $e ; (Some($l.to_string())) $cap $log $it ; $($($r)*)?)
     };
