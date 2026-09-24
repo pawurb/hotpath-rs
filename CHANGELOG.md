@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.26.1] - 2026-09-24
+
+### 🚀 Features
+
+- Report max RSS metric
+
+- Rename RSS field
+
+- Enforce label uniqueness per resource kind at build time
+
+
+### 🐛 Bug Fixes
+
+- Randomize time sampling logic
+
+- Normalize http port
+
+- Update MCP interface
+
+
+### 📚 Documentation
+
+- Cover hotpath-drain in the syncmeta skill
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Extract hotpath-drain logic
+
+- Add hotpath-drain meta benchmark
+
+- Initial miri config
+
+- Update docs
+
+- Adjust meta benchmark
+
+- Adjust meta benchmark
+
+- Add hotpath-drain throughput benchmark
+
+- Add Claude mention workflow
+
+- Make drain throughput benchmark deterministic
+
+- Release 0.26.1
+
+
 ## [0.26.0] - 2026-09-16
 
 ### 🚀 Features
