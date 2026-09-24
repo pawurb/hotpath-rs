@@ -27,6 +27,7 @@ test_all:
     cargo test --features hotpath --test user_metadata -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
     cargo test --features hotpath --test locations -- --nocapture --test-threads=1
+    cargo test --features hotpath --test unique_labels -- --nocapture --test-threads=1
     cargo test --features hotpath --test time_sampling -- --nocapture --test-threads=1
     cargo test --features hotpath --test metrics_auth -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1

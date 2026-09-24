@@ -479,7 +479,9 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// * `log` - If `true`, logs the result value when the function returns (requires `Debug` on return type)
 /// * `future` - If `true`, also tracks async future lifecycle. Only valid on async functions.
 /// * `label` - String literal that replaces the full reported identifier
-///   (instead of `module_path::<fn_name>`).
+///   (instead of `module_path::<fn_name>`). Must be unique among `measure`
+///   labels and `measure_block!` literal labels within the crate; a repeated
+///   label fails the build (`cargo build`/`test`/`run`, not `cargo check`).
 /// * `impl_type` - String literal naming the enclosing impl type (e.g. `"Worker"`).
 ///   Inserts the type segment so the registered name is `module_path::<Type>::<fn_name>`.
 ///   Use this for bare `#[hotpath::measure]` on a method inside an `impl` block when the
@@ -631,6 +633,14 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
+    // A custom label replaces the identifier as the stats key, so two functions
+    // sharing one label would silently merge; the `function` kind check (shared
+    // with `measure_block!`) turns that into a build error.
+    let unique_label_check = match &label {
+        Some(lit) => quote! { hotpath::__unique_label!(function, #lit); },
+        None => quote! {},
+    };
+
     let cpu_alias_register = if label.is_some() {
         let symbol_loc = match &impl_type {
             Some(ty) => {
@@ -686,6 +696,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         #(#attrs)*
         #[allow(unused_braces)]
         #vis #sig {
+            #unique_label_check
             #cpu_alias_register
             #loc_register
             #wrapped_body

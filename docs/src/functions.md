@@ -68,7 +68,7 @@ Attribute macro that initializes the background measurement processing when appl
 An attribute macro that instruments functions to send timing/memory measurements to the background processor. Parameters:
 
 - `log = true` - logs the result value when the function returns (requires `std::fmt::Debug` on return type)
-- `label = "name"` - replaces the full reported identifier (instead of `module_path::<fn_name>`).
+- `label = "name"` - replaces the full reported identifier (instead of `module_path::<fn_name>`). Labels must be unique within a crate (shared with `measure_block!` literal labels); a repeated one fails `cargo build`/`test`/`run` with ``symbol `hotpath: duplicate function label "name"` is already defined`` (`cargo check` does not report it).
 - `impl_type = "Type"` - inserts the enclosing type segment so the registered name becomes `module_path::<Type>::<fn_name>`. Use this for bare `#[hotpath::measure]` on a method inside an `impl` not covered by `measure_all`. Required for correct CPU sampling attribution under `hotpath-cpu` (see [CPU profiling](./cpu_profiling.md)), since the demangled symbol contains the type segment.
 - `future = true` - additionally tracks the async function as a future: poll counts, poll durations, and pending/ready/cancelled state transitions. Only valid on `async fn`.
 
@@ -155,7 +155,7 @@ mod operations {
 
 ## `hotpath::measure_block!` macro
 
-Macro that measures the execution time of a code block with a static string label.
+Macro that measures the execution time of a code block with a static string label. A literal label must be unique within the crate, across `measure_block!` and `#[measure(label = ...)]` sites alike; a repeated one fails the build. Labels passed as runtime expressions are not checked.
 
 ```rust
 #[hotpath::main]

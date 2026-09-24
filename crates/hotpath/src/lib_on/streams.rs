@@ -522,6 +522,12 @@ macro_rules! stream {
     (@munch $id:ident, $e:expr ; $lbl:tt $log:tt $it:tt ;) => {
         $crate::stream!(@dispatch $id, $e ; $lbl $log $it)
     };
+    // A literal label is checked for uniqueness, then re-munched wrapped in a
+    // block so it takes the plain expression arm below.
+    (@munch $id:ident, $e:expr ; $lbl:tt $log:tt $it:tt ; label = $l:literal $(, $($r:tt)*)?) => {{
+        $crate::__unique_label!(stream, $l);
+        $crate::stream!(@munch $id, $e ; $lbl $log $it ; label = { $l } $(, $($r)*)?)
+    }};
     (@munch $id:ident, $e:expr ; $lbl:tt $log:tt $it:tt ; label = $l:expr $(, $($r:tt)*)?) => {
         $crate::stream!(@munch $id, $e ; (Some($l.to_string())) $log $it ; $($($r)*)?)
     };
