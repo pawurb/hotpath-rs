@@ -216,19 +216,24 @@ pub(crate) fn resolve_output_path(path: impl AsRef<std::path::Path>) -> PathBuf 
     }
 }
 
-/// Formats an optional bytes-per-second rate (e.g. `12.4 MB/s`), or `-` when absent.
-/// Sub-KB rates keep one decimal place so slow but nonzero traffic doesn't
-/// round down to `0 B/s`.
+/// Formats a bytes-per-second rate without the `/s` unit (e.g. `12.4 MB`);
+/// the JSON `bytes_per_sec` fields carry this form, so their name states the
+/// unit. Sub-KB rates keep one decimal place so slow but nonzero traffic
+/// doesn't round down to `0 B`.
+pub(crate) fn format_bytes_per_sec(rate: f64) -> String {
+    if rate < 1024.0 {
+        format!("{rate:.1} B")
+    } else {
+        format_bytes(rate.round() as u64)
+    }
+}
+
+/// Formats an optional bytes-per-second rate for display (e.g. `12.4 MB/s`),
+/// or `-` when absent.
 pub(crate) fn format_throughput(rate: Option<f64>) -> String {
     rate.map_or_else(
         || "-".to_string(),
-        |v| {
-            if v < 1024.0 {
-                format!("{v:.1} B/s")
-            } else {
-                format!("{}/s", format_bytes(v.round() as u64))
-            }
-        },
+        |v| format!("{}/s", format_bytes_per_sec(v)),
     )
 }
 
@@ -336,6 +341,14 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_format_bytes_per_sec() {
+        assert_eq!(format_bytes_per_sec(0.33), "0.3 B");
+        assert_eq!(format_bytes_per_sec(1023.9), "1023.9 B");
+        assert_eq!(format_bytes_per_sec(1536.0), "1.5 KB");
+        assert_eq!(format_bytes_per_sec(26_004_684.8), "24.8 MB");
     }
 
     #[test]

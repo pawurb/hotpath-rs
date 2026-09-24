@@ -1156,7 +1156,7 @@ fn render_io_bytes_subtable(
         Cell::from("Inst"),
         Cell::from(count_label),
         Cell::from("Bytes"),
-        Cell::from("Rate"),
+        Cell::from("Rate/s"),
         Cell::from("Avg"),
     ];
     for p in percentiles {
@@ -1184,7 +1184,12 @@ fn render_io_bytes_subtable(
                 Cell::from(entry.instances.to_string()),
                 Cell::from(stats.count.to_string()),
                 Cell::from(hotpath::format_bytes(stats.bytes)),
-                Cell::from(stats.throughput.clone().unwrap_or_else(|| "-".to_string())),
+                Cell::from(
+                    stats
+                        .bytes_per_sec
+                        .clone()
+                        .unwrap_or_else(|| "-".to_string()),
+                ),
                 Cell::from(stats.avg.clone()),
             ];
             for key in &percentile_keys {

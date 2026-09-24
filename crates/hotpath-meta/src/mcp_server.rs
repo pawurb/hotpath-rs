@@ -394,7 +394,7 @@ Returns a JSON object with current_elapsed_ns, percentiles, and data: one entry 
   - bytes / sampled_bytes: total bytes processed and bytes of timed operations
   - errors: failed operations (retryable WouldBlock/Interrupted conditions are not counted)
   - avg, percentiles: formatted durations; total_ns: raw total duration in nanoseconds
-  - throughput: formatted transfer rate over timed operations (null when nothing was timed)
+  - bytes_per_sec: formatted transfer rate over timed operations, in bytes per second without a /s suffix (null when nothing was timed)
 
 The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 

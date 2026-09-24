@@ -25,7 +25,7 @@ use crate::output::{
     format_bytes, format_duration, format_percentile_header, format_percentile_key, format_rate,
     Precision,
 };
-use crate::output_on::{format_throughput, write_section_header};
+use crate::output_on::{format_bytes_per_sec, format_throughput, write_section_header};
 use crate::rw_locks::{compare_rw_lock_entries, RwLockEntry, RwLockKind, RW_LOCKS_STATE};
 use crate::server::{compare_server_entries, ServerEntry, SERVER_STATE};
 use crate::sql::{compare_sql_entries, SqlEntry, SQL_STATE};
@@ -1333,9 +1333,7 @@ fn io_op_stats_to_json(stats: &IoOpStats, percentiles: &[f64], cloud: bool) -> J
         sampled_bytes: stats.sampled_bytes,
         errors: stats.errors,
         avg: fmt(stats.avg_nanos()),
-        throughput: stats
-            .throughput_bytes_per_sec()
-            .map(|rate| format_throughput(Some(rate))),
+        bytes_per_sec: stats.throughput_bytes_per_sec().map(format_bytes_per_sec),
         total_ns: stats.total_nanos,
         percentiles: percentile_map,
     }
