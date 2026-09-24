@@ -155,8 +155,10 @@ Returns a JSON object with:
   - id: function id, input for function_timing_logs
   - name: fully qualified function name (e.g. "my_app::db::query")
   - calls: number of invocations; sampled_calls: invocations that were timed
-  - avg, total, and one key per configured percentile (e.g. "p95"): formatted durations
-  - percent_total: share of the total measured time
+  - avg and one key per configured percentile (e.g. "p95"): formatted durations of the timed calls
+  - total: formatted total duration; exact when sampled_calls == calls, otherwise extrapolated as avg * calls under time sampling
+  - percent_total: total as a share of the profiled program's total time (the #[main] wrapper, or the sum of all function totals when the wrapper is excluded); extrapolated like total
+  - avg, total, percentiles and percent_total are "-" when no call was timed (sampled_calls == 0)
   - location: source file, line and column (when known)
 - total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
 
@@ -279,7 +281,8 @@ Returns a JSON object with current_elapsed_ns, percentiles, and data: one entry 
 - queue_size / max_queue_size: current and peak queued messages (when known)
 - proc_avg and proc_percentiles: formatted time between send and receive (when sampled)
 - type_name, type_size: message type
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 Use to track channel throughput and identify stalled, backed-up, or closed channels."#
     )]
@@ -301,7 +304,8 @@ Returns a JSON object with current_elapsed_ns and data: one entry per stream cal
 - instances / closed_instances: stream instances aggregated into the entry and how many have completed
 - items_yielded: count of items produced
 - type_name, type_size: item type
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 Use to track stream throughput and identify stalled streams."#)]
     async fn streams(&self) -> Result<CallToolResult, McpError> {
@@ -322,7 +326,8 @@ Returns a JSON object with current_elapsed_ns and data: one entry per future, ea
 - total_polls: cumulative number of poll calls across invocations; sampled_polls: polls that were timed
 - total_poll_duration_ns: cumulative poll time in nanoseconds
 - total_poll_alloc_bytes / total_poll_alloc_count: allocations made while polling (null without hotpath-alloc-meta)
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 High poll counts can indicate futures that wake frequently without making progress."#)]
     async fn futures(&self) -> Result<CallToolResult, McpError> {
@@ -342,7 +347,8 @@ Returns a JSON object with current_elapsed_ns, percentiles, and data: one entry 
 - read_count / write_count: number of read and write acquisitions; read_sampled_count / write_sampled_count: acquisitions that were timed
 - read_wait_avg / write_wait_avg and read_wait_percentiles / write_wait_percentiles: formatted time blocked before the lock was granted
 - read_acquire_avg / write_acquire_avg and read_acquire_percentiles / write_acquire_percentiles: formatted time the lock was held, granted to released
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 High wait times indicate lock contention; high acquire times indicate long critical sections. Locks are instrumented via hotpath_meta::rw_lock!(expr)."#
     )]
@@ -363,7 +369,8 @@ Returns a JSON object with current_elapsed_ns, percentiles, and data: one entry 
 - count: number of lock acquisitions; sampled_count: acquisitions that were timed
 - wait_avg and wait_percentiles: formatted time blocked before the lock was granted
 - acquire_avg and acquire_percentiles: formatted time the lock was held, granted to released
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 High wait times indicate lock contention; high acquire times indicate long critical sections. Mutexes are instrumented via hotpath_meta::mutex!(expr)."#
     )]
@@ -388,7 +395,8 @@ Returns a JSON object with current_elapsed_ns, percentiles, and data: one entry 
   - errors: failed operations (retryable WouldBlock/Interrupted conditions are not counted)
   - avg, percentiles: formatted durations; total_ns: raw total duration in nanoseconds
   - throughput: formatted transfer rate over timed operations (null when nothing was timed)
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 Async durations span first poll to Ready, so they include async waiting time. I/O values are instrumented via hotpath_meta::io!(expr). Wrapping the underlying resource (file, socket) measures actual resource I/O; wrapping a BufReader/BufWriter measures application-facing buffered operations."#
     )]
@@ -410,7 +418,8 @@ Returns a JSON object with current_elapsed_ns, total_ns, total_calls, percentile
 - avg, total, and percentiles: formatted durations
 - percent_total: share of total SQL time
 - location: source location of the source function (when known)
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 Use sql_logs with a query id to get recent individual executions."#)]
     async fn sql(&self) -> Result<CallToolResult, McpError> {
@@ -454,7 +463,8 @@ Returns a JSON object with current_elapsed_ns, total_ns, total_calls, percentile
 - avg, total, and percentiles: formatted durations
 - percent_total: share of total outbound HTTP time
 - location: source location of the source function (when known)
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 Use http_logs with an endpoint id to get recent individual requests."#
     )]
@@ -502,7 +512,8 @@ Returns a JSON object with current_elapsed_ns, total_ns, total_calls, total_allo
 - avg, total, and percentiles: formatted durations (measured until the response head is produced; body streaming is excluded)
 - percent_total: share of total server time
 - alloc: with hotpath-alloc-meta, bytes_per_request, allocs_per_request, total_bytes, and formatted avg/total/percentiles/percent_total of memory allocated per request
-- total_count / included_count: entries measured vs entries returned in data (the list was truncated by the display limit when they differ)
+
+The response object (not each entry) also has total_count / included_count: entries measured vs entries returned in data (data was truncated by the display limit when they differ).
 
 Requires wrapping the router with hotpath_meta::axum!(...) (or adding hotpath_meta::AxumLayer::new() via Router::layer). Use server_logs with a route id to get recent individual requests."#
     )]
@@ -548,7 +559,7 @@ Returns a JSON object with:
 - current_elapsed_ns, sample_interval_ms, thread_count
 - rss_bytes / rss_bytes_max: current and peak resident set size, formatted (when available)
 - total_alloc_bytes, total_dealloc_bytes, alloc_dealloc_diff: formatted process-wide totals (with hotpath-alloc-meta)
-- data: threads sorted by peak CPU usage (by allocated bytes with hotpath-alloc-meta), each with:
+- data: threads sorted by peak CPU usage (with hotpath-alloc-meta: by allocation traffic, the larger of allocated and deallocated bytes), each with:
   - os_tid, name (e.g. "tokio-runtime-worker"), status, status_code
   - cpu_percent, cpu_percent_max, cpu_percent_avg: formatted CPU utilization (e.g. "12.3%", 100% per core; null until sampled)
   - alloc_bytes, dealloc_bytes, mem_diff: formatted per-thread allocation totals (with hotpath-alloc-meta)
