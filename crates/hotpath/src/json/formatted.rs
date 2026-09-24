@@ -673,9 +673,10 @@ pub struct JsonIoEntry {
 }
 
 /// Per-operation-kind statistics for one instrumented I/O value. `total_ns`,
-/// `bytes`, and `sampled_bytes` are raw values; `avg`, `throughput`, and
-/// `percentiles` are formatted. `throughput` is the transfer rate over timed
-/// operations (`sampled_bytes / total_ns`), `None` when nothing was timed.
+/// `bytes`, and `sampled_bytes` are raw values; `avg`, `bytes_per_sec`, and
+/// `percentiles` are formatted. `bytes_per_sec` is the transfer rate over timed
+/// operations (`sampled_bytes / total_ns`) as a byte string without a `/s`
+/// suffix (e.g. `12.4 MB`), `None` when nothing was timed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonIoOpStats {
     pub count: u64,
@@ -685,7 +686,7 @@ pub struct JsonIoOpStats {
     pub errors: u64,
     pub avg: String,
     #[serde(default)]
-    pub throughput: Option<String>,
+    pub bytes_per_sec: Option<String>,
     pub total_ns: u64,
     pub percentiles: HashMap<String, String>,
 }

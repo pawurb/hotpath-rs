@@ -1184,7 +1184,12 @@ fn render_io_bytes_subtable(
                 Cell::from(entry.instances.to_string()),
                 Cell::from(stats.count.to_string()),
                 Cell::from(hotpath::format_bytes(stats.bytes)),
-                Cell::from(stats.throughput.clone().unwrap_or_else(|| "-".to_string())),
+                Cell::from(
+                    stats
+                        .bytes_per_sec
+                        .as_deref()
+                        .map_or_else(|| "-".to_string(), |rate| format!("{rate}/s")),
+                ),
                 Cell::from(stats.avg.clone()),
             ];
             for key in &percentile_keys {

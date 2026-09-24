@@ -74,10 +74,10 @@ pub mod tests {
         assert!(
             reader
                 .read
-                .throughput
+                .bytes_per_sec
                 .as_deref()
-                .is_some_and(|t| t.ends_with("/s")),
-            "Timed reads should report throughput"
+                .is_some_and(|rate| rate.ends_with('B') && !rate.contains('/')),
+            "Timed reads should report bytes_per_sec without a /s suffix"
         );
         assert_eq!(reader.read.errors, 0);
         assert_eq!(reader.write.count, 0);
