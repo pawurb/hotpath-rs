@@ -461,24 +461,24 @@ pub mod tests {
             .iter()
             .find(|c| c.label == "wrap-latency")
             .expect("wrap-latency channel not found");
-        let proc_avg = latency
-            .proc_avg
+        let delay_avg = latency
+            .delay_avg
             .as_deref()
-            .expect("channel should report proc_avg in JSON");
-        assert!(!proc_avg.is_empty(), "proc_avg should not be empty");
+            .expect("channel should report delay_avg in JSON");
+        assert!(!delay_avg.is_empty(), "delay_avg should not be empty");
         assert_ne!(
-            proc_avg, "0ns",
+            delay_avg, "0ns",
             "expected non-zero send->receive latency (~20ms held in channel)"
         );
         assert!(
-            latency.proc_percentiles.contains_key("p50"),
+            latency.delay_percentiles.contains_key("p50"),
             "expected p50 latency percentile in JSON, got {:?}",
-            latency.proc_percentiles
+            latency.delay_percentiles
         );
         assert!(
-            latency.proc_percentiles.contains_key("p95"),
+            latency.delay_percentiles.contains_key("p95"),
             "expected p95 latency percentile in JSON, got {:?}",
-            latency.proc_percentiles
+            latency.delay_percentiles
         );
     }
 }

@@ -129,8 +129,8 @@ mod tests {
         }
         let channels = report.channels.expect("channels section");
         for entry in &channels.data {
-            let proc_avg = entry.proc_avg.as_deref().expect("proc_avg");
-            assert_exact_duration(proc_avg, &format!("{} proc_avg", entry.label));
+            let delay_avg = entry.delay_avg.as_deref().expect("delay_avg");
+            assert_exact_duration(delay_avg, &format!("{} delay_avg", entry.label));
         }
 
         let threads = report.threads.expect("threads section");

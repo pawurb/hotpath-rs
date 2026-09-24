@@ -224,10 +224,10 @@ pub(crate) struct ChannelEntry {
     /// `sent_count - received_count` (converged value order-independent).
     pub(crate) queue_size: Option<usize>,
     pub(crate) max_queue_size: Option<usize>,
-    /// Avg denominator is `proc_sampled_count` (one delay recorded per sampled receive).
-    pub(crate) proc_total_nanos: u64,
-    pub(crate) proc_sampled_count: u64,
-    proc_hist: Histogram<u64>,
+    /// Avg denominator is `delay_sampled_count` (one delay recorded per sampled receive).
+    pub(crate) delay_total_nanos: u64,
+    pub(crate) delay_sampled_count: u64,
+    delay_hist: Histogram<u64>,
     pub(crate) iter: u32,
 }
 
@@ -260,20 +260,20 @@ pub(crate) fn channel_to_json(
     let precision = crate::output::Precision::for_cloud(cloud);
     let label = resolve_label(stats.source, stats.label.as_deref(), Some(stats.iter));
 
-    let mut proc_percentiles = HashMap::new();
-    let count_only = stats.proc_sampled_count == 0 && stats.received_count > 0;
+    let mut delay_percentiles = HashMap::new();
+    let count_only = stats.delay_sampled_count == 0 && stats.received_count > 0;
     for &p in percentiles {
         let value = if count_only {
             "-".to_string()
         } else {
-            precision.duration(stats.proc_percentile_nanos(p))
+            precision.duration(stats.delay_percentile_nanos(p))
         };
-        proc_percentiles.insert(crate::output::format_percentile_key(p), value);
+        delay_percentiles.insert(crate::output::format_percentile_key(p), value);
     }
-    let proc_avg = if count_only {
+    let delay_avg = if count_only {
         "-".to_string()
     } else {
-        precision.duration(stats.proc_avg_nanos())
+        precision.duration(stats.delay_avg_nanos())
     };
 
     JsonChannelEntry {
@@ -293,9 +293,9 @@ pub(crate) fn channel_to_json(
         type_size: stats.type_size,
         queue_size: stats.queue_size,
         max_queue_size: stats.max_queue_size,
-        proc_avg: Some(proc_avg),
-        proc_percentiles,
-        proc_sampled_count: Some(stats.proc_sampled_count),
+        delay_avg: Some(delay_avg),
+        delay_percentiles,
+        delay_sampled_count: Some(stats.delay_sampled_count),
         location: crate::lib_on::locations::location_for_key(stats.key),
         iter: stats.iter,
     }
@@ -331,9 +331,9 @@ impl ChannelEntry {
             type_size,
             queue_size: None,
             max_queue_size: None,
-            proc_total_nanos: 0,
-            proc_sampled_count: 0,
-            proc_hist: Self::new_histogram(),
+            delay_total_nanos: 0,
+            delay_sampled_count: 0,
+            delay_hist: Self::new_histogram(),
             iter,
         }
     }
@@ -348,10 +348,10 @@ impl ChannelEntry {
     }
 
     #[inline]
-    fn record_proc(&mut self, nanos: u64) {
-        self.proc_sampled_count += 1;
-        self.proc_total_nanos += nanos;
-        self.proc_hist
+    fn record_delay(&mut self, nanos: u64) {
+        self.delay_sampled_count += 1;
+        self.delay_total_nanos += nanos;
+        self.delay_hist
             .record(nanos.clamp(Self::LOW_NS, Self::HIGH_NS))
             .unwrap();
     }
@@ -359,20 +359,20 @@ impl ChannelEntry {
     /// Bucket projections of the sampled processing delays for the Prometheus
     /// exporter (empty without samples).
     #[cfg(feature = "hotpath-prometheus")]
-    pub(crate) fn native_proc_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
+    pub(crate) fn native_delay_buckets(&self, schema: i32) -> Vec<(i32, u64)> {
         crate::lib_on::native_histograms::native_buckets_opt(
-            Some(&self.proc_hist),
-            self.proc_sampled_count > 0,
+            Some(&self.delay_hist),
+            self.delay_sampled_count > 0,
             schema,
             crate::lib_on::native_histograms::NANOS_SCALE,
         )
     }
 
     #[cfg(feature = "hotpath-prometheus")]
-    pub(crate) fn classic_proc_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
+    pub(crate) fn classic_delay_buckets(&self, boundaries: &[u64]) -> Vec<u64> {
         crate::lib_on::native_histograms::classic_buckets_opt(
-            Some(&self.proc_hist),
-            self.proc_sampled_count > 0,
+            Some(&self.delay_hist),
+            self.delay_sampled_count > 0,
             boundaries,
         )
     }
@@ -415,17 +415,17 @@ impl ChannelEntry {
         self.rate_per_sec(self.received_count, now_ns)
     }
 
-    pub(crate) fn proc_avg_nanos(&self) -> u64 {
-        self.proc_total_nanos
-            .checked_div(self.proc_sampled_count)
+    pub(crate) fn delay_avg_nanos(&self) -> u64 {
+        self.delay_total_nanos
+            .checked_div(self.delay_sampled_count)
             .unwrap_or(0)
     }
 
-    pub(crate) fn proc_percentile_nanos(&self, p: f64) -> u64 {
-        if self.proc_sampled_count == 0 {
+    pub(crate) fn delay_percentile_nanos(&self, p: f64) -> u64 {
+        if self.delay_sampled_count == 0 {
             return 0;
         }
-        self.proc_hist.value_at_percentile(p.clamp(0.0, 100.0))
+        self.delay_hist.value_at_percentile(p.clamp(0.0, 100.0))
     }
 
     /// Current depth is counts-derived (`sent - received`), exact once the channel
@@ -671,7 +671,7 @@ fn process_channel_event(state: &mut ChannelsInternalState, event: ChannelEvent)
             channel_stats.record_activity(ts_ns);
             channel_stats.record_queue(queue_len);
             if let Some(delay_nanos) = delay_nanos {
-                channel_stats.record_proc(delay_nanos);
+                channel_stats.record_delay(delay_nanos);
             }
             let received_count = channel_stats.received_count;
 
