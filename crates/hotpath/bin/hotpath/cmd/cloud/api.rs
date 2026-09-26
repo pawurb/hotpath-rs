@@ -1,21 +1,24 @@
 //! Shared plumbing of the `hotpath cloud` commands: the token and base URL
-//! from the environment, the bearer `GET`, `ApiError` handling and the JSON
-//! output. The token comes only from `HOTPATH_API_TOKEN` (never a flag, so it
-//! stays out of shell history and `ps`) and is never printed, not even in an
-//! error. Exit codes: 0 ok, 1 error (any non-2xx, network failure, bad
-//! arguments).
+//! from the environment, the bearer `GET` and the JSON output. The token comes
+//! only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of shell
+//! history and `ps`) and is never printed, not even in an error. Every failure
+//! is one JSON document on stderr (`CliError`): a non-2xx server body exactly
+//! as received - the client adds no hints, whatever the server says is the
+//! whole advice - or `{"error": "..."}` built here when there is no such body
+//! (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
+//! (any non-2xx, network failure, bad arguments).
 
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use hotpath::json::cloud_api::{normalize_base_url, ApiError, ApiErrorCode};
+use hotpath::json::cloud_api::normalize_base_url;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde_json::{json, Value};
 
 pub(crate) const TOKENS_URL: &str = "https://hotpath.rs/app/tokens";
-const LOGIN_URL: &str = "https://hotpath.rs/app";
 const TIMEOUT: Duration = Duration::from_secs(30);
 /// Longest raw (unparseable) response body quoted in a message.
 const MAX_QUOTED_BODY: usize = 200;
@@ -32,6 +35,31 @@ static API_TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
 static API_URL: LazyLock<String> =
     LazyLock::new(|| normalize_base_url(std::env::var("HOTPATH_API_URL").ok()));
 
+/// One failure of a `hotpath cloud` command, rendered by `Output::emit_error`.
+#[derive(Debug)]
+pub(crate) enum CliError {
+    /// A non-2xx server body that is valid JSON, kept verbatim so compact
+    /// output prints exactly what the server sent.
+    Server(String),
+    /// A failure with no server body to show; prints as `{"error": message}`.
+    Client(String),
+}
+
+impl CliError {
+    pub(crate) fn client(message: impl Into<String>) -> Self {
+        Self::Client(message.into())
+    }
+
+    /// A non-2xx body: passed through when it is JSON, otherwise quoted
+    /// with the status.
+    fn server(status: u16, body: String) -> Self {
+        match serde_json::from_str::<Value>(&body) {
+            Ok(_) => Self::Server(body.trim().to_string()),
+            Err(_) => Self::client(format!("HTTP {status}: {}", quote_body(&body))),
+        }
+    }
+}
+
 pub(crate) struct Client {
     base_url: String,
     token: String,
@@ -39,9 +67,11 @@ pub(crate) struct Client {
 }
 
 impl Client {
-    pub(crate) fn from_env() -> Result<Self, String> {
+    pub(crate) fn from_env() -> Result<Self, CliError> {
         let token = API_TOKEN.clone().ok_or_else(|| {
-            format!("HOTPATH_API_TOKEN is not set. Create a token at {TOKENS_URL} and export it.")
+            CliError::client(format!(
+                "HOTPATH_API_TOKEN is not set. Create a token at {TOKENS_URL} and export it."
+            ))
         })?;
         let base_url = API_URL.clone();
         let agent = ureq::Agent::config_builder()
@@ -58,74 +88,25 @@ impl Client {
     }
 
     /// `GET {base_url}{path}` with the bearer token; a 2xx body parses as `T`,
-    /// anything else is the `ApiError` sentence (plus the request id) as the
-    /// error, or `HTTP <status>: <body>` when the body is not that JSON.
-    pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    /// anything else is the server body as the error (see `CliError::server`).
+    pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, CliError> {
         let url = format!("{}{path}", self.base_url);
         let mut resp = self
             .agent
             .get(&url)
             .header("Authorization", &format!("Bearer {}", self.token))
             .call()
-            .map_err(|e| format!("request to {} failed: {e}", self.base_url))?;
+            .map_err(|e| CliError::client(format!("request to {} failed: {e}", self.base_url)))?;
         let status = resp.status().as_u16();
-        let header = |name: &str| {
-            resp.headers()
-                .get(name)
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string)
-        };
         if (200..300).contains(&status) {
             return resp
                 .body_mut()
                 .read_json::<T>()
-                .map_err(|e| format!("invalid response from {url}: {e}"));
+                .map_err(|e| CliError::client(format!("invalid response from {url}: {e}")));
         }
-        let request_id = header("x-request-id");
-        let retry_after = header("retry-after");
         let body = resp.body_mut().read_to_string().unwrap_or_default();
-        Err(explain(status, &body, request_id, retry_after))
+        Err(CliError::server(status, body))
     }
-}
-
-/// The message for a non-2xx answer. Branches on `code`, never on the
-/// sentence; an unknown code prints like any other error.
-fn explain(
-    status: u16,
-    body: &str,
-    request_id: Option<String>,
-    retry_after: Option<String>,
-) -> String {
-    let Ok(error) = serde_json::from_str::<ApiError>(body) else {
-        return format!("HTTP {status}: {}", quote_body(body));
-    };
-    let mut message = error.error.trim().to_string();
-    let hint = match error.code {
-        ApiErrorCode::MissingToken | ApiErrorCode::InvalidToken => Some(format!(
-            "Check HOTPATH_API_TOKEN or create a new token at {TOKENS_URL}."
-        )),
-        ApiErrorCode::GithubAuthorizationExpired => {
-            Some(format!("Log in at {LOGIN_URL} once, then retry."))
-        }
-        ApiErrorCode::RateLimited => Some(match retry_after {
-            Some(seconds) => format!("Retry after {seconds} s."),
-            None => "Retry later.".to_string(),
-        }),
-        ApiErrorCode::BadRequest
-        | ApiErrorCode::Forbidden
-        | ApiErrorCode::NotFound
-        | ApiErrorCode::MethodNotAllowed
-        | ApiErrorCode::Internal
-        | ApiErrorCode::Unknown => None,
-    };
-    if let Some(hint) = hint {
-        message.push(' ');
-        message.push_str(&hint);
-    }
-    if let Some(id) = request_id {
-        message.push_str(&format!(" (request id: {id})"));
-    }
-    message
 }
 
 fn quote_body(body: &str) -> String {
@@ -142,27 +123,47 @@ fn quote_body(body: &str) -> String {
 }
 
 /// Where and how a command's JSON goes: compact on stdout unless `--pretty`
-/// or `--output FILE` say otherwise.
+/// or `--output FILE` say otherwise. Errors always go to stderr, indented
+/// under `--pretty` like a body.
 pub(crate) struct Output {
     pub(crate) pretty: bool,
     pub(crate) file: Option<PathBuf>,
 }
 
 impl Output {
-    pub(crate) fn emit<T: Serialize>(&self, value: &T) -> Result<(), String> {
-        let mut json = if self.pretty {
-            serde_json::to_string_pretty(value)
-        } else {
-            serde_json::to_string(value)
-        }
-        .map_err(|e| format!("could not serialize the response: {e}"))?;
+    pub(crate) fn emit<T: Serialize>(&self, value: &T) -> Result<(), CliError> {
+        let mut json = self
+            .render(value)
+            .map_err(|e| CliError::client(format!("could not serialize the response: {e}")))?;
         json.push('\n');
         match &self.file {
             Some(path) => std::fs::write(path, json)
-                .map_err(|e| format!("could not write {}: {e}", path.display())),
+                .map_err(|e| CliError::client(format!("could not write {}: {e}", path.display()))),
             None => std::io::stdout()
                 .write_all(json.as_bytes())
-                .map_err(|e| format!("could not write to stdout: {e}")),
+                .map_err(|e| CliError::client(format!("could not write to stdout: {e}"))),
+        }
+    }
+
+    pub(crate) fn emit_error(&self, error: &CliError) {
+        let json = match error {
+            CliError::Server(raw) if !self.pretty => raw.clone(),
+            CliError::Server(raw) => serde_json::from_str::<Value>(raw)
+                .and_then(|value| self.render(&value))
+                .unwrap_or_else(|_| raw.clone()),
+            CliError::Client(message) => {
+                let value = json!({ "error": message });
+                self.render(&value).unwrap_or_else(|_| value.to_string())
+            }
+        };
+        eprintln!("{json}");
+    }
+
+    fn render<T: Serialize>(&self, value: &T) -> serde_json::Result<String> {
+        if self.pretty {
+            serde_json::to_string_pretty(value)
+        } else {
+            serde_json::to_string(value)
         }
     }
 }
