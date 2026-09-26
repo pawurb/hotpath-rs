@@ -49,28 +49,31 @@ pub(crate) fn format_duration_exact(ns: u64) -> String {
     }
 }
 
+/// A non-negative, finite number scaled to an integer, rounded.
+/// A float-to-int cast saturates and maps NaN to 0, so a value that is
+/// not a magnitude is rejected before the cast rather than silently
+/// becoming 0 or `u64::MAX`. The upper bound is strict because
+/// `u64::MAX as f64` rounds up to 2^64, which would saturate.
+fn scaled(num: &str, scale: f64) -> Option<u64> {
+    let v: f64 = num.trim().parse().ok()?;
+    let scaled = v * scale;
+    (v >= 0.0 && scaled.is_finite() && scaled < u64::MAX as f64).then(|| scaled.round() as u64)
+}
+
 /// Parses a human-readable duration string back to nanoseconds.
 /// Inverse of [`format_duration`]; also reads the lossless form cloud
-/// reports carry (`1.004999 ms`).
+/// reports carry (`1.004999 ms`) and the ASCII `us` spelling of `µs`.
+/// Negative, non-finite and out-of-range values are `None`.
 pub fn parse_duration(s: &str) -> Option<u64> {
     let s = s.trim();
     if let Some(num) = s.strip_suffix(" ns") {
-        num.trim().parse::<f64>().ok().map(|v| v.round() as u64)
-    } else if let Some(num) = s.strip_suffix(" µs") {
-        num.trim()
-            .parse::<f64>()
-            .ok()
-            .map(|v| (v * 1_000.0).round() as u64)
+        scaled(num, 1.0)
+    } else if let Some(num) = s.strip_suffix(" µs").or_else(|| s.strip_suffix(" us")) {
+        scaled(num, 1_000.0)
     } else if let Some(num) = s.strip_suffix(" ms") {
-        num.trim()
-            .parse::<f64>()
-            .ok()
-            .map(|v| (v * 1_000_000.0).round() as u64)
+        scaled(num, 1_000_000.0)
     } else if let Some(num) = s.strip_suffix(" s") {
-        num.trim()
-            .parse::<f64>()
-            .ok()
-            .map(|v| (v * 1_000_000_000.0).round() as u64)
+        scaled(num, 1_000_000_000.0)
     } else {
         None
     }
@@ -166,29 +169,17 @@ pub fn format_rate(rate: Option<f64>) -> String {
 
 /// Parses a human-readable byte string back to a byte count.
 /// Inverse of [`format_bytes`]; also reads the plain `N B` form cloud
-/// reports carry.
+/// reports carry. Negative, non-finite and out-of-range values are `None`.
 pub fn parse_bytes(s: &str) -> Option<u64> {
     let s = s.trim();
     if let Some(num) = s.strip_suffix(" TB") {
-        num.trim()
-            .parse::<f64>()
-            .ok()
-            .map(|v| (v * 1024.0_f64.powi(4)).round() as u64)
+        scaled(num, 1024.0_f64.powi(4))
     } else if let Some(num) = s.strip_suffix(" GB") {
-        num.trim()
-            .parse::<f64>()
-            .ok()
-            .map(|v| (v * 1024.0_f64.powi(3)).round() as u64)
+        scaled(num, 1024.0_f64.powi(3))
     } else if let Some(num) = s.strip_suffix(" MB") {
-        num.trim()
-            .parse::<f64>()
-            .ok()
-            .map(|v| (v * 1024.0_f64.powi(2)).round() as u64)
+        scaled(num, 1024.0_f64.powi(2))
     } else if let Some(num) = s.strip_suffix(" KB") {
-        num.trim()
-            .parse::<f64>()
-            .ok()
-            .map(|v| (v * 1024.0).round() as u64)
+        scaled(num, 1024.0)
     } else if let Some(num) = s.strip_suffix(" B") {
         num.trim().parse::<u64>().ok()
     } else {
@@ -337,6 +328,9 @@ mod parse_tests {
         assert_eq!(parse_duration("1.23 µs"), Some(1230));
         assert_eq!(parse_duration("1.23 ms"), Some(1230000));
         assert_eq!(parse_duration("1.23 s"), Some(1230000000));
+        assert_eq!(parse_duration("-0 ns"), Some(0));
+        assert_eq!(parse_duration("1e3 ns"), Some(1000));
+        assert_eq!(parse_duration("250 us"), parse_duration("250 µs"));
     }
 
     #[test]
@@ -344,6 +338,13 @@ mod parse_tests {
         assert_eq!(parse_duration(""), None);
         assert_eq!(parse_duration("invalid"), None);
         assert_eq!(parse_duration("abc ns"), None);
+        assert_eq!(parse_duration("-5 ms"), None);
+        assert_eq!(parse_duration("inf ms"), None);
+        assert_eq!(parse_duration("-inf ns"), None);
+        assert_eq!(parse_duration("NaN s"), None);
+        assert_eq!(parse_duration("1e400 ms"), None);
+        assert_eq!(parse_duration("1e300 s"), None);
+        assert_eq!(parse_duration("2e19 ns"), None);
     }
 
     #[test]
@@ -367,6 +368,7 @@ mod parse_tests {
         assert_eq!(parse_bytes("1.0 MB"), Some(1048576));
         assert_eq!(parse_bytes("1.0 GB"), Some(1073741824));
         assert_eq!(parse_bytes("0.5 TB"), Some(549755813888));
+        assert_eq!(parse_bytes("0.0 KB"), Some(0));
     }
 
     #[test]
@@ -374,6 +376,11 @@ mod parse_tests {
         assert_eq!(parse_bytes(""), None);
         assert_eq!(parse_bytes("invalid"), None);
         assert_eq!(parse_bytes("abc KB"), None);
+        assert_eq!(parse_bytes("-1.5 KB"), None);
+        assert_eq!(parse_bytes("-1 B"), None);
+        assert_eq!(parse_bytes("NaN KB"), None);
+        assert_eq!(parse_bytes("inf MB"), None);
+        assert_eq!(parse_bytes("1e300 TB"), None);
     }
 
     #[test]
