@@ -1,0 +1,20 @@
+name: Cloud random benchmark relay
+
+on:
+  workflow_run:
+    workflows: ["Cloud random benchmark"]
+    types: [completed]
+
+# Twin of `cloud-meta-benchmark-relay.yml` for the `random` series; see that
+# file for why the relay is referenced by full path and `@main`.
+jobs:
+  relay:
+    uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@main
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    with:
+      benchmark: random
+      artifact_name: random-report
+      report_file: random-report.json
