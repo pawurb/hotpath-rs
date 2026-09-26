@@ -669,9 +669,11 @@ pub fn format_threads_globals(
 mod test {
     use crate::cmd::shared::{compare_metrics, compare_reports, compare_threads};
     use hotpath::json::{
-        JsonFunctionEntry, JsonFunctionsList, JsonReport, JsonThreadEntry, JsonThreadsList,
+        JsonFunctionEntry, JsonFunctionsList, JsonMeta, JsonReport, JsonThreadEntry,
+        JsonThreadsList,
     };
     use std::collections::HashMap;
+    use time::macros::datetime;
 
     fn make_function_data(
         name: &str,
@@ -763,7 +765,15 @@ mod test {
         JsonReport {
             functions_timing: timing,
             functions_alloc: alloc,
-            ..Default::default()
+            ..JsonReport::new(JsonMeta {
+                rustc: "1.89.0".to_string(),
+                os: "linux-x86_64".to_string(),
+                created_at: datetime!(2026-08-27 10:15:42 UTC),
+                source_root: None,
+                git: None,
+                ci: None,
+                benchmark: None,
+            })
         }
     }
 
