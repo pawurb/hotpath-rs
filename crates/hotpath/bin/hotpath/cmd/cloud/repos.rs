@@ -8,8 +8,8 @@ use hotpath::json::cloud_api::RepoList;
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
 
-pub(crate) fn run(client: &Client, output: &Output) -> Result<ExitCode, CliError> {
-    let repos: RepoList = client.get("/api/v1/repos")?;
+pub(crate) fn run(output: &Output) -> Result<ExitCode, CliError> {
+    let repos: RepoList = Client::from_env()?.get("/api/v1/repos")?;
     output.emit(&repos)?;
     Ok(ExitCode::SUCCESS)
 }

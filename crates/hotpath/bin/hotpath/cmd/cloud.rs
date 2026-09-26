@@ -9,6 +9,7 @@ mod api;
 mod auth;
 mod benchmarks;
 mod repo;
+mod report;
 mod repos;
 
 use std::path::PathBuf;
@@ -16,7 +17,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use crate::cmd::cloud::api::{CliError, Client, Output};
+use crate::cmd::cloud::api::{CliError, Output};
+use crate::cmd::cloud::report::ReportArgs;
 
 #[derive(Parser, Debug)]
 pub(crate) struct CloudArgs {
@@ -69,10 +71,33 @@ Same token and base URL environment as `auth`."
         #[arg(long, value_name = "OWNER/NAME", help = "The repository")]
         repo: String,
     },
+
+    #[command(
+        about = "Fetch one stored report by pull request, commit or id",
+        long_about = "Fetch one stored report by pull request, commit or id
+(GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/reports/latest?pr=N|commit=SHA,
+or .../reports/{id}).
+
+--pr and --commit answer the newest matching report, newest by upload. --commit takes
+a full 40-character sha and matches the measured commit or the pull request's head
+commit: a pull request job usually measures GitHub's merge commit, which nobody has
+locally, so `--commit $(git rev-parse HEAD)` on a PR branch still finds the PR's
+report. --event push|pull_request narrows --pr / --commit to one event (the same
+commit is often measured by a push to main and as a PR head). --no-payload asks for
+the summary only; the payload is the uploaded hotpath JSON report, verbatim apart
+from key order.
+
+A report of another benchmark, an unknown id, no match yet and a repository the
+token's user cannot see all answer 404 `not_found`: poll with --commit until it
+exits 0 to wait for CI's upload. Same token and base URL environment as `auth`."
+    )]
+    Report(ReportArgs),
 }
 
 impl CloudArgs {
     /// Runs the command; every failure is one JSON document on stderr and exit 1.
+    /// Each command validates its arguments before it builds the client, so a
+    /// bad argument is reported without a token and never costs a request.
     pub(crate) fn run(self) -> ExitCode {
         let CloudArgs {
             cmd,
@@ -93,11 +118,11 @@ impl CloudArgs {
     }
 
     fn execute(cmd: CloudCommand, output: &Output) -> Result<ExitCode, CliError> {
-        let client = Client::from_env()?;
         match cmd {
-            CloudCommand::Auth => auth::run(&client, output),
-            CloudCommand::Repos => repos::run(&client, output),
-            CloudCommand::Benchmarks { repo } => benchmarks::run(&client, output, &repo),
+            CloudCommand::Auth => auth::run(output),
+            CloudCommand::Repos => repos::run(output),
+            CloudCommand::Benchmarks { repo } => benchmarks::run(output, &repo),
+            CloudCommand::Report(args) => report::run(output, args),
         }
     }
 }
