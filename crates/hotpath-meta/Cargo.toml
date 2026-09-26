@@ -15,7 +15,7 @@ path = "bin/hotpath-samply-meta/main.rs"
 [features]
 default = ["threads"]
 # JSON report types (`hotpath_meta::json`) + formatting helpers, usable without profiling
-json = ["dep:serde", "dep:serde_json"]
+json = ["dep:serde", "dep:serde_json", "dep:time", "time/serde-well-known"]
 hotpath-meta = [
   "hotpath-macros-meta/hotpath-meta",
   "dep:hotpath-drain-meta",
@@ -41,7 +41,7 @@ async-channel = ["dep:tokio", "tokio/sync", "tokio/macros", "tokio/rt-multi-thre
 crossbeam = []
 flume = ["dep:flume", "dep:tokio", "tokio/rt-multi-thread"]
 threads = []
-dev-meta = ["dep:time"]
+dev-meta = ["dep:time", "time/formatting", "time/local-offset"]
 hotpath-mcp-meta = ["hotpath-meta", "dep:rmcp", "dep:tokio", "tokio/rt", "tokio/net", "dep:axum", "axum/http1", "axum/tokio", "dep:tokio-util", "dep:schemars"]
 hotpath-prometheus-meta = ["hotpath-meta", "dep:prost"]
 "axum-0-8" = ["dep:axum", "axum/matched-path", "dep:tower-layer", "dep:tower-service", "dep:pin-project-lite"]
@@ -60,7 +60,7 @@ hotpath-drain-meta = { workspace = true, optional = true }
 regex-lite = { version = "0.1", optional = true }
 prost = { version = "0.14", optional = true }
 ratatui = { version = "0.29", optional = true }
-serde = { version = "1.0.130", features = ["derive"], optional = true }
+serde = { version = "1.0.184", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 tiny_http = { version = "0.12", optional = true }
 tokio = { version = "1", features = ["rt"], optional = true }
@@ -73,7 +73,7 @@ futures-sink = { version = "0.3.31", optional = true }
 futures-util = { version = "0.3.31", default-features = false, features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
 libc = { version = "0.2.150", optional = true }
-time = { version = "0.3", features = ["formatting", "local-offset", "macros"], optional = true }
+time = { version = "0.3.37", features = ["macros"], optional = true }
 rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
 schemars = { version = "1", optional = true }
 axum = { version = "0.8", default-features = false, optional = true }

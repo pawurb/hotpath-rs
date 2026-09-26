@@ -1104,13 +1104,12 @@ impl Drop for HotpathGuard {
         let mut upload_failed = false;
         if is_json || upload_enabled {
             let mut report = JsonReport {
-                meta: crate::lib_on::report_meta::build_meta(),
                 label: std::env::var("HOTPATH_META_REPORT_LABEL")
                     .ok()
                     .filter(|s| !s.is_empty()),
                 user_metadata: (!self.user_metadata.is_empty()).then(|| self.user_metadata.clone()),
                 time_sampling: crate::lib_on::sampling::active_rates(),
-                ..Default::default()
+                ..JsonReport::new(crate::lib_on::report_meta::build_meta())
             };
 
             #[cfg(feature = "hotpath-cloud-meta")]

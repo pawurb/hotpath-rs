@@ -12,7 +12,7 @@
 //! under GitHub Actions once more as a `::notice::` / `::warning::` /
 //! `::error::` workflow command on stdout plus a block appended to
 //! `GITHUB_STEP_SUMMARY`. The server owns the text: a rejection prints the
-//! `error` sentence of the `UploadError` body (plus status and request id)
+//! `error` sentence of the `ApiError` body (plus status and request id)
 //! and a failed comment prints `comment.error`; the client branches on nothing
 //! the server says. A failure is a warning by default and never changes the exit
 //! code; `HOTPATH_META_UPLOAD_STRICT=1` turns it into an error and `upload`
@@ -30,10 +30,9 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::json::cloud_api::{UploadCreated, UploadError};
+use crate::json::cloud_api::{normalize_base_url, ApiError, UploadCreated};
 use crate::json::JsonReport;
 
-const DEFAULT_UPLOAD_URL: &str = "https://hotpath.rs";
 const AUDIENCE: &str = "hotpath.rs";
 const MINT_TIMEOUT: Duration = Duration::from_secs(10);
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(30);
@@ -45,7 +44,7 @@ const MAX_QUOTED_BODY: usize = 2000;
 /// `/api/v1/reports` path is appended cleanly. Blank or unset falls back to
 /// the default.
 pub(crate) static UPLOAD_URL: LazyLock<String> =
-    LazyLock::new(|| normalize_upload_url(std::env::var("HOTPATH_META_UPLOAD_URL").ok()));
+    LazyLock::new(|| normalize_base_url(std::env::var("HOTPATH_META_UPLOAD_URL").ok()));
 
 /// `HOTPATH_META_UPLOAD_STRICT=1`: a failed upload is an `::error::` and exits 1.
 /// Off by default so an adopter's benchmark job never goes red because
@@ -55,12 +54,6 @@ pub(crate) static STRICT: LazyLock<bool> = LazyLock::new(|| {
         .map(|v| is_truthy(&v))
         .unwrap_or(false)
 });
-
-fn normalize_upload_url(raw: Option<String>) -> String {
-    raw.map(|s| s.trim().trim_end_matches('/').to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_UPLOAD_URL.to_string())
-}
 
 pub(crate) fn enabled() -> bool {
     std::env::var("HOTPATH_META_UPLOAD")
@@ -300,7 +293,7 @@ pub(crate) fn post_report(base_url: &str, token: &str, benchmark: &str, body: &[
 }
 
 /// A 201 (or the 200 of an already stored run) parses as `UploadCreated`,
-/// anything else tries `UploadError` and falls back to quoting the raw body.
+/// anything else tries `ApiError` and falls back to quoting the raw body.
 pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -> Outcome {
     let request = |id: Option<&str>| id.map(|id| format!(", request {id}")).unwrap_or_default();
     if matches!(status, 200 | 201) {
@@ -319,11 +312,11 @@ pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -
             },
         };
     }
-    let message = match serde_json::from_str::<UploadError>(&body) {
+    let message = match serde_json::from_str::<ApiError>(&body) {
         Ok(error) => format!(
             "{} (HTTP {status}{})",
             error.error,
-            request(error.request_id.as_deref().or(request_id.as_deref()))
+            request(request_id.as_deref())
         ),
         Err(_) => format!(
             "HTTP {status}{}: {}",
@@ -463,8 +456,8 @@ fn url_encode(s: &str) -> String {
 mod tests {
     use crate::json::cloud_api::{CommentOutcome, UploadCreated};
     use crate::lib_on::cloud::{
-        benchmark_name, escape_annotation, interpret, is_truthy, normalize_upload_url, render,
-        url_encode, validate_benchmark_name, Env, Level, Outcome, DEFAULT_UPLOAD_URL,
+        benchmark_name, escape_annotation, interpret, is_truthy, render, url_encode,
+        validate_benchmark_name, Env, Level, Outcome,
     };
 
     fn env(actions: bool, strict: bool) -> Env {
@@ -493,20 +486,6 @@ mod tests {
         assert!(!is_truthy("0"));
         assert!(!is_truthy("false"));
         assert!(!is_truthy(""));
-    }
-
-    #[test]
-    fn upload_url_override() {
-        assert_eq!(normalize_upload_url(None), DEFAULT_UPLOAD_URL);
-        assert_eq!(normalize_upload_url(Some("   ".into())), DEFAULT_UPLOAD_URL);
-        assert_eq!(
-            normalize_upload_url(Some(" http://localhost:3000/// ".into())),
-            "http://localhost:3000"
-        );
-        assert_eq!(
-            normalize_upload_url(Some("https://staging.hotpath.rs".into())),
-            "https://staging.hotpath.rs"
-        );
     }
 
     #[test]
@@ -626,16 +605,16 @@ mod tests {
 
     #[test]
     fn interpret_error_bodies() {
-        let body = r#"{"error":"meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run. Forward it through hotpath-relay.yml.","request_id":"1bac4db9-15a"}"#;
+        let body = r#"{"error":"meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run. Forward it through hotpath-relay.yml.","code":"bad_request"}"#;
         assert_eq!(
-            interpret(400, None, body.into()),
+            interpret(400, Some("1bac4db9-15a".into()), body.into()),
             Outcome::Failed {
                 message: "meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run. Forward it through hotpath-relay.yml. (HTTP 400, request 1bac4db9-15a)".into(),
                 body: Some(body.into()),
             }
         );
 
-        // The header id fills in when the body has none; extra fields are ignored.
+        // An unknown code and extra fields are ignored.
         assert_eq!(
             interpret(
                 500,

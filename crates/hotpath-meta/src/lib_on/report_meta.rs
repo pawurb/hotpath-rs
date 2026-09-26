@@ -4,6 +4,7 @@
 //! provenance that makes a report self-describing.
 
 use std::path::{Path, PathBuf};
+use time::OffsetDateTime;
 
 pub(crate) fn build_meta() -> crate::json::JsonMeta {
     let source_root = source_root();
@@ -40,7 +41,7 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
     crate::json::JsonMeta {
         rustc: env!("HOTPATH_META_RUSTC_VERSION").to_string(),
         os: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
-        created_at: format_rfc3339_utc(std::time::SystemTime::now()),
+        created_at: now_whole_seconds(),
         source_root,
         git,
         ci,
@@ -160,48 +161,23 @@ pub(crate) fn find_git_root(start: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn format_rfc3339_utc(t: std::time::SystemTime) -> String {
-    let secs = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let (y, m, d) = civil_from_days((secs / 86_400) as i64);
-    let rem = secs % 86_400;
-    format!(
-        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
-        rem / 3_600,
-        rem % 3_600 / 60,
-        rem % 60
-    )
-}
-
-/// Days since the Unix epoch to (year, month, day) in the proleptic Gregorian
-/// calendar (Howard Hinnant's `civil_from_days`).
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
+/// Whole seconds, so the wire value stays `2026-08-27T10:15:42Z` as before.
+fn now_whole_seconds() -> OffsetDateTime {
+    let now = OffsetDateTime::now_utc();
+    now.replace_nanosecond(0).unwrap_or(now)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::lib_on::report_meta::{civil_from_days, format_rfc3339_utc};
-    use std::time::{Duration, UNIX_EPOCH};
+    use crate::lib_on::report_meta::now_whole_seconds;
+    use time::format_description::well_known::Rfc3339;
 
     #[test]
-    fn civil_from_days_known_dates() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(19_723), (2024, 1, 1));
-        // 2024 is a leap year.
-        assert_eq!(civil_from_days(19_723 + 59), (2024, 2, 29));
-        assert_eq!(civil_from_days(20_692), (2026, 8, 27));
+    fn created_at_is_utc_whole_seconds() {
+        let now = now_whole_seconds();
+        assert!(now.offset().is_utc());
+        let wire = now.format(&Rfc3339).unwrap();
+        assert!(wire.ends_with('Z') && !wire.contains('.'), "{wire}");
     }
 
     #[cfg(feature = "hotpath-cloud-meta")]
@@ -209,6 +185,7 @@ mod tests {
         use crate::json::{JsonCiInfo, JsonGitInfo, JsonMeta, JsonPullRequest};
         use crate::lib_on::ci_info::CiContext;
         use crate::lib_on::report_meta::merge_git_info;
+        use time::macros::datetime;
 
         const LOCAL_SHA: &str = "1111111111111111111111111111111111111111";
         const CI_SHA: &str = "2222222222222222222222222222222222222222";
@@ -328,7 +305,7 @@ mod tests {
             let meta = JsonMeta {
                 rustc: "1.89.0".to_string(),
                 os: "macos-aarch64".to_string(),
-                created_at: "2026-08-27T10:15:42Z".to_string(),
+                created_at: datetime!(2026-08-27 10:15:42 UTC),
                 source_root: Some(String::new()),
                 git: Some(detached_local(LOCAL_SHA)),
                 ci: None,
@@ -350,7 +327,7 @@ mod tests {
             let meta = JsonMeta {
                 rustc: "1.89.0".to_string(),
                 os: "macos-aarch64".to_string(),
-                created_at: "2026-08-27T10:15:42Z".to_string(),
+                created_at: datetime!(2026-08-27 10:15:42 UTC),
                 source_root: Some(String::new()),
                 git: merge_git_info(
                     Some(detached_local(LOCAL_SHA)),
@@ -393,11 +370,5 @@ mod tests {
             assert!(meta.ci.is_none());
             assert!(meta.benchmark.is_none());
         }
-    }
-
-    #[test]
-    fn rfc3339_formatting() {
-        let t = UNIX_EPOCH + Duration::from_secs(20_692 * 86_400 + 10 * 3_600 + 15 * 60 + 42);
-        assert_eq!(format_rfc3339_utc(t), "2026-08-27T10:15:42Z");
     }
 }
