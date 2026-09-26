@@ -9,36 +9,43 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use hotpath::json::cloud_api::{normalize_base_url, ApiError, ApiErrorCode};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-pub const TOKENS_URL: &str = "https://hotpath.rs/app/tokens";
+pub(crate) const TOKENS_URL: &str = "https://hotpath.rs/app/tokens";
 const LOGIN_URL: &str = "https://hotpath.rs/app";
 const TIMEOUT: Duration = Duration::from_secs(30);
 /// Longest raw (unparseable) response body quoted in a message.
 const MAX_QUOTED_BODY: usize = 200;
 
-pub struct Client {
+/// `HOTPATH_API_TOKEN`, trimmed; `None` when unset or blank.
+static API_TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
+    std::env::var("HOTPATH_API_TOKEN")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+});
+
+/// `HOTPATH_API_URL`, normalized like `HOTPATH_UPLOAD_URL`.
+static API_URL: LazyLock<String> =
+    LazyLock::new(|| normalize_base_url(std::env::var("HOTPATH_API_URL").ok()));
+
+pub(crate) struct Client {
     base_url: String,
     token: String,
     agent: ureq::Agent,
 }
 
 impl Client {
-    pub fn from_env() -> Result<Self, String> {
-        let token = std::env::var("HOTPATH_API_TOKEN")
-            .ok()
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .ok_or_else(|| {
-                format!(
-                    "HOTPATH_API_TOKEN is not set. Create a token at {TOKENS_URL} and export it."
-                )
-            })?;
-        let base_url = normalize_base_url(std::env::var("HOTPATH_API_URL").ok());
+    pub(crate) fn from_env() -> Result<Self, String> {
+        let token = API_TOKEN.clone().ok_or_else(|| {
+            format!("HOTPATH_API_TOKEN is not set. Create a token at {TOKENS_URL} and export it.")
+        })?;
+        let base_url = API_URL.clone();
         let agent = ureq::Agent::config_builder()
             .timeout_global(Some(TIMEOUT))
             .http_status_as_error(false)
@@ -55,7 +62,7 @@ impl Client {
     /// `GET {base_url}{path}` with the bearer token; a 2xx body parses as `T`,
     /// anything else is the `ApiError` sentence (plus the request id) as the
     /// error, or `HTTP <status>: <body>` when the body is not that JSON.
-    pub fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
         let url = format!("{}{path}", self.base_url);
         let mut resp = self
             .agent
@@ -137,13 +144,13 @@ fn quote_body(body: &str) -> String {
 
 /// Where and how a command's JSON goes: compact on stdout unless `--pretty`
 /// or `--output FILE` say otherwise.
-pub struct Output {
-    pub pretty: bool,
-    pub file: Option<PathBuf>,
+pub(crate) struct Output {
+    pub(crate) pretty: bool,
+    pub(crate) file: Option<PathBuf>,
 }
 
 impl Output {
-    pub fn emit<T: Serialize>(&self, value: &T) -> Result<(), String> {
+    pub(crate) fn emit<T: Serialize>(&self, value: &T) -> Result<(), String> {
         let mut json = if self.pretty {
             serde_json::to_string_pretty(value)
         } else {

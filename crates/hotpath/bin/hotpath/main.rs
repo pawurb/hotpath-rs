@@ -11,9 +11,9 @@ use std::process::ExitCode;
 
 #[cfg(any(feature = "tui", feature = "cloud"))]
 #[derive(Parser, Debug)]
-pub struct InitCliArgs {
+pub(crate) struct InitCliArgs {
     #[arg(long, help = "AI agent to launch: claude, codex or opencode")]
-    pub agent: String,
+    pub(crate) agent: String,
 }
 
 /// Placeholder for `hotpath cloud` in a binary built without the `cloud`
@@ -21,14 +21,14 @@ pub struct InitCliArgs {
 /// run it into a hint instead of clap's "unrecognized subcommand".
 #[cfg(all(any(feature = "tui", feature = "cloud"), not(feature = "cloud")))]
 #[derive(Parser, Debug)]
-pub struct CloudUnavailableArgs {
+pub(crate) struct CloudUnavailableArgs {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-    pub rest: Vec<String>,
+    pub(crate) rest: Vec<String>,
 }
 
 #[cfg(any(feature = "tui", feature = "cloud"))]
 #[derive(Subcommand, Debug)]
-pub enum HPSubcommand {
+pub(crate) enum HPSubcommand {
     #[cfg(feature = "tui")]
     #[command(about = "Launch TUI console to monitor profiling metrics in real-time")]
     Console(ConsoleArgs),
@@ -52,17 +52,17 @@ pub enum HPSubcommand {
 https://github.com/pawurb/hotpath-rs",
     args_conflicts_with_subcommands = true
 )]
-pub struct HPArgs {
+pub(crate) struct HPArgs {
     #[command(subcommand)]
-    pub cmd: Option<HPSubcommand>,
+    pub(crate) cmd: Option<HPSubcommand>,
 
     #[cfg(feature = "tui")]
     #[command(flatten)]
-    pub console_args: ConsoleArgs,
+    pub(crate) console_args: ConsoleArgs,
 }
 
 #[cfg(not(feature = "cloud"))]
-pub const CLOUD_FEATURE_HINT: &str =
+pub(crate) const CLOUD_FEATURE_HINT: &str =
     "The 'cloud' command requires building with the 'cloud' feature: cargo install hotpath --features cloud";
 
 #[cfg(any(feature = "tui", feature = "cloud"))]

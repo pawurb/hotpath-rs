@@ -15,12 +15,12 @@ use clap::{Parser, Subcommand};
 use crate::cmd::cloud::api::{Client, Output};
 
 #[derive(Parser, Debug)]
-pub struct CloudArgs {
+pub(crate) struct CloudArgs {
     #[command(subcommand)]
-    pub cmd: CloudCommand,
+    pub(crate) cmd: CloudCommand,
 
     #[arg(long, global = true, help = "Indent the JSON output")]
-    pub pretty: bool,
+    pub(crate) pretty: bool,
 
     #[arg(
         long,
@@ -28,11 +28,11 @@ pub struct CloudArgs {
         value_name = "FILE",
         help = "Write the JSON output to FILE instead of stdout"
     )]
-    pub output: Option<PathBuf>,
+    pub(crate) output: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum CloudCommand {
+pub(crate) enum CloudCommand {
     #[command(
         about = "Show which user and token this shell acts as (GET /api/v1/auth)",
         long_about = "Show which user and token this shell acts as (GET /api/v1/auth).
@@ -46,7 +46,7 @@ server's error sentence when the token does not work."
 
 impl CloudArgs {
     /// Runs the command; every failure is one sentence on stderr and exit 1.
-    pub fn run(self) -> ExitCode {
+    pub(crate) fn run(self) -> ExitCode {
         match self.execute() {
             Ok(code) => code,
             Err(message) => {
