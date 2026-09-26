@@ -1,11 +1,11 @@
 //! Shared plumbing of the `hotpath cloud` commands: the token and base URL
 //! from the environment, the bearer `GET` / `PUT` and the JSON output. The
 //! token comes only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of
-//! shell history and `ps`) and is never printed, not even in an error. Every failure
-//! is one JSON document on stderr (`CliError`): a non-2xx server body exactly
-//! as received - the client adds no hints, whatever the server says is the
-//! whole advice - or `{"error": "..."}` built here when there is no such body
-//! (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
+//! shell history and `ps`) and is never printed, not even in an error. Every
+//! failure is one JSON document on stderr (`CliError`): a non-2xx server body
+//! exactly as received - the client adds no hints, whatever the server says is
+//! the whole advice - or `{"error": "..."}` built here when there is no such
+//! body (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
 //! (any non-2xx, network failure, invalid argument value), 2 clap usage error
 //! (clap's own, not remapped); `diff` will add 3 (regression) and 4 (no
 //! baseline / unreadable).
@@ -102,8 +102,7 @@ impl Client {
     }
 
     /// `PUT {base_url}{path}` with `body` as JSON and the bearer token; the
-    /// answer is handled like `get`'s, so a refusal body (a `PolicyRejected`
-    /// with its `problems`, say) reaches stderr untouched.
+    /// answer is handled like `get`'s.
     pub(crate) fn put<B: Serialize, T: DeserializeOwned>(
         &self,
         path: &str,

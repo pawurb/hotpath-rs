@@ -1,9 +1,9 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
     //! `hotpath cloud auth|repos|benchmarks|report|get-policy|set-policy`
-    //! against a mock hotpath.rs: the bearer request each sends, the JSON it re-emits, the
-    //! error JSON on stderr (server bodies verbatim, client failures as
-    //! `{"error": ...}`) with exit 1, argument validation before any request
+    //! against a mock hotpath.rs: the bearer request each sends, the JSON it
+    //! re-emits, the error JSON on stderr (server bodies verbatim, client
+    //! failures as `{"error": ...}`) with exit 1, argument validation before any request
     //! (and before the token is read), clap usage errors with exit 2, and
     //! that the token never reaches stdout or stderr.
     //!
@@ -978,7 +978,6 @@ mod tests {
             assert!(error.starts_with(&expected), "{args:?}: {error}");
         }
 
-        // The same refusals from stdin name it.
         let output = hotpath_with_stdin(
             &server,
             None,
