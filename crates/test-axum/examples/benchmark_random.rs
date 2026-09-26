@@ -1,7 +1,7 @@
 //! Synthetic benchmark for checking hotpath.rs PR comments. It touches every
-//! instrumented resource type (functions timing and alloc, futures, streams,
-//! channels, mutexes, rw_locks, SQL, HTTP, server routes, I/O and threads),
-//! and on every run each resource independently draws `fast` or `slow`, where
+//! resource type the PR comment policy judges (functions timing and alloc,
+//! channels, mutexes, rw_locks, SQL, HTTP, server routes and I/O), and on
+//! every run each resource independently draws `fast` or `slow`, where
 //! `slow` does 3x the work of `fast` (+200% time or bytes). Two runs therefore
 //! differ by +200% or -67% on every resource whose draw changed, so each PR
 //! comment shows a mix of regressions and improvements whose expected
@@ -16,7 +16,6 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -25,7 +24,6 @@ use axum::routing::get;
 use axum::Router;
 use diesel::prelude::*;
 use diesel::sql_types::BigInt;
-use futures::StreamExt;
 use hotpath::{HotpathGuardBuilder, Section};
 
 /// Calls per resource. Timing rows need at least 10 calls to be judged.
@@ -39,9 +37,6 @@ const BASE_ALLOC: usize = 4 * 1024;
 /// Rows a `fast` SQL query walks through a recursive CTE (CPU-bound in SQLite).
 const BASE_SQL_ROWS: i64 = 20_000;
 const CHANNEL_CAPACITY: usize = 4;
-/// The CPU thread spins a third of every period when `fast` and all of it
-/// when `slow`.
-const CPU_PERIOD: Duration = Duration::from_millis(12);
 
 #[derive(Clone, Copy, PartialEq)]
 enum Speed {
@@ -73,8 +68,6 @@ impl Speed {
 enum Resource {
     FunctionsTiming,
     FunctionsAlloc,
-    Futures,
-    Streams,
     Channels,
     Mutexes,
     RwLocks,
@@ -82,14 +75,11 @@ enum Resource {
     Http,
     Server,
     Io,
-    Threads,
 }
 
-const RESOURCES: [Resource; 12] = [
+const RESOURCES: [Resource; 9] = [
     Resource::FunctionsTiming,
     Resource::FunctionsAlloc,
-    Resource::Futures,
-    Resource::Streams,
     Resource::Channels,
     Resource::Mutexes,
     Resource::RwLocks,
@@ -97,7 +87,6 @@ const RESOURCES: [Resource; 12] = [
     Resource::Http,
     Resource::Server,
     Resource::Io,
-    Resource::Threads,
 ];
 
 impl Resource {
@@ -105,8 +94,6 @@ impl Resource {
         match self {
             Resource::FunctionsTiming => "functions_timing",
             Resource::FunctionsAlloc => "functions_alloc",
-            Resource::Futures => "futures",
-            Resource::Streams => "streams",
             Resource::Channels => "channels",
             Resource::Mutexes => "mutexes",
             Resource::RwLocks => "rw_locks",
@@ -114,7 +101,6 @@ impl Resource {
             Resource::Http => "http",
             Resource::Server => "server",
             Resource::Io => "io",
-            Resource::Threads => "threads",
         }
     }
 }
@@ -265,8 +251,6 @@ async fn main() {
         .sections(vec![
             Section::FunctionsTiming,
             Section::FunctionsAlloc,
-            Section::Futures,
-            Section::Streams,
             Section::Channels,
             Section::Mutexes,
             Section::RwLocks,
@@ -274,30 +258,12 @@ async fn main() {
             Section::Http,
             Section::Server,
             Section::Io,
+            // Not judged by the policy, but feeds the max RSS total.
             Section::Threads,
         ])
         .user_metadata(plan.user_metadata())
         .build();
     let overall = Instant::now();
-
-    // Runs for the whole benchmark so the threads sampler sees it throughout.
-    let stop = Arc::new(AtomicBool::new(false));
-    let cpu_thread = {
-        let stop = Arc::clone(&stop);
-        let busy = CPU_PERIOD * plan.speed(Resource::Threads).factor() / SLOW_FACTOR;
-        std::thread::Builder::new()
-            .name("random-cpu".to_string())
-            .spawn(move || {
-                while !stop.load(Ordering::Relaxed) {
-                    let start = Instant::now();
-                    while start.elapsed() < busy {
-                        std::hint::spin_loop();
-                    }
-                    std::thread::sleep(CPU_PERIOD - busy);
-                }
-            })
-            .expect("spawn cpu thread")
-    };
 
     let speed = plan.speed(Resource::FunctionsTiming);
     for _ in 0..RUNS {
@@ -310,27 +276,6 @@ async fn main() {
         total += random_alloc(speed);
     }
     std::hint::black_box(total);
-
-    // Futures and streams report time spent inside `poll`, so the work blocks
-    // there instead of awaiting a timer.
-    let delay = plan.speed(Resource::Futures).delay();
-    for _ in 0..RUNS {
-        hotpath::future!(
-            async move { std::thread::sleep(delay) },
-            label = "random-future"
-        )
-        .await;
-    }
-
-    let delay = plan.speed(Resource::Streams).delay();
-    let items = futures::stream::iter(0..RUNS).map(move |i| {
-        std::thread::sleep(delay);
-        i
-    });
-    let mut items = hotpath::stream!(items, label = "random-stream");
-    while let Some(i) = items.next().await {
-        std::hint::black_box(i);
-    }
 
     // The producer fills the bounded channel at once and the consumer takes
     // one message per delay, so every message waits about
@@ -432,9 +377,6 @@ async fn main() {
         io.write_all(&buf).expect("write");
         io.read_exact(&mut buf).expect("read");
     }
-
-    stop.store(true, Ordering::Relaxed);
-    cpu_thread.join().expect("cpu thread panicked");
 
     println!("benchmark_random: total {:?}", overall.elapsed());
 }

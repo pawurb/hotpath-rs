@@ -4323,7 +4323,6 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "diesel",
- "futures",
  "hotpath",
  "libsqlite3-sys",
  "reqwest 0.13.4",
