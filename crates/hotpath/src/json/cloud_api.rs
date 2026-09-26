@@ -8,6 +8,7 @@
 //! and branch only on `ApiError::code`.
 
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 /// Base URL of the hotpath.rs API when nothing overrides it.
 pub const DEFAULT_BASE_URL: &str = "https://hotpath.rs";
@@ -38,11 +39,9 @@ pub enum ApiErrorCode {
     Forbidden,
     /// Unknown path or resource, including anything the caller may not see (404).
     NotFound,
-    /// 405.
     MethodNotAllowed,
     /// 429; the `Retry-After` header says how many seconds to wait.
     RateLimited,
-    /// 500.
     Internal,
     /// A code this client does not know; printed like any other error. Also
     /// the default, so a body without `code` still parses.
@@ -75,8 +74,9 @@ pub struct AuthStatus {
 pub struct TokenStatus {
     /// The label given on creation.
     pub name: String,
-    /// RFC 3339, UTC.
-    pub expires_at: String,
+    /// RFC 3339 on the wire.
+    #[serde(with = "time::serde::rfc3339")]
+    pub expires_at: OffsetDateTime,
 }
 
 /// What happened to the pull request comment, inside the 201 body. `url` set
@@ -111,6 +111,7 @@ mod tests {
         normalize_base_url, ApiError, ApiErrorCode, AuthStatus, CommentOutcome, TokenStatus,
         UploadCreated, DEFAULT_BASE_URL,
     };
+    use time::macros::datetime;
 
     #[test]
     fn normalize_base_url_rules() {
@@ -161,11 +162,16 @@ mod tests {
                 login: "pawurb".into(),
                 token: TokenStatus {
                     name: "laptop".into(),
-                    expires_at: "2027-01-01T00:00:00Z".into(),
+                    expires_at: datetime!(2027-01-01 00:00:00 UTC),
                 },
             }
         );
         assert_eq!(serde_json::to_string(&status).unwrap(), body);
+
+        assert!(serde_json::from_str::<AuthStatus>(
+            r#"{"login":"pawurb","token":{"name":"laptop","expires_at":"tomorrow"}}"#,
+        )
+        .is_err());
     }
 
     #[test]

@@ -10,6 +10,7 @@ mod tests {
 
     use hotpath::json::cloud_api::{ApiError, ApiErrorCode, AuthStatus, TokenStatus};
     use mockito::{Matcher, Server, ServerGuard};
+    use time::macros::datetime;
 
     const TOKEN: &str = "hpat_5f3c9a1b2d4e6f7a8b9c0d1e2f3a4b5c";
     const AUTH_BODY: &str =
@@ -79,7 +80,7 @@ mod tests {
                 login: "pawurb".into(),
                 token: TokenStatus {
                     name: "laptop".into(),
-                    expires_at: "2027-01-01T00:00:00Z".into(),
+                    expires_at: datetime!(2027-01-01 00:00:00 UTC),
                 },
             }
         );
@@ -153,9 +154,18 @@ mod tests {
         );
     }
 
+    /// Status, code, server sentence, extra response headers, expected stderr.
+    type ErrorCase = (
+        u16,
+        ApiErrorCode,
+        &'static str,
+        Vec<(&'static str, &'static str)>,
+        &'static str,
+    );
+
     #[test]
     fn auth_error_codes_add_their_hint() {
-        let cases: [(u16, ApiErrorCode, &str, Vec<(&str, &str)>, &str); 5] = [
+        let cases: [ErrorCase; 5] = [
             (
                 401,
                 ApiErrorCode::GithubAuthorizationExpired,
