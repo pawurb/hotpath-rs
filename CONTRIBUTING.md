@@ -211,6 +211,7 @@ cargo check --features "hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta"
 cargo check -p hotpath --bin hotpath --features=tui
 cargo check --features='tui,hotpath,hotpath-meta,hotpath-alloc-meta,hotpath-mcp,hotpath-mcp-meta,dev' --bin hotpath
 cargo check -p hotpath --bin hotpath-utils --features=utils
+cargo check -p hotpath --bin hotpath --features=cloud
 ```
 
 ### Formatting and linting
@@ -236,6 +237,7 @@ cargo +nightly miri test -p hotpath-drain
 ```bash
 cargo test --lib --features hotpath
 cargo test -p hotpath --bin hotpath --features=tui
+cargo test -p hotpath --features cloud --test cloud_cli
 cargo run -p test-all-features --example all_noop
 cargo test --features hotpath --test guards -- --nocapture --test-threads=1
 cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1

@@ -1,22 +1,82 @@
-//! Wire types of the hotpath.rs upload API (`POST /api/v1/reports`), shared
-//! by the `hotpath-cloud` client (`lib_on/cloud.rs`) and the hotpath-backend
-//! server, which depends on this crate with the `json` feature.
+//! Wire types of the hotpath.rs API, shared by the `hotpath-cloud` upload
+//! client (`lib_on/cloud.rs`), the `hotpath cloud` CLI (`cloud` binary
+//! feature) and the hotpath-backend server, which depends on this crate with
+//! the `json` feature. Every body the server sends is defined here first;
+//! the server serializes these types and keeps no structs of its own.
 //!
-//! Deliberately minimal: the upload succeeded or failed, the comment was
-//! posted or failed, and one sentence says why. The server owns that
-//! sentence, the client prints it and branches on nothing in it.
+//! Deliberately minimal: the server owns every sentence, the clients print it
+//! and branch only on `ApiError::code`.
 
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
-/// Body of every non-2xx answer from `POST /api/v1/reports`.
+/// Base URL of the hotpath.rs API when nothing overrides it.
+pub const DEFAULT_BASE_URL: &str = "https://hotpath.rs";
+
+/// Turns the raw value of `HOTPATH_UPLOAD_URL` / `HOTPATH_API_URL` into a
+/// base URL: trimmed, without trailing slashes, `DEFAULT_BASE_URL` when unset
+/// or blank.
+pub fn normalize_base_url(raw: Option<String>) -> String {
+    raw.map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
+}
+
+/// Why a request was refused, as clients branch on it. Never on the message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiErrorCode {
+    /// No `Authorization: Bearer` credential at all (401).
+    MissingToken,
+    /// Unknown, expired or revoked token: one code, so a probe learns nothing (401).
+    InvalidToken,
+    /// The user's GitHub authorization lapsed; log in at hotpath.rs once (401).
+    GithubAuthorizationExpired,
+    /// Malformed query or path value, or an oversized upload body (400, 413).
+    BadRequest,
+    /// The token's user may not act on this resource, for instance an upload
+    /// to a repository the GitHub App is not installed on (403).
+    Forbidden,
+    /// Unknown path or resource, including anything the caller may not see (404).
+    NotFound,
+    MethodNotAllowed,
+    /// 429; the `Retry-After` header says how many seconds to wait.
+    RateLimited,
+    Internal,
+    /// A code this client does not know; printed like any other error. Also
+    /// the default, so a body without `code` still parses.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Body of every non-2xx answer of `/api/v1`. The request id is the
+/// `x-request-id` response header, not part of the body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UploadError {
+pub struct ApiError {
     /// What was wrong and what to do about it.
     pub error: String,
-    /// Id of the server-side request span, for matching a CI line to a log
-    /// line. Also sent as the `x-request-id` response header.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub request_id: Option<String>,
+    #[serde(default)]
+    pub code: ApiErrorCode,
+}
+
+/// Body of `GET /api/v1/auth`: the status of the credential sent, nothing
+/// else (no ids, no email, no repositories).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthStatus {
+    /// The GitHub login the token acts as.
+    pub login: String,
+    pub token: TokenStatus,
+}
+
+/// The personal API token behind an `AuthStatus`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenStatus {
+    /// The label given on creation.
+    pub name: String,
+    /// RFC 3339 on the wire.
+    #[serde(with = "time::serde::rfc3339")]
+    pub expires_at: OffsetDateTime,
 }
 
 /// What happened to the pull request comment, inside the 201 body. `url` set
@@ -47,18 +107,71 @@ pub struct UploadCreated {
 
 #[cfg(test)]
 mod tests {
-    use crate::json::cloud_api::{CommentOutcome, UploadCreated, UploadError};
+    use crate::json::cloud_api::{
+        normalize_base_url, ApiError, ApiErrorCode, AuthStatus, CommentOutcome, TokenStatus,
+        UploadCreated, DEFAULT_BASE_URL,
+    };
+    use time::macros::datetime;
 
     #[test]
-    fn upload_error_parses_with_extra_fields() {
-        let err: UploadError =
-            serde_json::from_str(r#"{"error":"nope","request_id":"1bac4db9-15a","code":"later"}"#)
-                .unwrap();
-        assert_eq!(err.error, "nope");
-        assert_eq!(err.request_id.as_deref(), Some("1bac4db9-15a"));
+    fn normalize_base_url_rules() {
+        assert_eq!(normalize_base_url(None), DEFAULT_BASE_URL);
+        assert_eq!(normalize_base_url(Some("   ".into())), DEFAULT_BASE_URL);
+        assert_eq!(
+            normalize_base_url(Some(" http://localhost:3000/// ".into())),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_base_url(Some("https://staging.hotpath.rs".into())),
+            "https://staging.hotpath.rs"
+        );
+    }
 
-        let minimal: UploadError = serde_json::from_str(r#"{"error":"boom"}"#).unwrap();
-        assert_eq!(minimal.request_id, None);
+    #[test]
+    fn api_error_parses_known_unknown_and_missing_codes() {
+        let err: ApiError =
+            serde_json::from_str(r#"{"error":"nope","code":"invalid_token","later":1}"#).unwrap();
+        assert_eq!(err.error, "nope");
+        assert_eq!(err.code, ApiErrorCode::InvalidToken);
+
+        let newer: ApiError =
+            serde_json::from_str(r#"{"error":"nope","code":"quota_exceeded"}"#).unwrap();
+        assert_eq!(newer.code, ApiErrorCode::Unknown);
+
+        let bare: ApiError = serde_json::from_str(r#"{"error":"boom"}"#).unwrap();
+        assert_eq!(bare.code, ApiErrorCode::Unknown);
+
+        assert_eq!(
+            serde_json::to_string(&ApiError {
+                error: "Benchmark ci not found.".into(),
+                code: ApiErrorCode::NotFound,
+            })
+            .unwrap(),
+            r#"{"error":"Benchmark ci not found.","code":"not_found"}"#
+        );
+    }
+
+    #[test]
+    fn auth_status_round_trips() {
+        let body =
+            r#"{"login":"pawurb","token":{"name":"laptop","expires_at":"2027-01-01T00:00:00Z"}}"#;
+        let status: AuthStatus = serde_json::from_str(body).unwrap();
+        assert_eq!(
+            status,
+            AuthStatus {
+                login: "pawurb".into(),
+                token: TokenStatus {
+                    name: "laptop".into(),
+                    expires_at: datetime!(2027-01-01 00:00:00 UTC),
+                },
+            }
+        );
+        assert_eq!(serde_json::to_string(&status).unwrap(), body);
+
+        assert!(serde_json::from_str::<AuthStatus>(
+            r#"{"login":"pawurb","token":{"name":"laptop","expires_at":"tomorrow"}}"#,
+        )
+        .is_err());
     }
 
     #[test]
