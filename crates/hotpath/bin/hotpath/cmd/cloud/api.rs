@@ -1,11 +1,11 @@
 //! Shared plumbing of the `hotpath cloud` commands: the token and base URL
-//! from the environment, the bearer `GET` and the JSON output. The token comes
-//! only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of shell
-//! history and `ps`) and is never printed, not even in an error. Every failure
-//! is one JSON document on stderr (`CliError`): a non-2xx server body exactly
-//! as received - the client adds no hints, whatever the server says is the
-//! whole advice - or `{"error": "..."}` built here when there is no such body
-//! (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
+//! from the environment, the bearer `GET` / `PUT` and the JSON output. The
+//! token comes only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of
+//! shell history and `ps`) and is never printed, not even in an error. Every
+//! failure is one JSON document on stderr (`CliError`): a non-2xx server body
+//! exactly as received - the client adds no hints, whatever the server says is
+//! the whole advice - or `{"error": "..."}` built here when there is no such
+//! body (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
 //! (any non-2xx, network failure, invalid argument value), 2 clap usage error
 //! (clap's own, not remapped); `diff` will add 3 (regression) and 4 (no
 //! baseline / unreadable).
@@ -93,11 +93,45 @@ impl Client {
     /// anything else is the server body as the error (see `CliError::server`).
     pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, CliError> {
         let url = format!("{}{path}", self.base_url);
-        let mut resp = self
+        let resp = self
             .agent
             .get(&url)
-            .header("Authorization", &format!("Bearer {}", self.token))
-            .call()
+            .header("Authorization", &self.authorization())
+            .call();
+        self.read_response(&url, resp)
+    }
+
+    /// `PUT {base_url}{path}` with `body` as JSON and the bearer token; the
+    /// answer is handled like `get`'s.
+    pub(crate) fn put<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, CliError> {
+        let url = format!("{}{path}", self.base_url);
+        let body = serde_json::to_vec(body)
+            .map_err(|e| CliError::client(format!("could not serialize the request: {e}")))?;
+        let resp = self
+            .agent
+            .put(&url)
+            .header("Authorization", &self.authorization())
+            .header("Content-Type", "application/json")
+            .send(&body[..]);
+        self.read_response(&url, resp)
+    }
+
+    fn authorization(&self) -> String {
+        format!("Bearer {}", self.token)
+    }
+
+    /// A 2xx body parsed as `T`, or the failure: the transport error (which
+    /// names the base URL only) or the non-2xx body (see `CliError::server`).
+    fn read_response<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        resp: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    ) -> Result<T, CliError> {
+        let mut resp = resp
             .map_err(|e| CliError::client(format!("request to {} failed: {e}", self.base_url)))?;
         let status = resp.status().as_u16();
         if (200..300).contains(&status) {

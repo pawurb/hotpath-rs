@@ -11,7 +11,7 @@ use std::num::NonZeroU64;
 use std::process::ExitCode;
 
 use clap::{ArgGroup, Args, ValueEnum};
-use hotpath::json::cloud_api::{validate_benchmark_name, Report, ReportSummary};
+use hotpath::json::cloud_api::{Report, ReportSummary};
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
 use crate::cmd::cloud::repo;
@@ -101,12 +101,10 @@ pub(crate) fn run(output: &Output, args: ReportArgs) -> Result<ExitCode, CliErro
 /// first bad argument.
 fn request_path(args: &ReportArgs) -> Result<String, CliError> {
     let repo = repo::validate(&args.repo)?;
-    validate_benchmark_name(&args.benchmark).map_err(|rule| {
-        CliError::client(format!("invalid --benchmark `{}`: {rule}", args.benchmark))
-    })?;
+    let benchmark = repo::validate_benchmark(&args.benchmark)?;
     let selector = selector(args)?;
 
-    let base = format!("/api/v1/repos/{repo}/benchmarks/{}/reports", args.benchmark);
+    let base = format!("/api/v1/repos/{repo}/benchmarks/{benchmark}/reports");
     let mut query = Vec::new();
     let path = match &selector {
         Selector::Pr(pr) => {

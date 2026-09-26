@@ -71,6 +71,9 @@ pub enum ApiErrorCode {
     MethodNotAllowed,
     /// 429; the `Retry-After` header says how many seconds to wait.
     RateLimited,
+    /// A submitted PR comment policy was refused (422); the body is a
+    /// `PolicyRejected` with every problem found.
+    InvalidPolicy,
     Internal,
     /// A code this client does not know; printed like any other error. Also
     /// the default, so a body without `code` still parses.
@@ -252,13 +255,127 @@ pub struct UploadCreated {
     pub comment: CommentOutcome,
 }
 
+/// Largest PR comment policy document the server stores, in bytes of UTF-8.
+pub const POLICY_MAX_BYTES: usize = 65536;
+
+/// Which stored document a policy view comes from. A benchmark policy
+/// overrides the repo policy for that benchmark; levels do not inherit from
+/// each other: the one that applies is the benchmark's if stored, else the
+/// repo's if stored, else the built-in default, and any key a stored document
+/// omits takes the built-in value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PolicyLevel {
+    /// Nothing is stored at either level: the built-in default applies.
+    Default,
+    /// The repository's document, which applies to every benchmark without
+    /// one of its own.
+    Repo,
+    /// One benchmark's document.
+    Benchmark,
+}
+
+/// Body of `GET /api/v1/repos/{owner}/{name}/policy` and
+/// `GET .../benchmarks/{benchmark}/policy`: the PR comment policy in force for
+/// the scope asked about. Reading needs only access to the repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicyView {
+    /// `owner/name` as GitHub names it today.
+    pub repository: String,
+    /// The benchmark asked about; `None` for the repo level.
+    pub benchmark: Option<String>,
+    /// Which level's document `source` is. For a benchmark it can be `Repo` or
+    /// `Default` (nothing stored for the benchmark); for the repo level it is
+    /// `Repo` or `Default`.
+    pub level: PolicyLevel,
+    /// Whether a document is stored at the level asked about. `false` means
+    /// the scope inherits and `source` is what it inherits, a starting point
+    /// for an edit.
+    pub stored: bool,
+    /// The TOML document, as written by whoever saved it (or the built-in
+    /// default, verbatim).
+    pub source: String,
+    /// Set when the stored document no longer parses under the server's
+    /// current rules and the built-in default judges instead: the sentence
+    /// saying so. `None` when `source` is what judges.
+    pub fallback: Option<String>,
+}
+
+/// Body of `PUT /api/v1/repos/{owner}/{name}/policy` and
+/// `PUT .../benchmarks/{benchmark}/policy`. Writing needs push permission on
+/// the repository (checked with GitHub per request, `403 forbidden` without
+/// it), and a benchmark must exist (created by its first upload) to hold a
+/// policy (`404 not_found` otherwise).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicyUpdate {
+    /// The whole TOML document to store at the scope the path names, the same
+    /// text the dashboard's policy editor saves, stored as written. It
+    /// replaces what is stored there; nothing is merged. At most
+    /// `POLICY_MAX_BYTES`; blank is refused.
+    pub source: String,
+    /// Validate only: the server checks the document and answers as it would,
+    /// but stores nothing.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// Body of a successful `PUT .../policy` (200).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicySaved {
+    /// `owner/name` as GitHub names it today.
+    pub repository: String,
+    /// The benchmark written; `None` for the repo level.
+    pub benchmark: Option<String>,
+    /// `Repo` or `Benchmark`: the level written (or that would be, on a dry run).
+    pub level: PolicyLevel,
+    /// `true` when nothing was stored because the request asked only to validate.
+    pub dry_run: bool,
+}
+
+/// One thing wrong with a submitted policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicyProblem {
+    /// 1-based line of the submitted text the problem points at; `None` when
+    /// it concerns the document as a whole (size, blank) or no line can be
+    /// named.
+    pub line: Option<u32>,
+    /// What is wrong and, where the server can say, what is allowed
+    /// (`functions.alloc.min_percent_change must be between 0 and 1000, got 5000`).
+    pub message: String,
+}
+
+/// Body of `422` from `PUT .../policy` when the document is refused: an
+/// `ApiError` (`error`, `code` = `invalid_policy`) plus every problem found. A
+/// client that only knows `ApiError` still parses it (unknown fields are
+/// ignored); one that knows this type reads `problems`.
+///
+/// The server collects all the problems it can in one pass, within what TOML
+/// allows. A syntax error (an unbalanced quote, a bad table header) stops
+/// parsing, so it is the only problem reported: nothing after it can be read
+/// reliably. Once the text parses, structural problems (an unknown key, a
+/// wrong value type, a column name the resource does not have) and range
+/// problems (a percent outside its bounds, an empty `metrics` list, a column
+/// named twice, too many `ignore` patterns) are all reported together, each
+/// with its line when it can be found. So `problems` has one item for a
+/// syntax error and every item otherwise; never assume a single item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicyRejected {
+    /// One sentence summing up (`The policy has 3 problems.`).
+    pub error: String,
+    /// `InvalidPolicy`.
+    pub code: ApiErrorCode,
+    /// Never empty. Ordered by line, whole-document problems first.
+    pub problems: Vec<PolicyProblem>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
     use crate::json::cloud_api::{
         normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
-        BenchmarkList, BenchmarkSummary, CommentOutcome, RepoList, Report, ReportSummary,
+        BenchmarkList, BenchmarkSummary, CommentOutcome, PolicyLevel, PolicyProblem,
+        PolicyRejected, PolicySaved, PolicyUpdate, PolicyView, RepoList, Report, ReportSummary,
         Repository, TokenStatus, UploadCreated, DEFAULT_BASE_URL,
     };
     use time::macros::datetime;
@@ -519,5 +636,109 @@ mod tests {
             json,
             r#"{"id":"r1","repository":"a/b","benchmark":"meta","comment":{}}"#
         );
+    }
+
+    #[test]
+    fn policy_view_round_trips() {
+        let repo = r#"{"repository":"pawurb/hotpath-rs","benchmark":null,"level":"repo","stored":true,"source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
+        let view: PolicyView = serde_json::from_str(repo).unwrap();
+        assert_eq!(
+            view,
+            PolicyView {
+                repository: "pawurb/hotpath-rs".into(),
+                benchmark: None,
+                level: PolicyLevel::Repo,
+                stored: true,
+                source: "[functions.timing]\nmin_percent_change = 5\n".into(),
+                fallback: None,
+            }
+        );
+        assert_eq!(serde_json::to_string(&view).unwrap(), repo);
+
+        // A benchmark with nothing stored inherits the repo document.
+        let inheriting = r##"{"repository":"pawurb/hotpath-rs","benchmark":"ci","level":"repo","stored":false,"source":"# repo\n","fallback":null}"##;
+        let view: PolicyView = serde_json::from_str(inheriting).unwrap();
+        assert_eq!(view.benchmark.as_deref(), Some("ci"));
+        assert_eq!(view.level, PolicyLevel::Repo);
+        assert!(!view.stored);
+        assert_eq!(serde_json::to_string(&view).unwrap(), inheriting);
+
+        let fallback = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","level":"benchmark","stored":true,"source":"[old]\n","fallback":"The stored policy no longer parses; the built-in default applies."}"#;
+        let view: PolicyView = serde_json::from_str(fallback).unwrap();
+        assert_eq!(view.level, PolicyLevel::Benchmark);
+        assert_eq!(
+            view.fallback.as_deref(),
+            Some("The stored policy no longer parses; the built-in default applies.")
+        );
+        assert_eq!(serde_json::to_string(&view).unwrap(), fallback);
+
+        let default = r#"{"repository":"a/b","benchmark":null,"level":"default","stored":false,"source":"","fallback":null,"later":1}"#;
+        let view: PolicyView = serde_json::from_str(default).unwrap();
+        assert_eq!(view.level, PolicyLevel::Default);
+    }
+
+    #[test]
+    fn policy_update_and_saved_round_trip() {
+        let body = r#"{"source":"[functions]\n","dry_run":true}"#;
+        let update: PolicyUpdate = serde_json::from_str(body).unwrap();
+        assert_eq!(
+            update,
+            PolicyUpdate {
+                source: "[functions]\n".into(),
+                dry_run: true,
+            }
+        );
+        assert_eq!(serde_json::to_string(&update).unwrap(), body);
+
+        let omitted: PolicyUpdate = serde_json::from_str(r#"{"source":"x = 1"}"#).unwrap();
+        assert!(!omitted.dry_run);
+
+        let saved =
+            r#"{"repository":"pawurb/hotpath-rs","benchmark":null,"level":"repo","dry_run":false}"#;
+        let parsed: PolicySaved = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            parsed,
+            PolicySaved {
+                repository: "pawurb/hotpath-rs".into(),
+                benchmark: None,
+                level: PolicyLevel::Repo,
+                dry_run: false,
+            }
+        );
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), saved);
+    }
+
+    #[test]
+    fn policy_rejected_round_trips_and_parses_as_api_error() {
+        let body = r#"{"error":"The policy has 3 problems.","code":"invalid_policy","problems":[{"line":null,"message":"the policy is larger than 65536 bytes"},{"line":3,"message":"unknown key `functions.timing.min_percent`"},{"line":7,"message":"functions.alloc.min_percent_change must be between 0 and 1000, got 5000"}]}"#;
+        let rejected: PolicyRejected = serde_json::from_str(body).unwrap();
+        assert_eq!(
+            rejected,
+            PolicyRejected {
+                error: "The policy has 3 problems.".into(),
+                code: ApiErrorCode::InvalidPolicy,
+                problems: vec![
+                    PolicyProblem {
+                        line: None,
+                        message: "the policy is larger than 65536 bytes".into(),
+                    },
+                    PolicyProblem {
+                        line: Some(3),
+                        message: "unknown key `functions.timing.min_percent`".into(),
+                    },
+                    PolicyProblem {
+                        line: Some(7),
+                        message:
+                            "functions.alloc.min_percent_change must be between 0 and 1000, got 5000"
+                                .into(),
+                    },
+                ],
+            }
+        );
+        assert_eq!(serde_json::to_string(&rejected).unwrap(), body);
+
+        let plain: ApiError = serde_json::from_str(body).unwrap();
+        assert_eq!(plain.code, ApiErrorCode::InvalidPolicy);
+        assert_eq!(plain.error, "The policy has 3 problems.");
     }
 }
