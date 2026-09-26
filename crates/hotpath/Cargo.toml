@@ -87,7 +87,7 @@ hotpath-macros = { workspace = true }
 hotpath-drain = { workspace = true, optional = true }
 ratatui = { version = "0.30", optional = true }
 regex-lite = { version = "0.1", optional = true }
-serde = { version = "1.0.130", features = ["derive"], optional = true }
+serde = { version = "1.0.184", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 tiny_http = { version = "0.12", optional = true }
 tokio = { version = "1.47", features = ["rt"], optional = true }
@@ -105,7 +105,7 @@ futures-sink = { version = "0.3.32", optional = true }
 futures-util = { version = "0.3.32", default-features = false, features = ["sink"], optional = true }
 pin-project-lite = { version = "0.2.12", optional = true }
 libc = { version = "0.2.172", optional = true }
-time = { version = "0.3", features = ["macros"], optional = true }
+time = { version = "0.3.37", features = ["macros"], optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"], optional = true }
 sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio"], optional = true }
