@@ -1,7 +1,10 @@
-//! The `--repo owner/name` value of the `hotpath cloud` commands that target
-//! one repository, validated against GitHub's own character set before it is
-//! put in a request path. There is no fallback to the git remote: the caller
-//! names the repository, `hotpath cloud repos` lists the choices.
+//! The `--repo owner/name` and `--benchmark NAME` values of the `hotpath
+//! cloud` commands that target one repository or benchmark, validated before
+//! they are put in a request path. `--repo` follows GitHub's own character
+//! set; there is no fallback to the git remote: the caller names the
+//! repository, `hotpath cloud repos` lists the choices.
+
+use hotpath::json::cloud_api::validate_benchmark_name;
 
 use crate::cmd::cloud::api::CliError;
 
@@ -19,6 +22,14 @@ pub(crate) fn validate(repo: &str) -> Result<&str, CliError> {
             "invalid --repo `{repo}`: expected owner/name, each made of letters, digits, `.`, `_` and `-`."
         )))
     }
+}
+
+/// A `--benchmark` value, validated by the rule every party shares
+/// (`validate_benchmark_name`), so it needs no percent-encoding in a path.
+pub(crate) fn validate_benchmark(benchmark: &str) -> Result<&str, CliError> {
+    validate_benchmark_name(benchmark)
+        .map(|()| benchmark)
+        .map_err(|rule| CliError::client(format!("invalid --benchmark `{benchmark}`: {rule}")))
 }
 
 fn valid_segment(segment: &str) -> bool {
