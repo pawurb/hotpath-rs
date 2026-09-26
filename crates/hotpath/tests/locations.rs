@@ -152,9 +152,11 @@ mod tests {
         let meta = report.meta;
         assert!(!meta.rustc.is_empty(), "rustc version");
         assert!(meta.os.contains('-'), "os is <os>-<arch>: {}", meta.os);
+        assert!(meta.created_at.offset().is_utc());
+        let age = time::OffsetDateTime::now_utc() - meta.created_at;
         assert!(
-            meta.created_at.contains('T') && meta.created_at.ends_with('Z'),
-            "created_at is RFC 3339 UTC: {}",
+            age >= time::Duration::ZERO && age < time::Duration::hours(1),
+            "created_at is recent: {} (age {age})",
             meta.created_at
         );
         assert_eq!(meta.source_root.as_deref(), Some(""));

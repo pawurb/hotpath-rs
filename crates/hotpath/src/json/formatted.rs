@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use time::OffsetDateTime;
 
 use crate::json::{
     ChannelLogs, DataFlowLogEntry, FutureLog, FutureLogsList, HttpLogs, SqlLogs, StreamLogs,
@@ -1113,15 +1114,16 @@ fn default_report_type() -> String {
 /// Build/runtime environment of a static report, plus the git and source-root
 /// data the server needs to render clickable source links from `location`
 /// fields.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonMeta {
     /// Compiler version, e.g. `1.89.0`; empty when `rustc --version` failed
     /// at build time.
     pub rustc: String,
     /// `<os>-<arch>`, e.g. `macos-aarch64`.
     pub os: String,
-    /// RFC 3339 UTC timestamp of report generation.
-    pub created_at: String,
+    /// When the report was generated; RFC 3339 UTC on the wire, whole seconds.
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
     /// Working directory relative to the enclosing git root: the prefix to
     /// prepend to relative `location.file` values ("" when the process ran
     /// from the repo root). `HOTPATH_SOURCE_ROOT` overrides; omitted when no
@@ -1251,12 +1253,14 @@ pub struct JsonReport {
     pub debug: Option<JsonDebugList>,
 }
 
-impl Default for JsonReport {
-    fn default() -> Self {
+impl JsonReport {
+    /// An empty report of this crate's version: every section unset until a
+    /// collector fills it.
+    pub fn new(meta: JsonMeta) -> Self {
         Self {
             r#type: default_report_type(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            meta: JsonMeta::default(),
+            meta,
             label: None,
             user_metadata: None,
             time_sampling: None,
