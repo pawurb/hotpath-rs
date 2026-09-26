@@ -41,18 +41,14 @@ fn from_origin() -> Result<String, CliError> {
         )));
     }
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let repo = repository_from_remote_url(&url).ok_or_else(|| {
-        CliError::client(format!(
-            "the origin remote `{}` is not on github.com; pass --repo owner/name.",
-            redact_userinfo(&url)
-        ))
-    })?;
-    validate(&repo).ok_or_else(|| {
-        CliError::client(format!(
-            "the origin remote `{}` does not name a GitHub owner/name; pass --repo owner/name.",
-            redact_userinfo(&url)
-        ))
-    })
+    repository_from_remote_url(&url)
+        .and_then(|repo| validate(&repo))
+        .ok_or_else(|| {
+            CliError::client(format!(
+                "the origin remote `{}` is not a github.com repository; pass --repo owner/name.",
+                redact_userinfo(&url)
+            ))
+        })
 }
 
 /// The URL without its `user[:password]@` part, for quoting in a message.

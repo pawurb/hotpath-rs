@@ -23,7 +23,6 @@ mod tests {
     const BENCHMARKS_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmarks":[{"name":"ci","reports":412,"latest_report_at":"2026-09-25T18:03:11Z"}]}"#;
     const BENCHMARKS_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks";
 
-    /// Runs `hotpath cloud <args>` from the test's own working directory.
     fn hotpath(server: &ServerGuard, token: Option<&str>, args: &[&str]) -> Output {
         hotpath_in(server, token, args, None)
     }
@@ -88,15 +87,19 @@ mod tests {
         .unwrap()
     }
 
-    fn mock_auth(server: &mut ServerGuard) -> mockito::Mock {
+    fn mock_get(server: &mut ServerGuard, path: &str, body: &str) -> mockito::Mock {
         server
-            .mock("GET", "/api/v1/auth")
+            .mock("GET", path)
             .match_header("authorization", format!("Bearer {TOKEN}").as_str())
             .match_header("user-agent", Matcher::Regex("^hotpath-cli/[0-9]".into()))
             .with_status(200)
             .with_header("content-type", "application/json; charset=utf-8")
-            .with_body(AUTH_BODY)
+            .with_body(body)
             .create()
+    }
+
+    fn mock_auth(server: &mut ServerGuard) -> mockito::Mock {
+        mock_get(server, "/api/v1/auth", AUTH_BODY)
     }
 
     #[test]
@@ -316,17 +319,6 @@ mod tests {
             "{error}"
         );
         assert!(!error.contains(TOKEN), "{error}");
-    }
-
-    fn mock_get(server: &mut ServerGuard, path: &str, body: &str) -> mockito::Mock {
-        server
-            .mock("GET", path)
-            .match_header("authorization", format!("Bearer {TOKEN}").as_str())
-            .match_header("user-agent", Matcher::Regex("^hotpath-cli/[0-9]".into()))
-            .with_status(200)
-            .with_header("content-type", "application/json; charset=utf-8")
-            .with_body(body)
-            .create()
     }
 
     /// A fresh empty directory under the temp dir, removed when dropped.
