@@ -69,6 +69,9 @@ jobs:
       - name: Check utils build
         run: |
           cargo check -p hotpath --bin hotpath-utils --features=utils
+      - name: Check cloud CLI build
+        run: |
+          cargo check -p hotpath --bin hotpath --features=cloud
       - name: Build tests
         run: |
           cargo build --tests
@@ -81,6 +84,9 @@ jobs:
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui
+      - name: Run cloud CLI tests
+        run: |
+          cargo test -p hotpath --features cloud --test cloud_cli
       - name: Update dependencies
         run: |
           cargo update
