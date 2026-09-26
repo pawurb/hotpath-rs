@@ -114,6 +114,7 @@ fn explain(
             None => "Retry later.".to_string(),
         }),
         ApiErrorCode::BadRequest
+        | ApiErrorCode::Forbidden
         | ApiErrorCode::NotFound
         | ApiErrorCode::MethodNotAllowed
         | ApiErrorCode::Internal

@@ -31,8 +31,11 @@ pub enum ApiErrorCode {
     InvalidToken,
     /// The user's GitHub authorization lapsed; log in at hotpath.rs once (401).
     GithubAuthorizationExpired,
-    /// Malformed query or path value (400).
+    /// Malformed query or path value, or an oversized upload body (400, 413).
     BadRequest,
+    /// The token's user may not act on this resource, for instance an upload
+    /// to a repository the GitHub App is not installed on (403).
+    Forbidden,
     /// Unknown path or resource, including anything the caller may not see (404).
     NotFound,
     /// 405.
