@@ -55,11 +55,12 @@ pub fn format_bytes_signed(bytes: i64) -> String {
 /// Inverse of [`format_bytes_signed`].
 pub fn parse_bytes_signed(s: &str) -> Option<i64> {
     let s = s.trim();
-    if let Some(rest) = s.strip_prefix('-') {
-        crate::output::parse_bytes(rest).map(|v| -(v as i64))
-    } else {
-        crate::output::parse_bytes(s).map(|v| v as i64)
-    }
+    let (negative, rest) = match s.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, s),
+    };
+    let magnitude = i64::try_from(crate::output::parse_bytes(rest)?).ok()?;
+    Some(if negative { -magnitude } else { magnitude })
 }
 
 /// Structured source location of an instrumented item, joined from the
@@ -1323,6 +1324,11 @@ mod parse_tests {
     fn test_parse_bytes_signed_invalid() {
         assert_eq!(parse_bytes_signed(""), None);
         assert_eq!(parse_bytes_signed("invalid"), None);
+        assert_eq!(parse_bytes_signed("-inf KB"), None);
+        assert_eq!(parse_bytes_signed("NaN KB"), None);
+        // 8388608 TB is exactly 2^63, one above i64::MAX.
+        assert_eq!(parse_bytes_signed("8388608 TB"), None);
+        assert_eq!(parse_bytes_signed("-8388608 TB"), None);
     }
 
     #[test]
