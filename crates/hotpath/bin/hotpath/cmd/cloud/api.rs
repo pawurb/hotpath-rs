@@ -6,7 +6,9 @@
 //! as received - the client adds no hints, whatever the server says is the
 //! whole advice - or `{"error": "..."}` built here when there is no such body
 //! (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
-//! (any non-2xx, network failure, bad arguments).
+//! (any non-2xx, network failure, invalid argument value), 2 clap usage error
+//! (clap's own, not remapped); `diff` will add 3 (regression) and 4 (no
+//! baseline / unreadable).
 
 use std::io::Write;
 use std::path::PathBuf;
