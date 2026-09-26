@@ -61,18 +61,13 @@ of the newest report). Same token and base URL environment as `auth`."
         about = "List one repository's benchmarks (GET /api/v1/repos/{owner}/{name}/benchmarks)",
         long_about = "List one repository's benchmarks (GET /api/v1/repos/{owner}/{name}/benchmarks).
 
-The repository is --repo owner/name when given, otherwise the `origin` remote of the
-current directory (`git remote get-url origin`), which must point at github.com. A
-repository that does not exist, that the token's user cannot see or that has no App
-installed all answer 404. Same token and base URL environment as `auth`."
+The repository is --repo owner/name, as `repos` lists it. A repository that does not
+exist, that the token's user cannot see or that has no App installed all answer 404.
+Same token and base URL environment as `auth`."
     )]
     Benchmarks {
-        #[arg(
-            long,
-            value_name = "OWNER/NAME",
-            help = "The repository; default: the `origin` remote of the current directory"
-        )]
-        repo: Option<String>,
+        #[arg(long, value_name = "OWNER/NAME", help = "The repository")]
+        repo: String,
     },
 }
 
@@ -102,7 +97,7 @@ impl CloudArgs {
         match cmd {
             CloudCommand::Auth => auth::run(&client, output),
             CloudCommand::Repos => repos::run(&client, output),
-            CloudCommand::Benchmarks { repo } => benchmarks::run(&client, output, repo.as_deref()),
+            CloudCommand::Benchmarks { repo } => benchmarks::run(&client, output, &repo),
         }
     }
 }

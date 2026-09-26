@@ -3,13 +3,11 @@ mod tests {
     //! `hotpath cloud auth|repos|benchmarks` against a mock hotpath.rs: the
     //! bearer request each sends, the JSON it re-emits, the error JSON on
     //! stderr (server bodies verbatim, client failures as `{"error": ...}`)
-    //! with exit 1, the repository resolution of `benchmarks` (flag, else the
-    //! `origin` remote of the working directory) and that the token never
-    //! reaches stdout or stderr.
+    //! with exit 1, the `--repo` validation of `benchmarks` and that the token
+    //! never reaches stdout or stderr.
     //!
     //! cargo test -p hotpath --features cloud --test cloud_cli
 
-    use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
 
     use hotpath::json::cloud_api::{ApiError, ApiErrorCode, AuthStatus, RepoList, TokenStatus};
@@ -24,17 +22,6 @@ mod tests {
     const BENCHMARKS_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks";
 
     fn hotpath(server: &ServerGuard, token: Option<&str>, args: &[&str]) -> Output {
-        hotpath_in(server, token, args, None)
-    }
-
-    /// Runs `hotpath cloud <args>`, from `dir` when given, asserting the
-    /// token leaks into neither stream.
-    fn hotpath_in(
-        server: &ServerGuard,
-        token: Option<&str>,
-        args: &[&str],
-        dir: Option<&Path>,
-    ) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_hotpath"));
         cmd.arg("cloud")
             .args(args)
@@ -42,9 +29,6 @@ mod tests {
             .env_remove("HOTPATH_API_TOKEN");
         if let Some(token) = token {
             cmd.env("HOTPATH_API_TOKEN", token);
-        }
-        if let Some(dir) = dir {
-            cmd.current_dir(dir);
         }
         let output = cmd.output().expect("failed to run the hotpath binary");
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -321,47 +305,6 @@ mod tests {
         assert!(!error.contains(TOKEN), "{error}");
     }
 
-    /// A fresh empty directory under the temp dir, removed when dropped.
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(name: &str) -> Self {
-            let dir = std::env::temp_dir()
-                .join(format!("hotpath-cloud-cli-{}-{name}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).unwrap();
-            Self(dir)
-        }
-
-        /// `git init` plus an `origin` remote at `url`.
-        fn git_repo(name: &str, url: &str) -> Self {
-            let dir = Self::new(name);
-            for args in [vec!["init", "-q"], vec!["remote", "add", "origin", url]] {
-                let status = Command::new("git")
-                    .args(&args)
-                    .current_dir(&dir.0)
-                    .status()
-                    .expect("git is required by this test");
-                assert!(
-                    status.success(),
-                    "git {args:?} failed in {}",
-                    dir.0.display()
-                );
-            }
-            dir
-        }
-
-        fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
     #[test]
     fn repos_prints_the_list_compact_and_pretty() {
         let mut server = Server::new();
@@ -384,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn benchmarks_with_repo_flag_requests_that_repository() {
+    fn benchmarks_requests_the_repo_flag_repository() {
         let mut server = Server::new();
         let mock = mock_get(&mut server, BENCHMARKS_PATH, BENCHMARKS_BODY);
 
@@ -400,102 +343,22 @@ mod tests {
     }
 
     #[test]
-    fn benchmarks_resolves_the_repository_from_the_origin_remote() {
-        let cases = [
-            ("scp", "git@github.com:pawurb/hotpath-rs.git"),
-            ("https", "https://github.com/pawurb/hotpath-rs"),
-            ("ssh", "ssh://git@github.com/pawurb/hotpath-rs.git"),
-        ];
-        for (name, url) in cases {
-            let mut server = Server::new();
-            let mock = mock_get(&mut server, BENCHMARKS_PATH, BENCHMARKS_BODY);
-            let repo = TempDir::git_repo(name, url);
-
-            let output = hotpath_in(&server, Some(TOKEN), &["benchmarks"], Some(repo.path()));
-            mock.assert();
-            assert_eq!(
-                output.status.code(),
-                Some(0),
-                "{url}: stderr: {}",
-                stderr(&output)
-            );
-            assert_eq!(stdout(&output), format!("{BENCHMARKS_BODY}\n"), "{url}");
-        }
-    }
-
-    #[test]
-    fn benchmarks_without_a_usable_origin_asks_for_the_flag() {
+    fn benchmarks_rejects_a_missing_or_bad_repo_flag_without_a_request() {
         let mut server = Server::new();
         let mock = server
             .mock("GET", Matcher::Regex("^/api/v1/repos/".into()))
             .expect(0)
             .create();
 
-        let plain = TempDir::new("not-a-repo");
-        let output = hotpath_in(&server, Some(TOKEN), &["benchmarks"], Some(plain.path()));
-        assert_eq!(output.status.code(), Some(1));
+        let output = hotpath(&server, Some(TOKEN), &["benchmarks"]);
+        assert_ne!(output.status.code(), Some(0));
         assert_eq!(stdout(&output), "");
-        let error = client_error(&output);
-        assert!(error.contains("--repo"), "{error}");
-        assert!(error.contains("origin"), "{error}");
+        assert!(stderr(&output).contains("--repo"), "{}", stderr(&output));
 
-        let gitlab = TempDir::git_repo("gitlab", "git@gitlab.com:pawurb/hotpath-rs.git");
-        let output = hotpath_in(&server, Some(TOKEN), &["benchmarks"], Some(gitlab.path()));
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(stdout(&output), "");
-        let error = client_error(&output);
-        assert!(error.contains("--repo"), "{error}");
-        assert!(
-            error.contains("git@gitlab.com:pawurb/hotpath-rs.git"),
-            "{error}"
-        );
-        assert!(error.contains("github.com"), "{error}");
-
-        // An authenticated origin is named without its credential.
-        let secret = "glpat-s3cr3t";
-        let authenticated = TempDir::git_repo(
-            "gitlab-token",
-            &format!("https://oauth2:{secret}@gitlab.com/pawurb/hotpath-rs.git"),
-        );
-        let output = hotpath_in(
-            &server,
-            Some(TOKEN),
-            &["benchmarks"],
-            Some(authenticated.path()),
-        );
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(stdout(&output), "");
-        let error = client_error(&output);
-        assert!(!error.contains(secret), "{error}");
-        assert!(!error.contains("oauth2"), "{error}");
-        assert!(
-            error.contains("`https://gitlab.com/pawurb/hotpath-rs.git`"),
-            "{error}"
-        );
-
-        mock.assert();
-    }
-
-    #[test]
-    fn benchmarks_rejects_a_bad_repo_flag_without_a_request() {
-        let mut server = Server::new();
-        let mock = server
-            .mock("GET", Matcher::Regex("^/api/v1/repos/".into()))
-            .expect(0)
-            .create();
-
-        // Even from a repository with a valid origin: a bad flag never falls
-        // back to the remote.
-        let repo = TempDir::git_repo("bad-flag", "git@github.com:pawurb/hotpath-rs.git");
         for value in [
             "nope", "a/b/c", "a/..", "./b", "a/", "/b", "a b/c", "a/b?x=1",
         ] {
-            let output = hotpath_in(
-                &server,
-                Some(TOKEN),
-                &["benchmarks", "--repo", value],
-                Some(repo.path()),
-            );
+            let output = hotpath(&server, Some(TOKEN), &["benchmarks", "--repo", value]);
             assert_eq!(output.status.code(), Some(1), "{value}");
             assert_eq!(stdout(&output), "", "{value}");
             let error = client_error(&output);

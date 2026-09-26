@@ -28,10 +28,9 @@ pub(crate) fn read_git_info_at(root: &Path) -> Option<crate::json::JsonGitInfo> 
     })
 }
 
-/// "owner/name" from the `origin` remote's URL when it points at github.com
-/// (parsed by `json::cloud_api::repository_from_remote_url`, shared with the
-/// `hotpath cloud` CLI); `None` for any other host, since the server knows no
-/// other. Informational only - the server authorizes from the upload
+/// "owner/name" from the `origin` remote's URL, for both the SSH
+/// (`git@host:owner/name.git`) and HTTPS (`https://host/owner/name.git`)
+/// forms. Informational only - the server authorizes from the upload
 /// credential.
 fn origin_repository(git_dir: &Path) -> Option<String> {
     let config = std::fs::read_to_string(common_dir(git_dir).join("config")).ok()?;
@@ -47,12 +46,29 @@ fn origin_repository(git_dir: &Path) -> Option<String> {
         } else if in_origin {
             if let Some((key, url)) = line.split_once('=') {
                 if key.trim() == "url" {
-                    return crate::json::cloud_api::repository_from_remote_url(url);
+                    return owner_name(url.trim());
                 }
             }
         }
     }
     None
+}
+
+fn owner_name(url: &str) -> Option<String> {
+    let url = url.trim_end_matches('/');
+    let url = url.strip_suffix(".git").unwrap_or(url);
+    // Only a remote with a host names an owner; a filesystem remote
+    // ("/srv/repos/foo") would otherwise yield a plausible-looking
+    // "repos/foo".
+    let path = match url.split_once("://") {
+        Some(("file", _)) => return None,
+        Some((_, rest)) => rest.split_once('/')?.1,
+        None => url.split_once(':').filter(|(host, _)| !host.is_empty())?.1,
+    };
+    let mut segments = path.rsplit('/');
+    let name = segments.next().filter(|s| !s.is_empty())?;
+    let owner = segments.next().filter(|s| !s.is_empty())?;
+    Some(format!("{owner}/{name}"))
 }
 
 /// `.git` is a plain directory for regular checkouts; worktrees and
@@ -124,7 +140,7 @@ fn is_sha(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::lib_on::git_info::read_git_info_at;
+    use crate::lib_on::git_info::{owner_name, read_git_info_at};
     use std::path::PathBuf;
 
     fn temp_repo(name: &str) -> PathBuf {
@@ -209,6 +225,33 @@ mod tests {
         let info = read_git_info_at(&root).unwrap();
         assert_eq!(info.repository, None);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn owner_name_url_forms() {
+        for url in [
+            "git@github.com:pawurb/hotpath-rs.git",
+            "https://github.com/pawurb/hotpath-rs.git",
+            "https://github.com/pawurb/hotpath-rs",
+            "ssh://git@github.com/pawurb/hotpath-rs.git",
+            "https://github.com/pawurb/hotpath-rs/",
+        ] {
+            assert_eq!(
+                owner_name(url).as_deref(),
+                Some("pawurb/hotpath-rs"),
+                "{url}"
+            );
+        }
+        for url in [
+            "hotpath-rs",
+            "",
+            "/srv/repos/hotpath-rs",
+            "../repos/hotpath-rs",
+            "file:///srv/repos/hotpath-rs",
+            "https://github.com/pawurb",
+        ] {
+            assert_eq!(owner_name(url), None, "{url}");
+        }
     }
 
     #[test]

@@ -124,37 +124,6 @@ pub struct BenchmarkList {
     pub benchmarks: Vec<BenchmarkSummary>,
 }
 
-/// `owner/name` from a git remote URL on github.com, in the SSH
-/// (`git@github.com:o/n.git`), HTTPS (`https://github.com/o/n(.git)`) and
-/// `ssh://git@github.com/o/n(.git)` forms; `None` for any other host, a
-/// filesystem remote or a path that is not exactly two segments. The one
-/// remote URL parser: the upload's `meta.git.repository` (`lib_on/git_info.rs`)
-/// and the `hotpath cloud` CLI's `--repo` fallback both use it. Characters
-/// are not validated here; the CLI checks them before building a path.
-pub fn repository_from_remote_url(url: &str) -> Option<String> {
-    let url = url.trim().trim_end_matches('/');
-    let url = url.strip_suffix(".git").unwrap_or(url);
-    let (authority, path) = match url.split_once("://") {
-        Some((_, rest)) => rest.split_once('/')?,
-        // scp-like `[user@]host:path`.
-        None => url.split_once(':')?,
-    };
-    let host = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_, host)| host);
-    let host = host.split_once(':').map_or(host, |(host, _port)| host);
-    if !host.eq_ignore_ascii_case("github.com") {
-        return None;
-    }
-    let mut segments = path.split('/');
-    let owner = segments.next().filter(|s| !s.is_empty())?;
-    let name = segments.next().filter(|s| !s.is_empty())?;
-    if segments.next().is_some() {
-        return None;
-    }
-    Some(format!("{owner}/{name}"))
-}
-
 /// What happened to the pull request comment, inside the 201 body. `url` set
 /// means posted or updated; `error` set means it failed and says why; neither
 /// means there was nothing to post (a push upload, for instance).
@@ -184,9 +153,8 @@ pub struct UploadCreated {
 #[cfg(test)]
 mod tests {
     use crate::json::cloud_api::{
-        normalize_base_url, repository_from_remote_url, ApiError, ApiErrorCode, AuthStatus,
-        BenchmarkList, BenchmarkSummary, CommentOutcome, RepoList, Repository, TokenStatus,
-        UploadCreated, DEFAULT_BASE_URL,
+        normalize_base_url, ApiError, ApiErrorCode, AuthStatus, BenchmarkList, BenchmarkSummary,
+        CommentOutcome, RepoList, Repository, TokenStatus, UploadCreated, DEFAULT_BASE_URL,
     };
     use time::macros::datetime;
 
@@ -307,45 +275,6 @@ mod tests {
             }
         );
         assert_eq!(serde_json::to_string(&list).unwrap(), body);
-    }
-
-    #[test]
-    fn repository_from_remote_url_forms() {
-        for url in [
-            "git@github.com:pawurb/hotpath-rs.git",
-            "git@github.com:pawurb/hotpath-rs",
-            "https://github.com/pawurb/hotpath-rs.git",
-            "https://github.com/pawurb/hotpath-rs",
-            "https://github.com/pawurb/hotpath-rs/",
-            "https://user:token@github.com/pawurb/hotpath-rs.git",
-            "ssh://git@github.com/pawurb/hotpath-rs.git",
-            "ssh://git@github.com/pawurb/hotpath-rs",
-            "ssh://git@github.com:22/pawurb/hotpath-rs.git",
-            "git@GitHub.com:pawurb/hotpath-rs.git",
-            "  git@github.com:pawurb/hotpath-rs.git\n",
-        ] {
-            assert_eq!(
-                repository_from_remote_url(url).as_deref(),
-                Some("pawurb/hotpath-rs"),
-                "{url}"
-            );
-        }
-        for url in [
-            "hotpath-rs",
-            "",
-            "/srv/repos/hotpath-rs",
-            "../repos/hotpath-rs",
-            "file:///srv/repos/hotpath-rs",
-            "https://github.com/pawurb",
-            "https://github.com/pawurb/hotpath-rs/extra",
-            "git@gitlab.com:pawurb/hotpath-rs.git",
-            "https://gitlab.com/pawurb/hotpath-rs.git",
-            "ssh://git@bitbucket.org/pawurb/hotpath-rs.git",
-            "https://github.com.evil.io/pawurb/hotpath-rs.git",
-            "https://notgithub.com/pawurb/hotpath-rs.git",
-        ] {
-            assert_eq!(repository_from_remote_url(url), None, "{url}");
-        }
     }
 
     #[test]
