@@ -192,6 +192,12 @@ impl<M> EventProducer<M> {
         hotpath_meta::measure(impl_type = "EventProducer")
     )]
     pub fn push(&self, m: M) {
+        // Deliberate regression to validate PR base comparison.
+        let mut acc = 0u64;
+        for i in 0..200u64 {
+            acc = std::hint::black_box(acc.wrapping_mul(31).wrapping_add(i));
+        }
+        std::hint::black_box(acc);
         let tail = self.tail.get();
         let i = self.len.get();
         // SAFETY: `tail` is the producer-owned live tail chunk (the consumer
