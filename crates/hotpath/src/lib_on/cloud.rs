@@ -1,7 +1,7 @@
 //! Uploads the JSON report to hotpath.rs from GitHub Actions, authenticated
 //! with the job's OIDC token. Enabled at runtime by `HOTPATH_UPLOAD=1`; the
 //! benchmark name comes from `HOTPATH_BENCHMARK` (default `default`, validated
-//! by `validate_benchmark_name` - invalid names skip the upload). The target
+//! by `json::cloud_api::validate_benchmark_name` - invalid names skip the upload). The target
 //! base URL is `https://hotpath.rs` unless `HOTPATH_UPLOAD_URL` overrides it.
 //!
 //! Runs synchronously from the guard's `Drop`, after the runtime may already
@@ -30,7 +30,9 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::json::cloud_api::{normalize_base_url, ApiError, UploadCreated};
+use crate::json::cloud_api::{
+    normalize_base_url, validate_benchmark_name, ApiError, UploadCreated,
+};
 use crate::json::JsonReport;
 
 const AUDIENCE: &str = "hotpath.rs";
@@ -65,20 +67,6 @@ fn is_truthy(v: &str) -> bool {
     matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true")
 }
 
-/// Fails fast with a readable message before a token is minted and the report
-/// serialized; the server enforces the same rule.
-pub(crate) fn validate_benchmark_name(name: &str) -> Result<(), String> {
-    let valid_chars = name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
-    if name.is_empty() || name.len() > 64 || !valid_chars || name == "." || name == ".." {
-        return Err(format!(
-            "invalid HOTPATH_BENCHMARK {name:?}: use 1-64 chars from [A-Za-z0-9._-], not \".\" or \"..\""
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn benchmark_name() -> Result<String, String> {
     let name = match std::env::var("HOTPATH_BENCHMARK") {
         Ok(s) => s.trim().to_string(),
@@ -90,7 +78,10 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
     if name.is_empty() {
         return Ok("default".to_string());
     }
-    validate_benchmark_name(&name)?;
+    // Fails fast before a token is minted and the report serialized; the
+    // server enforces the same rule.
+    validate_benchmark_name(&name)
+        .map_err(|rule| format!("invalid HOTPATH_BENCHMARK {name:?}: {rule}"))?;
     Ok(name)
 }
 
@@ -453,8 +444,8 @@ fn url_encode(s: &str) -> String {
 mod tests {
     use crate::json::cloud_api::{CommentOutcome, UploadCreated};
     use crate::lib_on::cloud::{
-        benchmark_name, escape_annotation, interpret, is_truthy, render, url_encode,
-        validate_benchmark_name, Env, Level, Outcome,
+        benchmark_name, escape_annotation, interpret, is_truthy, render, url_encode, Env, Level,
+        Outcome,
     };
 
     fn env(actions: bool, strict: bool) -> Env {
@@ -491,38 +482,6 @@ mod tests {
         assert_eq!(url_encode("a b/c"), "a%20b%2Fc");
     }
 
-    #[test]
-    fn validate_benchmark_name_rule() {
-        for ok in [
-            "default",
-            "ci",
-            "timing-linux",
-            "api_latency",
-            "v0.25",
-            "timing.linux",
-        ] {
-            assert!(
-                validate_benchmark_name(ok).is_ok(),
-                "{ok:?} should be valid"
-            );
-        }
-        for bad in ["a/b", "a b", "..", ".", "x?y", "ünïcode", ""] {
-            assert!(
-                validate_benchmark_name(bad).is_err(),
-                "{bad:?} should be invalid"
-            );
-        }
-        assert!(validate_benchmark_name(&"a".repeat(64)).is_ok());
-        assert!(validate_benchmark_name(&"a".repeat(65)).is_err());
-
-        let err = validate_benchmark_name("a/b").unwrap_err();
-        assert!(err.contains("\"a/b\""), "message names the value: {err}");
-        assert!(
-            err.contains("[A-Za-z0-9._-]"),
-            "message names the rule: {err}"
-        );
-    }
-
     // All HOTPATH_BENCHMARK cases live in one test so env access stays serialized.
     #[test]
     fn benchmark_name_from_env() {
@@ -534,7 +493,13 @@ mod tests {
         std::env::set_var(var, " ci ");
         assert_eq!(benchmark_name(), Ok("ci".to_string()));
         std::env::set_var(var, "a/b");
-        assert!(benchmark_name().is_err());
+        assert_eq!(
+            benchmark_name(),
+            Err(
+                "invalid HOTPATH_BENCHMARK \"a/b\": use 1-64 chars from [A-Za-z0-9._-], not \".\" or \"..\""
+                    .to_string()
+            )
+        );
         #[cfg(unix)]
         {
             use std::os::unix::ffi::OsStrExt;

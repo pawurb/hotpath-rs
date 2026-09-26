@@ -7,6 +7,9 @@
 //! Deliberately minimal: the server owns every sentence, the clients print it
 //! and branch only on `ApiError::code`.
 
+use std::collections::BTreeMap;
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -20,6 +23,32 @@ pub fn normalize_base_url(raw: Option<String>) -> String {
     raw.map(|s| s.trim().trim_end_matches('/').to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
+}
+
+/// A benchmark name that breaks the rule every party enforces: 1-64 chars of
+/// `[A-Za-z0-9._-]`, not `.` or `..`. Displays as the rule itself, so each
+/// caller prefixes where the name came from (`HOTPATH_BENCHMARK`,
+/// `--benchmark`). The server's copy (hotpath-backend
+/// `models::benchmark::validate_name`) must stay byte for byte identical.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidBenchmarkName;
+
+impl fmt::Display for InvalidBenchmarkName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("use 1-64 chars from [A-Za-z0-9._-], not \".\" or \"..\"")
+    }
+}
+
+/// Checks a benchmark name before it names an upload series or goes into a
+/// request path; a valid name needs no percent-encoding.
+pub fn validate_benchmark_name(name: &str) -> Result<(), InvalidBenchmarkName> {
+    let valid_chars = name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
+    if name.is_empty() || name.len() > 64 || !valid_chars || name == "." || name == ".." {
+        return Err(InvalidBenchmarkName);
+    }
+    Ok(())
 }
 
 /// Why a request was refused, as clients branch on it. Never on the message.
@@ -124,6 +153,79 @@ pub struct BenchmarkList {
     pub benchmarks: Vec<BenchmarkSummary>,
 }
 
+/// One stored report without its payload: the body of `reports/latest` and
+/// `reports/{id}` with `payload=false`, and the head of a `Report`. Every
+/// nullable field serializes as `null`, never omitted, so a reader sees
+/// "unknown" rather than a missing key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportSummary {
+    /// The report's id (a uuid), the value `--id` and the dashboard URLs take.
+    pub id: String,
+    /// `owner/name` as GitHub names it today.
+    pub repository: String,
+    /// The benchmark (series) the report belongs to.
+    pub benchmark: String,
+    /// `push`, `pull_request`, or whatever event the run reported.
+    pub event: String,
+    /// The commit that was checked out and measured. For a pull request run
+    /// this is usually GitHub's merge commit, not the PR head: see `head_sha`.
+    pub commit_sha: String,
+    /// The pull request's head commit, the one a developer has locally;
+    /// `None` for push reports and when the client could not read it.
+    pub head_sha: Option<String>,
+    /// The base branch commit the pull request was measured against.
+    pub base_sha: Option<String>,
+    /// The measured ref (`refs/heads/main`); `None` on a detached checkout,
+    /// which is every default pull request checkout.
+    pub git_ref: Option<String>,
+    /// Bare base branch name of a pull request (`main`).
+    pub base_ref: Option<String>,
+    /// Bare head branch name of a pull request (`feature-x`).
+    pub head_ref: Option<String>,
+    /// The pull request number; `None` for push reports.
+    pub pr_number: Option<u64>,
+    /// The CI run id. Text, not a number: only GitHub's run ids happen to be
+    /// numeric.
+    pub run_id: Option<String>,
+    /// The CI workflow name.
+    pub workflow: Option<String>,
+    /// The login that triggered the run.
+    pub actor: Option<String>,
+    /// `github-actions` today.
+    pub ci_provider: Option<String>,
+    /// The hotpath version that wrote the report.
+    pub hotpath_version: Option<String>,
+    /// `HOTPATH_USER_METADATA` pairs attached by the profiled program, sorted.
+    pub user_metadata: Option<BTreeMap<String, String>>,
+    /// The report this one was compared against in its PR comment (a push
+    /// report on the base branch); `None` when there was none.
+    pub baseline_id: Option<String>,
+    /// The PR comment this report produced, when it was posted.
+    pub comment_url: Option<String>,
+    /// Size of the uploaded JSON in bytes.
+    pub size_bytes: u64,
+    /// Upload time, RFC 3339 on the wire.
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    /// The report's page on the dashboard.
+    pub dashboard_url: String,
+}
+
+/// A report with its payload: the body of `reports/latest` and `reports/{id}`
+/// by default. Which of `Report` and `ReportSummary` a response is follows
+/// from the request (`payload=false` or not), never from the body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Report {
+    #[serde(flatten)]
+    pub summary: ReportSummary,
+    /// The uploaded hotpath JSON report. Untyped on purpose: a report older
+    /// than the schema the server reads must still be fetchable (only a diff
+    /// calls it unreadable). Deserialize it as `JsonReport` when a typed view
+    /// is needed. Re-serialized through `serde_json::Value`, so object keys
+    /// come back sorted; the data is unchanged.
+    pub payload: serde_json::Value,
+}
+
 /// What happened to the pull request comment, inside the 201 body. `url` set
 /// means posted or updated; `error` set means it failed and says why; neither
 /// means there was nothing to post (a push upload, for instance).
@@ -152,11 +254,116 @@ pub struct UploadCreated {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use crate::json::cloud_api::{
-        normalize_base_url, ApiError, ApiErrorCode, AuthStatus, BenchmarkList, BenchmarkSummary,
-        CommentOutcome, RepoList, Repository, TokenStatus, UploadCreated, DEFAULT_BASE_URL,
+        normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
+        BenchmarkList, BenchmarkSummary, CommentOutcome, RepoList, Report, ReportSummary,
+        Repository, TokenStatus, UploadCreated, DEFAULT_BASE_URL,
     };
     use time::macros::datetime;
+
+    #[test]
+    fn validate_benchmark_name_rule() {
+        for ok in [
+            "default",
+            "ci",
+            "timing-linux",
+            "api_latency",
+            "v0.25",
+            "timing.linux",
+        ] {
+            assert!(
+                validate_benchmark_name(ok).is_ok(),
+                "{ok:?} should be valid"
+            );
+        }
+        for bad in ["a/b", "a b", "..", ".", "x?y", "ünïcode", ""] {
+            assert!(
+                validate_benchmark_name(bad).is_err(),
+                "{bad:?} should be invalid"
+            );
+        }
+        assert!(validate_benchmark_name(&"a".repeat(64)).is_ok());
+        assert!(validate_benchmark_name(&"a".repeat(65)).is_err());
+
+        let err = validate_benchmark_name("a/b").unwrap_err().to_string();
+        assert!(
+            err.contains("[A-Za-z0-9._-]"),
+            "message names the rule: {err}"
+        );
+    }
+
+    const PR_SUMMARY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
+    const PUSH_SUMMARY: &str = r#"{"id":"0199a3b0-0000-7000-8000-000000000000","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"push","commit_sha":"77de000000000000000000000000000000000000","head_sha":null,"base_sha":null,"git_ref":"refs/heads/main","base_ref":null,"head_ref":null,"pr_number":null,"run_id":"18237400000","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":null,"baseline_id":null,"comment_url":null,"size_bytes":80000,"created_at":"2026-09-25T17:00:00Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3b0-0000-7000-8000-000000000000"}"#;
+
+    fn pr_summary() -> ReportSummary {
+        ReportSummary {
+            id: "0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a".into(),
+            repository: "pawurb/hotpath-rs".into(),
+            benchmark: "ci".into(),
+            event: "pull_request".into(),
+            commit_sha: "3f1c000000000000000000000000000000000000".into(),
+            head_sha: Some("9ab2000000000000000000000000000000000000".into()),
+            base_sha: Some("77de000000000000000000000000000000000000".into()),
+            git_ref: None,
+            base_ref: Some("main".into()),
+            head_ref: Some("channel-delay".into()),
+            pr_number: Some(105),
+            run_id: Some("18237461234".into()),
+            workflow: Some("CI".into()),
+            actor: Some("pawurb".into()),
+            ci_provider: Some("github-actions".into()),
+            hotpath_version: Some("0.26.1".into()),
+            user_metadata: Some(BTreeMap::from([("profile".into(), "release".into())])),
+            baseline_id: Some("0199a3b0-0000-7000-8000-000000000000".into()),
+            comment_url: Some(
+                "https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1".into(),
+            ),
+            size_bytes: 81234,
+            created_at: datetime!(2026-09-25 18:03:11 UTC),
+            dashboard_url: "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a".into(),
+        }
+    }
+
+    #[test]
+    fn report_summary_round_trips_with_nulls_present() {
+        let summary: ReportSummary = serde_json::from_str(PR_SUMMARY).unwrap();
+        assert_eq!(summary, pr_summary());
+        assert_eq!(serde_json::to_string(&summary).unwrap(), PR_SUMMARY);
+
+        let push: ReportSummary = serde_json::from_str(PUSH_SUMMARY).unwrap();
+        assert_eq!(push.head_sha, None);
+        assert_eq!(push.pr_number, None);
+        assert_eq!(push.user_metadata, None);
+        assert_eq!(push.git_ref.as_deref(), Some("refs/heads/main"));
+        assert_eq!(serde_json::to_string(&push).unwrap(), PUSH_SUMMARY);
+    }
+
+    #[test]
+    fn report_flattens_the_summary_and_keeps_the_payload_last() {
+        // Payload keys already sorted: `Value` re-serializes objects in key
+        // order, so only a sorted payload round-trips byte for byte.
+        let payload = r#"{"meta":{},"version":"0.26.1"}"#;
+        let body = format!(
+            "{},\"payload\":{payload}}}",
+            &PR_SUMMARY[..PR_SUMMARY.len() - 1]
+        );
+        let report: Report = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            report,
+            Report {
+                summary: pr_summary(),
+                payload: serde_json::from_str(payload).unwrap(),
+            }
+        );
+        assert_eq!(serde_json::to_string(&report).unwrap(), body);
+
+        // A payload in the writer's key order parses to the same data.
+        let unsorted = body.replace(payload, r#"{"version":"0.26.1","meta":{}}"#);
+        let reparsed: Report = serde_json::from_str(&unsorted).unwrap();
+        assert_eq!(reparsed, report);
+    }
 
     #[test]
     fn normalize_base_url_rules() {

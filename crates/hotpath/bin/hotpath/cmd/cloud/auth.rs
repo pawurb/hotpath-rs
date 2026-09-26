@@ -9,8 +9,8 @@ use hotpath::json::cloud_api::AuthStatus;
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
 
-pub(crate) fn run(client: &Client, output: &Output) -> Result<ExitCode, CliError> {
-    let status: AuthStatus = client.get("/api/v1/auth")?;
+pub(crate) fn run(output: &Output) -> Result<ExitCode, CliError> {
+    let status: AuthStatus = Client::from_env()?.get("/api/v1/auth")?;
     output.emit(&status)?;
     Ok(ExitCode::SUCCESS)
 }
