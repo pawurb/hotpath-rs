@@ -1,8 +1,9 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
     //! `hotpath cloud auth` against a mock hotpath.rs: the bearer request it
-    //! sends, the JSON it re-emits, every error code's message and exit 1,
-    //! and that the token never reaches stdout or stderr.
+    //! sends, the JSON it re-emits, the error JSON on stderr (server bodies
+    //! verbatim, client failures as `{"error": ...}`) with exit 1, and that
+    //! the token never reaches stdout or stderr.
     //!
     //! cargo test -p hotpath --features cloud --test cloud_cli
 
@@ -41,6 +42,21 @@ mod tests {
 
     fn stderr(output: &Output) -> String {
         String::from_utf8_lossy(&output.stderr).into_owned()
+    }
+
+    /// The `error` of a client-built failure on stderr, which is always one
+    /// JSON object with that single key.
+    fn client_error(output: &Output) -> String {
+        let stderr = stderr(output);
+        let value: serde_json::Value = serde_json::from_str(&stderr).unwrap_or_else(|e| {
+            panic!("stderr is not JSON: {e}\n{stderr}");
+        });
+        let object = value.as_object().expect("stderr is not a JSON object");
+        assert_eq!(object.len(), 1, "{stderr}");
+        object["error"]
+            .as_str()
+            .expect("error is not a string")
+            .to_string()
     }
 
     fn error_body(code: ApiErrorCode, error: &str) -> String {
@@ -122,109 +138,97 @@ mod tests {
             let output = hotpath(&server, token, &[]);
             assert_eq!(output.status.code(), Some(1));
             assert_eq!(stdout(&output), "");
-            let stderr = stderr(&output);
-            assert!(stderr.contains("HOTPATH_API_TOKEN is not set"), "{stderr}");
-            assert!(stderr.contains("https://hotpath.rs/app/tokens"), "{stderr}");
+            assert_eq!(
+                client_error(&output),
+                "HOTPATH_API_TOKEN is not set. Create a token at https://hotpath.rs/app/tokens and export it."
+            );
         }
         mock.assert();
     }
 
     #[test]
-    fn auth_rejected_token_prints_the_sentence_and_request_id() {
+    fn auth_rejected_token_prints_the_server_body_verbatim() {
         let mut server = Server::new();
+        // Key order the client would not produce itself, so a byte-for-byte
+        // match proves the body is not re-serialized.
+        let body = r#"{"error":"The token is unknown, expired or revoked. Create one at /app/tokens.","code":"invalid_token"}"#;
         let mock = server
             .mock("GET", "/api/v1/auth")
             .with_status(401)
             .with_header("content-type", "application/json")
             .with_header("www-authenticate", "Bearer")
             .with_header("x-request-id", "1bac4db9-15a")
-            .with_body(error_body(
-                ApiErrorCode::InvalidToken,
-                "The token is unknown, expired or revoked.",
-            ))
+            .with_body(body)
             .create();
 
         let output = hotpath(&server, Some(TOKEN), &[]);
         mock.assert();
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(stdout(&output), "");
-        assert_eq!(
-            stderr(&output),
-            "The token is unknown, expired or revoked. Check HOTPATH_API_TOKEN or create a new token at https://hotpath.rs/app/tokens. (request id: 1bac4db9-15a)\n"
-        );
+        assert_eq!(stderr(&output), format!("{body}\n"));
     }
 
-    /// Status, code, server sentence, extra response headers, expected stderr.
-    type ErrorCase = (
-        u16,
-        ApiErrorCode,
-        &'static str,
-        Vec<(&'static str, &'static str)>,
-        &'static str,
-    );
-
     #[test]
-    fn auth_error_codes_add_their_hint() {
-        let cases: [ErrorCase; 5] = [
+    fn auth_server_error_passes_through_without_client_hints() {
+        // Status, body: the codes the client used to append advice to, plus
+        // one it does not know. Every body prints as sent, and nothing more.
+        let cases: [(u16, String); 4] = [
             (
                 401,
-                ApiErrorCode::GithubAuthorizationExpired,
-                "Your GitHub authorization expired.",
-                vec![],
-                "Your GitHub authorization expired. Log in at https://hotpath.rs/app once, then retry.\n",
+                error_body(
+                    ApiErrorCode::GithubAuthorizationExpired,
+                    "Your GitHub authorization expired.",
+                ),
             ),
             (
                 429,
-                ApiErrorCode::RateLimited,
-                "Too many requests.",
-                vec![("retry-after", "30")],
-                "Too many requests. Retry after 30 s.\n",
+                error_body(ApiErrorCode::RateLimited, "Too many requests."),
             ),
-            (
-                404,
-                ApiErrorCode::NotFound,
-                "Not found.",
-                vec![],
-                "Not found.\n",
-            ),
-            (
-                500,
-                ApiErrorCode::Internal,
-                "Something broke.",
-                vec![("x-request-id", "abc")],
-                "Something broke. (request id: abc)\n",
-            ),
+            (500, error_body(ApiErrorCode::Internal, "Something broke.")),
             (
                 401,
-                ApiErrorCode::Unknown,
-                "A code this client does not know.",
-                vec![],
-                "A code this client does not know.\n",
+                r#"{"error":"A code this client does not know.","code":"quota_exceeded"}"#.into(),
             ),
         ];
-        for (status, code, sentence, headers, expected) in cases {
+        for (status, body) in cases {
             let mut server = Server::new();
-            let body = if code == ApiErrorCode::Unknown {
-                format!(r#"{{"error":"{sentence}","code":"quota_exceeded"}}"#)
-            } else {
-                error_body(code, sentence)
-            };
-            let mut mock = server
+            let mock = server
                 .mock("GET", "/api/v1/auth")
                 .with_status(status.into())
                 .with_header("content-type", "application/json")
-                .with_body(body);
-            for (name, value) in headers {
-                mock = mock.with_header(name, value);
-            }
-            let mock = mock.create();
+                .with_header("retry-after", "30")
+                .with_header("x-request-id", "abc")
+                .with_body(&body)
+                .create();
 
             let output = hotpath(&server, Some(TOKEN), &[]);
             mock.assert();
-            assert_eq!(output.status.code(), Some(1), "{code:?}");
-            assert_eq!(stdout(&output), "", "{code:?}");
-            assert_eq!(stderr(&output), expected, "{code:?}");
+            assert_eq!(output.status.code(), Some(1), "{body}");
+            assert_eq!(stdout(&output), "", "{body}");
+            assert_eq!(stderr(&output), format!("{body}\n"));
         }
+    }
+
+    #[test]
+    fn auth_pretty_indents_the_server_error() {
+        let mut server = Server::new();
+        let body = error_body(ApiErrorCode::InvalidToken, "Nope.");
+        let mock = server
+            .mock("GET", "/api/v1/auth")
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(&body)
+            .create();
+
+        let output = hotpath(&server, Some(TOKEN), &["--pretty"]);
+        mock.assert();
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        let expected: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            stderr(&output),
+            format!("{}\n", serde_json::to_string_pretty(&expected).unwrap())
+        );
     }
 
     #[test]
@@ -242,7 +246,10 @@ mod tests {
         mock.assert();
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(stdout(&output), "");
-        assert_eq!(stderr(&output), format!("HTTP 502: {}...\n", &page[..200]));
+        assert_eq!(
+            client_error(&output),
+            format!("HTTP 502: {}...", &page[..200])
+        );
     }
 
     #[test]
@@ -259,8 +266,8 @@ mod tests {
         mock.assert();
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(stdout(&output), "");
-        let stderr = stderr(&output);
-        assert!(stderr.starts_with("invalid response from "), "{stderr}");
+        let error = client_error(&output);
+        assert!(error.starts_with("invalid response from "), "{error}");
     }
 
     #[test]
@@ -278,11 +285,11 @@ mod tests {
             .unwrap();
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(stdout(&output), "");
-        let stderr = stderr(&output);
+        let error = client_error(&output);
         assert!(
-            stderr.starts_with(&format!("request to {url} failed: ")),
-            "{stderr}"
+            error.starts_with(&format!("request to {url} failed: ")),
+            "{error}"
         );
-        assert!(!stderr.contains(TOKEN), "{stderr}");
+        assert!(!error.contains(TOKEN), "{error}");
     }
 }
