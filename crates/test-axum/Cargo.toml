@@ -13,7 +13,6 @@ ureq = { version = "3", default-features = false }
 diesel = { version = "2.3", default-features = false, features = ["sqlite"] }
 libsqlite3-sys = { version = "0.30", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false }
-futures = "0.3"
 
 [features]
 hotpath = ["hotpath/hotpath"]

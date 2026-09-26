@@ -6,10 +6,10 @@ on:
   pull_request:
 
 # Synthetic benchmark for checking PR comment correctness: `benchmark_random`
-# touches every instrumented resource type and on each run randomly makes every
-# resource 3x slower (or not), so every comment carries a known mix of
-# regressions and improvements. The draw is attached to the report as
-# `user_metadata`. Uploaded to the separate `random` series; same shape as
+# touches every resource type the comment policy judges and on each run
+# randomly makes every resource 3x slower (or not), so every comment carries a
+# known mix of regressions and improvements. The draw is attached to the report
+# as `user_metadata`. Uploaded to the separate `random` series; same shape as
 # `cloud-meta-benchmark.yml`.
 #
 # Pushes upload in process with the job's OIDC token. Fork PRs get no
