@@ -79,6 +79,82 @@ pub struct TokenStatus {
     pub expires_at: OffsetDateTime,
 }
 
+/// Body of `GET /api/v1/repos`: every active repository the token's user can
+/// see on GitHub with the hotpath App installed, ordered by `full_name`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepoList {
+    pub repositories: Vec<Repository>,
+}
+
+/// One repository of a `RepoList`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Repository {
+    /// `owner/name` as GitHub names it today (renames follow GitHub by id).
+    pub full_name: String,
+    /// GitHub's visibility.
+    pub private: bool,
+    /// The dashboard's own choice to show this repository's reports to
+    /// everyone (`repos.visibility_public`); never true on a private repo.
+    /// Informational for now: it gates nothing yet.
+    pub visibility_public: bool,
+    /// The repository's benchmarks, ordered by name; empty until the first upload.
+    pub benchmarks: Vec<BenchmarkSummary>,
+}
+
+/// One benchmark of a repository, as both `repos` and `benchmarks` list it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkSummary {
+    pub name: String,
+    /// Stored reports.
+    pub reports: u64,
+    /// Upload time of the newest report; `None` (`null` on the wire, never
+    /// omitted) for a benchmark with none yet (created by a rejected first
+    /// upload, or still running).
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub latest_report_at: Option<OffsetDateTime>,
+}
+
+/// Body of `GET /api/v1/repos/{owner}/{name}/benchmarks`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkList {
+    /// The repository's current `full_name`, which may differ from the path
+    /// when the caller used a name GitHub has since renamed.
+    pub repository: String,
+    /// Ordered by name.
+    pub benchmarks: Vec<BenchmarkSummary>,
+}
+
+/// `owner/name` from a git remote URL on github.com, in the SSH
+/// (`git@github.com:o/n.git`), HTTPS (`https://github.com/o/n(.git)`) and
+/// `ssh://git@github.com/o/n(.git)` forms; `None` for any other host, a
+/// filesystem remote or a path that is not exactly two segments. The one
+/// remote URL parser: the upload's `meta.git.repository` (`lib_on/git_info.rs`)
+/// and the `hotpath cloud` CLI's `--repo` fallback both use it. Characters
+/// are not validated here; the CLI checks them before building a path.
+pub fn repository_from_remote_url(url: &str) -> Option<String> {
+    let url = url.trim().trim_end_matches('/');
+    let url = url.strip_suffix(".git").unwrap_or(url);
+    let (authority, path) = match url.split_once("://") {
+        Some((_, rest)) => rest.split_once('/')?,
+        // scp-like `[user@]host:path`.
+        None => url.split_once(':')?,
+    };
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let host = host.split_once(':').map_or(host, |(host, _port)| host);
+    if !host.eq_ignore_ascii_case("github.com") {
+        return None;
+    }
+    let mut segments = path.split('/');
+    let owner = segments.next().filter(|s| !s.is_empty())?;
+    let name = segments.next().filter(|s| !s.is_empty())?;
+    if segments.next().is_some() {
+        return None;
+    }
+    Some(format!("{owner}/{name}"))
+}
+
 /// What happened to the pull request comment, inside the 201 body. `url` set
 /// means posted or updated; `error` set means it failed and says why; neither
 /// means there was nothing to post (a push upload, for instance).
@@ -108,7 +184,8 @@ pub struct UploadCreated {
 #[cfg(test)]
 mod tests {
     use crate::json::cloud_api::{
-        normalize_base_url, ApiError, ApiErrorCode, AuthStatus, CommentOutcome, TokenStatus,
+        normalize_base_url, repository_from_remote_url, ApiError, ApiErrorCode, AuthStatus,
+        BenchmarkList, BenchmarkSummary, CommentOutcome, RepoList, Repository, TokenStatus,
         UploadCreated, DEFAULT_BASE_URL,
     };
     use time::macros::datetime;
@@ -172,6 +249,103 @@ mod tests {
             r#"{"login":"pawurb","token":{"name":"laptop","expires_at":"tomorrow"}}"#,
         )
         .is_err());
+    }
+
+    #[test]
+    fn repo_list_round_trips() {
+        let body = r#"{"repositories":[{"full_name":"pawurb/hotpath-rs","private":false,"visibility_public":true,"benchmarks":[{"name":"ci","reports":412,"latest_report_at":"2026-09-25T18:03:11Z"},{"name":"empty","reports":0,"latest_report_at":null}]},{"full_name":"pawurb/private-thing","private":true,"visibility_public":false,"benchmarks":[]}]}"#;
+        let list: RepoList = serde_json::from_str(body).unwrap();
+        assert_eq!(
+            list,
+            RepoList {
+                repositories: vec![
+                    Repository {
+                        full_name: "pawurb/hotpath-rs".into(),
+                        private: false,
+                        visibility_public: true,
+                        benchmarks: vec![
+                            BenchmarkSummary {
+                                name: "ci".into(),
+                                reports: 412,
+                                latest_report_at: Some(datetime!(2026-09-25 18:03:11 UTC)),
+                            },
+                            BenchmarkSummary {
+                                name: "empty".into(),
+                                reports: 0,
+                                latest_report_at: None,
+                            },
+                        ],
+                    },
+                    Repository {
+                        full_name: "pawurb/private-thing".into(),
+                        private: true,
+                        visibility_public: false,
+                        benchmarks: vec![],
+                    },
+                ],
+            }
+        );
+        assert_eq!(serde_json::to_string(&list).unwrap(), body);
+
+        // `latest_report_at` is nullable, not optional.
+        assert!(serde_json::from_str::<BenchmarkSummary>(r#"{"name":"ci","reports":1}"#).is_err());
+    }
+
+    #[test]
+    fn benchmark_list_round_trips() {
+        let body = r#"{"repository":"pawurb/hotpath-rs","benchmarks":[{"name":"ci","reports":412,"latest_report_at":"2026-09-25T18:03:11Z"}]}"#;
+        let list: BenchmarkList = serde_json::from_str(body).unwrap();
+        assert_eq!(
+            list,
+            BenchmarkList {
+                repository: "pawurb/hotpath-rs".into(),
+                benchmarks: vec![BenchmarkSummary {
+                    name: "ci".into(),
+                    reports: 412,
+                    latest_report_at: Some(datetime!(2026-09-25 18:03:11 UTC)),
+                }],
+            }
+        );
+        assert_eq!(serde_json::to_string(&list).unwrap(), body);
+    }
+
+    #[test]
+    fn repository_from_remote_url_forms() {
+        for url in [
+            "git@github.com:pawurb/hotpath-rs.git",
+            "git@github.com:pawurb/hotpath-rs",
+            "https://github.com/pawurb/hotpath-rs.git",
+            "https://github.com/pawurb/hotpath-rs",
+            "https://github.com/pawurb/hotpath-rs/",
+            "https://user:token@github.com/pawurb/hotpath-rs.git",
+            "ssh://git@github.com/pawurb/hotpath-rs.git",
+            "ssh://git@github.com/pawurb/hotpath-rs",
+            "ssh://git@github.com:22/pawurb/hotpath-rs.git",
+            "git@GitHub.com:pawurb/hotpath-rs.git",
+            "  git@github.com:pawurb/hotpath-rs.git\n",
+        ] {
+            assert_eq!(
+                repository_from_remote_url(url).as_deref(),
+                Some("pawurb/hotpath-rs"),
+                "{url}"
+            );
+        }
+        for url in [
+            "hotpath-rs",
+            "",
+            "/srv/repos/hotpath-rs",
+            "../repos/hotpath-rs",
+            "file:///srv/repos/hotpath-rs",
+            "https://github.com/pawurb",
+            "https://github.com/pawurb/hotpath-rs/extra",
+            "git@gitlab.com:pawurb/hotpath-rs.git",
+            "https://gitlab.com/pawurb/hotpath-rs.git",
+            "ssh://git@bitbucket.org/pawurb/hotpath-rs.git",
+            "https://github.com.evil.io/pawurb/hotpath-rs.git",
+            "https://notgithub.com/pawurb/hotpath-rs.git",
+        ] {
+            assert_eq!(repository_from_remote_url(url), None, "{url}");
+        }
     }
 
     #[test]

@@ -7,6 +7,9 @@
 
 mod api;
 mod auth;
+mod benchmarks;
+mod repo;
+mod repos;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -43,6 +46,34 @@ and the base URL from HOTPATH_API_URL (default https://hotpath.rs). Exits 1 with
 server's error JSON on stderr when the token does not work."
     )]
     Auth,
+
+    #[command(
+        about = "List the repositories the token reaches, with their benchmarks (GET /api/v1/repos)",
+        long_about = "List the repositories the token reaches, with their benchmarks (GET /api/v1/repos).
+
+Every active repository the token's user can see on GitHub with the hotpath App
+installed, ordered by full name, each with its benchmarks (name, stored reports, time
+of the newest report). Same token and base URL environment as `auth`."
+    )]
+    Repos,
+
+    #[command(
+        about = "List one repository's benchmarks (GET /api/v1/repos/{owner}/{name}/benchmarks)",
+        long_about = "List one repository's benchmarks (GET /api/v1/repos/{owner}/{name}/benchmarks).
+
+The repository is --repo owner/name when given, otherwise the `origin` remote of the
+current directory (`git remote get-url origin`), which must point at github.com. A
+repository that does not exist, that the token's user cannot see or that has no App
+installed all answer 404. Same token and base URL environment as `auth`."
+    )]
+    Benchmarks {
+        #[arg(
+            long,
+            value_name = "OWNER/NAME",
+            help = "The repository; default: the `origin` remote of the current directory"
+        )]
+        repo: Option<String>,
+    },
 }
 
 impl CloudArgs {
@@ -70,6 +101,8 @@ impl CloudArgs {
         let client = Client::from_env()?;
         match cmd {
             CloudCommand::Auth => auth::run(&client, output),
+            CloudCommand::Repos => repos::run(&client, output),
+            CloudCommand::Benchmarks { repo } => benchmarks::run(&client, output, repo.as_deref()),
         }
     }
 }
