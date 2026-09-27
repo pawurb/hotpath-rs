@@ -2,8 +2,11 @@
 //! recorded for it at upload, judged under the benchmark's current policy,
 //! the same judgement the PR comment shows but as structured JSON. The head
 //! is picked like `report` picks a report (`selector.rs`). Sections carry
-//! only the PR comment's findings unless `--full` asks for every row
+//! only the PR comment's findings, each row cut to the cells that explain
+//! it, unless `--full` asks for every row, every cell and the column legend
 //! (`RowFilter`), and `budgets.findings` only the broken budgets.
+//! `--advisory` is the step between: the same cut, with the findings of the
+//! unjudged families listed too.
 //!
 //! The policy's budgets are judged on the head alone, so the verdict is a
 //! field of the body, not of the comparison, and covers both. Exit 0 means
@@ -39,9 +42,16 @@ pub(crate) struct DiffArgs {
 
     #[arg(
         long,
-        help = "Every row of every section, not only the PR comment's findings"
+        help = "Every row and every cell of every section, with the column legend, not only the PR comment's findings"
     )]
     full: bool,
+
+    #[arg(
+        long,
+        conflicts_with = "full",
+        help = "The findings of unjudged families too, which never count toward the verdict"
+    )]
+    advisory: bool,
 }
 
 pub(crate) fn run(output: &Output, args: DiffArgs) -> Result<ExitCode, CliError> {
@@ -76,9 +86,12 @@ fn request_path(args: &DiffArgs) -> Result<String, CliError> {
     if let Some(event) = args.selector.event {
         query.push(format!("event={}", event.as_str()));
     }
-    // Without `rows=` the server sends findings only.
+    // Without `rows=` the server sends findings only. clap rejects
+    // `--advisory` together with `--full`.
     if args.full {
         query.push("rows=all".to_string());
+    } else if args.advisory {
+        query.push("rows=advisory".to_string());
     }
     Ok(format!(
         "/api/v1/repos/{repo}/benchmarks/{benchmark}/diff?{}",

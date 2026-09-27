@@ -112,16 +112,31 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 The baseline is the one the server recorded for the head at upload, the one the PR
 comment compared. The judging policy is the benchmark's policy in force now, not the one at upload time,
 so a `set-policy` followed by `diff` shows the new judgement without a re-run.
-Numbers are never formatted: a value is a number in its column's `unit`, a change a
-number of percent.
+Numbers are never formatted: a value is a number in its cell's `unit`, a change a
+number of percent. A cell names its `column`, and `family.metrics` names the
+columns the policy judges.
 
 Each section is one metric family the policy lists; a family the policy leaves out is
 not in the body at all. A judged family decides the verdict; an unjudged one is still
 assessed (outcomes and crossed cells) but never counts. By default each section lists
 only the rows the PR comment lists: regressions, improvements, added and removed rows
-of judged families. The verdict, totals, columns and each family's `counts` are always
-complete, and `rows` in the body says which filter applied. --full lists every row of
-every section, unjudged families included.
+of judged families. Each of those rows carries only the cells that explain it: the
+ones that crossed the family's bar (the family's metrics for an added or removed row)
+and the context columns, which have a `role` (calls, % total). A column whose value
+did not parse has no cell and is named in the row's `unreadable`. A section without
+rows is still sent, with its `family` and `counts` but without its totals. The
+verdict, the run totals and each family's `counts` are always complete, and `rows` in
+the body says which filter applied. --full lists every row of every section, unjudged
+families included, every cell of every row, the section totals and `columns`, the
+legend that says which way is worse for each column. --advisory is the step between
+the two: the default cut, plus the regressions, improvements, added and removed rows
+of unjudged families, so a nonzero count in an unjudged family's `counts` can be
+inspected without --full. Those rows never count toward the verdict; `family.judged`
+of their section says so. Inside a section, a key that is unset or an empty list is
+left out: `mode`, `totals`, `columns`, `omitted_from_base`, `omitted_from_head`, a
+row's `location` and `unreadable`, a cell's `role` and `crossed`. A cell's `base`,
+`head` and `change_percent` are always there, null when a side is absent, and so is
+every key outside the sections (`base`, `budgets`, `policy.fallback`, the run totals).
 
 Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
 `[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without
