@@ -700,7 +700,7 @@ mod tests {
             format!(r#"{{"report":{SUMMARY_BODY},"selected":"recorded","branch_point":true}}"#)
         };
         format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"result":{result},"dashboard_url":null}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","result":{result},"dashboard_url":null}}"#
         )
     }
 
@@ -751,7 +751,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_sends_commit_event_and_base_and_maps_id_to_head() {
+    fn diff_sends_commit_event_base_and_full_and_maps_id_to_head() {
         let mut server = Server::new();
         let body = diff_body(&compared(false));
         let by_commit = server
@@ -760,11 +760,13 @@ mod tests {
                 Matcher::UrlEncoded("commit".into(), SHA.into()),
                 Matcher::UrlEncoded("event".into(), "pull_request".into()),
                 Matcher::UrlEncoded("base".into(), BASE_ID.into()),
+                Matcher::UrlEncoded("rows".into(), "all".into()),
             ]))
             .match_header("authorization", format!("Bearer {TOKEN}").as_str())
             .with_status(200)
             .with_body(&body)
             .create();
+        // Without `--full` the query leaves `rows=` to the server's default.
         let by_id = mock_report(&mut server, DIFF_PATH, &format!("head={REPORT_ID}"), &body);
 
         let output = hotpath(
@@ -777,6 +779,7 @@ mod tests {
                 "pull_request",
                 "--base",
                 BASE_ID,
+                "--full",
             ]),
         );
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));

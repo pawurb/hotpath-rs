@@ -116,6 +116,12 @@ so a `set-policy` followed by `diff` shows the new judgement without a re-run.
 Numbers are never formatted: a value is a number in its column's `unit`, a change a
 number of percent.
 
+By default each section lists only the rows the policy judged a regression or an
+improvement (advisory families included); the verdict, totals, columns and each
+family's `counts` are always complete, and `rows` in the body says which filter
+applied. --full lists every row of every section (unchanged, below the floor,
+ignored, added, removed, ...).
+
 Exit codes:
   0  compared, no regression
   3  compared, and the policy calls it a regression (see `sections[].rows` whose
