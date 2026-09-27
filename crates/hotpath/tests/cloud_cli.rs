@@ -691,16 +691,68 @@ mod tests {
     const DIFF_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/diff";
     const BASE_ID: &str = "0199a3b0-0000-7000-8000-000000000000";
 
+    const NO_BASELINE: &str = r#"{"status":"no_baseline"}"#;
+    const UNREADABLE_BASE: &str = r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#;
+    const UNREADABLE_HEAD: &str = r#"{"status":"unreadable","side":"head","hotpath_version":null,"error":"missing field `functions_timing`"}"#;
+
+    /// What the policy's budgets came to on head.
+    #[derive(Clone, Copy, Debug)]
+    enum BudgetsCase {
+        /// Head does not parse: `budgets` is `null`.
+        Unread,
+        /// The policy has no budget rules.
+        NoRules,
+        /// One rule, which holds (no finding under `rows=findings`).
+        Hold,
+        /// One rule, broken.
+        Broken,
+    }
+
+    impl BudgetsCase {
+        fn broken(self) -> u64 {
+            match self {
+                BudgetsCase::Broken => 1,
+                BudgetsCase::Unread | BudgetsCase::NoRules | BudgetsCase::Hold => 0,
+            }
+        }
+
+        fn has_rules(self) -> bool {
+            matches!(self, BudgetsCase::Hold | BudgetsCase::Broken)
+        }
+
+        fn body(self) -> String {
+            let findings = match self {
+                BudgetsCase::Unread => return "null".to_string(),
+                BudgetsCase::Broken => {
+                    r#"{"resource":"functions","rule":0,"pattern":"app::run","message":"run must stay under 1 ms","entity":{"key":"app::run","name":"app::run","location":null},"check":{"on":"column","family":"timing","kind":"timing","column":"p95"},"bound":"max","unit":"duration","limit":1000000.0,"actual":1500000.0,"broken":true}"#
+                }
+                BudgetsCase::NoRules | BudgetsCase::Hold => "",
+            };
+            format!(
+                r#"{{"rules":{},"broken":{},"findings":[{findings}],"notes":[]}}"#,
+                u64::from(self.has_rules()),
+                self.broken(),
+            )
+        }
+    }
+
     /// A `ReportDiff` body with `SUMMARY_BODY` as head (and as base, which
-    /// the client never checks) and `result` as given.
-    fn diff_body(result: &str) -> String {
-        let base = if result.contains(r#""status":"no_baseline""#) {
+    /// the client never checks), `result` as given and the verdict the
+    /// server builds from `result` and `budgets`.
+    fn diff_body(result: &str, budgets: BudgetsCase) -> String {
+        let base = if result == NO_BASELINE {
             "null".to_string()
         } else {
             format!(r#"{{"report":{SUMMARY_BODY},"branch_point":true}}"#)
         };
+        let was_compared = result.contains(r#""status":"compared""#);
+        let regressions = u64::from(result.contains(r#""outcome":"regression""#));
+        let budgets_broken = budgets.broken();
+        let judged = was_compared || budgets.has_rules();
+        let regressed = regressions > 0 || budgets_broken > 0;
         format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
+            budgets = budgets.body(),
         )
     }
 
@@ -712,7 +764,7 @@ mod tests {
             ("unchanged", "null", 0)
         };
         format!(
-            r#"{{"status":"compared","verdict":{{"regressed":{regressed},"regressions":{regressions},"improvements":0}},"totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","totals":[],"columns":[{{"key":"p95","label":"P95","unit":"duration","worse":"up","role":null}}],"base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metric_columns":[0],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","location":null,"presence":"both","outcome":"{outcome}","cells":[{{"base":1000.0,"head":1500.0,"change_percent":50.0,"crossed":{crossed}}}]}}],"omitted_from_base":[],"omitted_from_head":[],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
+            r#"{{"status":"compared","totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","totals":[],"columns":[{{"key":"p95","label":"P95","unit":"duration","worse":"up","role":null}}],"base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metric_columns":[0],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","location":null,"presence":"both","outcome":"{outcome}","cells":[{{"base":1000.0,"head":1500.0,"change_percent":50.0,"crossed":{crossed}}}]}}],"omitted_from_base":[],"omitted_from_head":[],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
             unchanged = 1 - regressions,
         )
     }
@@ -734,26 +786,32 @@ mod tests {
     }
 
     #[test]
-    fn diff_exit_code_follows_the_result() {
-        let unreadable = r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#;
-        for (result, code) in [
-            (compared(false), 0),
-            (compared(true), 1),
-            (r#"{"status":"no_baseline"}"#.to_string(), 1),
-            (unreadable.to_string(), 1),
+    fn diff_exit_code_follows_the_verdict() {
+        for (result, budgets, code) in [
+            (compared(false), BudgetsCase::Hold, 0),
+            (compared(false), BudgetsCase::NoRules, 0),
+            (compared(false), BudgetsCase::Broken, 1),
+            (compared(true), BudgetsCase::Hold, 1),
+            (NO_BASELINE.to_string(), BudgetsCase::Hold, 0),
+            (NO_BASELINE.to_string(), BudgetsCase::Broken, 1),
+            (NO_BASELINE.to_string(), BudgetsCase::NoRules, 1),
+            (UNREADABLE_BASE.to_string(), BudgetsCase::Hold, 0),
+            (UNREADABLE_BASE.to_string(), BudgetsCase::NoRules, 1),
+            (UNREADABLE_HEAD.to_string(), BudgetsCase::Unread, 1),
         ] {
-            let body = diff_body(&result);
+            let body = diff_body(&result, budgets);
             let output = diff_by_pr(&body);
-            assert_eq!(output.status.code(), Some(code), "{result}");
-            assert_eq!(stderr(&output), "", "{result}");
-            assert_eq!(json(&stdout(&output)), json(&body), "{result}");
+            let case = format!("{budgets:?} {result}");
+            assert_eq!(output.status.code(), Some(code), "{case}");
+            assert_eq!(stderr(&output), "", "{case}");
+            assert_eq!(json(&stdout(&output)), json(&body), "{case}");
         }
     }
 
     #[test]
     fn diff_sends_commit_event_and_full_and_maps_id_to_head() {
         let mut server = Server::new();
-        let body = diff_body(&compared(false));
+        let body = diff_body(&compared(false), BudgetsCase::NoRules);
         let by_commit = server
             .mock("GET", DIFF_PATH)
             .match_query(Matcher::AllOf(vec![
@@ -807,7 +865,7 @@ mod tests {
 
     #[test]
     fn diff_body_without_a_result_is_an_error_not_a_pass() {
-        let body = diff_body(&compared(false));
+        let body = diff_body(&compared(false), BudgetsCase::NoRules);
         let mut value = json(&body);
         value.as_object_mut().unwrap().remove("result");
         let output = diff_by_pr(&value.to_string());
@@ -816,6 +874,19 @@ mod tests {
         let error = client_error(&output);
         assert!(error.starts_with("invalid response from"), "{error}");
         assert!(error.contains("result"), "{error}");
+    }
+
+    #[test]
+    fn diff_body_with_the_verdict_inside_compared_is_an_error_not_a_pass() {
+        let mut value = json(&diff_body(&compared(false), BudgetsCase::NoRules));
+        let verdict = value.as_object_mut().unwrap().remove("verdict").unwrap();
+        value["result"]["verdict"] = verdict;
+        let output = diff_by_pr(&value.to_string());
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        let error = client_error(&output);
+        assert!(error.starts_with("invalid response from"), "{error}");
+        assert!(error.contains("verdict"), "{error}");
     }
 
     #[test]

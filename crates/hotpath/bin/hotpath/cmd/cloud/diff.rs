@@ -3,20 +3,24 @@
 //! the same judgement the PR comment shows but as structured JSON. The head
 //! is picked like `report` picks a report (`selector.rs`). Sections carry
 //! only the PR comment's findings unless `--full` asks for every row
-//! (`RowFilter`).
+//! (`RowFilter`), and `budgets.findings` only the broken budgets.
 //!
-//! Exit 0 means exactly "compared and no regression"; a regression, a missing
-//! baseline, an unreadable side and every error exit 1. Which kind of 1 it
-//! was is in the output, not the code: a server answer prints the
-//! `ReportDiff` body on stdout with stderr empty, as on exit 0, while an
-//! error prints one JSON document on stderr with stdout empty. The exit code
-//! is read from the deserialized body, never from the HTTP status, which is
-//! 200 for every `DiffResult`.
+//! The policy's budgets are judged on the head alone, so the verdict is a
+//! field of the body, not of the comparison, and covers both. Exit 0 means
+//! exactly "judged and nothing failed" (`verdict.judged && !verdict.regressed`).
+//! Exit 1 is everything else: a regression, a broken budget, nothing judged
+//! (an unreadable head, or no comparable baseline under a policy without
+//! budgets) and every error. A missing or unreadable baseline does not fail a
+//! report whose budgets hold. Which kind of failure it was is in the output,
+//! not the code: a server answer prints the `ReportDiff` body on stdout with
+//! stderr empty, as on exit 0, while an error prints one JSON document on
+//! stderr with stdout empty. The exit code is read from the deserialized
+//! body, never from the HTTP status, which is 200 for every `DiffResult`.
 
 use std::process::ExitCode;
 
 use clap::Args;
-use hotpath::json::cloud_api::{DiffResult, ReportDiff};
+use hotpath::json::cloud_api::{ReportDiff, Verdict};
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
 use crate::cmd::cloud::repo;
@@ -45,15 +49,14 @@ pub(crate) fn run(output: &Output, args: DiffArgs) -> Result<ExitCode, CliError>
     let client = Client::from_env()?;
     let diff: ReportDiff = client.get(&path)?;
     output.emit(&diff)?;
-    Ok(exit_code(&diff.result))
+    Ok(exit_code(&diff.verdict))
 }
 
-fn exit_code(result: &DiffResult) -> ExitCode {
-    match result {
-        DiffResult::Compared(comparison) if !comparison.verdict.regressed => ExitCode::SUCCESS,
-        DiffResult::Compared(_) | DiffResult::NoBaseline | DiffResult::Unreadable { .. } => {
-            ExitCode::FAILURE
-        }
+fn exit_code(verdict: &Verdict) -> ExitCode {
+    if verdict.judged && !verdict.regressed {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
 
