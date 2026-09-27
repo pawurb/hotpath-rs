@@ -384,7 +384,8 @@ pub struct PolicyRejected {
 /// both sides `400 bad_request`. All three `DiffResult`s answer 200. Reading
 /// needs only access to the repository. `rows=findings` (the default) or
 /// `rows=all` picks which rows the sections carry (see `RowFilter`); an
-/// unknown value is `400 bad_request`.
+/// unknown value is `400 bad_request`. The body carries only the sections of
+/// the families the policy lists.
 ///
 /// Numbers stay numbers: no formatted strings anywhere, a value is a number
 /// in its column's `unit` and a change is a number of percent. Formatting is
@@ -415,19 +416,20 @@ pub struct ReportDiff {
 }
 
 /// Which rows the sections of a `ReportDiff` carry, as `rows=` asks. Only
-/// rows are filtered: every section, its columns, family and `counts`, the
-/// verdict, totals, `skipped` and `notes` are the same under both, so the
-/// counts still say how many rows each outcome had.
+/// rows are filtered: the sections the policy lists, their columns, family
+/// and `counts`, the verdict, totals, `skipped` and `notes` are the same under
+/// both, so the counts still say how many rows each outcome had.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RowFilter {
     /// The default: the rows the PR comment lists, `Regression`,
-    /// `Improvement`, `Added` and `Removed` rows of judged families.
-    /// Unchanged, below-floor, ignored and too-few-calls rows and every row
-    /// of an unjudged section are left out; the family's `counts` still
-    /// count them and `All` lists them.
+    /// `Improvement`, `Added` and `Removed` rows of judged families. Every
+    /// row of an unjudged family and the unchanged, below-floor, ignored and
+    /// too-few-calls rows of a judged one are left out; `counts` still count
+    /// them and `All` lists them.
     Findings,
-    /// Every row of every section.
+    /// Every row of every section sent (a section the policy leaves out is
+    /// never sent, under either filter).
     All,
     /// A filter this client does not know.
     #[serde(other)]
@@ -505,17 +507,19 @@ pub struct Comparison {
     pub verdict: Verdict,
     /// Run-level numbers; each `None` when either side lacks it.
     pub totals: RunTotals,
-    /// Every section both reports carry, in display order.
+    /// Every section both reports carry whose family the policy lists, in
+    /// display order.
     pub sections: Vec<DiffSection>,
     /// Sections both reports carry that could not be compared (profiling-mode
-    /// or percentile-set mismatch), one sentence each.
+    /// or percentile-set mismatch), one sentence each. A section the policy
+    /// leaves out is never named here either.
     pub skipped: Vec<String>,
-    /// What the policy could not judge (a disabled resource or family, a
-    /// named percentile the report lacks), one sentence each.
+    /// What the policy could not judge, such as a named percentile the report
+    /// lacks, one sentence each.
     pub notes: Vec<String>,
 }
 
-/// The tally of a `Comparison` over every judged family.
+/// The tally of a `Comparison` over judged families only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verdict {
     /// `regressions > 0`. The CLI's exit code reads this, nothing else.
@@ -563,10 +567,10 @@ pub struct DiffSection {
     pub columns: Vec<DiffColumn>,
     pub base_coverage: Coverage,
     pub head_coverage: Coverage,
-    /// The family that judged this section; `None` when the policy does not
-    /// judge it (`judged = false`, or no family for it). Its rows then carry
-    /// no `outcome` and no `crossed`, but still both sides of every cell.
-    pub family: Option<FamilyJudgement>,
+    /// The family that assessed this section. The body only carries sections
+    /// whose family the policy lists; a section of a family the policy leaves
+    /// out is not sent at all.
+    pub family: FamilyJudgement,
     /// Every entity `ReportDiff::rows` lets through, sorted by the floor
     /// column's head value descending (removed rows last), else by volume,
     /// else head's order.
@@ -689,16 +693,19 @@ pub struct Coverage {
     pub total: u64,
 }
 
-/// A policy family's rules and tallies for one `DiffSection`. Present only
-/// for a judged family, and every judged family decides the verdict.
+/// A policy family's rules and tallies for one `DiffSection`: one per
+/// section, and every section a body carries has one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FamilyJudgement {
     pub name: FamilyName,
+    /// Whether this family decides the verdict and reaches the PR comment.
+    /// `false`: assessed and shown (outcomes, `crossed`), never counted.
+    pub judged: bool,
     /// The family's bar, in percent.
     pub min_percent_change: f64,
-    /// Indices into `DiffSection::columns` of the judged columns, in policy
-    /// order.
-    pub judged_columns: Vec<u32>,
+    /// The policy's `metrics`, as indices into `DiffSection::columns`, in
+    /// policy order.
+    pub metric_columns: Vec<u32>,
     pub counts: OutcomeCounts,
 }
 
@@ -737,8 +744,9 @@ pub struct DiffRow {
     /// Head's location when head has the entity, else the baseline's.
     pub location: Option<JsonLocation>,
     pub presence: Presence,
-    /// The family's conclusion; `None` when the section has no family.
-    pub outcome: Option<RowOutcome>,
+    /// The family's conclusion. Every row of every section sent has one,
+    /// unjudged families included.
+    pub outcome: RowOutcome,
     /// Aligned to `DiffSection::columns`. `None` when a present side's value
     /// did not parse.
     pub cells: Vec<Option<DiffCell>>,
@@ -788,9 +796,10 @@ pub struct DiffCell {
     pub head: Option<f64>,
     /// `None` when a side is absent.
     pub change_percent: Option<f64>,
-    /// Set on a judged cell that crossed its family's bar: which way the
-    /// value moved. Every such crossing counts toward the verdict when its
-    /// direction is the worse one.
+    /// Set on a cell of one of the family's metrics that crossed the family's
+    /// bar, in every family sent: which way the value moved. It counts toward
+    /// the verdict only when the family is `judged` and the direction is the
+    /// worse one.
     pub crossed: Option<Direction>,
 }
 
@@ -1173,7 +1182,8 @@ mod tests {
 
     /// The `compared` part of a `ReportDiff` fixture: one regressed
     /// `functions` alloc section with a crossed `Both` row, an `Added` row, a
-    /// `Removed` row and an unparseable cell, plus an unjudged `sql` section.
+    /// `Removed` row and an unparseable cell, plus an unjudged `sql` section
+    /// whose crossed regression the verdict does not count.
     const COMPARED_RESULT: &str = r#"{
         "status": "compared",
         "verdict": {"regressed": true, "regressions": 1, "improvements": 0},
@@ -1197,8 +1207,9 @@ mod tests {
                 "head_coverage": {"included": 3, "total": 5},
                 "family": {
                     "name": "alloc",
+                    "judged": true,
                     "min_percent_change": 5.0,
-                    "judged_columns": [1],
+                    "metric_columns": [1],
                     "counts": {"ignored": 0, "below_floor": 0, "added": 1, "removed": 1, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
                 },
                 "rows": [
@@ -1251,15 +1262,21 @@ mod tests {
                 "columns": [{"key": "p95", "label": "P95", "unit": "duration", "worse": "up", "role": null}],
                 "base_coverage": {"included": 1, "total": 1},
                 "head_coverage": {"included": 1, "total": 1},
-                "family": null,
+                "family": {
+                    "name": "timing",
+                    "judged": false,
+                    "min_percent_change": 20.0,
+                    "metric_columns": [0],
+                    "counts": {"ignored": 0, "below_floor": 0, "added": 0, "removed": 0, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
+                },
                 "rows": [
                     {
                         "key": "SELECT 1",
                         "name": "SELECT 1",
                         "location": null,
                         "presence": "both",
-                        "outcome": null,
-                        "cells": [{"base": 1000.0, "head": 900.0, "change_percent": -10.0, "crossed": null}]
+                        "outcome": "regression",
+                        "cells": [{"base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
                     }
                 ],
                 "omitted_from_base": [],
@@ -1312,12 +1329,13 @@ mod tests {
         let alloc = &comparison.sections[0];
         assert_eq!(alloc.mode, Some(ProfilingMode::AllocBytes));
         assert_eq!(alloc.columns[2].role, Some(ColumnRole::Floor));
-        assert_eq!(alloc.family.as_ref().unwrap().name, FamilyName::Alloc);
+        assert_eq!(alloc.family.name, FamilyName::Alloc);
+        assert!(alloc.family.judged);
 
         let [both, added, removed] = &alloc.rows[..] else {
             panic!("three rows expected");
         };
-        assert_eq!(both.outcome, Some(RowOutcome::Regression));
+        assert_eq!(both.outcome, RowOutcome::Regression);
         assert_eq!(
             both.cells[1],
             Some(DiffCell {
@@ -1334,8 +1352,34 @@ mod tests {
         assert!(removed.cells.iter().all(|c| c.unwrap().head.is_none()));
 
         let sql = &comparison.sections[1];
-        assert_eq!(sql.family, None);
-        assert_eq!(sql.rows[0].outcome, None);
+        assert!(!sql.family.judged);
+        assert_eq!(sql.rows[0].outcome, RowOutcome::Regression);
+        assert_eq!(sql.rows[0].cells[0].unwrap().crossed, Some(Direction::Up));
+        assert_eq!(
+            comparison.verdict.regressions, 1,
+            "unjudged rows never count"
+        );
+    }
+
+    #[test]
+    fn report_diff_requires_a_family_and_an_outcome() {
+        for (path, broken) in [
+            ("/result/sections/1/family", serde_json::Value::Null),
+            ("/result/sections/1/rows/0/outcome", serde_json::Value::Null),
+        ] {
+            let mut value = report_diff(&recorded_base(), COMPARED_RESULT, "null");
+            *value.pointer_mut(path).unwrap() = broken;
+            assert!(
+                serde_json::from_value::<ReportDiff>(value).is_err(),
+                "{path} null"
+            );
+        }
+        let mut value = report_diff(&recorded_base(), COMPARED_RESULT, "null");
+        value["result"]["sections"][1]["rows"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("outcome");
+        assert!(serde_json::from_value::<ReportDiff>(value).is_err());
     }
 
     #[test]
@@ -1394,6 +1438,6 @@ mod tests {
         assert_eq!(section.kind, SectionKind::Unknown);
         assert_eq!(section.columns[1].unit, Unit::Unknown);
         assert_eq!(section.rows[0].presence, Presence::Unknown);
-        assert_eq!(section.rows[0].outcome, Some(RowOutcome::Unknown));
+        assert_eq!(section.rows[0].outcome, RowOutcome::Unknown);
     }
 }

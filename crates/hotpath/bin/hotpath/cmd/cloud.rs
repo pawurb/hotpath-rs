@@ -116,11 +116,13 @@ so a `set-policy` followed by `diff` shows the new judgement without a re-run.
 Numbers are never formatted: a value is a number in its column's `unit`, a change a
 number of percent.
 
-By default each section lists only the rows the PR comment lists: regressions,
-improvements, added and removed rows of judged families. The verdict, totals, columns
-and each family's `counts` are always complete, and `rows` in the body says which
-filter applied. --full lists every row of every section, including unchanged,
-below-the-floor and ignored rows and the rows of sections the policy does not judge.
+Each section is one metric family the policy lists; a family the policy leaves out is
+not in the body at all. A judged family decides the verdict; an unjudged one is still
+assessed (outcomes and crossed cells) but never counts. By default each section lists
+only the rows the PR comment lists: regressions, improvements, added and removed rows
+of judged families. The verdict, totals, columns and each family's `counts` are always
+complete, and `rows` in the body says which filter applied. --full lists every row of
+every section, unjudged families included.
 
 Exit codes:
   0  compared, no regression
