@@ -669,7 +669,8 @@ pub struct Coverage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FamilyJudgement {
     pub name: FamilyName,
-    /// Whether this family decides the verdict (`false`: advisory).
+    /// Whether this family decides the verdict (`false`: advisory). Its
+    /// `DiffCell::crossed` marks count toward `Verdict` only when `true`.
     pub verdict: bool,
     /// The family's bar, in percent.
     pub min_percent_change: f64,
@@ -765,9 +766,10 @@ pub struct DiffCell {
     pub head: Option<f64>,
     /// `None` when a side is absent.
     pub change_percent: Option<f64>,
-    /// Set on a judged column that crossed the family's bar: which way the
-    /// value moved. Only a `verdict = true` family marks cells, as in the
-    /// PR comment; an advisory family's judgement is in `outcome` only.
+    /// Set on every judged cell that crossed its family's bar, advisory
+    /// families included (as the dashboard marks them): which way the value
+    /// moved. Whether the crossing counts toward the verdict is the section's
+    /// `FamilyJudgement::verdict`.
     pub crossed: Option<Direction>,
 }
 
