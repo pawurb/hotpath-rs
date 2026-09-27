@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -19,9 +20,13 @@ use crate::output::ProfilingMode;
 /// Base URL of the hotpath.rs API when nothing overrides it.
 pub const DEFAULT_BASE_URL: &str = "https://hotpath.rs";
 
-/// Turns the raw value of `HOTPATH_META_UPLOAD_URL` / `HOTPATH_META_API_URL` into a
-/// base URL: trimmed, without trailing slashes, `DEFAULT_BASE_URL` when unset
-/// or blank.
+/// Base URL every client talks to, the upload included. `HOTPATH_META_API_URL`
+/// overrides the default for staging or self-hosted backends.
+pub static API_URL: LazyLock<String> =
+    LazyLock::new(|| normalize_base_url(std::env::var("HOTPATH_META_API_URL").ok()));
+
+/// Turns the raw value of `HOTPATH_META_API_URL` into a base URL: trimmed, without
+/// trailing slashes, `DEFAULT_BASE_URL` when unset or blank.
 pub fn normalize_base_url(raw: Option<String>) -> String {
     raw.map(|s| s.trim().trim_end_matches('/').to_string())
         .filter(|s| !s.is_empty())
@@ -802,7 +807,7 @@ pub enum ColumnRole {
 pub struct Coverage {
     /// Entries the report lists.
     pub included: u64,
-    /// Entries measured, including ones cut by `HOTPATH_META_UPLOAD_LIMIT`.
+    /// Entries measured, including ones the report does not list.
     pub total: u64,
 }
 

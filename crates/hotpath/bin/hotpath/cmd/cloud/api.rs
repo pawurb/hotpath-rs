@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use hotpath::json::cloud_api::normalize_base_url;
+use hotpath::json::cloud_api::API_URL;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -32,10 +32,6 @@ static API_TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
 });
-
-/// `HOTPATH_API_URL`, normalized like `HOTPATH_UPLOAD_URL`.
-static API_URL: LazyLock<String> =
-    LazyLock::new(|| normalize_base_url(std::env::var("HOTPATH_API_URL").ok()));
 
 /// One failure of a `hotpath cloud` command, rendered by `Output::emit_error`.
 #[derive(Debug)]

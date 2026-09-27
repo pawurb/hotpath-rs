@@ -25,8 +25,7 @@ mod tests {
         .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
         .env_remove("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
         .env_remove("HOTPATH_LIMIT")
-        .env_remove("HOTPATH_FUNCTIONS_LIMIT")
-        .env_remove("HOTPATH_UPLOAD_LIMIT");
+        .env_remove("HOTPATH_FUNCTIONS_LIMIT");
         if upload {
             cmd.env("HOTPATH_UPLOAD", "1");
         } else {
@@ -253,20 +252,5 @@ mod tests {
         let report = run_route_scope(true, &[("HOTPATH_LIMIT", "1")]);
         assert_limited(&report, 0, &["sql", "http", "server"]);
         assert!(report.sql.unwrap().included_count > 1);
-    }
-
-    #[test]
-    fn upload_limit_caps_every_section() {
-        let report = run_all_features(true, &[("HOTPATH_UPLOAD_LIMIT", "2")]);
-        assert_limited(
-            &report,
-            2,
-            &["functions_timing", "functions_alloc", "threads"],
-        );
-        assert_eq!(report.functions_timing.unwrap().included_count, 2);
-
-        let report = run_route_scope(true, &[("HOTPATH_UPLOAD_LIMIT", "2")]);
-        assert_limited(&report, 2, &["sql", "http", "server"]);
-        assert_eq!(report.sql.unwrap().included_count, 2);
     }
 }

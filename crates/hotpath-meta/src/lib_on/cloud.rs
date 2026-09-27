@@ -2,7 +2,7 @@
 //! with the job's OIDC token. Enabled at runtime by `HOTPATH_META_UPLOAD=1`; the
 //! benchmark name comes from `HOTPATH_META_BENCHMARK` (default `default`, validated
 //! by `json::cloud_api::validate_benchmark_name` - invalid names skip the upload). The target
-//! base URL is `https://hotpath.rs` unless `HOTPATH_META_UPLOAD_URL` overrides it.
+//! base URL is `https://hotpath.rs` unless `HOTPATH_META_API_URL` overrides it.
 //!
 //! Runs synchronously from the guard's `Drop`, after the runtime may already
 //! be gone, so it never spawns tasks.
@@ -38,9 +38,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::json::cloud_api::{
-    normalize_base_url, validate_benchmark_name, ApiError, UploadCreated, Verdict,
-};
+use crate::json::cloud_api::{validate_benchmark_name, ApiError, UploadCreated, Verdict, API_URL};
 use crate::json::JsonReport;
 
 const AUDIENCE: &str = "hotpath.rs";
@@ -48,13 +46,6 @@ const MINT_TIMEOUT: Duration = Duration::from_secs(10);
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 /// Longest raw (unparseable) response body quoted in a message.
 const MAX_QUOTED_BODY: usize = 2000;
-
-/// Base URL the report is posted to. `HOTPATH_META_UPLOAD_URL` overrides it for
-/// staging or self-hosted backends; trailing slashes are trimmed so the
-/// `/api/v1/reports` path is appended cleanly. Blank or unset falls back to
-/// the default.
-pub(crate) static UPLOAD_URL: LazyLock<String> =
-    LazyLock::new(|| normalize_base_url(std::env::var("HOTPATH_META_UPLOAD_URL").ok()));
 
 /// `HOTPATH_META_UPLOAD_STRICT=1`: a failed upload is an `::error::` and exits 1.
 /// Off by default so an adopter's benchmark job never goes red because
@@ -107,19 +98,6 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
         .map_err(|rule| format!("invalid HOTPATH_META_BENCHMARK {name:?}: {rule}"))?;
     Ok(name)
 }
-
-/// Per-section entry limit for the uploaded report. Defaults to `0`
-/// (unlimited) so the server receives every measured entry: it diffs reports
-/// by name and can truncate for display itself, while a client-side top-N
-/// cannot be undone. Replaces `HOTPATH_META_LIMIT`, every `HOTPATH_META_<SECTION>_LIMIT`
-/// and the builder limits for the upload only; unparsable values fall back
-/// to `0`.
-pub(crate) static UPLOAD_LIMIT: LazyLock<usize> = LazyLock::new(|| {
-    std::env::var("HOTPATH_META_UPLOAD_LIMIT")
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
-});
 
 /// How one upload attempt ended.
 #[derive(Debug, PartialEq)]
@@ -247,7 +225,7 @@ fn run(report: &JsonReport) -> Outcome {
             }
         }
     };
-    post_report(&UPLOAD_URL, &token, &benchmark, &body)
+    post_report(&API_URL, &token, &benchmark, &body)
 }
 
 fn agent(timeout: Duration) -> ureq::Agent {
