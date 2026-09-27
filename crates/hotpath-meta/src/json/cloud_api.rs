@@ -382,7 +382,9 @@ pub struct PolicyRejected {
 /// head's recorded `baseline_id`, the one the PR comment compared. A `head=`
 /// or `base=` of another benchmark is `404 not_found`, the same report on
 /// both sides `400 bad_request`. All three `DiffResult`s answer 200. Reading
-/// needs only access to the repository.
+/// needs only access to the repository. `rows=findings` (the default) or
+/// `rows=all` picks which rows the sections carry (see `RowFilter`); an
+/// unknown value is `400 bad_request`.
 ///
 /// Numbers stay numbers: no formatted strings anywhere, a value is a number
 /// in its column's `unit` and a change is a number of percent. Formatting is
@@ -402,11 +404,35 @@ pub struct ReportDiff {
     pub base: Option<DiffBase>,
     /// The policy that judged (for `Compared`) or would judge.
     pub policy: AppliedPolicy,
+    /// Which rows `DiffSection::rows` carries: the `rows=` the server
+    /// applied, so a filtered body never reads as a complete one.
+    pub rows: RowFilter,
     pub result: DiffResult,
     /// The dashboard's comparison page for this pair
     /// (`.../benchmarks/{benchmark}/diff/{base_id}/{head_id}`); `None`
     /// without a base.
     pub dashboard_url: Option<String>,
+}
+
+/// Which rows the sections of a `ReportDiff` carry, as `rows=` asks. Only
+/// rows are filtered: every section, its columns, family and `counts`, the
+/// verdict, totals, `skipped` and `notes` are the same under both, so the
+/// counts still say how many rows each outcome had.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RowFilter {
+    /// The default: exactly the PR comment's findings. `Regression` and
+    /// `Improvement` rows of families with `verdict = true`, plus `Added` and
+    /// `Removed` rows of any family. Advisory crossings, unchanged,
+    /// below-floor, ignored and too-few-calls rows are left out, as are the
+    /// rows of a section no family judges; the family's `counts` and
+    /// `Verdict::advisory_*` still say they exist.
+    Findings,
+    /// Every row of every section.
+    All,
+    /// A filter this client does not know.
+    #[serde(other)]
+    Unknown,
 }
 
 /// The baseline side of a `ReportDiff` and how it was chosen.
@@ -544,8 +570,9 @@ pub struct DiffSection {
     /// The family that judged this section; `None` when the policy has none
     /// enabled for it (rows then carry no `outcome`).
     pub family: Option<FamilyJudgement>,
-    /// Every entity, sorted by the floor column's head value descending
-    /// (removed rows last), else by volume, else head's order.
+    /// Every entity `ReportDiff::rows` lets through, sorted by the floor
+    /// column's head value descending (removed rows last), else by volume,
+    /// else head's order.
     pub rows: Vec<DiffRow>,
     /// Head entities missing from a truncated baseline: not comparable,
     /// never reported as added. Sorted.
@@ -782,8 +809,8 @@ mod tests {
         BaseSelection, BenchmarkList, BenchmarkSummary, ColumnRole, CommentOutcome, DiffCell,
         DiffResource, DiffResult, DiffSide, Direction, FamilyName, PolicyLevel, PolicyProblem,
         PolicyRejected, PolicySaved, PolicyUpdate, PolicyView, Presence, RepoList, Report,
-        ReportDiff, ReportSummary, Repository, RowOutcome, SectionKind, TokenStatus, Unit,
-        UploadCreated, DEFAULT_BASE_URL,
+        ReportDiff, ReportSummary, Repository, RowFilter, RowOutcome, SectionKind, TokenStatus,
+        Unit, UploadCreated, DEFAULT_BASE_URL,
     };
     use crate::output::ProfilingMode;
     use time::macros::datetime;
@@ -1254,7 +1281,7 @@ mod tests {
 
     fn report_diff(base: &str, result: &str, dashboard_url: &str) -> serde_json::Value {
         let body = format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"result":{result},"dashboard_url":{dashboard_url}}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","result":{result},"dashboard_url":{dashboard_url}}}"#
         );
         serde_json::from_str(&body).unwrap()
     }
@@ -1283,6 +1310,7 @@ mod tests {
         assert_eq!(base.selected, BaseSelection::Recorded);
         assert!(base.branch_point);
         assert_eq!(diff.policy.level, PolicyLevel::Benchmark);
+        assert_eq!(diff.rows, RowFilter::All);
 
         let DiffResult::Compared(comparison) = diff.result else {
             panic!("not compared: {:?}", diff.result);
@@ -1320,8 +1348,10 @@ mod tests {
 
     #[test]
     fn report_diff_no_baseline_round_trips() {
-        let value = report_diff("null", r#"{"status":"no_baseline"}"#, "null");
+        let mut value = report_diff("null", r#"{"status":"no_baseline"}"#, "null");
+        value["rows"] = "findings".into();
         let diff = round_trip(&value);
+        assert_eq!(diff.rows, RowFilter::Findings);
         assert_eq!(diff.base, None);
         assert_eq!(diff.result, DiffResult::NoBaseline);
         assert_eq!(diff.dashboard_url, None);
@@ -1359,9 +1389,11 @@ mod tests {
         let mut value = report_diff(&recorded_base(), &result, "null");
         value["later"] = serde_json::json!({"anything": true});
         value["base"]["selected"] = "guessed".into();
+        value["rows"] = "sampled".into();
 
         let diff: ReportDiff = serde_json::from_value(value).unwrap();
         assert_eq!(diff.base.unwrap().selected, BaseSelection::Unknown);
+        assert_eq!(diff.rows, RowFilter::Unknown);
         let DiffResult::Compared(comparison) = diff.result else {
             panic!("not compared");
         };
