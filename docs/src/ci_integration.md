@@ -142,11 +142,12 @@ The verdict is the one the pull request comment shows, judged under the policy i
 | `HOTPATH_UPLOAD_STRICT` | Set to `1` to exit with code 1 when the upload fails (server unreachable, report rejected). A skipped upload never fails. (default: off, a failed upload is a warning) |
 | `HOTPATH_UPLOAD_FAIL_ON_REGRESSION` | Set to `1` to exit with code 1 when the verdict is a regression or a broken budget. Independent of `HOTPATH_UPLOAD_STRICT`. (default: off) |
 | `HOTPATH_UPLOAD_RESPONSE_PATH` | File the server's response is written to as JSON. (default: not written) |
-| `HOTPATH_UPLOAD_LIMIT` | Maximum number of entries per section in the uploaded report, `0` for all. The upload ignores `HOTPATH_LIMIT`, because a report cut to the top entries cannot be compared entry by entry. (default: `0`) |
-| `HOTPATH_UPLOAD_URL` | Base URL of the server. (default: `https://hotpath.rs`) |
+| `HOTPATH_API_URL` | Base URL of the server. (default: `https://hotpath.rs`) |
 | `HOTPATH_USER_METADATA` | Comma-separated `key=value` pairs stored with the report and shown on its page, e.g. `runner=linux-x64,profile=release`. |
 | `HOTPATH_SOURCE_ROOT` | Path of the build workspace relative to the repository root, for source links in the comment. Derived from the checkout when unset. |
 | `HOTPATH_OUTPUT_FORMAT` | Set to `none` to keep the local report out of the job log. The upload does not depend on it. |
+
+The uploaded report always carries every entry of every section. `HOTPATH_LIMIT` and the per-section limits do not apply to it, because a report cut to the top entries cannot be compared entry by entry.
 
 See [configuration](configuration.md) for the variables that shape the report itself.
 
@@ -271,7 +272,6 @@ In the pull request job, which writes the report:
 | `HOTPATH_BENCHMARK` | Name of the benchmark series. The relay's `benchmark` input must name the same one. |
 | `HOTPATH_OUTPUT_FORMAT` | Must be `json`. |
 | `HOTPATH_OUTPUT_PATH` | File the report is written to, the one stored as the artifact. |
-| `HOTPATH_UPLOAD_LIMIT` | Maximum number of entries per section of the report, `0` for all. (default: `0`) |
 | `HOTPATH_USER_METADATA` | Comma-separated `key=value` pairs stored with the report. |
 
 The push job takes the variables of the [same-repository setup](#environment-variables).
