@@ -15,7 +15,6 @@ mod tests {
 
     const REGRESSED_BODY: &str = r#"{"id":"r1","repository":"pawurb/hotpath-rs","benchmark":"guard-test","baseline":"r0","comment":{"url":"https://github.com/c/1"},"verdict":{"judged":true,"regressed":true,"regressions":2,"improvements":0,"budgets_broken":1},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/guard-test/reports/r1/diff"}"#;
 
-    /// A server that mints a token and answers the upload with `status` and `body`.
     fn mock_server(status: usize, body: &str) -> (ServerGuard, mockito::Mock) {
         let mut server = Server::new();
         server

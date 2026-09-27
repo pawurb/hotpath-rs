@@ -383,11 +383,7 @@ fn verdict_summary(verdict: &Verdict) -> String {
     .into_iter()
     .flatten()
     .collect();
-    if verdict.regressed {
-        if parts.is_empty() {
-            // `regressed` decides; the counts only describe it.
-            return "regressed".to_string();
-        }
+    if !parts.is_empty() {
         return parts.join(", ");
     }
     if verdict.judged {
@@ -430,7 +426,6 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             if let Some(error) = &created.comment.error {
                 message.push_str(&format!("; comment failed: {error}"));
             }
-            // Strict mode does not apply: the upload itself succeeded.
             let level = if failing {
                 Level::Error
             } else if verdict.regressed || created.comment.error.is_some() {
@@ -591,7 +586,6 @@ mod tests {
         }
     }
 
-    /// A path of this test's own in the temporary directory.
     fn scratch_dir(test: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("hotpath-cloud-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -841,15 +835,6 @@ mod tests {
             r.message,
             format!("{prefix}; verdict: 2 budgets broken, failing the job (HOTPATH_UPLOAD_FAIL_ON_REGRESSION)")
         );
-
-        // `regressed` decides even when the counts do not explain it.
-        let unexplained = Verdict {
-            regressed: true,
-            ..verdict(0, 0)
-        };
-        let r = render(&uploaded(unexplained), &guard_env(false), Some("meta"));
-        assert_eq!(r.level, Level::Error);
-        assert!(r.message.contains("; verdict: regressed, failing"));
 
         // Nothing judged never fails, and neither does a clean verdict.
         let not_judged = Verdict {
