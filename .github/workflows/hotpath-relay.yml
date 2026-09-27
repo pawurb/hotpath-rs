@@ -32,6 +32,11 @@ name: hotpath relay
 #         artifact_name: hotpath-report
 #         report_file: report.json
 #
+# `fail_on_regression: true` fails the relay job when the server's verdict on
+# the report is a regression or a broken budget. A `workflow_run` job is not a
+# check on the pull request, so the failure shows in the Actions tab and in the
+# pull request comment, not in the pull request's checks.
+#
 # The benchmark job it pairs with checks out `github.event.pull_request.head.sha`
 # (not the default merge ref, whose commit this workflow cannot vouch for), runs
 # the benchmark **with the `hotpath-cloud` feature** and with
@@ -72,6 +77,12 @@ on:
         description: Base URL of the hotpath server.
         default: https://hotpath.rs
         type: string
+      fail_on_regression:
+        description: >-
+          Fail the job when the server's verdict on the report is a regression
+          or a broken budget. A report nothing could be judged on never fails.
+        default: false
+        type: boolean
 
 jobs:
   relay:
@@ -188,4 +199,16 @@ jobs:
           comment_error=$(jq -r '.comment.error // empty' response.json 2>/dev/null || true)
           if [ -n "$comment_error" ]; then
             echo "::warning::hotpath.rs comment failed: $comment_error"
+          fi
+
+      # The verdict is the one the pull request comment shows, judged under the
+      # policy in force at upload. A body without one is not a pass.
+      - name: Fail on a regression
+        if: inputs.fail_on_regression
+        run: |
+          set -euo pipefail
+          if ! jq -e '.verdict.regressed == false' response.json > /dev/null; then
+            summary=$(jq -r '"\(.verdict.regressions) regressions, \(.verdict.budgets_broken) budgets broken"' response.json 2>/dev/null || echo "no verdict in the response")
+            echo "::error::hotpath.rs found a regression: $summary"
+            exit 1
           fi
