@@ -1666,8 +1666,6 @@ mod tests {
     #[test]
     fn report_diff_findings_round_trips() {
         let mut value = compared_diff(FINDINGS_RESULT);
-        value["rows"] = "advisory".into();
-        assert_eq!(round_trip(&value).rows, RowFilter::Advisory);
         value["rows"] = "findings".into();
         let diff = round_trip(&value);
         assert_eq!(diff.rows, RowFilter::Findings);
@@ -1699,6 +1697,39 @@ mod tests {
         assert!(sql.totals.is_empty());
         assert!(sql.rows.is_empty());
         assert_eq!(sql.family.counts.regressions, 1);
+    }
+
+    #[test]
+    fn report_diff_advisory_lists_the_findings_of_unjudged_families() {
+        let mut value = compared_diff(FINDINGS_RESULT);
+        value["rows"] = "advisory".into();
+        value["result"]["sections"][1]["rows"] = serde_json::json!([{
+            "key": "SELECT 1",
+            "name": "SELECT 1",
+            "presence": "both",
+            "outcome": "regression",
+            "cells": [{"column": "p95", "unit": "duration", "base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
+        }]);
+        let diff = round_trip(&value);
+        assert_eq!(diff.rows, RowFilter::Advisory);
+        assert_eq!(diff.verdict.regressions, 1, "unjudged rows never count");
+        let DiffResult::Compared(comparison) = diff.result else {
+            panic!("not compared: {:?}", diff.result);
+        };
+
+        let [alloc, sql] = &comparison.sections[..] else {
+            panic!("two sections expected");
+        };
+        assert_eq!(alloc.rows.len(), 2, "the judged findings are unchanged");
+        assert_eq!(alloc.columns, None);
+        assert!(!sql.family.judged);
+        assert_eq!(sql.columns, None);
+        let [row] = &sql.rows[..] else {
+            panic!("one row expected");
+        };
+        assert_eq!(row.outcome, RowOutcome::Regression);
+        assert_eq!(row.cells[0].column, "p95");
+        assert_eq!(row.cells[0].crossed, Some(Direction::Up));
     }
 
     #[test]
