@@ -3,7 +3,7 @@ mod tests {
     //! `hotpath cloud auth|repos|benchmarks|report|diff|get-policy|set-policy`
     //! against a mock hotpath.rs: the bearer request each sends, the JSON it
     //! re-emits, the error JSON on stderr (server bodies verbatim, client
-    //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 3 and 4 read
+    //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 0 or 1 read
     //! from its body, argument validation before any request (and before the
     //! token is read), clap usage errors with exit 2, and that the token never
     //! reaches stdout or stderr.
@@ -697,10 +697,10 @@ mod tests {
         let base = if result.contains(r#""status":"no_baseline""#) {
             "null".to_string()
         } else {
-            format!(r#"{{"report":{SUMMARY_BODY},"selected":"recorded","branch_point":true}}"#)
+            format!(r#"{{"report":{SUMMARY_BODY},"branch_point":true}}"#)
         };
         format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","result":{result},"dashboard_url":null}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#
         )
     }
 
@@ -712,7 +712,7 @@ mod tests {
             ("unchanged", "null", 0)
         };
         format!(
-            r#"{{"status":"compared","verdict":{{"regressed":{regressed},"regressions":{regressions},"improvements":0}},"totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","totals":[],"columns":[{{"key":"p95","label":"P95","unit":"duration","worse":"up","role":null}}],"base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","min_percent_change":10.0,"judged_columns":[0],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","location":null,"presence":"both","outcome":"{outcome}","cells":[{{"base":1000.0,"head":1500.0,"change_percent":50.0,"crossed":{crossed}}}]}}],"omitted_from_base":[],"omitted_from_head":[],"dashboard_url":null}}],"skipped":[],"notes":[]}}"#,
+            r#"{{"status":"compared","verdict":{{"regressed":{regressed},"regressions":{regressions},"improvements":0}},"totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","totals":[],"columns":[{{"key":"p95","label":"P95","unit":"duration","worse":"up","role":null}}],"base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metric_columns":[0],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","location":null,"presence":"both","outcome":"{outcome}","cells":[{{"base":1000.0,"head":1500.0,"change_percent":50.0,"crossed":{crossed}}}]}}],"omitted_from_base":[],"omitted_from_head":[],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
             unchanged = 1 - regressions,
         )
     }
@@ -738,9 +738,9 @@ mod tests {
         let unreadable = r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#;
         for (result, code) in [
             (compared(false), 0),
-            (compared(true), 3),
-            (r#"{"status":"no_baseline"}"#.to_string(), 4),
-            (unreadable.to_string(), 4),
+            (compared(true), 1),
+            (r#"{"status":"no_baseline"}"#.to_string(), 1),
+            (unreadable.to_string(), 1),
         ] {
             let body = diff_body(&result);
             let output = diff_by_pr(&body);
@@ -751,7 +751,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_sends_commit_event_base_and_full_and_maps_id_to_head() {
+    fn diff_sends_commit_event_and_full_and_maps_id_to_head() {
         let mut server = Server::new();
         let body = diff_body(&compared(false));
         let by_commit = server
@@ -759,7 +759,6 @@ mod tests {
             .match_query(Matcher::AllOf(vec![
                 Matcher::UrlEncoded("commit".into(), SHA.into()),
                 Matcher::UrlEncoded("event".into(), "pull_request".into()),
-                Matcher::UrlEncoded("base".into(), BASE_ID.into()),
                 Matcher::UrlEncoded("rows".into(), "all".into()),
             ]))
             .match_header("authorization", format!("Bearer {TOKEN}").as_str())
@@ -777,8 +776,6 @@ mod tests {
                 &SHA.to_ascii_uppercase(),
                 "--event",
                 "pull_request",
-                "--base",
-                BASE_ID,
                 "--full",
             ]),
         );
@@ -829,7 +826,7 @@ mod tests {
             .expect(0)
             .create();
 
-        let cases: [(Vec<&str>, &str); 4] = [
+        let cases: [(Vec<&str>, &str); 3] = [
             (
                 vec!["diff", "--repo", "nope", "--benchmark", "ci", "--pr", "1"],
                 "invalid --repo `nope`",
@@ -845,10 +842,6 @@ mod tests {
                     "1",
                 ],
                 "invalid --benchmark `a/b`",
-            ),
-            (
-                diff_args(&["--pr", "1", "--base", "../x"]),
-                "invalid --base `../x`",
             ),
             (diff_args(&["--commit", "9ab2"]), "invalid --commit `9ab2`"),
         ];
@@ -872,7 +865,7 @@ mod tests {
 
         for selector in [
             vec![],
-            vec!["--base", BASE_ID],
+            vec!["--pr", "1", "--base", BASE_ID],
             vec!["--id", REPORT_ID, "--event", "push"],
             vec!["--pr", "1", "--commit", SHA],
         ] {

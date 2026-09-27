@@ -372,19 +372,20 @@ pub struct PolicyRejected {
 }
 
 /// Body of `GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/diff`:
-/// one head report against one baseline, judged under the benchmark's policy
-/// in force now (not the one at upload time, so a `set-policy` followed by a
-/// diff shows the new judgement without a re-run).
+/// one head report against the baseline recorded for it at upload, judged
+/// under the benchmark's policy in force now (not the one at upload time, so
+/// a `set-policy` followed by a diff shows the new judgement without a
+/// re-run).
 ///
 /// The head is picked like `reports/latest` / `reports/{id}` pick a report:
 /// `pr=N` or `commit=SHA` (newest match by upload, narrowed by `event=`), or
-/// `head=ID`. `base=ID` names the baseline; without it the baseline is the
-/// head's recorded `baseline_id`, the one the PR comment compared. A `head=`
-/// or `base=` of another benchmark is `404 not_found`, the same report on
-/// both sides `400 bad_request`. All three `DiffResult`s answer 200. Reading
-/// needs only access to the repository. `rows=findings` (the default) or
+/// `head=ID`. The baseline is always the head's recorded `baseline_id`, the
+/// one the PR comment compared. A `head=` of another benchmark is
+/// `404 not_found`. All three `DiffResult`s answer 200. Reading needs only
+/// access to the repository. `rows=findings` (the default) or
 /// `rows=all` picks which rows the sections carry (see `RowFilter`); an
-/// unknown value is `400 bad_request`.
+/// unknown value is `400 bad_request`. The body carries only the sections of
+/// the families the policy lists.
 ///
 /// Numbers stay numbers: no formatted strings anywhere, a value is a number
 /// in its column's `unit` and a change is a number of percent. Formatting is
@@ -408,55 +409,43 @@ pub struct ReportDiff {
     /// applied, so a filtered body never reads as a complete one.
     pub rows: RowFilter,
     pub result: DiffResult,
-    /// The dashboard's comparison page for this pair
-    /// (`.../benchmarks/{benchmark}/diff/{base_id}/{head_id}`); `None`
-    /// without a base.
-    pub dashboard_url: Option<String>,
+    /// The dashboard's comparison page for the head report
+    /// (`.../benchmarks/{benchmark}/reports/{head_id}/diff`), which exists
+    /// with or without a baseline.
+    pub dashboard_url: String,
 }
 
 /// Which rows the sections of a `ReportDiff` carry, as `rows=` asks. Only
-/// rows are filtered: every section, its columns, family and `counts`, the
-/// verdict, totals, `skipped` and `notes` are the same under both, so the
-/// counts still say how many rows each outcome had.
+/// rows are filtered: the sections the policy lists, their columns, family
+/// and `counts`, the verdict, totals, `skipped` and `notes` are the same under
+/// both, so the counts still say how many rows each outcome had.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RowFilter {
     /// The default: the rows the PR comment lists, `Regression`,
-    /// `Improvement`, `Added` and `Removed` rows of judged families.
-    /// Unchanged, below-floor, ignored and too-few-calls rows and every row
-    /// of an unjudged section are left out; the family's `counts` still
-    /// count them and `All` lists them.
+    /// `Improvement`, `Added` and `Removed` rows of judged families. Every
+    /// row of an unjudged family and the unchanged, below-floor, ignored and
+    /// too-few-calls rows of a judged one are left out; `counts` still count
+    /// them and `All` lists them.
     Findings,
-    /// Every row of every section.
+    /// Every row of every section sent (a section the policy leaves out is
+    /// never sent, under either filter).
     All,
     /// A filter this client does not know.
     #[serde(other)]
     Unknown,
 }
 
-/// The baseline side of a `ReportDiff` and how it was chosen.
+/// The baseline side of a `ReportDiff`: the baseline recorded for head at
+/// upload, the one the PR comment compared.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiffBase {
     pub report: ReportSummary,
-    pub selected: BaseSelection,
     /// Whether the baseline measured the commit head branched from
     /// (`head.base_sha`). `false`: another report stood in (the base
     /// branch's newest), so the base branch's own drift since the branch
-    /// point is in the diff. Computed the same way for a requested base.
+    /// point is in the diff.
     pub branch_point: bool,
-}
-
-/// How the baseline of a `ReportDiff` was chosen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BaseSelection {
-    /// The baseline recorded for head at upload (what the PR comment compared).
-    Recorded,
-    /// `base=` named it.
-    Requested,
-    /// A selection this client does not know.
-    #[serde(other)]
-    Unknown,
 }
 
 /// Which policy judged a `ReportDiff`.
@@ -472,13 +461,13 @@ pub struct AppliedPolicy {
 
 /// The outcome of a `ReportDiff`, internally tagged:
 /// `{"status": "compared", ...}`. The CLI's exit code reads it: 0 for
-/// `Compared` without a regression, 3 with one, 4 for the other two.
+/// `Compared` without a regression, 1 for everything else.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum DiffResult {
     Compared(Comparison),
     /// Head has no recorded baseline (a push report, a PR whose base branch
-    /// had no report yet) and none was requested.
+    /// had no report yet).
     NoBaseline,
     /// A side does not parse under the server's report schema: what the PR
     /// comment says in that case, structured.
@@ -505,20 +494,23 @@ pub struct Comparison {
     pub verdict: Verdict,
     /// Run-level numbers; each `None` when either side lacks it.
     pub totals: RunTotals,
-    /// Every section both reports carry, in display order.
+    /// Every section both reports carry whose family the policy lists, in
+    /// display order.
     pub sections: Vec<DiffSection>,
     /// Sections both reports carry that could not be compared (profiling-mode
-    /// or percentile-set mismatch), one sentence each.
+    /// or percentile-set mismatch), one sentence each. A section the policy
+    /// leaves out is never named here either.
     pub skipped: Vec<String>,
-    /// What the policy could not judge (a disabled resource or family, a
-    /// named percentile the report lacks), one sentence each.
+    /// What the policy could not judge, such as a named percentile the report
+    /// lacks, one sentence each.
     pub notes: Vec<String>,
 }
 
-/// The tally of a `Comparison` over every judged family.
+/// The tally of a `Comparison` over judged families only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verdict {
-    /// `regressions > 0`. The CLI's exit code reads this, nothing else.
+    /// `regressions > 0`. Decides between the CLI's exit 0 and 1 for a
+    /// `Compared` result.
     pub regressed: bool,
     pub regressions: u64,
     pub improvements: u64,
@@ -563,10 +555,10 @@ pub struct DiffSection {
     pub columns: Vec<DiffColumn>,
     pub base_coverage: Coverage,
     pub head_coverage: Coverage,
-    /// The family that judged this section; `None` when the policy does not
-    /// judge it (`judged = false`, or no family for it). Its rows then carry
-    /// no `outcome` and no `crossed`, but still both sides of every cell.
-    pub family: Option<FamilyJudgement>,
+    /// The family that assessed this section. The body only carries sections
+    /// whose family the policy lists; a section of a family the policy leaves
+    /// out is not sent at all.
+    pub family: FamilyJudgement,
     /// Every entity `ReportDiff::rows` lets through, sorted by the floor
     /// column's head value descending (removed rows last), else by volume,
     /// else head's order.
@@ -576,8 +568,8 @@ pub struct DiffSection {
     pub omitted_from_base: Vec<String>,
     /// Baseline entities missing from a truncated head. Sorted.
     pub omitted_from_head: Vec<String>,
-    /// The comparison page with this section's tab open.
-    pub dashboard_url: Option<String>,
+    /// The comparison page with this section's tab open (`?tab=`).
+    pub dashboard_url: String,
 }
 
 /// The resource a `DiffSection` covers.
@@ -689,16 +681,19 @@ pub struct Coverage {
     pub total: u64,
 }
 
-/// A policy family's rules and tallies for one `DiffSection`. Present only
-/// for a judged family, and every judged family decides the verdict.
+/// A policy family's rules and tallies for one `DiffSection`: one per
+/// section, and every section a body carries has one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FamilyJudgement {
     pub name: FamilyName,
+    /// Whether this family decides the verdict and reaches the PR comment.
+    /// `false`: assessed and shown (outcomes, `crossed`), never counted.
+    pub judged: bool,
     /// The family's bar, in percent.
     pub min_percent_change: f64,
-    /// Indices into `DiffSection::columns` of the judged columns, in policy
-    /// order.
-    pub judged_columns: Vec<u32>,
+    /// The policy's `metrics`, as indices into `DiffSection::columns`, in
+    /// policy order.
+    pub metric_columns: Vec<u32>,
     pub counts: OutcomeCounts,
 }
 
@@ -737,8 +732,9 @@ pub struct DiffRow {
     /// Head's location when head has the entity, else the baseline's.
     pub location: Option<JsonLocation>,
     pub presence: Presence,
-    /// The family's conclusion; `None` when the section has no family.
-    pub outcome: Option<RowOutcome>,
+    /// The family's conclusion. Every row of every section sent has one,
+    /// unjudged families included.
+    pub outcome: RowOutcome,
     /// Aligned to `DiffSection::columns`. `None` when a present side's value
     /// did not parse.
     pub cells: Vec<Option<DiffCell>>,
@@ -788,9 +784,10 @@ pub struct DiffCell {
     pub head: Option<f64>,
     /// `None` when a side is absent.
     pub change_percent: Option<f64>,
-    /// Set on a judged cell that crossed its family's bar: which way the
-    /// value moved. Every such crossing counts toward the verdict when its
-    /// direction is the worse one.
+    /// Set on a cell of one of the family's metrics that crossed the family's
+    /// bar, in every family sent: which way the value moved. It counts toward
+    /// the verdict only when the family is `judged` and the direction is the
+    /// worse one.
     pub crossed: Option<Direction>,
 }
 
@@ -800,11 +797,11 @@ mod tests {
 
     use crate::json::cloud_api::{
         normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
-        BaseSelection, BenchmarkList, BenchmarkSummary, ColumnRole, CommentOutcome, DiffCell,
-        DiffResource, DiffResult, DiffSide, Direction, FamilyName, PolicyLevel, PolicyProblem,
-        PolicyRejected, PolicySaved, PolicyUpdate, PolicyView, Presence, RepoList, Report,
-        ReportDiff, ReportSummary, Repository, RowFilter, RowOutcome, SectionKind, TokenStatus,
-        Unit, UploadCreated, DEFAULT_BASE_URL,
+        BenchmarkList, BenchmarkSummary, ColumnRole, CommentOutcome, DiffCell, DiffResource,
+        DiffResult, DiffSide, Direction, FamilyName, PolicyLevel, PolicyProblem, PolicyRejected,
+        PolicySaved, PolicyUpdate, PolicyView, Presence, RepoList, Report, ReportDiff,
+        ReportSummary, Repository, RowFilter, RowOutcome, SectionKind, TokenStatus, Unit,
+        UploadCreated, DEFAULT_BASE_URL,
     };
     use crate::output::ProfilingMode;
     use time::macros::datetime;
@@ -1173,7 +1170,8 @@ mod tests {
 
     /// The `compared` part of a `ReportDiff` fixture: one regressed
     /// `functions` alloc section with a crossed `Both` row, an `Added` row, a
-    /// `Removed` row and an unparseable cell, plus an unjudged `sql` section.
+    /// `Removed` row and an unparseable cell, plus an unjudged `sql` section
+    /// whose crossed regression the verdict does not count.
     const COMPARED_RESULT: &str = r#"{
         "status": "compared",
         "verdict": {"regressed": true, "regressions": 1, "improvements": 0},
@@ -1197,8 +1195,9 @@ mod tests {
                 "head_coverage": {"included": 3, "total": 5},
                 "family": {
                     "name": "alloc",
+                    "judged": true,
                     "min_percent_change": 5.0,
-                    "judged_columns": [1],
+                    "metric_columns": [1],
                     "counts": {"ignored": 0, "below_floor": 0, "added": 1, "removed": 1, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
                 },
                 "rows": [
@@ -1241,7 +1240,7 @@ mod tests {
                 ],
                 "omitted_from_base": [],
                 "omitted_from_head": ["app::cut"],
-                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/diff/0199a3b0-0000-7000-8000-000000000000/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a?tab=functions-alloc"
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=alloc"
             },
             {
                 "resource": "sql",
@@ -1251,35 +1250,43 @@ mod tests {
                 "columns": [{"key": "p95", "label": "P95", "unit": "duration", "worse": "up", "role": null}],
                 "base_coverage": {"included": 1, "total": 1},
                 "head_coverage": {"included": 1, "total": 1},
-                "family": null,
+                "family": {
+                    "name": "timing",
+                    "judged": false,
+                    "min_percent_change": 20.0,
+                    "metric_columns": [0],
+                    "counts": {"ignored": 0, "below_floor": 0, "added": 0, "removed": 0, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
+                },
                 "rows": [
                     {
                         "key": "SELECT 1",
                         "name": "SELECT 1",
                         "location": null,
                         "presence": "both",
-                        "outcome": null,
-                        "cells": [{"base": 1000.0, "head": 900.0, "change_percent": -10.0, "crossed": null}]
+                        "outcome": "regression",
+                        "cells": [{"base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
                     }
                 ],
                 "omitted_from_base": [],
                 "omitted_from_head": [],
-                "dashboard_url": null
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
             }
         ],
         "skipped": ["functions timing: the reports measured different percentiles."],
         "notes": ["io is disabled by the policy."]
     }"#;
 
-    fn report_diff(base: &str, result: &str, dashboard_url: &str) -> serde_json::Value {
+    const DIFF_URL: &str = "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff";
+
+    fn report_diff(base: &str, result: &str) -> serde_json::Value {
         let body = format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","result":{result},"dashboard_url":{dashboard_url}}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","result":{result},"dashboard_url":"{DIFF_URL}"}}"#
         );
         serde_json::from_str(&body).unwrap()
     }
 
     fn recorded_base() -> String {
-        format!(r#"{{"report":{PUSH_SUMMARY},"selected":"recorded","branch_point":true}}"#)
+        format!(r#"{{"report":{PUSH_SUMMARY},"branch_point":true}}"#)
     }
 
     /// Parses `value` as a `ReportDiff` and checks it re-serializes equal.
@@ -1291,16 +1298,12 @@ mod tests {
 
     #[test]
     fn report_diff_compared_round_trips() {
-        let value = report_diff(
-            &recorded_base(),
-            COMPARED_RESULT,
-            r#""https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/diff/0199a3b0-0000-7000-8000-000000000000/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a""#,
-        );
+        let value = report_diff(&recorded_base(), COMPARED_RESULT);
         let diff = round_trip(&value);
         assert_eq!(diff.head, pr_summary());
         let base = diff.base.expect("compared has a base");
-        assert_eq!(base.selected, BaseSelection::Recorded);
         assert!(base.branch_point);
+        assert_eq!(diff.dashboard_url, DIFF_URL);
         assert_eq!(diff.policy.level, PolicyLevel::Benchmark);
         assert_eq!(diff.rows, RowFilter::All);
 
@@ -1312,12 +1315,13 @@ mod tests {
         let alloc = &comparison.sections[0];
         assert_eq!(alloc.mode, Some(ProfilingMode::AllocBytes));
         assert_eq!(alloc.columns[2].role, Some(ColumnRole::Floor));
-        assert_eq!(alloc.family.as_ref().unwrap().name, FamilyName::Alloc);
+        assert_eq!(alloc.family.name, FamilyName::Alloc);
+        assert!(alloc.family.judged);
 
         let [both, added, removed] = &alloc.rows[..] else {
             panic!("three rows expected");
         };
-        assert_eq!(both.outcome, Some(RowOutcome::Regression));
+        assert_eq!(both.outcome, RowOutcome::Regression);
         assert_eq!(
             both.cells[1],
             Some(DiffCell {
@@ -1334,32 +1338,56 @@ mod tests {
         assert!(removed.cells.iter().all(|c| c.unwrap().head.is_none()));
 
         let sql = &comparison.sections[1];
-        assert_eq!(sql.family, None);
-        assert_eq!(sql.rows[0].outcome, None);
+        assert!(!sql.family.judged);
+        assert_eq!(sql.rows[0].outcome, RowOutcome::Regression);
+        assert_eq!(sql.rows[0].cells[0].unwrap().crossed, Some(Direction::Up));
+        assert_eq!(
+            comparison.verdict.regressions, 1,
+            "unjudged rows never count"
+        );
+    }
+
+    #[test]
+    fn report_diff_requires_a_family_and_an_outcome() {
+        for (path, broken) in [
+            ("/result/sections/1/family", serde_json::Value::Null),
+            ("/result/sections/1/rows/0/outcome", serde_json::Value::Null),
+        ] {
+            let mut value = report_diff(&recorded_base(), COMPARED_RESULT);
+            *value.pointer_mut(path).unwrap() = broken;
+            assert!(
+                serde_json::from_value::<ReportDiff>(value).is_err(),
+                "{path} null"
+            );
+        }
+        let mut value = report_diff(&recorded_base(), COMPARED_RESULT);
+        value["result"]["sections"][1]["rows"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("outcome");
+        assert!(serde_json::from_value::<ReportDiff>(value).is_err());
     }
 
     #[test]
     fn report_diff_no_baseline_round_trips() {
-        let mut value = report_diff("null", r#"{"status":"no_baseline"}"#, "null");
+        let mut value = report_diff("null", r#"{"status":"no_baseline"}"#);
         value["rows"] = "findings".into();
         let diff = round_trip(&value);
         assert_eq!(diff.rows, RowFilter::Findings);
         assert_eq!(diff.base, None);
         assert_eq!(diff.result, DiffResult::NoBaseline);
-        assert_eq!(diff.dashboard_url, None);
+        assert_eq!(diff.dashboard_url, DIFF_URL);
     }
 
     #[test]
     fn report_diff_unreadable_round_trips() {
-        let base =
-            format!(r#"{{"report":{PUSH_SUMMARY},"selected":"requested","branch_point":false}}"#);
+        let base = format!(r#"{{"report":{PUSH_SUMMARY},"branch_point":false}}"#);
         let value = report_diff(
             &base,
             r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#,
-            r#""https://hotpath.rs/x""#,
         );
         let diff = round_trip(&value);
-        assert_eq!(diff.base.unwrap().selected, BaseSelection::Requested);
+        assert!(!diff.base.unwrap().branch_point);
         assert_eq!(
             diff.result,
             DiffResult::Unreadable {
@@ -1378,13 +1406,11 @@ mod tests {
             .replacen(r#""kind": "alloc""#, r#""kind": "energy", "later": [1]"#, 1)
             .replacen(r#""presence": "both""#, r#""presence": "moved""#, 1)
             .replacen(r#""outcome": "regression""#, r#""outcome": "flaky""#, 1);
-        let mut value = report_diff(&recorded_base(), &result, "null");
+        let mut value = report_diff(&recorded_base(), &result);
         value["later"] = serde_json::json!({"anything": true});
-        value["base"]["selected"] = "guessed".into();
         value["rows"] = "sampled".into();
 
         let diff: ReportDiff = serde_json::from_value(value).unwrap();
-        assert_eq!(diff.base.unwrap().selected, BaseSelection::Unknown);
         assert_eq!(diff.rows, RowFilter::Unknown);
         let DiffResult::Compared(comparison) = diff.result else {
             panic!("not compared");
@@ -1394,6 +1420,6 @@ mod tests {
         assert_eq!(section.kind, SectionKind::Unknown);
         assert_eq!(section.columns[1].unit, Unit::Unknown);
         assert_eq!(section.rows[0].presence, Presence::Unknown);
-        assert_eq!(section.rows[0].outcome, Some(RowOutcome::Unknown));
+        assert_eq!(section.rows[0].outcome, RowOutcome::Unknown);
     }
 }
