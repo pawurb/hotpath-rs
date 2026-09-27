@@ -421,12 +421,11 @@ pub struct ReportDiff {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RowFilter {
-    /// The default: exactly the PR comment's findings. `Regression` and
-    /// `Improvement` rows of families with `verdict = true`, plus `Added` and
-    /// `Removed` rows of any family. Advisory crossings, unchanged,
-    /// below-floor, ignored and too-few-calls rows are left out, as are the
-    /// rows of a section no family judges; the family's `counts` and
-    /// `Verdict::advisory_*` still say they exist.
+    /// The default: the rows the PR comment lists, `Regression`,
+    /// `Improvement`, `Added` and `Removed` rows of judged families.
+    /// Unchanged, below-floor, ignored and too-few-calls rows and every row
+    /// of an unjudged section are left out; the family's `counts` still
+    /// count them and `All` lists them.
     Findings,
     /// Every row of every section.
     All,
@@ -516,16 +515,13 @@ pub struct Comparison {
     pub notes: Vec<String>,
 }
 
-/// The tally of a `Comparison`. Only families with `verdict = true` count in
-/// `regressions` / `improvements`; the rest are tallied as advisory.
+/// The tally of a `Comparison` over every judged family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verdict {
     /// `regressions > 0`. The CLI's exit code reads this, nothing else.
     pub regressed: bool,
     pub regressions: u64,
     pub improvements: u64,
-    pub advisory_regressions: u64,
-    pub advisory_improvements: u64,
 }
 
 /// Run-level numbers of a `Comparison`.
@@ -567,8 +563,9 @@ pub struct DiffSection {
     pub columns: Vec<DiffColumn>,
     pub base_coverage: Coverage,
     pub head_coverage: Coverage,
-    /// The family that judged this section; `None` when the policy has none
-    /// enabled for it (rows then carry no `outcome`).
+    /// The family that judged this section; `None` when the policy does not
+    /// judge it (`judged = false`, or no family for it). Its rows then carry
+    /// no `outcome` and no `crossed`, but still both sides of every cell.
     pub family: Option<FamilyJudgement>,
     /// Every entity `ReportDiff::rows` lets through, sorted by the floor
     /// column's head value descending (removed rows last), else by volume,
@@ -692,13 +689,11 @@ pub struct Coverage {
     pub total: u64,
 }
 
-/// A policy family's rules and tallies for one `DiffSection`.
+/// A policy family's rules and tallies for one `DiffSection`. Present only
+/// for a judged family, and every judged family decides the verdict.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FamilyJudgement {
     pub name: FamilyName,
-    /// Whether this family decides the verdict (`false`: advisory). Its
-    /// `DiffCell::crossed` marks count toward `Verdict` only when `true`.
-    pub verdict: bool,
     /// The family's bar, in percent.
     pub min_percent_change: f64,
     /// Indices into `DiffSection::columns` of the judged columns, in policy
@@ -793,10 +788,9 @@ pub struct DiffCell {
     pub head: Option<f64>,
     /// `None` when a side is absent.
     pub change_percent: Option<f64>,
-    /// Set on every judged cell that crossed its family's bar, advisory
-    /// families included (as the dashboard marks them): which way the value
-    /// moved. Whether the crossing counts toward the verdict is the section's
-    /// `FamilyJudgement::verdict`.
+    /// Set on a judged cell that crossed its family's bar: which way the
+    /// value moved. Every such crossing counts toward the verdict when its
+    /// direction is the worse one.
     pub crossed: Option<Direction>,
 }
 
@@ -1179,11 +1173,10 @@ mod tests {
 
     /// The `compared` part of a `ReportDiff` fixture: one regressed
     /// `functions` alloc section with a crossed `Both` row, an `Added` row, a
-    /// `Removed` row and an unparseable cell, plus a `sql` section no family
-    /// judges.
+    /// `Removed` row and an unparseable cell, plus an unjudged `sql` section.
     const COMPARED_RESULT: &str = r#"{
         "status": "compared",
-        "verdict": {"regressed": true, "regressions": 1, "improvements": 0, "advisory_regressions": 2, "advisory_improvements": 1},
+        "verdict": {"regressed": true, "regressions": 1, "improvements": 0},
         "totals": {
             "elapsed": {"base": 1200000000.0, "head": 1250000000.0, "change_percent": 4.1666},
             "allocated": null,
@@ -1204,7 +1197,6 @@ mod tests {
                 "head_coverage": {"included": 3, "total": 5},
                 "family": {
                     "name": "alloc",
-                    "verdict": true,
                     "min_percent_change": 5.0,
                     "judged_columns": [1],
                     "counts": {"ignored": 0, "below_floor": 0, "added": 1, "removed": 1, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
@@ -1376,6 +1368,24 @@ mod tests {
                 error: "missing field `functions_timing`".into(),
             }
         );
+    }
+
+    #[test]
+    fn report_diff_parses_a_body_with_the_removed_advisory_fields() {
+        // A server that predates the removal still sends them; the rollout
+        // bumps the CLI first.
+        let mut value = report_diff(&recorded_base(), COMPARED_RESULT, "null");
+        let result = &mut value["result"];
+        result["verdict"]["advisory_regressions"] = 2.into();
+        result["verdict"]["advisory_improvements"] = 1.into();
+        result["sections"][0]["family"]["verdict"] = false.into();
+
+        let diff: ReportDiff = serde_json::from_value(value).unwrap();
+        let DiffResult::Compared(comparison) = diff.result else {
+            panic!("not compared");
+        };
+        assert!(comparison.verdict.regressed);
+        assert_eq!(comparison.verdict.regressions, 1);
     }
 
     #[test]
