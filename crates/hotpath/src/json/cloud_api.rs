@@ -1371,24 +1371,6 @@ mod tests {
     }
 
     #[test]
-    fn report_diff_parses_a_body_with_the_removed_advisory_fields() {
-        // A server that predates the removal still sends them; the rollout
-        // bumps the CLI first.
-        let mut value = report_diff(&recorded_base(), COMPARED_RESULT, "null");
-        let result = &mut value["result"];
-        result["verdict"]["advisory_regressions"] = 2.into();
-        result["verdict"]["advisory_improvements"] = 1.into();
-        result["sections"][0]["family"]["verdict"] = false.into();
-
-        let diff: ReportDiff = serde_json::from_value(value).unwrap();
-        let DiffResult::Compared(comparison) = diff.result else {
-            panic!("not compared");
-        };
-        assert!(comparison.verdict.regressed);
-        assert_eq!(comparison.verdict.regressions, 1);
-    }
-
-    #[test]
     fn report_diff_tolerates_unknown_enum_values_and_fields() {
         let result = COMPARED_RESULT
             .replacen(r#""resource": "functions""#, r#""resource": "gpu""#, 1)
