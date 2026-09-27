@@ -395,14 +395,15 @@ pub struct PolicyRejected {
 /// `head=ID`. The baseline is always the head's recorded `baseline_id`, the
 /// one the PR comment compared. A `head=` of another benchmark is
 /// `404 not_found`. All three `DiffResult`s answer 200. Reading needs only
-/// access to the repository. `rows=findings` (the default) or
-/// `rows=all` picks which rows the sections carry (see `RowFilter`); an
+/// access to the repository. `rows=findings` (the default), `rows=advisory`
+/// or `rows=all` picks which rows the sections carry (see `RowFilter`); an
 /// unknown value is `400 bad_request`. The body carries only the sections of
 /// the families the policy lists.
 ///
 /// Numbers stay numbers: no formatted strings anywhere, a value is a number
-/// in its column's `unit` and a change is a number of percent. Formatting is
-/// the reader's job. Names deliberately differ from the server's analyzer
+/// in its cell's `unit` and a change is a number of percent. Formatting is
+/// the reader's job. Nothing is read by position: a cell names its column
+/// and a family names its metrics. Names deliberately differ from the server's analyzer
 /// types where those read badly on the wire (`Presence::Both` / `Added`,
 /// `Change`, `DiffCell`); the server maps its types into these in one place.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -433,12 +434,14 @@ pub struct ReportDiff {
     pub dashboard_url: String,
 }
 
-/// Which rows the sections of a `ReportDiff` carry, as `rows=` asks. Only
-/// rows are filtered: the sections the policy lists, their columns, family
-/// and `counts`, the verdict, totals, `skipped` and `notes` are the same under
-/// both, so the counts still say how many rows each outcome had. The same
-/// filter cuts `Budgets::findings` to the broken ones; `Budgets::rules`,
-/// `broken` and `notes` are never cut.
+/// How much of each section a `ReportDiff` carries, as `rows=` asks. The
+/// sections the policy lists, their family and `counts`, both coverages, the
+/// verdict, the run totals, `skipped` and `notes` are the same under both, so
+/// the counts still say how many rows each outcome had. The filter cuts the
+/// rows, the cells of each row, `DiffSection::columns` and the totals of a
+/// section left without rows. `Budgets::findings` is cut to the broken ones
+/// unless the filter is `All`; `Budgets::rules`, `broken` and `notes` are
+/// never cut.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RowFilter {
@@ -446,10 +449,23 @@ pub enum RowFilter {
     /// `Improvement`, `Added` and `Removed` rows of judged families. Every
     /// row of an unjudged family and the unchanged, below-floor, ignored and
     /// too-few-calls rows of a judged one are left out; `counts` still count
-    /// them and `All` lists them.
+    /// them and `All` lists them. A row carries only the cells that explain
+    /// it: the crossed ones (the family's metrics for an `Added` or `Removed`
+    /// row, where nothing can cross) and the context columns (those with a
+    /// `role`). `DiffSection::columns` is not sent, and neither are the
+    /// `totals` of a section without rows, so an absent `totals` says nothing
+    /// about the section under this filter.
     Findings,
+    /// `Findings` without the restriction to judged families: the
+    /// `Regression`, `Improvement`, `Added` and `Removed` rows of every
+    /// family sent, so a nonzero count of an unjudged family has its rows to
+    /// inspect. Whether a row counted toward the verdict is its section's
+    /// `FamilyJudgement::judged`. Cells, `DiffSection::columns` and section
+    /// totals are cut as under `Findings`, and so is `Budgets::findings`.
+    Advisory,
     /// Every row of every section sent (a section the policy leaves out is
-    /// never sent, under either filter).
+    /// never sent, under either filter), every cell of every row,
+    /// `DiffSection::columns` and the section totals.
     All,
     /// A filter this client does not know.
     #[serde(other)]
@@ -678,11 +694,18 @@ pub struct DiffSection {
     pub kind: SectionKind,
     /// The profiling mode, for `functions` and `server` sections; the wire
     /// form is the report's own (`timing`, `alloc-bytes`, `alloc-count`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<ProfilingMode>,
-    /// The section's own totals (`elapsed`, `calls`), in display order.
+    /// The section's own totals (`elapsed`, `calls`), in display order. Not
+    /// sent for a section without rows under `RowFilter::Findings`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub totals: Vec<SectionTotal>,
-    /// Every column of the section. `DiffRow::cells` aligns to it.
-    pub columns: Vec<DiffColumn>,
+    /// Every column of the section, in display order: the legend of the
+    /// cells, which says which way is worse for each. `Some` under
+    /// `RowFilter::All`, `None` under `Findings`. Cells never need it to be
+    /// read: each names its column and carries its unit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub columns: Option<Vec<DiffColumn>>,
     pub base_coverage: Coverage,
     pub head_coverage: Coverage,
     /// The family that assessed this section. The body only carries sections
@@ -695,8 +718,10 @@ pub struct DiffSection {
     pub rows: Vec<DiffRow>,
     /// Head entities missing from a truncated baseline: not comparable,
     /// never reported as added. Sorted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub omitted_from_base: Vec<String>,
     /// Baseline entities missing from a truncated head. Sorted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub omitted_from_head: Vec<String>,
     /// The comparison page with this section's tab open (`?tab=`).
     pub dashboard_url: String,
@@ -745,14 +770,14 @@ pub struct SectionTotal {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiffColumn {
     /// The policy's name for the column (`total`, `p95`, `wait_p99`): what
-    /// `metrics = [...]` lists.
+    /// `metrics = [...]` lists and `DiffCell::column` repeats.
     pub key: String,
-    /// The header a reader sees.
-    pub label: String,
     pub unit: Unit,
     /// Which way is worse; `None` for a neutral column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worse: Option<Direction>,
     /// A context column the assessment reads by role, never judges.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<ColumnRole>,
 }
 
@@ -821,9 +846,9 @@ pub struct FamilyJudgement {
     pub judged: bool,
     /// The family's bar, in percent.
     pub min_percent_change: f64,
-    /// The policy's `metrics`, as indices into `DiffSection::columns`, in
+    /// The policy's `metrics`, by column policy name (`DiffColumn::key`), in
     /// policy order.
-    pub metric_columns: Vec<u32>,
+    pub metrics: Vec<String>,
     pub counts: OutcomeCounts,
 }
 
@@ -852,7 +877,7 @@ pub struct OutcomeCounts {
     pub unchanged: u64,
 }
 
-/// One entity of a `DiffSection`, both sides of every column.
+/// One entity of a `DiffSection`, both sides of each column sent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiffRow {
     /// What the sides were matched on and `ignore` patterns run against.
@@ -860,14 +885,21 @@ pub struct DiffRow {
     /// What a reader sees (the key itself for functions).
     pub name: String,
     /// Head's location when head has the entity, else the baseline's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<JsonLocation>,
     pub presence: Presence,
     /// The family's conclusion. Every row of every section sent has one,
     /// unjudged families included.
     pub outcome: RowOutcome,
-    /// Aligned to `DiffSection::columns`. `None` when a present side's value
-    /// did not parse.
-    pub cells: Vec<Option<DiffCell>>,
+    /// The cells `ReportDiff::rows` lets through, in the section's column
+    /// order, each naming its column. A column with no cell here was either
+    /// filtered out or is listed in `unreadable`.
+    pub cells: Vec<DiffCell>,
+    /// Columns of this row whose value did not parse on a present side, by
+    /// policy name. They have no cell. Listed under both filters, so a cell
+    /// missing from a filtered row never reads as unparsed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unreadable: Vec<String>,
 }
 
 /// Which reports carry a `DiffRow`'s entity.
@@ -904,9 +936,18 @@ pub enum RowOutcome {
     Unknown,
 }
 
-/// Both sides of one column of one `DiffRow`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// Both sides of one column of one `DiffRow`. It reads on its own: the
+/// column and the unit are in the cell. An absent side is always sent as
+/// `null`; only `role` and `crossed`, unset on most cells, are left out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiffCell {
+    /// The column's policy name (`avg`, `p95`, `wait_p99`).
+    pub column: String,
+    /// The unit of `base` and `head`.
+    pub unit: Unit,
+    /// Set on a context column (`calls`, `% Total`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<ColumnRole>,
     /// `None` for an `Added` row: the baseline has no such entity. Never a
     /// stand-in zero.
     pub base: Option<f64>,
@@ -918,6 +959,7 @@ pub struct DiffCell {
     /// bar, in every family sent: which way the value moved. It counts toward
     /// the verdict only when the family is `judged` and the direction is the
     /// worse one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crossed: Option<Direction>,
 }
 
@@ -928,10 +970,11 @@ mod tests {
     use crate::json::cloud_api::{
         normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
         BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity, BudgetFinding,
-        ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffSide, Direction,
-        FamilyName, PolicyLevel, PolicyProblem, PolicyRejected, PolicySaved, PolicyUpdate,
-        PolicyView, Presence, RepoList, Report, ReportDiff, ReportSummary, Repository, RowFilter,
-        RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict, DEFAULT_BASE_URL,
+        ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffRow, DiffSide,
+        Direction, FamilyName, PolicyLevel, PolicyProblem, PolicyRejected, PolicySaved,
+        PolicyUpdate, PolicyView, Presence, RepoList, Report, ReportDiff, ReportSummary,
+        Repository, RowFilter, RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict,
+        DEFAULT_BASE_URL,
     };
     use crate::json::JsonLocation;
     use crate::output::ProfilingMode;
@@ -1303,10 +1346,11 @@ mod tests {
         assert_eq!(plain.error, "The policy has 3 problems.");
     }
 
-    /// The `compared` part of a `ReportDiff` fixture: one regressed
-    /// `functions` alloc section with a crossed `Both` row, an `Added` row, a
-    /// `Removed` row and an unparseable cell, plus an unjudged `sql` section
-    /// whose crossed regression the verdict does not count.
+    /// The `compared` part of a `ReportDiff` fixture as `rows=all` sends it:
+    /// one regressed `functions` alloc section with a crossed `Both` row, an
+    /// `Added` row, a `Removed` row and an unreadable column, plus an
+    /// unjudged `sql` section whose crossed regression the verdict does not
+    /// count.
     const COMPARED_RESULT: &str = r#"{
         "status": "compared",
         "totals": {
@@ -1321,9 +1365,9 @@ mod tests {
                 "mode": "alloc-bytes",
                 "totals": [{"label": "elapsed", "unit": "duration", "value": {"base": 10.0, "head": 12.0, "change_percent": 20.0}}],
                 "columns": [
-                    {"key": "calls", "label": "Calls", "unit": "calls", "worse": null, "role": "volume"},
-                    {"key": "total", "label": "Total", "unit": "bytes", "worse": "up", "role": null},
-                    {"key": "percent_total", "label": "% Total", "unit": "percent", "worse": null, "role": "floor"}
+                    {"key": "calls", "unit": "calls", "role": "volume"},
+                    {"key": "total", "unit": "bytes", "worse": "up"},
+                    {"key": "percent_total", "unit": "percent", "role": "floor"}
                 ],
                 "base_coverage": {"included": 3, "total": 3},
                 "head_coverage": {"included": 3, "total": 5},
@@ -1331,7 +1375,7 @@ mod tests {
                     "name": "alloc",
                     "judged": true,
                     "min_percent_change": 5.0,
-                    "metric_columns": [1],
+                    "metrics": ["total"],
                     "counts": {"ignored": 0, "below_floor": 0, "added": 1, "removed": 1, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
                 },
                 "rows": [
@@ -1342,21 +1386,20 @@ mod tests {
                         "presence": "both",
                         "outcome": "regression",
                         "cells": [
-                            {"base": 100.0, "head": 100.0, "change_percent": 0.0, "crossed": null},
-                            {"base": 2048.0, "head": 3136.0, "change_percent": 53.125, "crossed": "up"},
-                            null
-                        ]
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": 100.0, "head": 100.0, "change_percent": 0.0},
+                            {"column": "total", "unit": "bytes", "base": 2048.0, "head": 3136.0, "change_percent": 53.125, "crossed": "up"}
+                        ],
+                        "unreadable": ["percent_total"]
                     },
                     {
                         "key": "app::new_fn",
                         "name": "app::new_fn",
-                        "location": null,
                         "presence": "added",
                         "outcome": "added",
                         "cells": [
-                            {"base": null, "head": 3.0, "change_percent": null, "crossed": null},
-                            {"base": null, "head": 512.0, "change_percent": null, "crossed": null},
-                            {"base": null, "head": 1.5, "change_percent": null, "crossed": null}
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": null, "head": 3.0, "change_percent": null},
+                            {"column": "total", "unit": "bytes", "base": null, "head": 512.0, "change_percent": null},
+                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": null, "head": 1.5, "change_percent": null}
                         ]
                     },
                     {
@@ -1366,48 +1409,117 @@ mod tests {
                         "presence": "removed",
                         "outcome": "removed",
                         "cells": [
-                            {"base": 7.0, "head": null, "change_percent": null, "crossed": null},
-                            {"base": 64.0, "head": null, "change_percent": null, "crossed": null},
-                            {"base": 0.25, "head": null, "change_percent": null, "crossed": null}
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": 7.0, "head": null, "change_percent": null},
+                            {"column": "total", "unit": "bytes", "base": 64.0, "head": null, "change_percent": null},
+                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": 0.25, "head": null, "change_percent": null}
                         ]
                     }
                 ],
-                "omitted_from_base": [],
                 "omitted_from_head": ["app::cut"],
                 "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=alloc"
             },
             {
                 "resource": "sql",
                 "kind": "main",
-                "mode": null,
-                "totals": [],
-                "columns": [{"key": "p95", "label": "P95", "unit": "duration", "worse": "up", "role": null}],
+                "columns": [{"key": "p95", "unit": "duration", "worse": "up"}],
                 "base_coverage": {"included": 1, "total": 1},
                 "head_coverage": {"included": 1, "total": 1},
                 "family": {
                     "name": "timing",
                     "judged": false,
                     "min_percent_change": 20.0,
-                    "metric_columns": [0],
+                    "metrics": ["p95"],
                     "counts": {"ignored": 0, "below_floor": 0, "added": 0, "removed": 0, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
                 },
                 "rows": [
                     {
                         "key": "SELECT 1",
                         "name": "SELECT 1",
-                        "location": null,
                         "presence": "both",
                         "outcome": "regression",
-                        "cells": [{"base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
+                        "cells": [{"column": "p95", "unit": "duration", "base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
                     }
                 ],
-                "omitted_from_base": [],
-                "omitted_from_head": [],
                 "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
             }
         ],
         "skipped": ["functions timing: the reports measured different percentiles."],
         "notes": ["io is disabled by the policy."]
+    }"#;
+
+    /// The same comparison as `rows=findings` sends it: no column legend, the
+    /// finding row cut to its crossed and context cells (the unreadable
+    /// column still named), the `Added` row to the family's metric and the
+    /// context cells, and the unjudged `sql` section left without rows and
+    /// without totals.
+    const FINDINGS_RESULT: &str = r#"{
+        "status": "compared",
+        "totals": {
+            "elapsed": {"base": 1200000000.0, "head": 1250000000.0, "change_percent": 4.1666},
+            "allocated": null,
+            "peak_rss": null
+        },
+        "sections": [
+            {
+                "resource": "functions",
+                "kind": "alloc",
+                "mode": "alloc-bytes",
+                "totals": [{"label": "elapsed", "unit": "duration", "value": {"base": 10.0, "head": 12.0, "change_percent": 20.0}}],
+                "base_coverage": {"included": 3, "total": 3},
+                "head_coverage": {"included": 3, "total": 3},
+                "family": {
+                    "name": "alloc",
+                    "judged": true,
+                    "min_percent_change": 5.0,
+                    "metrics": ["avg", "total"],
+                    "counts": {"ignored": 0, "below_floor": 0, "added": 1, "removed": 0, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 1}
+                },
+                "rows": [
+                    {
+                        "key": "app::parse",
+                        "name": "app::parse",
+                        "location": {"file": "src/parse.rs", "line": 12, "column": 1},
+                        "presence": "both",
+                        "outcome": "regression",
+                        "cells": [
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": 100.0, "head": 100.0, "change_percent": 0.0},
+                            {"column": "total", "unit": "bytes", "base": 2048.0, "head": 3136.0, "change_percent": 53.125, "crossed": "up"}
+                        ],
+                        "unreadable": ["percent_total"]
+                    },
+                    {
+                        "key": "app::new_fn",
+                        "name": "app::new_fn",
+                        "presence": "added",
+                        "outcome": "added",
+                        "cells": [
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": null, "head": 3.0, "change_percent": null},
+                            {"column": "avg", "unit": "bytes", "base": null, "head": 170.0, "change_percent": null},
+                            {"column": "total", "unit": "bytes", "base": null, "head": 512.0, "change_percent": null},
+                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": null, "head": 1.5, "change_percent": null}
+                        ]
+                    }
+                ],
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=alloc"
+            },
+            {
+                "resource": "sql",
+                "kind": "main",
+                "base_coverage": {"included": 1, "total": 1},
+                "head_coverage": {"included": 1, "total": 1},
+                "family": {
+                    "name": "timing",
+                    "judged": false,
+                    "min_percent_change": 20.0,
+                    "metrics": ["p95"],
+                    "counts": {"ignored": 0, "below_floor": 0, "added": 0, "removed": 0, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
+                },
+                "rows": [],
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
+            }
+        ],
+        "skipped": [],
+        "notes": []
     }"#;
 
     const DIFF_URL: &str = "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff";
@@ -1519,9 +1631,12 @@ mod tests {
         assert_eq!(comparison.totals.allocated, None);
         let alloc = &comparison.sections[0];
         assert_eq!(alloc.mode, Some(ProfilingMode::AllocBytes));
-        assert_eq!(alloc.columns[2].role, Some(ColumnRole::Floor));
+        let columns = alloc.columns.as_ref().expect("`rows=all` sends the legend");
+        assert_eq!(columns[1].worse, Some(Direction::Up));
+        assert_eq!(columns[2].role, Some(ColumnRole::Floor));
         assert_eq!(alloc.family.name, FamilyName::Alloc);
         assert!(alloc.family.judged);
+        assert_eq!(alloc.family.metrics, ["total"]);
 
         let [both, added, removed] = &alloc.rows[..] else {
             panic!("three rows expected");
@@ -1529,24 +1644,71 @@ mod tests {
         assert_eq!(both.outcome, RowOutcome::Regression);
         assert_eq!(
             both.cells[1],
-            Some(DiffCell {
+            DiffCell {
+                column: "total".into(),
+                unit: Unit::Bytes,
+                role: None,
                 base: Some(2048.0),
                 head: Some(3136.0),
                 change_percent: Some(53.125),
                 crossed: Some(Direction::Up),
-            })
+            }
         );
-        assert_eq!(both.cells[2], None, "an unparseable cell is null");
+        assert_eq!(both.cells.len(), 2, "an unreadable column has no cell");
+        assert_eq!(both.unreadable, ["percent_total"]);
         assert_eq!(added.presence, Presence::Added);
-        assert!(added.cells.iter().all(|c| c.unwrap().base.is_none()));
+        assert_eq!(added.location, None);
+        assert_eq!(added.cells.len(), 3);
+        assert!(added.cells.iter().all(|c| c.base.is_none()));
+        assert!(added.unreadable.is_empty());
         assert_eq!(removed.presence, Presence::Removed);
-        assert!(removed.cells.iter().all(|c| c.unwrap().head.is_none()));
+        assert!(removed.cells.iter().all(|c| c.head.is_none()));
 
         let sql = &comparison.sections[1];
         assert!(!sql.family.judged);
         assert_eq!(sql.rows[0].outcome, RowOutcome::Regression);
-        assert_eq!(sql.rows[0].cells[0].unwrap().crossed, Some(Direction::Up));
+        assert_eq!(sql.mode, None);
+        assert!(sql.totals.is_empty());
+        assert_eq!(sql.rows[0].cells[0].crossed, Some(Direction::Up));
         assert_eq!(diff.verdict.regressions, 1, "unjudged rows never count");
+    }
+
+    #[test]
+    fn report_diff_findings_round_trips() {
+        let mut value = compared_diff(FINDINGS_RESULT);
+        value["rows"] = "advisory".into();
+        assert_eq!(round_trip(&value).rows, RowFilter::Advisory);
+        value["rows"] = "findings".into();
+        let diff = round_trip(&value);
+        assert_eq!(diff.rows, RowFilter::Findings);
+        let DiffResult::Compared(comparison) = diff.result else {
+            panic!("not compared: {:?}", diff.result);
+        };
+
+        let [alloc, sql] = &comparison.sections[..] else {
+            panic!("two sections expected");
+        };
+        assert_eq!(alloc.columns, None);
+        assert_eq!(alloc.totals.len(), 1);
+        let [both, added] = &alloc.rows[..] else {
+            panic!("two rows expected");
+        };
+        let named =
+            |row: &DiffRow| -> Vec<String> { row.cells.iter().map(|c| c.column.clone()).collect() };
+        assert_eq!(named(both), ["calls", "total"]);
+        assert_eq!(both.cells[0].role, Some(ColumnRole::Volume));
+        assert_eq!(both.unreadable, ["percent_total"]);
+        assert_eq!(named(added), ["calls", "avg", "total", "percent_total"]);
+        assert!(added
+            .cells
+            .iter()
+            .all(|c| c.base.is_none() && c.change_percent.is_none() && c.crossed.is_none()));
+
+        // Sent with its counts, so "nothing found" is not "not in the policy".
+        assert_eq!(sql.columns, None);
+        assert!(sql.totals.is_empty());
+        assert!(sql.rows.is_empty());
+        assert_eq!(sql.family.counts.regressions, 1);
     }
 
     #[test]
@@ -1791,7 +1953,7 @@ mod tests {
         let section = &comparison.sections[0];
         assert_eq!(section.resource, DiffResource::Unknown);
         assert_eq!(section.kind, SectionKind::Unknown);
-        assert_eq!(section.columns[1].unit, Unit::Unknown);
+        assert_eq!(section.columns.as_ref().unwrap()[1].unit, Unit::Unknown);
         assert_eq!(section.rows[0].presence, Presence::Unknown);
         assert_eq!(section.rows[0].outcome, RowOutcome::Unknown);
     }

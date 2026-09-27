@@ -759,12 +759,12 @@ mod tests {
     /// A `compared` result with one judged `functions` timing row.
     fn compared(regressed: bool) -> String {
         let (outcome, crossed, regressions) = if regressed {
-            ("regression", r#""up""#, 1)
+            ("regression", r#","crossed":"up""#, 1)
         } else {
-            ("unchanged", "null", 0)
+            ("unchanged", "", 0)
         };
         format!(
-            r#"{{"status":"compared","totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","totals":[],"columns":[{{"key":"p95","label":"P95","unit":"duration","worse":"up","role":null}}],"base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metric_columns":[0],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","location":null,"presence":"both","outcome":"{outcome}","cells":[{{"base":1000.0,"head":1500.0,"change_percent":50.0,"crossed":{crossed}}}]}}],"omitted_from_base":[],"omitted_from_head":[],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
+            r#"{{"status":"compared","totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metrics":["p95"],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","presence":"both","outcome":"{outcome}","cells":[{{"column":"p95","unit":"duration","base":1000.0,"head":1500.0,"change_percent":50.0{crossed}}}]}}],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
             unchanged = 1 - regressions,
         )
     }
@@ -823,6 +823,7 @@ mod tests {
             .with_status(200)
             .with_body(&body)
             .create();
+        let advisory = mock_report(&mut server, DIFF_PATH, "pr=42&rows=advisory", &body);
         // Without `--full` the query leaves `rows=` to the server's default.
         let by_id = mock_report(&mut server, DIFF_PATH, &format!("head={REPORT_ID}"), &body);
 
@@ -840,8 +841,22 @@ mod tests {
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
         let output = hotpath(&server, Some(TOKEN), &diff_args(&["--id", REPORT_ID]));
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        let output = hotpath(
+            &server,
+            Some(TOKEN),
+            &diff_args(&["--pr", "42", "--advisory"]),
+        );
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
         by_commit.assert();
+        advisory.assert();
         by_id.assert();
+
+        let output = hotpath(
+            &server,
+            Some(TOKEN),
+            &diff_args(&["--pr", "42", "--advisory", "--full"]),
+        );
+        assert_eq!(output.status.code(), Some(2), "clap usage error");
     }
 
     #[test]
