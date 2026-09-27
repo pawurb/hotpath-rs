@@ -256,6 +256,14 @@ pub struct UploadCreated {
     /// Defaulted so a server that does not send it yet still parses.
     #[serde(default)]
     pub comment: CommentOutcome,
+    /// The judgement of the uploaded report under the policy in force at
+    /// upload: the diff against `baseline`, when there is one, and the
+    /// budgets. The same `Verdict` the diff API answers with. Required: a
+    /// body without a verdict must not read as "no regression".
+    pub verdict: Verdict,
+    /// The dashboard's page for the report against its baseline
+    /// (`.../benchmarks/{benchmark}/reports/{id}/diff`).
+    pub dashboard_url: String,
 }
 
 /// Largest PR comment policy document the server stores, in bytes of UTF-8.
@@ -1145,13 +1153,17 @@ mod tests {
         assert_eq!(serde_json::to_string(&list).unwrap(), body);
     }
 
+    const UPLOAD_DASHBOARD_URL: &str =
+        "https://hotpath.rs/app/repos/a/b/benchmarks/meta/reports/r1/diff";
+
     #[test]
     fn upload_created_parses_with_and_without_comment() {
-        let full: UploadCreated = serde_json::from_str(
-            r#"{"id":"r1","repository":"a/b","benchmark":"meta","baseline":"r0",
-                "comment":{"url":"https://github.com/c/1","error":"the report does not parse"},
-                "later":true}"#,
-        )
+        let full: UploadCreated = serde_json::from_str(&format!(
+            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","baseline":"r0",
+                "comment":{{"url":"https://github.com/c/1","error":"the report does not parse"}},
+                "verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":2,"budgets_broken":0}},
+                "dashboard_url":"{UPLOAD_DASHBOARD_URL}","later":true}}"#
+        ))
         .unwrap();
         assert_eq!(full.baseline.as_deref(), Some("r0"));
         assert_eq!(full.comment.url.as_deref(), Some("https://github.com/c/1"));
@@ -1159,27 +1171,99 @@ mod tests {
             full.comment.error.as_deref(),
             Some("the report does not parse")
         );
+        assert_eq!(full.verdict.improvements, 2);
 
-        let bare: UploadCreated =
-            serde_json::from_str(r#"{"id":"r1","repository":"a/b","benchmark":"meta"}"#).unwrap();
+        let bare: UploadCreated = serde_json::from_str(&format!(
+            r#"{{"id":"r1","repository":"a/b","benchmark":"meta",
+                "verdict":{{"judged":false,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},
+                "dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+        ))
+        .unwrap();
         assert_eq!(bare.baseline, None);
         assert_eq!(bare.comment, CommentOutcome::default());
     }
 
     #[test]
-    fn optional_fields_are_omitted_when_none() {
-        let json = serde_json::to_string(&UploadCreated {
-            id: "r1".into(),
-            repository: "a/b".into(),
-            benchmark: "meta".into(),
-            baseline: None,
-            comment: CommentOutcome::default(),
-        })
-        .unwrap();
-        assert_eq!(
-            json,
-            r#"{"id":"r1","repository":"a/b","benchmark":"meta","comment":{}}"#
+    fn upload_created_verdict_round_trips() {
+        let upload =
+            |baseline: Option<&str>, comment_url: Option<&str>, verdict: Verdict| UploadCreated {
+                id: "r1".into(),
+                repository: "a/b".into(),
+                benchmark: "meta".into(),
+                baseline: baseline.map(str::to_string),
+                comment: CommentOutcome {
+                    url: comment_url.map(str::to_string),
+                    error: None,
+                },
+                verdict,
+                dashboard_url: UPLOAD_DASHBOARD_URL.into(),
+            };
+        let cases = [
+            // A regressed pull request upload.
+            (
+                format!(
+                    r#"{{"id":"r1","repository":"a/b","benchmark":"meta","baseline":"r0","comment":{{"url":"https://github.com/c/1"}},"verdict":{{"judged":true,"regressed":true,"regressions":2,"improvements":1,"budgets_broken":1}},"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+                ),
+                upload(
+                    Some("r0"),
+                    Some("https://github.com/c/1"),
+                    Verdict {
+                        judged: true,
+                        regressed: true,
+                        regressions: 2,
+                        improvements: 1,
+                        budgets_broken: 1,
+                    },
+                ),
+            ),
+            // A push upload: no baseline, judged on budgets alone.
+            (
+                format!(
+                    r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":true,"regressions":0,"improvements":0,"budgets_broken":1}},"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+                ),
+                upload(
+                    None,
+                    None,
+                    Verdict {
+                        judged: true,
+                        regressed: true,
+                        regressions: 0,
+                        improvements: 0,
+                        budgets_broken: 1,
+                    },
+                ),
+            ),
+            // Nothing could be judged: no baseline and no budgets.
+            (
+                format!(
+                    r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":false,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+                ),
+                upload(
+                    None,
+                    None,
+                    Verdict {
+                        judged: false,
+                        regressed: false,
+                        regressions: 0,
+                        improvements: 0,
+                        budgets_broken: 0,
+                    },
+                ),
+            ),
+        ];
+        for (body, expected) in cases {
+            let parsed: UploadCreated = serde_json::from_str(&body).unwrap();
+            assert_eq!(parsed, expected);
+            assert_eq!(serde_json::to_string(&parsed).unwrap(), body);
+        }
+
+        // A body without a verdict, or without the dashboard link, is not a pass.
+        let no_verdict = format!(
+            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
         );
+        assert!(serde_json::from_str::<UploadCreated>(&no_verdict).is_err());
+        let no_url = r#"{"id":"r1","repository":"a/b","benchmark":"meta","verdict":{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}}"#;
+        assert!(serde_json::from_str::<UploadCreated>(no_url).is_err());
     }
 
     #[test]

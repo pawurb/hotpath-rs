@@ -13,25 +13,33 @@
 //! `::error::` workflow command on stdout plus a block appended to
 //! `GITHUB_STEP_SUMMARY`. The server owns the text: a rejection prints the
 //! `error` sentence of the `ApiError` body (plus status and request id)
-//! and a failed comment prints `comment.error`; the client branches on nothing
-//! the server says. A failure is a warning by default and never changes the exit
-//! code; `HOTPATH_META_UPLOAD_STRICT=1` turns it into an error and `upload`
-//! returns `true`, on which the guard exits 1 once the local report is
-//! written. Skips never fail, even in strict mode.
+//! and a failed comment prints `comment.error`; the client branches on
+//! `verdict.regressed` and on nothing else the server says. A failure is a
+//! warning by default and never changes the exit code;
+//! `HOTPATH_META_UPLOAD_STRICT=1` turns it into an error and `upload` returns
+//! `true`, on which the guard exits 1 once the local report is written. Skips
+//! never fail, even in strict mode.
+//!
+//! The response carries the server's verdict on the report, judged under the
+//! policy in force at upload. `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION=1` turns a
+//! regressed verdict into an error through the same exit path, and
+//! `HOTPATH_META_UPLOAD_RESPONSE_PATH` writes the response body to a file for
+//! custom rules. A failed or skipped upload has no verdict: it never fails
+//! through that switch and leaves no response file.
 //!
 //! No retries yet: a retry is only safe once the server insert is idempotent
 //! per run, otherwise a timed-out upload that was in fact stored would be
 //! duplicated.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::Duration;
 
 use serde::Deserialize;
 
 use crate::json::cloud_api::{
-    normalize_base_url, validate_benchmark_name, ApiError, UploadCreated,
+    normalize_base_url, validate_benchmark_name, ApiError, UploadCreated, Verdict,
 };
 use crate::json::JsonReport;
 
@@ -51,16 +59,31 @@ pub(crate) static UPLOAD_URL: LazyLock<String> =
 /// `HOTPATH_META_UPLOAD_STRICT=1`: a failed upload is an `::error::` and exits 1.
 /// Off by default so an adopter's benchmark job never goes red because
 /// hotpath.rs is down.
-pub(crate) static STRICT: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("HOTPATH_META_UPLOAD_STRICT")
-        .map(|v| is_truthy(&v))
-        .unwrap_or(false)
+pub(crate) static STRICT: LazyLock<bool> =
+    LazyLock::new(|| truthy_var("HOTPATH_META_UPLOAD_STRICT"));
+
+/// `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION=1`: an upload whose verdict is
+/// `regressed` is an `::error::` and exits 1. Independent of `STRICT`, which
+/// is about the upload failing; this is about what the upload found. Off by
+/// default so an adopter's job never goes red unless they asked for it.
+pub(crate) static FAIL_ON_REGRESSION: LazyLock<bool> =
+    LazyLock::new(|| truthy_var("HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION"));
+
+/// `HOTPATH_META_UPLOAD_RESPONSE_PATH`: file the response body of an upload is
+/// written to. A file and not stdout, which belongs to the profiled program.
+/// Blank or unset writes nothing.
+pub(crate) static RESPONSE_PATH: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
+    std::env::var_os("HOTPATH_META_UPLOAD_RESPONSE_PATH")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
 });
 
 pub(crate) fn enabled() -> bool {
-    std::env::var("HOTPATH_META_UPLOAD")
-        .map(|v| is_truthy(&v))
-        .unwrap_or(false)
+    truthy_var("HOTPATH_META_UPLOAD")
+}
+
+fn truthy_var(name: &str) -> bool {
+    std::env::var(name).map(|v| is_truthy(&v)).unwrap_or(false)
 }
 
 fn is_truthy(v: &str) -> bool {
@@ -151,6 +174,7 @@ pub(crate) struct Env {
     /// `GITHUB_ACTIONS` is set: emit workflow commands.
     actions: bool,
     strict: bool,
+    fail_on_regression: bool,
     /// `GITHUB_STEP_SUMMARY`, when set and non-empty.
     summary: Option<PathBuf>,
 }
@@ -158,10 +182,9 @@ pub(crate) struct Env {
 impl Env {
     fn from_process() -> Self {
         Env {
-            actions: std::env::var("GITHUB_ACTIONS")
-                .map(|v| is_truthy(&v))
-                .unwrap_or(false),
+            actions: truthy_var("GITHUB_ACTIONS"),
             strict: *STRICT,
+            fail_on_regression: *FAIL_ON_REGRESSION,
             summary: std::env::var_os("GITHUB_STEP_SUMMARY")
                 .filter(|p| !p.is_empty())
                 .map(PathBuf::from),
@@ -169,10 +192,17 @@ impl Env {
     }
 }
 
-/// Returns `true` when the caller must exit 1: a failed upload in strict mode.
+/// Returns `true` when the caller must exit 1: a failed upload in strict
+/// mode, or a regressed verdict with `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION` on.
+/// The response file is written first, so it is there in both cases.
 pub(crate) fn upload(report: &JsonReport) -> bool {
     let outcome = run(report);
     let env = Env::from_process();
+    if let Some(path) = RESPONSE_PATH.as_deref() {
+        if let Err(e) = store_response(&outcome, path) {
+            eprintln!("hotpath-meta: could not write {}: {e}", path.display());
+        }
+    }
     let benchmark = benchmark_name().ok();
     let rendered = render(&outcome, &env, benchmark.as_deref());
     let failed = rendered.level == Level::Error;
@@ -321,10 +351,62 @@ pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -
     }
 }
 
+/// Writes the body of an upload to `path` as one JSON document, re-serialized
+/// from the parsed `UploadCreated` so the file has the documented shape. A
+/// skipped or failed upload has no verdict: a file already at `path` is
+/// removed, so a stale verdict from an earlier step is never read as this
+/// run's.
+pub(crate) fn store_response(outcome: &Outcome, path: &Path) -> std::io::Result<()> {
+    match outcome {
+        Outcome::Uploaded { created, .. } => {
+            let mut body = serde_json::to_vec(created)?;
+            body.push(b'\n');
+            std::fs::write(path, body)
+        }
+        Outcome::Skipped(_) | Outcome::Failed { .. } => match std::fs::remove_file(path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        },
+    }
+}
+
+/// The verdict in words, built from its numbers and never from server text.
+fn verdict_summary(verdict: &Verdict) -> String {
+    let count = |n: u64, one: &str, many: &str| match n {
+        0 => None,
+        1 => Some(format!("1 {one}")),
+        n => Some(format!("{n} {many}")),
+    };
+    let parts: Vec<String> = [
+        count(verdict.regressions, "regression", "regressions"),
+        count(verdict.budgets_broken, "budget broken", "budgets broken"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if verdict.regressed {
+        if parts.is_empty() {
+            // `regressed` decides; the counts only describe it.
+            return "regressed".to_string();
+        }
+        return parts.join(", ");
+    }
+    if verdict.judged {
+        "no regressions".to_string()
+    } else {
+        "not judged".to_string()
+    }
+}
+
 /// One message at one level.
 pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> Rendered {
-    let (level, message, body) = match outcome {
-        Outcome::Skipped(reason) => (Level::Notice, format!("upload skipped: {reason}"), None),
+    let (level, message, link, body) = match outcome {
+        Outcome::Skipped(reason) => (
+            Level::Notice,
+            format!("upload skipped: {reason}"),
+            None,
+            None,
+        ),
         Outcome::Uploaded {
             created,
             request_id,
@@ -340,14 +422,29 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
                     .map(|id| format!(", request {id}"))
                     .unwrap_or_default(),
             );
-            let level = match &created.comment.error {
-                Some(error) => {
-                    message.push_str(&format!("; comment failed: {error}"));
-                    Level::Warning
-                }
-                None => Level::Notice,
+            let verdict = &created.verdict;
+            message.push_str(&format!("; verdict: {}", verdict_summary(verdict)));
+            let failing = verdict.regressed && env.fail_on_regression;
+            if failing {
+                message.push_str(", failing the job (HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION)");
+            }
+            if let Some(error) = &created.comment.error {
+                message.push_str(&format!("; comment failed: {error}"));
+            }
+            // Strict mode does not apply: the upload itself succeeded.
+            let level = if failing {
+                Level::Error
+            } else if verdict.regressed || created.comment.error.is_some() {
+                Level::Warning
+            } else {
+                Level::Notice
             };
-            (level, message, serde_json::to_string_pretty(created).ok())
+            (
+                level,
+                message,
+                Some(created.dashboard_url.as_str()),
+                serde_json::to_string_pretty(created).ok(),
+            )
         }
         Outcome::Failed { message, body } => {
             let level = if env.strict {
@@ -359,6 +456,7 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             (
                 level,
                 format!("upload failed: {message}"),
+                None,
                 body.map(str::to_string),
             )
         }
@@ -372,6 +470,9 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
         "## {heading}\n\n{}: hotpath-meta: {message}\n",
         level.as_str()
     );
+    if let Some(link) = link {
+        summary.push_str(&format!("\n[Open the report on hotpath.rs]({link})\n"));
+    }
     if let Some(body) = body {
         summary.push_str(&format!("\n```\n{body}\n```\n"));
     }
@@ -445,18 +546,61 @@ fn url_encode(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::json::cloud_api::{CommentOutcome, UploadCreated};
+    use std::path::PathBuf;
+
+    use crate::json::cloud_api::{CommentOutcome, UploadCreated, Verdict};
     use crate::lib_on::cloud::{
-        benchmark_name, escape_annotation, interpret, is_truthy, render, url_encode, Env, Level,
-        Outcome,
+        benchmark_name, escape_annotation, interpret, is_truthy, render, store_response,
+        url_encode, Env, Level, Outcome,
     };
+
+    const DASHBOARD_URL: &str =
+        "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/meta/reports/r1/diff";
+    const VERDICT_FIELDS: &str = r#""verdict":{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0},"dashboard_url":"https://hotpath.rs/d""#;
 
     fn env(actions: bool, strict: bool) -> Env {
         Env {
             actions,
             strict,
+            fail_on_regression: false,
             summary: None,
         }
+    }
+
+    /// `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION` on.
+    fn guard_env(strict: bool) -> Env {
+        Env {
+            fail_on_regression: true,
+            ..env(true, strict)
+        }
+    }
+
+    fn verdict(regressions: u64, budgets_broken: u64) -> Verdict {
+        Verdict {
+            judged: true,
+            regressed: regressions > 0 || budgets_broken > 0,
+            regressions,
+            improvements: 0,
+            budgets_broken,
+        }
+    }
+
+    fn uploaded(verdict: Verdict) -> Outcome {
+        Outcome::Uploaded {
+            created: UploadCreated {
+                verdict,
+                ..created()
+            },
+            request_id: None,
+        }
+    }
+
+    /// A path of this test's own in the temporary directory.
+    fn scratch_dir(test: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("hotpath-cloud-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
     }
 
     fn created() -> UploadCreated {
@@ -466,6 +610,8 @@ mod tests {
             benchmark: "meta".into(),
             baseline: Some("r0".into()),
             comment: CommentOutcome::default(),
+            verdict: verdict(0, 0),
+            dashboard_url: DASHBOARD_URL.into(),
         }
     }
 
@@ -518,7 +664,9 @@ mod tests {
         let ok = interpret(
             201,
             Some("abc".into()),
-            r#"{"id":"r1","repository":"a/b","benchmark":"meta","comment":{"url":"https://github.com/c/1"}}"#.into(),
+            format!(
+                r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{"url":"https://github.com/c/1"}},{VERDICT_FIELDS}}}"#
+            ),
         );
         match ok {
             Outcome::Uploaded {
@@ -540,10 +688,22 @@ mod tests {
             interpret(
                 200,
                 None,
-                r#"{"id":"r1","repository":"a/b","benchmark":"meta"}"#.into()
+                format!(r#"{{"id":"r1","repository":"a/b","benchmark":"meta",{VERDICT_FIELDS}}}"#)
             ),
             Outcome::Uploaded { .. }
         ));
+
+        // A body without a verdict is never a pass.
+        let no_verdict = r#"{"id":"r1","repository":"a/b","benchmark":"meta","dashboard_url":"https://hotpath.rs/d"}"#;
+        assert_eq!(
+            interpret(201, None, no_verdict.into()),
+            Outcome::Failed {
+                message: format!(
+                    "HTTP 201 but the response could not be read, the report was probably stored: {no_verdict}"
+                ),
+                body: Some(no_verdict.into()),
+            }
+        );
 
         // Any other status is a failure even with a success-shaped body.
         assert_eq!(
@@ -626,13 +786,15 @@ mod tests {
         assert_eq!(r.level, Level::Notice);
         assert_eq!(
             r.message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0, request abc)"
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0, request abc); verdict: no regressions"
         );
         assert!(r.summary.starts_with(
             "## hotpath.rs meta benchmark\n\nnotice: hotpath-meta: uploaded report r1"
         ));
         assert!(
-            r.summary.contains("```\n{\n  \"id\": \"r1\""),
+            r.summary.contains(&format!(
+                "\n[Open the report on hotpath.rs]({DASHBOARD_URL})\n\n```\n{{\n  \"id\": \"r1\""
+            )),
             "{}",
             r.summary
         );
@@ -652,8 +814,130 @@ mod tests {
         };
         assert_eq!(
             render(&no_baseline, &env(false, false), None).message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline none)"
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline none); verdict: no regressions"
         );
+    }
+
+    #[test]
+    fn render_regressed_levels() {
+        let prefix =
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
+
+        // The switch on: an error, on which `upload` returns `true`.
+        let r = render(&uploaded(verdict(2, 1)), &guard_env(false), Some("meta"));
+        assert_eq!(r.level, Level::Error);
+        assert_eq!(
+            r.message,
+            format!("{prefix}; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION)")
+        );
+
+        // The switch off: a warning, and strict mode is about failed uploads only.
+        for strict in [false, true] {
+            let r = render(&uploaded(verdict(1, 0)), &env(true, strict), Some("meta"));
+            assert_eq!(r.level, Level::Warning);
+            assert_eq!(r.message, format!("{prefix}; verdict: 1 regression"));
+        }
+
+        // Broken budgets alone are a regression.
+        let r = render(&uploaded(verdict(0, 2)), &guard_env(false), Some("meta"));
+        assert_eq!(r.level, Level::Error);
+        assert_eq!(
+            r.message,
+            format!("{prefix}; verdict: 2 budgets broken, failing the job (HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION)")
+        );
+
+        // `regressed` decides even when the counts do not explain it.
+        let unexplained = Verdict {
+            regressed: true,
+            ..verdict(0, 0)
+        };
+        let r = render(&uploaded(unexplained), &guard_env(false), Some("meta"));
+        assert_eq!(r.level, Level::Error);
+        assert!(r.message.contains("; verdict: regressed, failing"));
+
+        // Nothing judged never fails, and neither does a clean verdict.
+        let not_judged = Verdict {
+            judged: false,
+            ..verdict(0, 0)
+        };
+        let r = render(&uploaded(not_judged), &guard_env(true), Some("meta"));
+        assert_eq!(r.level, Level::Notice);
+        assert_eq!(r.message, format!("{prefix}; verdict: not judged"));
+        assert_eq!(
+            render(&uploaded(verdict(0, 0)), &guard_env(true), Some("meta")).level,
+            Level::Notice
+        );
+    }
+
+    #[test]
+    fn render_regressed_with_comment_error_carries_both() {
+        let outcome = Outcome::Uploaded {
+            created: UploadCreated {
+                comment: CommentOutcome {
+                    url: None,
+                    error: Some("the installation is suspended".into()),
+                },
+                verdict: verdict(1, 0),
+                ..created()
+            },
+            request_id: None,
+        };
+        let prefix =
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
+        let r = render(&outcome, &guard_env(false), Some("meta"));
+        assert_eq!(r.level, Level::Error);
+        assert_eq!(
+            r.message,
+            format!("{prefix}; verdict: 1 regression, failing the job (HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION); comment failed: the installation is suspended")
+        );
+        let r = render(&outcome, &env(true, false), Some("meta"));
+        assert_eq!(r.level, Level::Warning);
+        assert_eq!(
+            r.message,
+            format!(
+                "{prefix}; verdict: 1 regression; comment failed: the installation is suspended"
+            )
+        );
+    }
+
+    #[test]
+    fn response_file_follows_the_outcome() {
+        let dir = scratch_dir("response-file");
+        let path = dir.join("response.json");
+        let failed = Outcome::Failed {
+            message: "connection refused".into(),
+            body: None,
+        };
+
+        // Nothing to remove is not an error.
+        store_response(&failed, &path).unwrap();
+        assert!(!path.exists());
+
+        // An upload overwrites whatever was there with the parsed body.
+        std::fs::write(&path, "x".repeat(4096)).unwrap();
+        store_response(&uploaded(verdict(1, 0)), &path).unwrap();
+        let written: UploadCreated =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            written,
+            UploadCreated {
+                verdict: verdict(1, 0),
+                ..created()
+            }
+        );
+
+        // A failed or skipped upload leaves no verdict of an earlier run behind.
+        store_response(&failed, &path).unwrap();
+        assert!(!path.exists());
+        std::fs::write(&path, "{}").unwrap();
+        store_response(&Outcome::Skipped("no token".into()), &path).unwrap();
+        assert!(!path.exists());
+
+        // An unwritable path is an error for the caller to warn about.
+        let unwritable = dir.join("missing").join("response.json");
+        assert!(store_response(&uploaded(verdict(0, 0)), &unwritable).is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -672,7 +956,7 @@ mod tests {
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); comment failed: approve \"Pull requests: write\" for the installation"
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); verdict: no regressions; comment failed: approve \"Pull requests: write\" for the installation"
         );
 
         // A comment that was posted, or nothing to post, is a plain notice.
@@ -746,6 +1030,11 @@ mod tests {
         assert_eq!(
             render(&outcome, &env(false, true), Some("meta")).level,
             Level::Error
+        );
+        // The regression switch is about the verdict, which a failure lacks.
+        assert_eq!(
+            render(&outcome, &guard_env(false), Some("meta")).level,
+            Level::Warning
         );
 
         // A server body goes into the summary's fenced block; an empty one does not.
