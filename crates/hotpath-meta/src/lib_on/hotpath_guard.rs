@@ -1112,11 +1112,10 @@ impl Drop for HotpathGuard {
                 ..JsonReport::new(crate::lib_on::report_meta::build_meta())
             };
 
-            #[cfg(feature = "hotpath-cloud-meta")]
-            let upload_limit = *crate::lib_on::cloud::UPLOAD_LIMIT;
-            #[cfg(not(feature = "hotpath-cloud-meta"))]
-            let upload_limit = 0;
-            let limit_for = |display: usize| if cloud_report { upload_limit } else { display };
+            // A cloud report lists every entry (`0` is unlimited): the server
+            // diffs reports by name and truncates for display itself, while a
+            // client-side top-N cannot be undone.
+            let limit_for = |display: usize| if cloud_report { 0 } else { display };
 
             for section in &sections {
                 match section {
