@@ -1,11 +1,12 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
-    //! `hotpath cloud auth|repos|benchmarks|report|get-policy|set-policy`
+    //! `hotpath cloud auth|repos|benchmarks|report|diff|get-policy|set-policy`
     //! against a mock hotpath.rs: the bearer request each sends, the JSON it
     //! re-emits, the error JSON on stderr (server bodies verbatim, client
-    //! failures as `{"error": ...}`) with exit 1, argument validation before any request
-    //! (and before the token is read), clap usage errors with exit 2, and
-    //! that the token never reaches stdout or stderr.
+    //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 0 or 1 read
+    //! from its body, argument validation before any request (and before the
+    //! token is read), clap usage errors with exit 2, and that the token never
+    //! reaches stdout or stderr.
     //!
     //! cargo test -p hotpath --features cloud --test cloud_cli
 
@@ -676,6 +677,270 @@ mod tests {
             vec!["--pr", "-1"],
         ] {
             let output = hotpath(&server, Some(TOKEN), &report_args(&selector));
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "{selector:?}: {}",
+                stderr(&output)
+            );
+            assert_eq!(stdout(&output), "", "{selector:?}");
+        }
+        mock.assert();
+    }
+
+    const DIFF_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/diff";
+    const BASE_ID: &str = "0199a3b0-0000-7000-8000-000000000000";
+
+    const NO_BASELINE: &str = r#"{"status":"no_baseline"}"#;
+    const UNREADABLE_BASE: &str = r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#;
+    const UNREADABLE_HEAD: &str = r#"{"status":"unreadable","side":"head","hotpath_version":null,"error":"missing field `functions_timing`"}"#;
+
+    /// What the policy's budgets came to on head.
+    #[derive(Clone, Copy, Debug)]
+    enum BudgetsCase {
+        /// Head does not parse: `budgets` is `null`.
+        Unread,
+        /// The policy has no budget rules.
+        NoRules,
+        /// One rule, which holds (no finding under `rows=findings`).
+        Hold,
+        /// One rule, broken.
+        Broken,
+    }
+
+    impl BudgetsCase {
+        fn broken(self) -> u64 {
+            match self {
+                BudgetsCase::Broken => 1,
+                BudgetsCase::Unread | BudgetsCase::NoRules | BudgetsCase::Hold => 0,
+            }
+        }
+
+        fn has_rules(self) -> bool {
+            matches!(self, BudgetsCase::Hold | BudgetsCase::Broken)
+        }
+
+        fn body(self) -> String {
+            let findings = match self {
+                BudgetsCase::Unread => return "null".to_string(),
+                BudgetsCase::Broken => {
+                    r#"{"resource":"functions","rule":0,"pattern":"app::run","message":"run must stay under 1 ms","entity":{"key":"app::run","name":"app::run","location":null},"check":{"on":"column","family":"timing","kind":"timing","column":"p95"},"bound":"max","unit":"duration","limit":1000000.0,"actual":1500000.0,"broken":true}"#
+                }
+                BudgetsCase::NoRules | BudgetsCase::Hold => "",
+            };
+            format!(
+                r#"{{"rules":{},"broken":{},"findings":[{findings}],"notes":[]}}"#,
+                u64::from(self.has_rules()),
+                self.broken(),
+            )
+        }
+    }
+
+    /// A `ReportDiff` body with `SUMMARY_BODY` as head (and as base, which
+    /// the client never checks), `result` as given and the verdict the
+    /// server builds from `result` and `budgets`.
+    fn diff_body(result: &str, budgets: BudgetsCase) -> String {
+        let base = if result == NO_BASELINE {
+            "null".to_string()
+        } else {
+            format!(r#"{{"report":{SUMMARY_BODY},"branch_point":true}}"#)
+        };
+        let was_compared = result.contains(r#""status":"compared""#);
+        let regressions = u64::from(result.contains(r#""outcome":"regression""#));
+        let budgets_broken = budgets.broken();
+        let judged = was_compared || budgets.has_rules();
+        let regressed = regressions > 0 || budgets_broken > 0;
+        format!(
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
+            budgets = budgets.body(),
+        )
+    }
+
+    /// A `compared` result with one judged `functions` timing row.
+    fn compared(regressed: bool) -> String {
+        let (outcome, crossed, regressions) = if regressed {
+            ("regression", r#""up""#, 1)
+        } else {
+            ("unchanged", "null", 0)
+        };
+        format!(
+            r#"{{"status":"compared","totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","totals":[],"columns":[{{"key":"p95","label":"P95","unit":"duration","worse":"up","role":null}}],"base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metric_columns":[0],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","location":null,"presence":"both","outcome":"{outcome}","cells":[{{"base":1000.0,"head":1500.0,"change_percent":50.0,"crossed":{crossed}}}]}}],"omitted_from_base":[],"omitted_from_head":[],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
+            unchanged = 1 - regressions,
+        )
+    }
+
+    fn diff_args<'a>(selector: &[&'a str]) -> Vec<&'a str> {
+        let mut args = vec!["diff", "--repo", "pawurb/hotpath-rs", "--benchmark", "ci"];
+        args.extend_from_slice(selector);
+        args
+    }
+
+    /// Runs `diff --pr 42` against a 200 with `body`; the exit code is read
+    /// from the body, so every status prints it on stdout.
+    fn diff_by_pr(body: &str) -> Output {
+        let mut server = Server::new();
+        let mock = mock_report(&mut server, DIFF_PATH, "pr=42", body);
+        let output = hotpath(&server, Some(TOKEN), &diff_args(&["--pr", "42"]));
+        mock.assert();
+        output
+    }
+
+    #[test]
+    fn diff_exit_code_follows_the_verdict() {
+        for (result, budgets, code) in [
+            (compared(false), BudgetsCase::Hold, 0),
+            (compared(false), BudgetsCase::NoRules, 0),
+            (compared(false), BudgetsCase::Broken, 1),
+            (compared(true), BudgetsCase::Hold, 1),
+            (NO_BASELINE.to_string(), BudgetsCase::Hold, 0),
+            (NO_BASELINE.to_string(), BudgetsCase::Broken, 1),
+            (NO_BASELINE.to_string(), BudgetsCase::NoRules, 1),
+            (UNREADABLE_BASE.to_string(), BudgetsCase::Hold, 0),
+            (UNREADABLE_BASE.to_string(), BudgetsCase::NoRules, 1),
+            (UNREADABLE_HEAD.to_string(), BudgetsCase::Unread, 1),
+        ] {
+            let body = diff_body(&result, budgets);
+            let output = diff_by_pr(&body);
+            let case = format!("{budgets:?} {result}");
+            assert_eq!(output.status.code(), Some(code), "{case}");
+            assert_eq!(stderr(&output), "", "{case}");
+            assert_eq!(json(&stdout(&output)), json(&body), "{case}");
+        }
+    }
+
+    #[test]
+    fn diff_sends_commit_event_and_full_and_maps_id_to_head() {
+        let mut server = Server::new();
+        let body = diff_body(&compared(false), BudgetsCase::NoRules);
+        let by_commit = server
+            .mock("GET", DIFF_PATH)
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("commit".into(), SHA.into()),
+                Matcher::UrlEncoded("event".into(), "pull_request".into()),
+                Matcher::UrlEncoded("rows".into(), "all".into()),
+            ]))
+            .match_header("authorization", format!("Bearer {TOKEN}").as_str())
+            .with_status(200)
+            .with_body(&body)
+            .create();
+        // Without `--full` the query leaves `rows=` to the server's default.
+        let by_id = mock_report(&mut server, DIFF_PATH, &format!("head={REPORT_ID}"), &body);
+
+        let output = hotpath(
+            &server,
+            Some(TOKEN),
+            &diff_args(&[
+                "--commit",
+                &SHA.to_ascii_uppercase(),
+                "--event",
+                "pull_request",
+                "--full",
+            ]),
+        );
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        let output = hotpath(&server, Some(TOKEN), &diff_args(&["--id", REPORT_ID]));
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        by_commit.assert();
+        by_id.assert();
+    }
+
+    #[test]
+    fn diff_unknown_report_is_the_server_404_verbatim() {
+        let mut server = Server::new();
+        let body = error_body(ApiErrorCode::NotFound, "No report of benchmark ci matches.");
+        let mock = server
+            .mock("GET", DIFF_PATH)
+            .match_query(Matcher::Exact("pr=42".into()))
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(&body)
+            .create();
+
+        let output = hotpath(&server, Some(TOKEN), &diff_args(&["--pr", "42"]));
+        mock.assert();
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        assert_eq!(stderr(&output), format!("{body}\n"));
+    }
+
+    #[test]
+    fn diff_body_without_a_result_is_an_error_not_a_pass() {
+        let body = diff_body(&compared(false), BudgetsCase::NoRules);
+        let mut value = json(&body);
+        value.as_object_mut().unwrap().remove("result");
+        let output = diff_by_pr(&value.to_string());
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        let error = client_error(&output);
+        assert!(error.starts_with("invalid response from"), "{error}");
+        assert!(error.contains("result"), "{error}");
+    }
+
+    #[test]
+    fn diff_body_with_the_verdict_inside_compared_is_an_error_not_a_pass() {
+        let mut value = json(&diff_body(&compared(false), BudgetsCase::NoRules));
+        let verdict = value.as_object_mut().unwrap().remove("verdict").unwrap();
+        value["result"]["verdict"] = verdict;
+        let output = diff_by_pr(&value.to_string());
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        let error = client_error(&output);
+        assert!(error.starts_with("invalid response from"), "{error}");
+        assert!(error.contains("verdict"), "{error}");
+    }
+
+    #[test]
+    fn diff_rejects_bad_values_before_the_token_or_a_request() {
+        let mut server = Server::new();
+        let mock = server
+            .mock("GET", Matcher::Regex("^/api/v1/".into()))
+            .expect(0)
+            .create();
+
+        let cases: [(Vec<&str>, &str); 3] = [
+            (
+                vec!["diff", "--repo", "nope", "--benchmark", "ci", "--pr", "1"],
+                "invalid --repo `nope`",
+            ),
+            (
+                vec![
+                    "diff",
+                    "--repo",
+                    "pawurb/hotpath-rs",
+                    "--benchmark",
+                    "a/b",
+                    "--pr",
+                    "1",
+                ],
+                "invalid --benchmark `a/b`",
+            ),
+            (diff_args(&["--commit", "9ab2"]), "invalid --commit `9ab2`"),
+        ];
+        for (args, expected) in cases {
+            let output = hotpath(&server, None, &args);
+            assert_eq!(output.status.code(), Some(1), "{args:?}");
+            assert_eq!(stdout(&output), "", "{args:?}");
+            let error = client_error(&output);
+            assert!(error.starts_with(expected), "{args:?}: {error}");
+        }
+        mock.assert();
+    }
+
+    #[test]
+    fn diff_selector_misuse_is_a_clap_usage_error() {
+        let mut server = Server::new();
+        let mock = server
+            .mock("GET", Matcher::Regex("^/api/v1/".into()))
+            .expect(0)
+            .create();
+
+        for selector in [
+            vec![],
+            vec!["--pr", "1", "--base", BASE_ID],
+            vec!["--id", REPORT_ID, "--event", "push"],
+            vec!["--pr", "1", "--commit", SHA],
+        ] {
+            let output = hotpath(&server, Some(TOKEN), &diff_args(&selector));
             assert_eq!(
                 output.status.code(),
                 Some(2),

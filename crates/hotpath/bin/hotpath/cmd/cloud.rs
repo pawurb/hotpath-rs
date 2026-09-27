@@ -8,10 +8,12 @@
 mod api;
 mod auth;
 mod benchmarks;
+mod diff;
 mod policy;
 mod repo;
 mod report;
 mod repos;
+mod selector;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -19,6 +21,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
+use crate::cmd::cloud::diff::DiffArgs;
 use crate::cmd::cloud::policy::{PolicyScope, SetPolicyArgs};
 use crate::cmd::cloud::report::ReportArgs;
 
@@ -96,6 +99,64 @@ exits 0 to wait for CI's upload. Same token and base URL environment as `auth`."
     Report(ReportArgs),
 
     #[command(
+        about = "Compare a stored report with its baseline under the current policy",
+        long_about = "Compare a stored report with its baseline under the current policy
+(GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/diff?pr=N|commit=SHA|head=ID).
+
+The head report is selected exactly as `report` selects one: --pr and --commit
+answer the newest matching report, newest by upload; --commit takes a full
+40-character sha and matches the measured commit or the pull request's head
+commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report;
+--id names a report; --event push|pull_request narrows --pr / --commit.
+
+The baseline is the one the server recorded for the head at upload, the one the PR
+comment compared. The judging policy is the benchmark's policy in force now, not the one at upload time,
+so a `set-policy` followed by `diff` shows the new judgement without a re-run.
+Numbers are never formatted: a value is a number in its column's `unit`, a change a
+number of percent.
+
+Each section is one metric family the policy lists; a family the policy leaves out is
+not in the body at all. A judged family decides the verdict; an unjudged one is still
+assessed (outcomes and crossed cells) but never counts. By default each section lists
+only the rows the PR comment lists: regressions, improvements, added and removed rows
+of judged families. The verdict, totals, columns and each family's `counts` are always
+complete, and `rows` in the body says which filter applied. --full lists every row of
+every section, unjudged families included.
+
+Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
+`[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without
+a baseline (a push to main, a pull request whose base has no report yet) still gets an
+answer. `budgets.rules` counts the policy's rules and `budgets.broken` the broken
+checks; `budgets.findings` lists the broken ones, every check with --full, and
+`budgets.notes` says what could not be checked. `budgets` is null when the head report
+does not parse.
+
+The top-level `verdict` covers the comparison and the budgets together: `judged` says
+whether anything was judged, `regressed` whether a judged family regressed or a budget
+is broken.
+
+Exit codes:
+  0  `verdict.judged` and not `verdict.regressed`
+  1  everything else: something failed, nothing was judged, or any error (unknown
+     report, bad argument value, auth, network, unparseable body)
+  2  usage error
+So 0 means exactly \"judged and fine\":
+  0  compared, no regression, budgets hold (or the policy has none)
+  1  compared, a regression (see `sections[].rows` whose `outcome` is `regression`
+     and their `crossed` cells)
+  1  compared, no regression, a budget broken
+  0  no baseline or an unreadable one, budgets hold
+  1  no baseline, a budget broken
+  1  no baseline, a policy without budgets (nothing judged)
+  1  head unreadable (nothing judged)
+Which kind of 1 it was is in the output: a server answer prints the body on stdout
+with stderr empty, as on exit 0; an error prints one JSON document on stderr with
+stdout empty, as for every command. Reading needs only access to the repository.
+Poll with `report` to wait for CI's upload. Same token and base URL environment as `auth`."
+    )]
+    Diff(DiffArgs),
+
+    #[command(
         about = "Show the PR comment policy in force for a repository or one benchmark",
         long_about = "Show the PR comment policy in force for a repository or one benchmark
 (GET /api/v1/repos/{owner}/{name}/policy, or .../benchmarks/{benchmark}/policy).
@@ -160,6 +221,7 @@ impl CloudArgs {
             CloudCommand::Repos => repos::run(output),
             CloudCommand::Benchmarks { repo } => benchmarks::run(output, &repo),
             CloudCommand::Report(args) => report::run(output, args),
+            CloudCommand::Diff(args) => diff::run(output, args),
             CloudCommand::GetPolicy(scope) => policy::get(output, scope),
             CloudCommand::SetPolicy(args) => policy::set(output, args),
         }

@@ -65,7 +65,7 @@ pub fn parse_bytes_signed(s: &str) -> Option<i64> {
 
 /// Structured source location of an instrumented item, joined from the
 /// call-site registry at report-build time (`lib_on/locations.rs`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonLocation {
     /// As captured by `file!()`: workspace-root-relative for workspace
     /// members, `<external>/<crate>-<version>/...` for registry dependencies.

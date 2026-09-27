@@ -13,6 +13,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+use crate::json::JsonLocation;
+use crate::output::ProfilingMode;
+
 /// Base URL of the hotpath.rs API when nothing overrides it.
 pub const DEFAULT_BASE_URL: &str = "https://hotpath.rs";
 
@@ -368,16 +371,557 @@ pub struct PolicyRejected {
     pub problems: Vec<PolicyProblem>,
 }
 
+/// Body of `GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/diff`:
+/// one head report against the baseline recorded for it at upload, judged
+/// under the benchmark's policy in force now (not the one at upload time, so
+/// a `set-policy` followed by a diff shows the new judgement without a
+/// re-run).
+///
+/// The head is picked like `reports/latest` / `reports/{id}` pick a report:
+/// `pr=N` or `commit=SHA` (newest match by upload, narrowed by `event=`), or
+/// `head=ID`. The baseline is always the head's recorded `baseline_id`, the
+/// one the PR comment compared. A `head=` of another benchmark is
+/// `404 not_found`. All three `DiffResult`s answer 200. Reading needs only
+/// access to the repository. `rows=findings` (the default) or
+/// `rows=all` picks which rows the sections carry (see `RowFilter`); an
+/// unknown value is `400 bad_request`. The body carries only the sections of
+/// the families the policy lists.
+///
+/// Numbers stay numbers: no formatted strings anywhere, a value is a number
+/// in its column's `unit` and a change is a number of percent. Formatting is
+/// the reader's job. Names deliberately differ from the server's analyzer
+/// types where those read badly on the wire (`Presence::Both` / `Added`,
+/// `Change`, `DiffCell`); the server maps its types into these in one place.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReportDiff {
+    /// `owner/name` as GitHub names it today.
+    pub repository: String,
+    /// The benchmark (series) both reports belong to.
+    pub benchmark: String,
+    /// The report the selector picked.
+    pub head: ReportSummary,
+    /// The report compared against; `None` exactly when `result` is
+    /// `NoBaseline`.
+    pub base: Option<DiffBase>,
+    /// The policy that judged (for `Compared`) or would judge.
+    pub policy: AppliedPolicy,
+    /// Which rows `DiffSection::rows` carries: the `rows=` the server
+    /// applied, so a filtered body never reads as a complete one.
+    pub rows: RowFilter,
+    pub verdict: Verdict,
+    /// The budgets judged on head; `None` when head does not parse (nothing
+    /// to read them from). Present, with `rules: 0`, under a policy without
+    /// budgets.
+    pub budgets: Option<Budgets>,
+    pub result: DiffResult,
+    /// The dashboard's comparison page for the head report
+    /// (`.../benchmarks/{benchmark}/reports/{head_id}/diff`), which exists
+    /// with or without a baseline.
+    pub dashboard_url: String,
+}
+
+/// Which rows the sections of a `ReportDiff` carry, as `rows=` asks. Only
+/// rows are filtered: the sections the policy lists, their columns, family
+/// and `counts`, the verdict, totals, `skipped` and `notes` are the same under
+/// both, so the counts still say how many rows each outcome had. The same
+/// filter cuts `Budgets::findings` to the broken ones; `Budgets::rules`,
+/// `broken` and `notes` are never cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RowFilter {
+    /// The default: the rows the PR comment lists, `Regression`,
+    /// `Improvement`, `Added` and `Removed` rows of judged families. Every
+    /// row of an unjudged family and the unchanged, below-floor, ignored and
+    /// too-few-calls rows of a judged one are left out; `counts` still count
+    /// them and `All` lists them.
+    Findings,
+    /// Every row of every section sent (a section the policy leaves out is
+    /// never sent, under either filter).
+    All,
+    /// A filter this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// The baseline side of a `ReportDiff`: the baseline recorded for head at
+/// upload, the one the PR comment compared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiffBase {
+    pub report: ReportSummary,
+    /// Whether the baseline measured the commit head branched from
+    /// (`head.base_sha`). `false`: another report stood in (the base
+    /// branch's newest), so the base branch's own drift since the branch
+    /// point is in the diff.
+    pub branch_point: bool,
+}
+
+/// Which policy judged a `ReportDiff`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppliedPolicy {
+    /// Which level's document judged (see `PolicyLevel`).
+    pub level: PolicyLevel,
+    /// Set when the stored document no longer parses and the built-in
+    /// default judged instead: the sentence saying so (as
+    /// `PolicyView::fallback`).
+    pub fallback: Option<String>,
+}
+
+/// The outcome of comparing head with its baseline, internally tagged:
+/// `{"status": "compared", ...}`. The answer for the report as a whole,
+/// budgets included, is `ReportDiff::verdict`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum DiffResult {
+    Compared(Comparison),
+    /// Head has no recorded baseline (a push report, a PR whose base branch
+    /// had no report yet).
+    NoBaseline,
+    /// A side does not parse under the server's report schema: what the PR
+    /// comment says in that case, structured.
+    Unreadable {
+        side: DiffSide,
+        /// The side's `hotpath_version`, when it reported one.
+        hotpath_version: Option<String>,
+        /// The parser's message.
+        error: String,
+    },
+}
+
+/// One side of a `ReportDiff`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffSide {
+    Base,
+    Head,
+}
+
+/// A judged comparison of two reports.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Comparison {
+    /// Run-level numbers; each `None` when either side lacks it.
+    pub totals: RunTotals,
+    /// Every section both reports carry whose family the policy lists, in
+    /// display order.
+    pub sections: Vec<DiffSection>,
+    /// Sections both reports carry that could not be compared (profiling-mode
+    /// or percentile-set mismatch), one sentence each. A section the policy
+    /// leaves out is never named here either.
+    pub skipped: Vec<String>,
+    /// What the policy could not judge, such as a named percentile the report
+    /// lacks, one sentence each.
+    pub notes: Vec<String>,
+}
+
+/// The answer for the head report: the judged families of the diff (when
+/// there is one) and the budgets, together. The CLI's exit code reads it: 0
+/// for `judged && !regressed`, 1 for everything else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Verdict {
+    /// Whether anything was judged: the diff was compared, or the policy has
+    /// budget rules and head could be read. `false` for a head that does not
+    /// parse, and for a report with no comparable baseline under a policy
+    /// without budgets.
+    pub judged: bool,
+    /// A judged family regressed or a budget is broken:
+    /// `regressions > 0 || budgets_broken > 0`.
+    pub regressed: bool,
+    /// Regressions of judged families; 0 when nothing was compared.
+    pub regressions: u64,
+    /// Improvements of judged families; 0 when nothing was compared.
+    pub improvements: u64,
+    /// Broken budget checks (`Budgets::broken`); 0 when head was not read.
+    pub budgets_broken: u64,
+}
+
+/// The policy's budgets, judged on the head report alone. A budget is a rule
+/// of the policy (`[[functions.budgets]]`, `[[sql.budgets]]`, ... one array
+/// per resource): an absolute bound on a named entity, such as
+/// `alloc = { avg = "1 KB" }` or `calls = { min = 10, max = 1000 }`. No
+/// baseline is needed, and the family settings (`judged`, `ignore`, the floor,
+/// `min_calls`) do not apply: a rule names its entity, so it is always
+/// checked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Budgets {
+    /// Rules the policy has, across resources. A rule that holds may leave
+    /// no finding, so "does the policy have budgets" is read here.
+    pub rules: u64,
+    /// Broken checks, counted before `rows` cuts `findings`.
+    pub broken: u64,
+    /// One per check: per resource in policy order, per rule in document
+    /// order, the count checks of a rule first. Under `RowFilter::Findings`
+    /// only the broken ones, as the PR comment lists them; every check under
+    /// `All`.
+    pub findings: Vec<BudgetFinding>,
+    /// What could not be checked, one sentence each: an entity that may sit
+    /// below the cut of a truncated report, a byte bound on a report profiled
+    /// by allocation count, a percentile the report lacks. Not cut by `rows`.
+    pub notes: Vec<String>,
+}
+
+/// One bound of one rule, checked against one entity. Every rule also
+/// asserts its entity ran (an implied minimum of 1 on the count, unless the
+/// rule writes `min = 0`); that implied check yields a finding only when it
+/// is broken.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BudgetFinding {
+    pub resource: DiffResource,
+    /// The rule's position in the resource's `budgets` array, 0-based.
+    pub rule: u32,
+    /// The rule's `match`, as written (`*` matches any run of characters).
+    pub pattern: String,
+    /// The rule's `message`.
+    pub message: Option<String>,
+    /// The entity checked; `None` when nothing in the report matched the
+    /// rule (the implied minimum is then the broken check).
+    pub entity: Option<BudgetEntity>,
+    pub check: BudgetCheck,
+    /// Which side of the bound is allowed.
+    pub bound: BoundKind,
+    /// The unit of `limit` and `actual`.
+    pub unit: Unit,
+    /// The bound, in `unit`.
+    pub limit: f64,
+    /// Head's value, in `unit`; 0 for a count when `entity` is `None`.
+    pub actual: f64,
+    pub broken: bool,
+}
+
+/// The entity a `BudgetFinding` checked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BudgetEntity {
+    /// What the rule's pattern matched against.
+    pub key: String,
+    /// What a reader sees.
+    pub name: String,
+    pub location: Option<JsonLocation>,
+}
+
+/// What a finding checked, internally tagged: `{"on": "count", ...}`. There
+/// is no `Unknown` variant (serde's `other` does not work on an internally
+/// tagged enum with data): a check kind this client does not know fails the
+/// parse, the right answer for a verdict it could not read in full.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "on", rename_all = "snake_case")]
+pub enum BudgetCheck {
+    /// The resource's count (`calls`, `count`, `sent_count`).
+    Count {
+        /// The key as the rule writes it.
+        name: String,
+        /// The minimum of 1 every rule implies, not one the rule wrote.
+        implied: bool,
+    },
+    /// A bound a family table of the rule wrote (`alloc = { avg = ... }`).
+    Column {
+        family: FamilyName,
+        /// The section the column is read from.
+        kind: SectionKind,
+        /// The column's policy name (`avg`, `p99.9`, `wait_p95`).
+        column: String,
+    },
+}
+
+/// Which side of a budget's bound is allowed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BoundKind {
+    /// `actual` must not exceed `limit`.
+    Max,
+    /// `actual` must not fall below `limit`.
+    Min,
+    /// A bound this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// Run-level numbers of a `Comparison`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RunTotals {
+    /// Wall time of the run, nanoseconds.
+    pub elapsed: Option<Change>,
+    /// Bytes allocated over the run (alloc-bytes mode only).
+    pub allocated: Option<Change>,
+    /// Peak RSS of the process, bytes.
+    pub peak_rss: Option<Change>,
+}
+
+/// Both sides of one number and the relative change. Values are in the
+/// natural integer scale of their unit carried as `f64` (every real value is
+/// far below 2^53, so nothing is lost).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Change {
+    pub base: f64,
+    pub head: f64,
+    /// `(head - base) / base * 100`; `0 -> x` is `100`, `0 -> 0` is `0`.
+    pub change_percent: f64,
+}
+
+/// One section of a `Comparison`: a resource's table in one kind (the
+/// `functions` alloc table, the `sql` table, ...). The sibling section of the
+/// same resource (timing next to alloc) is in the same body and matches by
+/// `DiffRow::key`; rows carry no copy of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DiffSection {
+    pub resource: DiffResource,
+    pub kind: SectionKind,
+    /// The profiling mode, for `functions` and `server` sections; the wire
+    /// form is the report's own (`timing`, `alloc-bytes`, `alloc-count`).
+    pub mode: Option<ProfilingMode>,
+    /// The section's own totals (`elapsed`, `calls`), in display order.
+    pub totals: Vec<SectionTotal>,
+    /// Every column of the section. `DiffRow::cells` aligns to it.
+    pub columns: Vec<DiffColumn>,
+    pub base_coverage: Coverage,
+    pub head_coverage: Coverage,
+    /// The family that assessed this section. The body only carries sections
+    /// whose family the policy lists; a section of a family the policy leaves
+    /// out is not sent at all.
+    pub family: FamilyJudgement,
+    /// Every entity `ReportDiff::rows` lets through, sorted by the floor
+    /// column's head value descending (removed rows last), else by volume,
+    /// else head's order.
+    pub rows: Vec<DiffRow>,
+    /// Head entities missing from a truncated baseline: not comparable,
+    /// never reported as added. Sorted.
+    pub omitted_from_base: Vec<String>,
+    /// Baseline entities missing from a truncated head. Sorted.
+    pub omitted_from_head: Vec<String>,
+    /// The comparison page with this section's tab open (`?tab=`).
+    pub dashboard_url: String,
+}
+
+/// The resource a `DiffSection` covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffResource {
+    Functions,
+    Sql,
+    Http,
+    Server,
+    Mutexes,
+    RwLocks,
+    Channels,
+    Io,
+    /// A resource this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// Which table of a resource a `DiffSection` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SectionKind {
+    Alloc,
+    Timing,
+    /// The one table of a resource that has only one.
+    Main,
+    /// A kind this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// One total of a `DiffSection`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SectionTotal {
+    /// What the total is (`elapsed`, `calls`).
+    pub label: String,
+    pub unit: Unit,
+    pub value: Change,
+}
+
+/// One column of a `DiffSection`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiffColumn {
+    /// The policy's name for the column (`total`, `p95`, `wait_p99`): what
+    /// `metrics = [...]` lists.
+    pub key: String,
+    /// The header a reader sees.
+    pub label: String,
+    pub unit: Unit,
+    /// Which way is worse; `None` for a neutral column.
+    pub worse: Option<Direction>,
+    /// A context column the assessment reads by role, never judges.
+    pub role: Option<ColumnRole>,
+}
+
+/// What a value in a column is. The unit is the value's scale on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Unit {
+    /// A plain count of calls.
+    Calls,
+    /// Nanoseconds.
+    Duration,
+    Bytes,
+    /// Allocation count.
+    Count,
+    /// Percent points (`12.34`), not basis points.
+    Percent,
+    /// A ratio, as the report carries it.
+    Rate,
+    /// Bytes per second.
+    Throughput,
+    /// A unit this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// A direction a value moves in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    Up,
+    Down,
+    /// A direction this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// The role of a context column in the assessment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColumnRole {
+    /// `% Total`: the policy's `min_percent_total` reads it.
+    Floor,
+    /// `calls`: the policy's `min_calls` reads it.
+    Volume,
+    /// A role this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// How much of a section one report lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Coverage {
+    /// Entries the report lists.
+    pub included: u64,
+    /// Entries measured, including ones cut by `HOTPATH_UPLOAD_LIMIT`.
+    pub total: u64,
+}
+
+/// A policy family's rules and tallies for one `DiffSection`: one per
+/// section, and every section a body carries has one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FamilyJudgement {
+    pub name: FamilyName,
+    /// Whether this family decides the verdict and reaches the PR comment.
+    /// `false`: assessed and shown (outcomes, `crossed`), never counted.
+    pub judged: bool,
+    /// The family's bar, in percent.
+    pub min_percent_change: f64,
+    /// The policy's `metrics`, as indices into `DiffSection::columns`, in
+    /// policy order.
+    pub metric_columns: Vec<u32>,
+    pub counts: OutcomeCounts,
+}
+
+/// A policy family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FamilyName {
+    Alloc,
+    Timing,
+    Flow,
+    /// A family this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// How many rows of a section ended in each `RowOutcome`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutcomeCounts {
+    pub ignored: u64,
+    pub below_floor: u64,
+    pub added: u64,
+    pub removed: u64,
+    pub too_few_calls: u64,
+    pub regressions: u64,
+    pub improvements: u64,
+    pub unchanged: u64,
+}
+
+/// One entity of a `DiffSection`, both sides of every column.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DiffRow {
+    /// What the sides were matched on and `ignore` patterns run against.
+    pub key: String,
+    /// What a reader sees (the key itself for functions).
+    pub name: String,
+    /// Head's location when head has the entity, else the baseline's.
+    pub location: Option<JsonLocation>,
+    pub presence: Presence,
+    /// The family's conclusion. Every row of every section sent has one,
+    /// unjudged families included.
+    pub outcome: RowOutcome,
+    /// Aligned to `DiffSection::columns`. `None` when a present side's value
+    /// did not parse.
+    pub cells: Vec<Option<DiffCell>>,
+}
+
+/// Which reports carry a `DiffRow`'s entity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Presence {
+    Both,
+    /// Only in head.
+    Added,
+    /// Only in the baseline.
+    Removed,
+    /// A presence this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// A family's conclusion about one `DiffRow`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RowOutcome {
+    /// Matched an `ignore` pattern.
+    Ignored,
+    /// Under the policy's `min_percent_total`.
+    BelowFloor,
+    Added,
+    Removed,
+    /// Under the policy's `min_calls`.
+    TooFewCalls,
+    Regression,
+    Improvement,
+    Unchanged,
+    /// An outcome this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// Both sides of one column of one `DiffRow`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct DiffCell {
+    /// `None` for an `Added` row: the baseline has no such entity. Never a
+    /// stand-in zero.
+    pub base: Option<f64>,
+    /// `None` for a `Removed` row.
+    pub head: Option<f64>,
+    /// `None` when a side is absent.
+    pub change_percent: Option<f64>,
+    /// Set on a cell of one of the family's metrics that crossed the family's
+    /// bar, in every family sent: which way the value moved. It counts toward
+    /// the verdict only when the family is `judged` and the direction is the
+    /// worse one.
+    pub crossed: Option<Direction>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
     use crate::json::cloud_api::{
         normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
-        BenchmarkList, BenchmarkSummary, CommentOutcome, PolicyLevel, PolicyProblem,
-        PolicyRejected, PolicySaved, PolicyUpdate, PolicyView, RepoList, Report, ReportSummary,
-        Repository, TokenStatus, UploadCreated, DEFAULT_BASE_URL,
+        BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity, BudgetFinding,
+        ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffSide, Direction,
+        FamilyName, PolicyLevel, PolicyProblem, PolicyRejected, PolicySaved, PolicyUpdate,
+        PolicyView, Presence, RepoList, Report, ReportDiff, ReportSummary, Repository, RowFilter,
+        RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict, DEFAULT_BASE_URL,
     };
+    use crate::json::JsonLocation;
+    use crate::output::ProfilingMode;
     use time::macros::datetime;
 
     #[test]
@@ -740,5 +1284,498 @@ mod tests {
         let plain: ApiError = serde_json::from_str(body).unwrap();
         assert_eq!(plain.code, ApiErrorCode::InvalidPolicy);
         assert_eq!(plain.error, "The policy has 3 problems.");
+    }
+
+    /// The `compared` part of a `ReportDiff` fixture: one regressed
+    /// `functions` alloc section with a crossed `Both` row, an `Added` row, a
+    /// `Removed` row and an unparseable cell, plus an unjudged `sql` section
+    /// whose crossed regression the verdict does not count.
+    const COMPARED_RESULT: &str = r#"{
+        "status": "compared",
+        "totals": {
+            "elapsed": {"base": 1200000000.0, "head": 1250000000.0, "change_percent": 4.1666},
+            "allocated": null,
+            "peak_rss": {"base": 0.0, "head": 4096.0, "change_percent": 100.0}
+        },
+        "sections": [
+            {
+                "resource": "functions",
+                "kind": "alloc",
+                "mode": "alloc-bytes",
+                "totals": [{"label": "elapsed", "unit": "duration", "value": {"base": 10.0, "head": 12.0, "change_percent": 20.0}}],
+                "columns": [
+                    {"key": "calls", "label": "Calls", "unit": "calls", "worse": null, "role": "volume"},
+                    {"key": "total", "label": "Total", "unit": "bytes", "worse": "up", "role": null},
+                    {"key": "percent_total", "label": "% Total", "unit": "percent", "worse": null, "role": "floor"}
+                ],
+                "base_coverage": {"included": 3, "total": 3},
+                "head_coverage": {"included": 3, "total": 5},
+                "family": {
+                    "name": "alloc",
+                    "judged": true,
+                    "min_percent_change": 5.0,
+                    "metric_columns": [1],
+                    "counts": {"ignored": 0, "below_floor": 0, "added": 1, "removed": 1, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
+                },
+                "rows": [
+                    {
+                        "key": "app::parse",
+                        "name": "app::parse",
+                        "location": {"file": "src/parse.rs", "line": 12, "column": 1},
+                        "presence": "both",
+                        "outcome": "regression",
+                        "cells": [
+                            {"base": 100.0, "head": 100.0, "change_percent": 0.0, "crossed": null},
+                            {"base": 2048.0, "head": 3136.0, "change_percent": 53.125, "crossed": "up"},
+                            null
+                        ]
+                    },
+                    {
+                        "key": "app::new_fn",
+                        "name": "app::new_fn",
+                        "location": null,
+                        "presence": "added",
+                        "outcome": "added",
+                        "cells": [
+                            {"base": null, "head": 3.0, "change_percent": null, "crossed": null},
+                            {"base": null, "head": 512.0, "change_percent": null, "crossed": null},
+                            {"base": null, "head": 1.5, "change_percent": null, "crossed": null}
+                        ]
+                    },
+                    {
+                        "key": "app::old_fn",
+                        "name": "app::old_fn",
+                        "location": {"file": "src/old.rs", "line": 3, "column": 5},
+                        "presence": "removed",
+                        "outcome": "removed",
+                        "cells": [
+                            {"base": 7.0, "head": null, "change_percent": null, "crossed": null},
+                            {"base": 64.0, "head": null, "change_percent": null, "crossed": null},
+                            {"base": 0.25, "head": null, "change_percent": null, "crossed": null}
+                        ]
+                    }
+                ],
+                "omitted_from_base": [],
+                "omitted_from_head": ["app::cut"],
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=alloc"
+            },
+            {
+                "resource": "sql",
+                "kind": "main",
+                "mode": null,
+                "totals": [],
+                "columns": [{"key": "p95", "label": "P95", "unit": "duration", "worse": "up", "role": null}],
+                "base_coverage": {"included": 1, "total": 1},
+                "head_coverage": {"included": 1, "total": 1},
+                "family": {
+                    "name": "timing",
+                    "judged": false,
+                    "min_percent_change": 20.0,
+                    "metric_columns": [0],
+                    "counts": {"ignored": 0, "below_floor": 0, "added": 0, "removed": 0, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
+                },
+                "rows": [
+                    {
+                        "key": "SELECT 1",
+                        "name": "SELECT 1",
+                        "location": null,
+                        "presence": "both",
+                        "outcome": "regression",
+                        "cells": [{"base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
+                    }
+                ],
+                "omitted_from_base": [],
+                "omitted_from_head": [],
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
+            }
+        ],
+        "skipped": ["functions timing: the reports measured different percentiles."],
+        "notes": ["io is disabled by the policy."]
+    }"#;
+
+    const DIFF_URL: &str = "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff";
+
+    /// The verdict of `COMPARED_RESULT` under a policy without budgets.
+    const COMPARED_VERDICT: &str = r#"{"judged": true, "regressed": true, "regressions": 1, "improvements": 0, "budgets_broken": 0}"#;
+    /// Nothing judged: no comparison and no budget rules, or no head.
+    const UNJUDGED_VERDICT: &str = r#"{"judged": false, "regressed": false, "regressions": 0, "improvements": 0, "budgets_broken": 0}"#;
+    /// What a policy without budgets yields for a head that parses.
+    const NO_BUDGETS: &str = r#"{"rules": 0, "broken": 0, "findings": [], "notes": []}"#;
+
+    /// Two rules as `rows=all` lists them: a broken `alloc` bound with a
+    /// `message`, and a `calls` rule that holds.
+    const BUDGETS: &str = r#"{
+        "rules": 2,
+        "broken": 1,
+        "findings": [
+            {
+                "resource": "functions",
+                "rule": 0,
+                "pattern": "app::parse*",
+                "message": "parse must stay under 1 KB per call",
+                "entity": {"key": "app::parse", "name": "app::parse", "location": {"file": "src/parse.rs", "line": 12, "column": 1}},
+                "check": {"on": "column", "family": "alloc", "kind": "alloc", "column": "avg"},
+                "bound": "max",
+                "unit": "bytes",
+                "limit": 1024.0,
+                "actual": 3136.0,
+                "broken": true
+            },
+            {
+                "resource": "sql",
+                "rule": 0,
+                "pattern": "SELECT 1",
+                "message": null,
+                "entity": {"key": "SELECT 1", "name": "SELECT 1", "location": null},
+                "check": {"on": "count", "name": "count", "implied": false},
+                "bound": "min",
+                "unit": "calls",
+                "limit": 10.0,
+                "actual": 12.0,
+                "broken": false
+            }
+        ],
+        "notes": ["functions budget 1: the report lacks p99.9."]
+    }"#;
+
+    /// One rule whose entity never ran: the implied minimum is the broken
+    /// check.
+    const IMPLIED_MINIMUM_BUDGETS: &str = r#"{
+        "rules": 1,
+        "broken": 1,
+        "findings": [
+            {
+                "resource": "functions",
+                "rule": 0,
+                "pattern": "app::gone",
+                "message": null,
+                "entity": null,
+                "check": {"on": "count", "name": "calls", "implied": true},
+                "bound": "min",
+                "unit": "calls",
+                "limit": 1.0,
+                "actual": 0.0,
+                "broken": true
+            }
+        ],
+        "notes": []
+    }"#;
+
+    fn report_diff(base: &str, verdict: &str, budgets: &str, result: &str) -> serde_json::Value {
+        let body = format!(
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","verdict":{verdict},"budgets":{budgets},"result":{result},"dashboard_url":"{DIFF_URL}"}}"#
+        );
+        serde_json::from_str(&body).unwrap()
+    }
+
+    /// `COMPARED_RESULT` under a policy without budgets.
+    fn compared_diff(result: &str) -> serde_json::Value {
+        report_diff(&recorded_base(), COMPARED_VERDICT, NO_BUDGETS, result)
+    }
+
+    fn recorded_base() -> String {
+        format!(r#"{{"report":{PUSH_SUMMARY},"branch_point":true}}"#)
+    }
+
+    /// Parses `value` as a `ReportDiff` and checks it re-serializes equal.
+    fn round_trip(value: &serde_json::Value) -> ReportDiff {
+        let diff: ReportDiff = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(&serde_json::to_value(&diff).unwrap(), value);
+        diff
+    }
+
+    #[test]
+    fn report_diff_compared_round_trips() {
+        let value = compared_diff(COMPARED_RESULT);
+        let diff = round_trip(&value);
+        assert_eq!(diff.head, pr_summary());
+        let base = diff.base.expect("compared has a base");
+        assert!(base.branch_point);
+        assert_eq!(diff.dashboard_url, DIFF_URL);
+        assert_eq!(diff.policy.level, PolicyLevel::Benchmark);
+        assert_eq!(diff.rows, RowFilter::All);
+
+        assert_eq!(diff.budgets.expect("head parses").rules, 0);
+        let DiffResult::Compared(comparison) = diff.result else {
+            panic!("not compared: {:?}", diff.result);
+        };
+        assert_eq!(comparison.totals.allocated, None);
+        let alloc = &comparison.sections[0];
+        assert_eq!(alloc.mode, Some(ProfilingMode::AllocBytes));
+        assert_eq!(alloc.columns[2].role, Some(ColumnRole::Floor));
+        assert_eq!(alloc.family.name, FamilyName::Alloc);
+        assert!(alloc.family.judged);
+
+        let [both, added, removed] = &alloc.rows[..] else {
+            panic!("three rows expected");
+        };
+        assert_eq!(both.outcome, RowOutcome::Regression);
+        assert_eq!(
+            both.cells[1],
+            Some(DiffCell {
+                base: Some(2048.0),
+                head: Some(3136.0),
+                change_percent: Some(53.125),
+                crossed: Some(Direction::Up),
+            })
+        );
+        assert_eq!(both.cells[2], None, "an unparseable cell is null");
+        assert_eq!(added.presence, Presence::Added);
+        assert!(added.cells.iter().all(|c| c.unwrap().base.is_none()));
+        assert_eq!(removed.presence, Presence::Removed);
+        assert!(removed.cells.iter().all(|c| c.unwrap().head.is_none()));
+
+        let sql = &comparison.sections[1];
+        assert!(!sql.family.judged);
+        assert_eq!(sql.rows[0].outcome, RowOutcome::Regression);
+        assert_eq!(sql.rows[0].cells[0].unwrap().crossed, Some(Direction::Up));
+        assert_eq!(diff.verdict.regressions, 1, "unjudged rows never count");
+    }
+
+    #[test]
+    fn report_diff_compared_with_budgets_round_trips() {
+        let verdict = r#"{"judged": true, "regressed": true, "regressions": 1, "improvements": 0, "budgets_broken": 1}"#;
+        let diff = round_trip(&report_diff(
+            &recorded_base(),
+            verdict,
+            BUDGETS,
+            COMPARED_RESULT,
+        ));
+        assert_eq!(
+            diff.verdict,
+            Verdict {
+                judged: true,
+                regressed: true,
+                regressions: 1,
+                improvements: 0,
+                budgets_broken: 1,
+            }
+        );
+
+        let budgets = diff.budgets.expect("head parses");
+        assert_eq!(budgets.rules, 2);
+        assert_eq!(budgets.broken, 1);
+        assert_eq!(budgets.notes.len(), 1);
+        let [broken, holds] = &budgets.findings[..] else {
+            panic!("two findings expected");
+        };
+        assert_eq!(
+            broken,
+            &BudgetFinding {
+                resource: DiffResource::Functions,
+                rule: 0,
+                pattern: "app::parse*".into(),
+                message: Some("parse must stay under 1 KB per call".into()),
+                entity: Some(BudgetEntity {
+                    key: "app::parse".into(),
+                    name: "app::parse".into(),
+                    location: Some(JsonLocation {
+                        file: "src/parse.rs".into(),
+                        line: 12,
+                        column: 1,
+                    }),
+                }),
+                check: BudgetCheck::Column {
+                    family: FamilyName::Alloc,
+                    kind: SectionKind::Alloc,
+                    column: "avg".into(),
+                },
+                bound: BoundKind::Max,
+                unit: Unit::Bytes,
+                limit: 1024.0,
+                actual: 3136.0,
+                broken: true,
+            }
+        );
+        assert!(!holds.broken);
+        assert_eq!(holds.bound, BoundKind::Min);
+        assert_eq!(
+            holds.check,
+            BudgetCheck::Count {
+                name: "count".into(),
+                implied: false,
+            }
+        );
+    }
+
+    #[test]
+    fn report_diff_broken_implied_minimum_round_trips() {
+        let verdict = r#"{"judged": true, "regressed": true, "regressions": 0, "improvements": 0, "budgets_broken": 1}"#;
+        let value = report_diff(
+            "null",
+            verdict,
+            IMPLIED_MINIMUM_BUDGETS,
+            r#"{"status":"no_baseline"}"#,
+        );
+        let diff = round_trip(&value);
+        assert!(diff.verdict.regressed);
+
+        let finding = &diff.budgets.expect("head parses").findings[0];
+        assert_eq!(finding.entity, None);
+        assert_eq!(
+            finding.check,
+            BudgetCheck::Count {
+                name: "calls".into(),
+                implied: true,
+            }
+        );
+        assert_eq!(finding.actual, 0.0);
+        assert!(finding.broken);
+    }
+
+    #[test]
+    fn report_diff_requires_the_top_level_verdict() {
+        // The shape before budgets: the verdict inside `compared`.
+        let mut value = compared_diff(COMPARED_RESULT);
+        let verdict = value.as_object_mut().unwrap().remove("verdict").unwrap();
+        value["result"]["verdict"] = verdict;
+        let error = serde_json::from_value::<ReportDiff>(value)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("verdict"), "{error}");
+    }
+
+    #[test]
+    fn report_diff_rejects_an_unknown_budget_check() {
+        let mut value = report_diff(
+            "null",
+            COMPARED_VERDICT,
+            IMPLIED_MINIMUM_BUDGETS,
+            r#"{"status":"no_baseline"}"#,
+        );
+        value["budgets"]["findings"][0]["check"]["on"] = "ratio".into();
+        assert!(serde_json::from_value::<ReportDiff>(value).is_err());
+    }
+
+    #[test]
+    fn report_diff_requires_a_family_and_an_outcome() {
+        for (path, broken) in [
+            ("/result/sections/1/family", serde_json::Value::Null),
+            ("/result/sections/1/rows/0/outcome", serde_json::Value::Null),
+        ] {
+            let mut value = compared_diff(COMPARED_RESULT);
+            *value.pointer_mut(path).unwrap() = broken;
+            assert!(
+                serde_json::from_value::<ReportDiff>(value).is_err(),
+                "{path} null"
+            );
+        }
+        let mut value = compared_diff(COMPARED_RESULT);
+        value["result"]["sections"][1]["rows"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("outcome");
+        assert!(serde_json::from_value::<ReportDiff>(value).is_err());
+    }
+
+    #[test]
+    fn report_diff_no_baseline_round_trips() {
+        // Budgets that hold are the answer when there is no baseline. Under
+        // `findings` a rule that holds leaves no finding, only `rules`.
+        let verdict = r#"{"judged": true, "regressed": false, "regressions": 0, "improvements": 0, "budgets_broken": 0}"#;
+        let budgets = r#"{"rules": 2, "broken": 0, "findings": [], "notes": []}"#;
+        let mut value = report_diff("null", verdict, budgets, r#"{"status":"no_baseline"}"#);
+        value["rows"] = "findings".into();
+        let diff = round_trip(&value);
+        assert_eq!(diff.rows, RowFilter::Findings);
+        assert_eq!(diff.base, None);
+        assert_eq!(diff.result, DiffResult::NoBaseline);
+        assert_eq!(diff.dashboard_url, DIFF_URL);
+        assert!(diff.verdict.judged);
+        assert!(!diff.verdict.regressed);
+        assert_eq!(diff.budgets.expect("head parses").rules, 2);
+    }
+
+    #[test]
+    fn report_diff_no_baseline_without_budgets_judges_nothing() {
+        let diff = round_trip(&report_diff(
+            "null",
+            UNJUDGED_VERDICT,
+            NO_BUDGETS,
+            r#"{"status":"no_baseline"}"#,
+        ));
+        assert_eq!(diff.budgets.expect("head parses").rules, 0);
+        assert!(!diff.verdict.judged);
+    }
+
+    #[test]
+    fn report_diff_unreadable_head_has_no_budgets() {
+        let value = report_diff(
+            &recorded_base(),
+            UNJUDGED_VERDICT,
+            "null",
+            r#"{"status":"unreadable","side":"head","hotpath_version":null,"error":"missing field `functions_timing`"}"#,
+        );
+        let diff = round_trip(&value);
+        assert_eq!(diff.budgets, None);
+        assert!(!diff.verdict.judged);
+        assert!(matches!(
+            diff.result,
+            DiffResult::Unreadable {
+                side: DiffSide::Head,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn report_diff_unreadable_round_trips() {
+        let base = format!(r#"{{"report":{PUSH_SUMMARY},"branch_point":false}}"#);
+        let value = report_diff(
+            &base,
+            UNJUDGED_VERDICT,
+            NO_BUDGETS,
+            r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#,
+        );
+        let diff = round_trip(&value);
+        assert!(!diff.base.unwrap().branch_point);
+        assert_eq!(
+            diff.result,
+            DiffResult::Unreadable {
+                side: DiffSide::Base,
+                hotpath_version: Some("0.20.0".into()),
+                error: "missing field `functions_timing`".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn report_diff_tolerates_unknown_enum_values_and_fields() {
+        let result = COMPARED_RESULT
+            .replacen(r#""resource": "functions""#, r#""resource": "gpu""#, 1)
+            .replacen(r#""unit": "bytes""#, r#""unit": "watts""#, 1)
+            .replacen(r#""kind": "alloc""#, r#""kind": "energy", "later": [1]"#, 1)
+            .replacen(r#""presence": "both""#, r#""presence": "moved""#, 1)
+            .replacen(r#""outcome": "regression""#, r#""outcome": "flaky""#, 1);
+        let budgets = BUDGETS
+            .replacen(r#""resource": "functions""#, r#""resource": "gpu""#, 1)
+            .replacen(r#""bound": "max""#, r#""bound": "between", "later": 1"#, 1)
+            .replacen(r#""family": "alloc""#, r#""family": "energy""#, 1);
+        let mut value = report_diff(&recorded_base(), COMPARED_VERDICT, &budgets, &result);
+        value["later"] = serde_json::json!({"anything": true});
+        value["rows"] = "sampled".into();
+        value["verdict"]["later"] = true.into();
+
+        let diff: ReportDiff = serde_json::from_value(value).unwrap();
+        assert_eq!(diff.rows, RowFilter::Unknown);
+        let finding = &diff.budgets.as_ref().unwrap().findings[0];
+        assert_eq!(finding.resource, DiffResource::Unknown);
+        assert_eq!(finding.bound, BoundKind::Unknown);
+        assert!(matches!(
+            finding.check,
+            BudgetCheck::Column {
+                family: FamilyName::Unknown,
+                ..
+            }
+        ));
+        let DiffResult::Compared(comparison) = diff.result else {
+            panic!("not compared");
+        };
+        let section = &comparison.sections[0];
+        assert_eq!(section.resource, DiffResource::Unknown);
+        assert_eq!(section.kind, SectionKind::Unknown);
+        assert_eq!(section.columns[1].unit, Unit::Unknown);
+        assert_eq!(section.rows[0].presence, Presence::Unknown);
+        assert_eq!(section.rows[0].outcome, RowOutcome::Unknown);
     }
 }
