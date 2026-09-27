@@ -116,6 +116,13 @@ so a `set-policy` followed by `diff` shows the new judgement without a re-run.
 Numbers are never formatted: a value is a number in its column's `unit`, a change a
 number of percent.
 
+By default each section lists only the PR comment's findings: regressions and
+improvements of the families that decide the verdict, plus added and removed rows.
+The verdict (advisory tallies included), totals, columns and each family's `counts`
+are always complete, and `rows` in the body says which filter applied. --full
+lists every row of every section (advisory crossings with their `crossed` marks,
+unchanged, below the floor, ignored, ...).
+
 Exit codes:
   0  compared, no regression
   3  compared, and the policy calls it a regression (see `sections[].rows` whose

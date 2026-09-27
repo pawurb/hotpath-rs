@@ -2,7 +2,8 @@
 //! the server under the benchmark's current policy, the same judgement the PR
 //! comment shows but as structured JSON. The head is picked like `report`
 //! picks a report (`selector.rs`); `--base ID` overrides the baseline the
-//! server recorded for it at upload.
+//! server recorded for it at upload. Sections carry only the PR comment's
+//! findings unless `--full` asks for every row (`RowFilter`).
 //!
 //! The body goes to stdout on exit 0, 3 and 4: a regression or a missing
 //! baseline is an answer, not an error, and the caller needs the body to act
@@ -40,6 +41,12 @@ pub(crate) struct DiffArgs {
         help = "Compare against the report with this id instead of the recorded baseline"
     )]
     base: Option<String>,
+
+    #[arg(
+        long,
+        help = "Every row of every section, not only the PR comment's findings"
+    )]
+    full: bool,
 }
 
 pub(crate) fn run(output: &Output, args: DiffArgs) -> Result<ExitCode, CliError> {
@@ -83,6 +90,10 @@ fn request_path(args: &DiffArgs) -> Result<String, CliError> {
     }
     if let Some(base) = base {
         query.push(format!("base={base}"));
+    }
+    // Without `rows=` the server sends findings only.
+    if args.full {
+        query.push("rows=all".to_string());
     }
     Ok(format!(
         "/api/v1/repos/{repo}/benchmarks/{benchmark}/diff?{}",
