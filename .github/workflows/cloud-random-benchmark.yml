@@ -66,6 +66,7 @@ jobs:
           HOTPATH_EXCLUDE_WRAPPER: "true"
           HOTPATH_OUTPUT_FORMAT: json
           HOTPATH_OUTPUT_PATH: random-report.json
+          HOTPATH_UPLOAD_LIMIT: "5"
         run: |
           cargo run -q --release -p test-axum --example benchmark_random \
             --features hotpath,hotpath-alloc,hotpath-cloud

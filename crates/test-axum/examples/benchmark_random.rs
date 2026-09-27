@@ -23,8 +23,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
-use diesel::prelude::*;
-use diesel::sql_types::BigInt;
 use futures::StreamExt;
 use hotpath::{HotpathGuardBuilder, Section};
 
@@ -36,8 +34,6 @@ const BASE_DELAY: Duration = Duration::from_millis(2);
 const SLOW_FACTOR: u32 = 3;
 /// Bytes allocated per `fast` call of the alloc function.
 const BASE_ALLOC: usize = 4 * 1024;
-/// Rows a `fast` SQL query walks through a recursive CTE (CPU-bound in SQLite).
-const BASE_SQL_ROWS: i64 = 20_000;
 const CHANNEL_CAPACITY: usize = 4;
 /// The CPU thread spins a third of every period when `fast` and all of it
 /// when `slow`.
@@ -188,6 +184,60 @@ fn random_alloc(speed: Speed) -> usize {
     buf.len()
 }
 
+/// Present only on this branch, so the comparison lists it as added.
+#[hotpath::measure]
+fn edge_added() -> usize {
+    let buf = vec![7u8; 1024];
+    std::thread::sleep(Duration::from_micros(500));
+    std::hint::black_box(&buf);
+    buf.len()
+}
+
+/// Called once: below any `min_calls` bar.
+#[hotpath::measure]
+fn edge_once() -> usize {
+    let buf = vec![7u8; 2048];
+    std::thread::sleep(Duration::from_millis(1));
+    std::hint::black_box(&buf);
+    buf.len()
+}
+
+/// Many small functions, so a low `HOTPATH_UPLOAD_LIMIT` truncates the
+/// function sections.
+macro_rules! edge_many {
+    ($($name:ident),*) => {
+        $(
+            #[hotpath::measure]
+            fn $name() -> usize {
+                let buf = vec![1u8; 256];
+                std::hint::black_box(&buf);
+                buf.len()
+            }
+        )*
+
+        fn run_edge_many() {
+            for _ in 0..10 {
+                $( std::hint::black_box($name()); )*
+            }
+        }
+    };
+}
+
+edge_many!(
+    edge_many_00,
+    edge_many_01,
+    edge_many_02,
+    edge_many_03,
+    edge_many_04,
+    edge_many_05,
+    edge_many_06,
+    edge_many_07,
+    edge_many_08,
+    edge_many_09,
+    edge_many_10,
+    edge_many_11
+);
+
 /// Reader and writer whose every operation takes the resource's delay.
 struct DelayedIo {
     delay: Duration,
@@ -260,7 +310,6 @@ async fn main() {
         println!("benchmark_random: {} {}", r.name(), plan.speed(r).as_str());
     }
 
-    hotpath::instrument_diesel_sql();
     let _guard = HotpathGuardBuilder::new("main")
         .sections(vec![
             Section::FunctionsTiming,
@@ -270,7 +319,6 @@ async fn main() {
             Section::Channels,
             Section::Mutexes,
             Section::RwLocks,
-            Section::Sql,
             Section::Http,
             Section::Server,
             Section::Io,
@@ -310,6 +358,12 @@ async fn main() {
         total += random_alloc(speed);
     }
     std::hint::black_box(total);
+
+    for _ in 0..RUNS {
+        std::hint::black_box(edge_added());
+    }
+    std::hint::black_box(edge_once());
+    run_edge_many();
 
     // Futures and streams report time spent inside `poll`, so the work blocks
     // there instead of awaiting a timer.
@@ -355,7 +409,7 @@ async fn main() {
     let hold = plan.speed(Resource::Mutexes).delay();
     let mutex = Arc::new(hotpath::mutex!(
         std::sync::Mutex::new(0u64),
-        label = "random-mutex"
+        label = "edge-mutex"
     ));
     contend(RUNS, move || {
         let mut v = mutex.lock().expect("poisoned");
@@ -381,18 +435,6 @@ async fn main() {
             std::hint::black_box(*r);
         }
     });
-
-    let rows = BASE_SQL_ROWS * plan.speed(Resource::Sql).factor() as i64;
-    let mut conn = SqliteConnection::establish(":memory:").expect("sqlite");
-    for _ in 0..RUNS {
-        diesel::sql_query(
-            "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ?) \
-             SELECT COUNT(*) FROM c",
-        )
-        .bind::<BigInt, _>(rows)
-        .execute(&mut conn)
-        .expect("sql query");
-    }
 
     // Outbound HTTP goes to an uninstrumented server, and the instrumented
     // server is called by a plain client, so the two draws stay independent.
