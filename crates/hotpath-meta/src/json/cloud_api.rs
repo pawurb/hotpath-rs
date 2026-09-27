@@ -387,6 +387,10 @@ pub struct PolicyRejected {
 /// unknown value is `400 bad_request`. The body carries only the sections of
 /// the families the policy lists.
 ///
+/// The policy's budgets are judged on head alone, so `verdict` and `budgets`
+/// sit here and not inside `Comparison`: a head without a baseline is still
+/// answered for.
+///
 /// Numbers stay numbers: no formatted strings anywhere, a value is a number
 /// in its column's `unit` and a change is a number of percent. Formatting is
 /// the reader's job. Names deliberately differ from the server's analyzer
@@ -408,6 +412,11 @@ pub struct ReportDiff {
     /// Which rows `DiffSection::rows` carries: the `rows=` the server
     /// applied, so a filtered body never reads as a complete one.
     pub rows: RowFilter,
+    pub verdict: Verdict,
+    /// The budgets judged on head; `None` when head does not parse (nothing
+    /// to read them from). Present, with `rules: 0`, under a policy without
+    /// budgets.
+    pub budgets: Option<Budgets>,
     pub result: DiffResult,
     /// The dashboard's comparison page for the head report
     /// (`.../benchmarks/{benchmark}/reports/{head_id}/diff`), which exists
@@ -418,7 +427,9 @@ pub struct ReportDiff {
 /// Which rows the sections of a `ReportDiff` carry, as `rows=` asks. Only
 /// rows are filtered: the sections the policy lists, their columns, family
 /// and `counts`, the verdict, totals, `skipped` and `notes` are the same under
-/// both, so the counts still say how many rows each outcome had.
+/// both, so the counts still say how many rows each outcome had. The same
+/// filter cuts `Budgets::findings` to the broken ones; `Budgets::rules`,
+/// `broken` and `notes` are never cut.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RowFilter {
@@ -459,9 +470,9 @@ pub struct AppliedPolicy {
     pub fallback: Option<String>,
 }
 
-/// The outcome of a `ReportDiff`, internally tagged:
-/// `{"status": "compared", ...}`. The CLI's exit code reads it: 0 for
-/// `Compared` without a regression, 1 for everything else.
+/// The outcome of comparing head with its baseline, internally tagged:
+/// `{"status": "compared", ...}`. The answer for the report as a whole,
+/// budgets included, is `ReportDiff::verdict`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum DiffResult {
@@ -491,7 +502,6 @@ pub enum DiffSide {
 /// A judged comparison of two reports.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Comparison {
-    pub verdict: Verdict,
     /// Run-level numbers; each `None` when either side lacks it.
     pub totals: RunTotals,
     /// Every section both reports carry whose family the policy lists, in
@@ -506,14 +516,125 @@ pub struct Comparison {
     pub notes: Vec<String>,
 }
 
-/// The tally of a `Comparison` over judged families only.
+/// The answer for the head report: the judged families of the diff (when
+/// there is one) and the budgets, together. The CLI's exit code reads it: 0
+/// for `judged && !regressed`, 1 for everything else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verdict {
-    /// `regressions > 0`. Decides between the CLI's exit 0 and 1 for a
-    /// `Compared` result.
+    /// Whether anything was judged: the diff was compared, or the policy has
+    /// budget rules and head could be read. `false` for a head that does not
+    /// parse, and for a report with no comparable baseline under a policy
+    /// without budgets.
+    pub judged: bool,
+    /// A judged family regressed or a budget is broken:
+    /// `regressions > 0 || budgets_broken > 0`.
     pub regressed: bool,
+    /// Regressions of judged families; 0 when nothing was compared.
     pub regressions: u64,
+    /// Improvements of judged families; 0 when nothing was compared.
     pub improvements: u64,
+    /// Broken budget checks (`Budgets::broken`); 0 when head was not read.
+    pub budgets_broken: u64,
+}
+
+/// The policy's budgets, judged on the head report alone. A budget is a rule
+/// of the policy (`[[functions.budgets]]`, `[[sql.budgets]]`, ... one array
+/// per resource): an absolute bound on a named entity, such as
+/// `alloc = { avg = "1 KB" }` or `calls = { min = 10, max = 1000 }`. No
+/// baseline is needed, and the family settings (`judged`, `ignore`, the floor,
+/// `min_calls`) do not apply: a rule names its entity, so it is always
+/// checked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Budgets {
+    /// Rules the policy has, across resources. A rule that holds may leave
+    /// no finding, so "does the policy have budgets" is read here.
+    pub rules: u64,
+    /// Broken checks, counted before `rows` cuts `findings`.
+    pub broken: u64,
+    /// One per check: per resource in policy order, per rule in document
+    /// order, the count checks of a rule first. Under `RowFilter::Findings`
+    /// only the broken ones, as the PR comment lists them; every check under
+    /// `All`.
+    pub findings: Vec<BudgetFinding>,
+    /// What could not be checked, one sentence each: an entity that may sit
+    /// below the cut of a truncated report, a byte bound on a report profiled
+    /// by allocation count, a percentile the report lacks. Not cut by `rows`.
+    pub notes: Vec<String>,
+}
+
+/// One bound of one rule, checked against one entity. Every rule also
+/// asserts its entity ran (an implied minimum of 1 on the count, unless the
+/// rule writes `min = 0`); that implied check yields a finding only when it
+/// is broken.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BudgetFinding {
+    pub resource: DiffResource,
+    /// The rule's position in the resource's `budgets` array, 0-based.
+    pub rule: u32,
+    /// The rule's `match`, as written (`*` matches any run of characters).
+    pub pattern: String,
+    /// The rule's `message`.
+    pub message: Option<String>,
+    /// The entity checked; `None` when nothing in the report matched the
+    /// rule (the implied minimum is then the broken check).
+    pub entity: Option<BudgetEntity>,
+    pub check: BudgetCheck,
+    /// Which side of the bound is allowed.
+    pub bound: BoundKind,
+    /// The unit of `limit` and `actual`.
+    pub unit: Unit,
+    /// The bound, in `unit`.
+    pub limit: f64,
+    /// Head's value, in `unit`; 0 for a count when `entity` is `None`.
+    pub actual: f64,
+    pub broken: bool,
+}
+
+/// The entity a `BudgetFinding` checked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BudgetEntity {
+    /// What the rule's pattern matched against.
+    pub key: String,
+    /// What a reader sees.
+    pub name: String,
+    pub location: Option<JsonLocation>,
+}
+
+/// What a finding checked, internally tagged: `{"on": "count", ...}`. There
+/// is no `Unknown` variant (serde's `other` does not work on an internally
+/// tagged enum with data): a check kind this client does not know fails the
+/// parse, the right answer for a verdict it could not read in full.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "on", rename_all = "snake_case")]
+pub enum BudgetCheck {
+    /// The resource's count (`calls`, `count`, `sent_count`).
+    Count {
+        /// The key as the rule writes it.
+        name: String,
+        /// The minimum of 1 every rule implies, not one the rule wrote.
+        implied: bool,
+    },
+    /// A bound a family table of the rule wrote (`alloc = { avg = ... }`).
+    Column {
+        family: FamilyName,
+        /// The section the column is read from.
+        kind: SectionKind,
+        /// The column's policy name (`avg`, `p99.9`, `wait_p95`).
+        column: String,
+    },
+}
+
+/// Which side of a budget's bound is allowed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BoundKind {
+    /// `actual` must not exceed `limit`.
+    Max,
+    /// `actual` must not fall below `limit`.
+    Min,
+    /// A bound this client does not know.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Run-level numbers of a `Comparison`.
@@ -797,12 +918,13 @@ mod tests {
 
     use crate::json::cloud_api::{
         normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
-        BenchmarkList, BenchmarkSummary, ColumnRole, CommentOutcome, DiffCell, DiffResource,
-        DiffResult, DiffSide, Direction, FamilyName, PolicyLevel, PolicyProblem, PolicyRejected,
-        PolicySaved, PolicyUpdate, PolicyView, Presence, RepoList, Report, ReportDiff,
-        ReportSummary, Repository, RowFilter, RowOutcome, SectionKind, TokenStatus, Unit,
-        UploadCreated, DEFAULT_BASE_URL,
+        BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity, BudgetFinding,
+        ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffSide, Direction,
+        FamilyName, PolicyLevel, PolicyProblem, PolicyRejected, PolicySaved, PolicyUpdate,
+        PolicyView, Presence, RepoList, Report, ReportDiff, ReportSummary, Repository, RowFilter,
+        RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict, DEFAULT_BASE_URL,
     };
+    use crate::json::JsonLocation;
     use crate::output::ProfilingMode;
     use time::macros::datetime;
 
@@ -1174,7 +1296,6 @@ mod tests {
     /// whose crossed regression the verdict does not count.
     const COMPARED_RESULT: &str = r#"{
         "status": "compared",
-        "verdict": {"regressed": true, "regressions": 1, "improvements": 0},
         "totals": {
             "elapsed": {"base": 1200000000.0, "head": 1250000000.0, "change_percent": 4.1666},
             "allocated": null,
@@ -1278,11 +1399,82 @@ mod tests {
 
     const DIFF_URL: &str = "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff";
 
-    fn report_diff(base: &str, result: &str) -> serde_json::Value {
+    /// The verdict of `COMPARED_RESULT` under a policy without budgets.
+    const COMPARED_VERDICT: &str = r#"{"judged": true, "regressed": true, "regressions": 1, "improvements": 0, "budgets_broken": 0}"#;
+    /// Nothing judged: no comparison and no budget rules, or no head.
+    const UNJUDGED_VERDICT: &str = r#"{"judged": false, "regressed": false, "regressions": 0, "improvements": 0, "budgets_broken": 0}"#;
+    /// What a policy without budgets yields for a head that parses.
+    const NO_BUDGETS: &str = r#"{"rules": 0, "broken": 0, "findings": [], "notes": []}"#;
+
+    /// Two rules as `rows=all` lists them: a broken `alloc` bound with a
+    /// `message`, and a `calls` rule that holds.
+    const BUDGETS: &str = r#"{
+        "rules": 2,
+        "broken": 1,
+        "findings": [
+            {
+                "resource": "functions",
+                "rule": 0,
+                "pattern": "app::parse*",
+                "message": "parse must stay under 1 KB per call",
+                "entity": {"key": "app::parse", "name": "app::parse", "location": {"file": "src/parse.rs", "line": 12, "column": 1}},
+                "check": {"on": "column", "family": "alloc", "kind": "alloc", "column": "avg"},
+                "bound": "max",
+                "unit": "bytes",
+                "limit": 1024.0,
+                "actual": 3136.0,
+                "broken": true
+            },
+            {
+                "resource": "sql",
+                "rule": 0,
+                "pattern": "SELECT 1",
+                "message": null,
+                "entity": {"key": "SELECT 1", "name": "SELECT 1", "location": null},
+                "check": {"on": "count", "name": "count", "implied": false},
+                "bound": "min",
+                "unit": "calls",
+                "limit": 10.0,
+                "actual": 12.0,
+                "broken": false
+            }
+        ],
+        "notes": ["functions budget 1: the report lacks p99.9."]
+    }"#;
+
+    /// One rule whose entity never ran: the implied minimum is the broken
+    /// check.
+    const IMPLIED_MINIMUM_BUDGETS: &str = r#"{
+        "rules": 1,
+        "broken": 1,
+        "findings": [
+            {
+                "resource": "functions",
+                "rule": 0,
+                "pattern": "app::gone",
+                "message": null,
+                "entity": null,
+                "check": {"on": "count", "name": "calls", "implied": true},
+                "bound": "min",
+                "unit": "calls",
+                "limit": 1.0,
+                "actual": 0.0,
+                "broken": true
+            }
+        ],
+        "notes": []
+    }"#;
+
+    fn report_diff(base: &str, verdict: &str, budgets: &str, result: &str) -> serde_json::Value {
         let body = format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","result":{result},"dashboard_url":"{DIFF_URL}"}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","verdict":{verdict},"budgets":{budgets},"result":{result},"dashboard_url":"{DIFF_URL}"}}"#
         );
         serde_json::from_str(&body).unwrap()
+    }
+
+    /// `COMPARED_RESULT` under a policy without budgets.
+    fn compared_diff(result: &str) -> serde_json::Value {
+        report_diff(&recorded_base(), COMPARED_VERDICT, NO_BUDGETS, result)
     }
 
     fn recorded_base() -> String {
@@ -1298,7 +1490,7 @@ mod tests {
 
     #[test]
     fn report_diff_compared_round_trips() {
-        let value = report_diff(&recorded_base(), COMPARED_RESULT);
+        let value = compared_diff(COMPARED_RESULT);
         let diff = round_trip(&value);
         assert_eq!(diff.head, pr_summary());
         let base = diff.base.expect("compared has a base");
@@ -1307,10 +1499,10 @@ mod tests {
         assert_eq!(diff.policy.level, PolicyLevel::Benchmark);
         assert_eq!(diff.rows, RowFilter::All);
 
+        assert_eq!(diff.budgets.expect("head parses").rules, 0);
         let DiffResult::Compared(comparison) = diff.result else {
             panic!("not compared: {:?}", diff.result);
         };
-        assert!(comparison.verdict.regressed);
         assert_eq!(comparison.totals.allocated, None);
         let alloc = &comparison.sections[0];
         assert_eq!(alloc.mode, Some(ProfilingMode::AllocBytes));
@@ -1341,10 +1533,123 @@ mod tests {
         assert!(!sql.family.judged);
         assert_eq!(sql.rows[0].outcome, RowOutcome::Regression);
         assert_eq!(sql.rows[0].cells[0].unwrap().crossed, Some(Direction::Up));
+        assert_eq!(diff.verdict.regressions, 1, "unjudged rows never count");
+    }
+
+    #[test]
+    fn report_diff_compared_with_budgets_round_trips() {
+        let verdict = r#"{"judged": true, "regressed": true, "regressions": 1, "improvements": 0, "budgets_broken": 1}"#;
+        let diff = round_trip(&report_diff(
+            &recorded_base(),
+            verdict,
+            BUDGETS,
+            COMPARED_RESULT,
+        ));
         assert_eq!(
-            comparison.verdict.regressions, 1,
-            "unjudged rows never count"
+            diff.verdict,
+            Verdict {
+                judged: true,
+                regressed: true,
+                regressions: 1,
+                improvements: 0,
+                budgets_broken: 1,
+            }
         );
+
+        let budgets = diff.budgets.expect("head parses");
+        assert_eq!(budgets.rules, 2);
+        assert_eq!(budgets.broken, 1);
+        assert_eq!(budgets.notes.len(), 1);
+        let [broken, holds] = &budgets.findings[..] else {
+            panic!("two findings expected");
+        };
+        assert_eq!(
+            broken,
+            &BudgetFinding {
+                resource: DiffResource::Functions,
+                rule: 0,
+                pattern: "app::parse*".into(),
+                message: Some("parse must stay under 1 KB per call".into()),
+                entity: Some(BudgetEntity {
+                    key: "app::parse".into(),
+                    name: "app::parse".into(),
+                    location: Some(JsonLocation {
+                        file: "src/parse.rs".into(),
+                        line: 12,
+                        column: 1,
+                    }),
+                }),
+                check: BudgetCheck::Column {
+                    family: FamilyName::Alloc,
+                    kind: SectionKind::Alloc,
+                    column: "avg".into(),
+                },
+                bound: BoundKind::Max,
+                unit: Unit::Bytes,
+                limit: 1024.0,
+                actual: 3136.0,
+                broken: true,
+            }
+        );
+        assert!(!holds.broken);
+        assert_eq!(holds.bound, BoundKind::Min);
+        assert_eq!(
+            holds.check,
+            BudgetCheck::Count {
+                name: "count".into(),
+                implied: false,
+            }
+        );
+    }
+
+    #[test]
+    fn report_diff_broken_implied_minimum_round_trips() {
+        let verdict = r#"{"judged": true, "regressed": true, "regressions": 0, "improvements": 0, "budgets_broken": 1}"#;
+        let value = report_diff(
+            "null",
+            verdict,
+            IMPLIED_MINIMUM_BUDGETS,
+            r#"{"status":"no_baseline"}"#,
+        );
+        assert_eq!(value["budgets"]["findings"][0]["check"]["on"], "count");
+        let diff = round_trip(&value);
+        assert!(diff.verdict.regressed);
+
+        let finding = &diff.budgets.expect("head parses").findings[0];
+        assert_eq!(finding.entity, None);
+        assert_eq!(
+            finding.check,
+            BudgetCheck::Count {
+                name: "calls".into(),
+                implied: true,
+            }
+        );
+        assert_eq!(finding.actual, 0.0);
+        assert!(finding.broken);
+    }
+
+    #[test]
+    fn report_diff_requires_the_top_level_verdict() {
+        // The shape before budgets: the verdict inside `compared`.
+        let mut value = compared_diff(COMPARED_RESULT);
+        let verdict = value.as_object_mut().unwrap().remove("verdict").unwrap();
+        value["result"]["verdict"] = verdict;
+        let error = serde_json::from_value::<ReportDiff>(value)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("verdict"), "{error}");
+    }
+
+    #[test]
+    fn report_diff_rejects_an_unknown_budget_check() {
+        let mut value = report_diff(
+            "null",
+            COMPARED_VERDICT,
+            IMPLIED_MINIMUM_BUDGETS,
+            r#"{"status":"no_baseline"}"#,
+        );
+        value["budgets"]["findings"][0]["check"]["on"] = "ratio".into();
+        assert!(serde_json::from_value::<ReportDiff>(value).is_err());
     }
 
     #[test]
@@ -1353,14 +1658,14 @@ mod tests {
             ("/result/sections/1/family", serde_json::Value::Null),
             ("/result/sections/1/rows/0/outcome", serde_json::Value::Null),
         ] {
-            let mut value = report_diff(&recorded_base(), COMPARED_RESULT);
+            let mut value = compared_diff(COMPARED_RESULT);
             *value.pointer_mut(path).unwrap() = broken;
             assert!(
                 serde_json::from_value::<ReportDiff>(value).is_err(),
                 "{path} null"
             );
         }
-        let mut value = report_diff(&recorded_base(), COMPARED_RESULT);
+        let mut value = compared_diff(COMPARED_RESULT);
         value["result"]["sections"][1]["rows"][0]
             .as_object_mut()
             .unwrap()
@@ -1370,13 +1675,53 @@ mod tests {
 
     #[test]
     fn report_diff_no_baseline_round_trips() {
-        let mut value = report_diff("null", r#"{"status":"no_baseline"}"#);
+        // Budgets that hold are the answer when there is no baseline. Under
+        // `findings` a rule that holds leaves no finding, only `rules`.
+        let verdict = r#"{"judged": true, "regressed": false, "regressions": 0, "improvements": 0, "budgets_broken": 0}"#;
+        let budgets = r#"{"rules": 2, "broken": 0, "findings": [], "notes": []}"#;
+        let mut value = report_diff("null", verdict, budgets, r#"{"status":"no_baseline"}"#);
         value["rows"] = "findings".into();
         let diff = round_trip(&value);
         assert_eq!(diff.rows, RowFilter::Findings);
         assert_eq!(diff.base, None);
         assert_eq!(diff.result, DiffResult::NoBaseline);
         assert_eq!(diff.dashboard_url, DIFF_URL);
+        assert!(diff.verdict.judged);
+        assert!(!diff.verdict.regressed);
+        assert_eq!(diff.budgets.expect("head parses").rules, 2);
+    }
+
+    #[test]
+    fn report_diff_no_baseline_without_budgets_judges_nothing() {
+        let diff = round_trip(&report_diff(
+            "null",
+            UNJUDGED_VERDICT,
+            NO_BUDGETS,
+            r#"{"status":"no_baseline"}"#,
+        ));
+        assert_eq!(diff.budgets.expect("head parses").rules, 0);
+        assert!(!diff.verdict.judged);
+    }
+
+    #[test]
+    fn report_diff_unreadable_head_has_no_budgets() {
+        let value = report_diff(
+            &recorded_base(),
+            UNJUDGED_VERDICT,
+            "null",
+            r#"{"status":"unreadable","side":"head","hotpath_version":null,"error":"missing field `functions_timing`"}"#,
+        );
+        assert!(value["budgets"].is_null());
+        let diff = round_trip(&value);
+        assert_eq!(diff.budgets, None);
+        assert!(!diff.verdict.judged);
+        assert!(matches!(
+            diff.result,
+            DiffResult::Unreadable {
+                side: DiffSide::Head,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1384,6 +1729,8 @@ mod tests {
         let base = format!(r#"{{"report":{PUSH_SUMMARY},"branch_point":false}}"#);
         let value = report_diff(
             &base,
+            UNJUDGED_VERDICT,
+            NO_BUDGETS,
             r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#,
         );
         let diff = round_trip(&value);
@@ -1406,12 +1753,27 @@ mod tests {
             .replacen(r#""kind": "alloc""#, r#""kind": "energy", "later": [1]"#, 1)
             .replacen(r#""presence": "both""#, r#""presence": "moved""#, 1)
             .replacen(r#""outcome": "regression""#, r#""outcome": "flaky""#, 1);
-        let mut value = report_diff(&recorded_base(), &result);
+        let budgets = BUDGETS
+            .replacen(r#""resource": "functions""#, r#""resource": "gpu""#, 1)
+            .replacen(r#""bound": "max""#, r#""bound": "between", "later": 1"#, 1)
+            .replacen(r#""family": "alloc""#, r#""family": "energy""#, 1);
+        let mut value = report_diff(&recorded_base(), COMPARED_VERDICT, &budgets, &result);
         value["later"] = serde_json::json!({"anything": true});
         value["rows"] = "sampled".into();
+        value["verdict"]["later"] = true.into();
 
         let diff: ReportDiff = serde_json::from_value(value).unwrap();
         assert_eq!(diff.rows, RowFilter::Unknown);
+        let finding = &diff.budgets.as_ref().unwrap().findings[0];
+        assert_eq!(finding.resource, DiffResource::Unknown);
+        assert_eq!(finding.bound, BoundKind::Unknown);
+        assert!(matches!(
+            finding.check,
+            BudgetCheck::Column {
+                family: FamilyName::Unknown,
+                ..
+            }
+        ));
         let DiffResult::Compared(comparison) = diff.result else {
             panic!("not compared");
         };

@@ -123,17 +123,36 @@ of judged families. The verdict, totals, columns and each family's `counts` are 
 complete, and `rows` in the body says which filter applied. --full lists every row of
 every section, unjudged families included.
 
+Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
+`[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without
+a baseline (a push to main, a pull request whose base has no report yet) still gets an
+answer. `budgets.rules` counts the policy's rules and `budgets.broken` the broken
+checks; `budgets.findings` lists the broken ones, every check with --full, and
+`budgets.notes` says what could not be checked. `budgets` is null when the head report
+does not parse.
+
+The top-level `verdict` covers the comparison and the budgets together: `judged` says
+whether anything was judged, `regressed` whether a judged family regressed or a budget
+is broken.
+
 Exit codes:
-  0  compared and no regression
-  1  everything else: a regression (see `sections[].rows` whose `outcome` is
-     `regression` and their `crossed` cells), no baseline, an unreadable side, and
-     any error (unknown report, bad argument value, auth, network, unparseable body)
+  0  `verdict.judged` and not `verdict.regressed`
+  1  everything else: something failed, nothing was judged, or any error (unknown
+     report, bad argument value, auth, network, unparseable body)
   2  usage error
-So 0 means exactly \"judged and fine\". Which kind of 1 it was is in the output: a
-server answer (regression, no baseline, unreadable) prints the body on stdout with
-stderr empty, as on exit 0; an error prints one JSON document on stderr with stdout
-empty, as for every command. Reading needs only access to the repository. Poll with `report` to wait
-for CI's upload. Same token and base URL environment as `auth`."
+So 0 means exactly \"judged and fine\":
+  0  compared, no regression, budgets hold (or the policy has none)
+  1  compared, a regression (see `sections[].rows` whose `outcome` is `regression`
+     and their `crossed` cells)
+  1  compared, no regression, a budget broken
+  0  no baseline or an unreadable one, budgets hold
+  1  no baseline, a budget broken
+  1  no baseline, a policy without budgets (nothing judged)
+  1  head unreadable (nothing judged)
+Which kind of 1 it was is in the output: a server answer prints the body on stdout
+with stderr empty, as on exit 0; an error prints one JSON document on stderr with
+stdout empty, as for every command. Reading needs only access to the repository.
+Poll with `report` to wait for CI's upload. Same token and base URL environment as `auth`."
     )]
     Diff(DiffArgs),
 
