@@ -8,10 +8,12 @@
 mod api;
 mod auth;
 mod benchmarks;
+mod diff;
 mod policy;
 mod repo;
 mod report;
 mod repos;
+mod selector;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -19,6 +21,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
+use crate::cmd::cloud::diff::DiffArgs;
 use crate::cmd::cloud::policy::{PolicyScope, SetPolicyArgs};
 use crate::cmd::cloud::report::ReportArgs;
 
@@ -96,6 +99,37 @@ exits 0 to wait for CI's upload. Same token and base URL environment as `auth`."
     Report(ReportArgs),
 
     #[command(
+        about = "Compare a stored report with its baseline under the current policy",
+        long_about = "Compare a stored report with its baseline under the current policy
+(GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/diff?pr=N|commit=SHA|head=ID).
+
+The head report is selected exactly as `report` selects one: --pr and --commit
+answer the newest matching report, newest by upload; --commit takes a full
+40-character sha and matches the measured commit or the pull request's head
+commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report;
+--id names a report; --event push|pull_request narrows --pr / --commit.
+
+The baseline is the one the server recorded for the head at upload, the one the PR
+comment compared, unless --base ID names another report of the same benchmark. The
+judging policy is the benchmark's policy in force now, not the one at upload time,
+so a `set-policy` followed by `diff` shows the new judgement without a re-run.
+Numbers are never formatted: a value is a number in its column's `unit`, a change a
+number of percent.
+
+Exit codes:
+  0  compared, no regression
+  3  compared, and the policy calls it a regression (see `sections[].rows` whose
+     `outcome` is `regression` and their `crossed` cells)
+  4  nothing was judged: the head has no baseline, or a side is unreadable
+  1  any error (unknown report, bad argument, auth, network, unparseable body)
+  2  usage error
+The body is printed on stdout for 0, 3 and 4; errors go to stderr as for every
+command. Reading needs only access to the repository. Poll with `report` to wait
+for CI's upload. Same token and base URL environment as `auth`."
+    )]
+    Diff(DiffArgs),
+
+    #[command(
         about = "Show the PR comment policy in force for a repository or one benchmark",
         long_about = "Show the PR comment policy in force for a repository or one benchmark
 (GET /api/v1/repos/{owner}/{name}/policy, or .../benchmarks/{benchmark}/policy).
@@ -160,6 +194,7 @@ impl CloudArgs {
             CloudCommand::Repos => repos::run(output),
             CloudCommand::Benchmarks { repo } => benchmarks::run(output, &repo),
             CloudCommand::Report(args) => report::run(output, args),
+            CloudCommand::Diff(args) => diff::run(output, args),
             CloudCommand::GetPolicy(scope) => policy::get(output, scope),
             CloudCommand::SetPolicy(args) => policy::set(output, args),
         }

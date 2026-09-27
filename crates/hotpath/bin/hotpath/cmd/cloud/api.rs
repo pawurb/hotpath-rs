@@ -7,8 +7,8 @@
 //! the whole advice - or `{"error": "..."}` built here when there is no such
 //! body (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
 //! (any non-2xx, network failure, invalid argument value), 2 clap usage error
-//! (clap's own, not remapped); `diff` will add 3 (regression) and 4 (no
-//! baseline / unreadable).
+//! (clap's own, not remapped); `diff` adds 3 (regression) and 4 (no baseline /
+//! unreadable), read from its body (see `diff.rs`).
 
 use std::io::Write;
 use std::path::PathBuf;
