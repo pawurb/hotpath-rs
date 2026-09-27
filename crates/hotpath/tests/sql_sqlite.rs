@@ -161,6 +161,7 @@ pub mod tests {
         });
 
         let _ = child.kill();
+        let _ = child.wait();
         if let Err(panic) = result {
             std::panic::resume_unwind(panic);
         }
@@ -300,6 +301,7 @@ pub mod tests {
         });
 
         let _ = child.kill();
+        let _ = child.wait();
         if let Err(panic) = result {
             std::panic::resume_unwind(panic);
         }
