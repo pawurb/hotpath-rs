@@ -2,8 +2,8 @@
 //! the server under the benchmark's current policy, the same judgement the PR
 //! comment shows but as structured JSON. The head is picked like `report`
 //! picks a report (`selector.rs`); `--base ID` overrides the baseline the
-//! server recorded for it at upload. Sections carry only regressed and
-//! improved rows unless `--full` asks for every row (`RowFilter`).
+//! server recorded for it at upload. Sections carry only the PR comment's
+//! findings unless `--full` asks for every row (`RowFilter`).
 //!
 //! The body goes to stdout on exit 0, 3 and 4: a regression or a missing
 //! baseline is an answer, not an error, and the caller needs the body to act
@@ -44,7 +44,7 @@ pub(crate) struct DiffArgs {
 
     #[arg(
         long,
-        help = "Every row of every section, not only regressions and improvements"
+        help = "Every row of every section, not only the PR comment's findings"
     )]
     full: bool,
 }

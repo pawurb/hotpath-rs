@@ -421,10 +421,12 @@ pub struct ReportDiff {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RowFilter {
-    /// The default: only rows whose `outcome` is `Regression` or
-    /// `Improvement`, advisory families included. Unchanged, below-floor,
-    /// ignored, too-few-calls, added and removed rows are left out, as are
-    /// the rows of a section no family judges.
+    /// The default: exactly the PR comment's findings. `Regression` and
+    /// `Improvement` rows of families with `verdict = true`, plus `Added` and
+    /// `Removed` rows of any family. Advisory crossings, unchanged,
+    /// below-floor, ignored and too-few-calls rows are left out, as are the
+    /// rows of a section no family judges; the family's `counts` and
+    /// `Verdict::advisory_*` still say they exist.
     Findings,
     /// Every row of every section.
     All,
