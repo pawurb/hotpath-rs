@@ -113,8 +113,8 @@ The baseline is the one the server recorded for the head at upload, the one the 
 comment compared. The judging policy is the benchmark's policy in force now, not the one at upload time,
 so a `set-policy` followed by `diff` shows the new judgement without a re-run.
 Numbers are never formatted: a value is a number in its cell's `unit`, a change a
-number of percent. Nothing is read by position: a cell names its `column`, and
-`family.metrics` names the columns the policy judges.
+number of percent. A cell names its `column`, and `family.metrics` names the
+columns the policy judges.
 
 Each section is one metric family the policy lists; a family the policy leaves out is
 not in the body at all. A judged family decides the verdict; an unjudged one is still
@@ -132,8 +132,8 @@ legend that says which way is worse for each column. --advisory is the step betw
 the two: the default cut, plus the regressions, improvements, added and removed rows
 of unjudged families, so a nonzero count in an unjudged family's `counts` can be
 inspected without --full. Those rows never count toward the verdict; `family.judged`
-of their section says so. Keys that would be null or
-empty are left out, except the `base`, `head` and `change_percent` of a cell.
+of their section says so. Keys that would be null or empty are left out, except the
+`base`, `head` and `change_percent` of a cell.
 
 Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
 `[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without

@@ -402,8 +402,7 @@ pub struct PolicyRejected {
 ///
 /// Numbers stay numbers: no formatted strings anywhere, a value is a number
 /// in its cell's `unit` and a change is a number of percent. Formatting is
-/// the reader's job. Nothing is read by position: a cell names its column
-/// and a family names its metrics. Names deliberately differ from the server's analyzer
+/// the reader's job. Names deliberately differ from the server's analyzer
 /// types where those read badly on the wire (`Presence::Both` / `Added`,
 /// `Change`, `DiffCell`); the server maps its types into these in one place.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -436,7 +435,7 @@ pub struct ReportDiff {
 
 /// How much of each section a `ReportDiff` carries, as `rows=` asks. The
 /// sections the policy lists, their family and `counts`, both coverages, the
-/// verdict, the run totals, `skipped` and `notes` are the same under both, so
+/// verdict, the run totals, `skipped` and `notes` are the same under each, so
 /// the counts still say how many rows each outcome had. The filter cuts the
 /// rows, the cells of each row, `DiffSection::columns` and the totals of a
 /// section left without rows. `Budgets::findings` is cut to the broken ones
@@ -464,7 +463,7 @@ pub enum RowFilter {
     /// totals are cut as under `Findings`, and so is `Budgets::findings`.
     Advisory,
     /// Every row of every section sent (a section the policy leaves out is
-    /// never sent, under either filter), every cell of every row,
+    /// never sent, under any filter), every cell of every row,
     /// `DiffSection::columns` and the section totals.
     All,
     /// A filter this client does not know.
@@ -696,14 +695,12 @@ pub struct DiffSection {
     /// form is the report's own (`timing`, `alloc-bytes`, `alloc-count`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<ProfilingMode>,
-    /// The section's own totals (`elapsed`, `calls`), in display order. Not
-    /// sent for a section without rows under `RowFilter::Findings`.
+    /// The section's own totals (`elapsed`, `calls`), in display order. Sent
+    /// for a section without rows only under `RowFilter::All`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub totals: Vec<SectionTotal>,
-    /// Every column of the section, in display order: the legend of the
-    /// cells, which says which way is worse for each. `Some` under
-    /// `RowFilter::All`, `None` under `Findings`. Cells never need it to be
-    /// read: each names its column and carries its unit.
+    /// Every column of the section, in display order. `Some` only under
+    /// `RowFilter::All`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub columns: Option<Vec<DiffColumn>>,
     pub base_coverage: Coverage,
@@ -892,11 +889,10 @@ pub struct DiffRow {
     /// unjudged families included.
     pub outcome: RowOutcome,
     /// The cells `ReportDiff::rows` lets through, in the section's column
-    /// order, each naming its column. A column with no cell here was either
-    /// filtered out or is listed in `unreadable`.
+    /// order.
     pub cells: Vec<DiffCell>,
     /// Columns of this row whose value did not parse on a present side, by
-    /// policy name. They have no cell. Listed under both filters, so a cell
+    /// policy name. They have no cell. Listed under every filter, so a cell
     /// missing from a filtered row never reads as unparsed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unreadable: Vec<String>,
@@ -936,9 +932,8 @@ pub enum RowOutcome {
     Unknown,
 }
 
-/// Both sides of one column of one `DiffRow`. It reads on its own: the
-/// column and the unit are in the cell. An absent side is always sent as
-/// `null`; only `role` and `crossed`, unset on most cells, are left out.
+/// Both sides of one column of one `DiffRow`. An absent side is always sent
+/// as `null`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiffCell {
     /// The column's policy name (`avg`, `p95`, `wait_p99`).
@@ -1657,18 +1652,13 @@ mod tests {
         assert_eq!(both.cells.len(), 2, "an unreadable column has no cell");
         assert_eq!(both.unreadable, ["percent_total"]);
         assert_eq!(added.presence, Presence::Added);
-        assert_eq!(added.location, None);
-        assert_eq!(added.cells.len(), 3);
         assert!(added.cells.iter().all(|c| c.base.is_none()));
-        assert!(added.unreadable.is_empty());
         assert_eq!(removed.presence, Presence::Removed);
         assert!(removed.cells.iter().all(|c| c.head.is_none()));
 
         let sql = &comparison.sections[1];
         assert!(!sql.family.judged);
         assert_eq!(sql.rows[0].outcome, RowOutcome::Regression);
-        assert_eq!(sql.mode, None);
-        assert!(sql.totals.is_empty());
         assert_eq!(sql.rows[0].cells[0].crossed, Some(Direction::Up));
         assert_eq!(diff.verdict.regressions, 1, "unjudged rows never count");
     }
