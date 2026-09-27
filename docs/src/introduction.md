@@ -297,7 +297,7 @@ Explore the docs for customization options and advanced profiling features.
 - [Tokio Runtime](./tokio_runtime.html) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](./debug.html) - track custom values with dbg!, val!, and gauge! macros
 - [Prometheus & Grafana](./prometheus_grafana.html) - export metrics to Prometheus and build Grafana dashboards
-- [GitHub CI](./github_ci.html) - automated benchmarking and regression detection in CI
+- [hotpath Cloud CI integration](./ci_integration.html) - performance regression detection on every pull request
 - [MCP Server](./mcp.html) - LLM integration via Model Context Protocol
 - [Cargo flamegraph alternatives](/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply
 - [Configuration](./configuration.html) - explore all config options

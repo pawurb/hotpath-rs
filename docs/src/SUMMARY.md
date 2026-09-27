@@ -18,15 +18,18 @@
 - [Tokio Runtime](./tokio_runtime.md)
 - [Debug & Metrics](./debug.md)
 
-# hotpath Cloud
+# hotpath Cloud [BETA]
 
 - [Intro](./cloud.md)
+- [CI integration](./ci_integration.md)
+- [Regression policy](./regression_policy.md)
+- [Performance budgets](./performance_budgets.md)
+- [Agents & CLI](./agents_cli.md)
 
 # More
 
 - [Prometheus & Grafana](./prometheus_grafana.md)
 - [MCP integration](./mcp.md)
-- [GitHub CI integration](./github_ci.md)
 - [Configuration](./configuration.md)
 - [Used by](./adoption.md)
 

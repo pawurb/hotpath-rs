@@ -194,8 +194,8 @@ mod tests {
         assert_eq!(pr.head_sha.as_deref(), Some(PR_HEAD_SHA));
     }
 
-    /// The `git checkout <base sha>` step `docs/src/github_ci.md` documents:
-    /// this run measures the base itself, so it has no baseline of its own.
+    /// A job that runs `git checkout <base sha>` mid-run: this run measures
+    /// the base itself, so it has no baseline of its own.
     #[test]
     fn base_checkout_carries_no_base_sha() {
         let head = head_sha();

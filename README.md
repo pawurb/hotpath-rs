@@ -192,7 +192,7 @@ Read the [complete guide to profiling Rust applications](https://hotpath.rs/blog
 - [Tokio Runtime](https://hotpath.rs/tokio_runtime) - monitor Tokio runtime worker stats and task scheduling
 - [Debug & Metrics](https://hotpath.rs/debug) - track custom values with dbg!, val!, and gauge! macros
 - [Prometheus & Grafana](https://hotpath.rs/prometheus_grafana) - export metrics to Prometheus and build Grafana dashboards
-- [GitHub CI](https://hotpath.rs/github_ci) - automated benchmarking and regression detection in CI
+- [hotpath Cloud CI integration](https://hotpath.rs/ci_integration) - performance regression detection on every pull request
 - [MCP Server](https://hotpath.rs/mcp) - LLM integration via Model Context Protocol
 - [Cargo flamegraph alternatives](https://hotpath.rs/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply
 - [Configuration](https://hotpath.rs/configuration) - explore all config options
