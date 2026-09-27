@@ -57,7 +57,7 @@ mod tests {
         .env("HOTPATH_OUTPUT_PATH", dir.join("report.json"))
         .env("HOTPATH_BENCHMARK", "guard-test")
         .env("HOTPATH_UPLOAD", "1")
-        .env("HOTPATH_UPLOAD_URL", server.url())
+        .env("HOTPATH_API_URL", server.url())
         .env("HOTPATH_UPLOAD_RESPONSE_PATH", dir.join("response.json"))
         .env(
             "ACTIONS_ID_TOKEN_REQUEST_URL",

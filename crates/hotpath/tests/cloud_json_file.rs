@@ -31,7 +31,6 @@ mod tests {
             .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
             .env_remove("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
             .env_remove("HOTPATH_UPLOAD")
-            .env_remove("HOTPATH_UPLOAD_LIMIT")
             .output()
             .expect("Failed to execute command");
         assert!(
