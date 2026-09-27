@@ -1,11 +1,11 @@
-# hotpath Diff
+# hotpath Cloud
 
-**Work in progress.** hotpath Diff is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a per-repository policy and posts the verdict as a comment on the pull request. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
+**Work in progress.** hotpath Cloud is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a per-repository policy and posts the verdict as a comment on the pull request. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
 
 <div class="waitlist-card" id="waitlist">
-  <h2 class="waitlist-card-title"><span class="waitlist-card-brand">hotpath Diff</span> - every Rust PR gets a performance review</h2>
+  <h2 class="waitlist-card-title"><span class="waitlist-card-brand">hotpath Cloud</span> - every Rust PR gets a performance review</h2>
   <p>Catch regressions in memory, SQL queries, HTTP calls and concurrency bottlenecks before they reach production. Iterate on reproducible signals, not CI noise.</p>
-  <p><span class="waitlist-card-brand">hotpath Diff</span> will also provide agents with clear performance constraints and help ensure that AI-built applications stay fast.</p>
+  <p><span class="waitlist-card-brand">hotpath Cloud</span> will also provide agents with clear performance constraints and help ensure that AI-built applications stay fast.</p>
   <img src="{{#asset-hash images/hotpath-team-poc.webp}}" class="waitlist-card-image" alt="Hotpath Team commit timeline comparing duration, memory, HTTP and SQL metrics across commits, flagging a PR that introduced 171 new SQL calls" loading="lazy" width="1672" height="941">
   <p class="waitlist-cta-note">Launching soon • Early access invitations will be sent to waitlist members first.</p>
   <div class="waitlist-cta-row">
