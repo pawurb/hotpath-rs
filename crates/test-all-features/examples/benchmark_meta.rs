@@ -17,19 +17,19 @@ use std::time::Instant;
 
 use futures::StreamExt;
 
-const SYNC_RUNS: u64 = 2_500_000;
-const ALLOC_RUNS: u64 = 1_250_000;
-const ASYNC_RUNS: u64 = 750_000;
-const BLOCK_RUNS: u64 = 1_250_000;
-const FUTURE_RUNS: u64 = 750_000;
-const STREAM_ITEMS: u64 = 2_500_000;
-const CHANNEL_MSGS: u64 = 750_000;
+const SYNC_RUNS: u64 = 1_250_000;
+const ALLOC_RUNS: u64 = 625_000;
+const ASYNC_RUNS: u64 = 375_000;
+const BLOCK_RUNS: u64 = 625_000;
+const FUTURE_RUNS: u64 = 375_000;
+const STREAM_ITEMS: u64 = 1_250_000;
+const CHANNEL_MSGS: u64 = 375_000;
 const CHANNEL_INSTANCES: u64 = 50_000;
-const LOCK_RUNS: u64 = 1_250_000;
-const IO_RUNS: u64 = 750_000;
-const DEBUG_RUNS: u64 = 125_000;
+const LOCK_RUNS: u64 = 625_000;
+const IO_RUNS: u64 = 375_000;
+const DEBUG_RUNS: u64 = 62_500;
 const THREAD_COUNT: usize = 4;
-const THREAD_RUNS: u64 = 500_000;
+const THREAD_RUNS: u64 = 250_000;
 const METRICS_REQUESTS: u64 = 120;
 #[cfg(feature = "hotpath-prometheus")]
 const PROMETHEUS_REQUESTS: u64 = 40;
