@@ -132,8 +132,11 @@ legend that says which way is worse for each column. --advisory is the step betw
 the two: the default cut, plus the regressions, improvements, added and removed rows
 of unjudged families, so a nonzero count in an unjudged family's `counts` can be
 inspected without --full. Those rows never count toward the verdict; `family.judged`
-of their section says so. Keys that would be null or empty are left out, except the
-`base`, `head` and `change_percent` of a cell.
+of their section says so. Inside a section, a key that is unset or an empty list is
+left out: `mode`, `totals`, `columns`, `omitted_from_base`, `omitted_from_head`, a
+row's `location` and `unreadable`, a cell's `role` and `crossed`. A cell's `base`,
+`head` and `change_percent` are always there, null when a side is absent, and so is
+every key outside the sections (`base`, `budgets`, `policy.fallback`, the run totals).
 
 Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
 `[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without
