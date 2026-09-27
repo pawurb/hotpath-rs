@@ -1,3 +1,5 @@
 # Regression policy: decide what counts as a performance regression
 
-**Work in progress.** This page will document the [hotpath Cloud](cloud.md) policy: the TOML document that decides which changes between a pull request and its baseline count as regressions.
+> **Note:** hotpath Cloud is currently in closed beta.
+
+This page will document the [hotpath Cloud](cloud.md) policy: the TOML document that decides which changes between a pull request and its baseline count as regressions.

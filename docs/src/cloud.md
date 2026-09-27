@@ -1,6 +1,8 @@
 # hotpath Cloud
 
-**Work in progress.** hotpath Cloud is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a per-repository policy and posts the verdict as a comment on the pull request. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
+> **Note:** hotpath Cloud is currently in closed beta.
+
+hotpath Cloud is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a per-repository policy and posts the verdict as a comment on the pull request. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
 
 <div class="waitlist-card" id="waitlist">
   <h2 class="waitlist-card-title"><span class="waitlist-card-brand">hotpath Cloud</span> - every Rust PR gets a performance review</h2>
