@@ -1,7 +1,6 @@
 //! The head selector `report` and `diff` share: exactly one of `--pr`,
-//! `--commit` and `--id`, optionally narrowed by `--event`, and the report id
-//! rule `--base` reuses. Validated values are URL-safe as they are and go
-//! into the path and query unencoded.
+//! `--commit` and `--id`, optionally narrowed by `--event`. Validated values
+//! are URL-safe as they are and go into the path and query unencoded.
 
 use std::num::NonZeroU64;
 
@@ -86,16 +85,12 @@ impl ReportSelector {
             }
             return Ok(Selector::Commit(sha));
         }
-        validate_id("--id", self.id.as_deref().unwrap_or_default()).map(Selector::Id)
+        let id = self.id.as_deref().unwrap_or_default();
+        if id.len() != 36 || !id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') {
+            return Err(CliError::client(format!(
+                "invalid --id `{id}`: expected a report id (a 36-character uuid)."
+            )));
+        }
+        Ok(Selector::Id(id.to_string()))
     }
-}
-
-/// A report id given as `flag`: 36 characters of `[0-9a-fA-F-]`.
-pub(crate) fn validate_id(flag: &str, id: &str) -> Result<String, CliError> {
-    if id.len() != 36 || !id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') {
-        return Err(CliError::client(format!(
-            "invalid {flag} `{id}`: expected a report id (a 36-character uuid)."
-        )));
-    }
-    Ok(id.to_string())
 }

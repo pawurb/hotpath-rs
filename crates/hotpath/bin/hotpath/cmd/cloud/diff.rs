@@ -1,14 +1,17 @@
-//! `hotpath cloud diff`: one stored report against its baseline, judged by
-//! the server under the benchmark's current policy, the same judgement the PR
-//! comment shows but as structured JSON. The head is picked like `report`
-//! picks a report (`selector.rs`); `--base ID` overrides the baseline the
-//! server recorded for it at upload. Sections carry only the PR comment's
-//! findings unless `--full` asks for every row (`RowFilter`).
+//! `hotpath cloud diff`: one stored report against the baseline the server
+//! recorded for it at upload, judged under the benchmark's current policy,
+//! the same judgement the PR comment shows but as structured JSON. The head
+//! is picked like `report` picks a report (`selector.rs`). Sections carry
+//! only the PR comment's findings unless `--full` asks for every row
+//! (`RowFilter`).
 //!
-//! The body goes to stdout on exit 0, 3 and 4: a regression or a missing
-//! baseline is an answer, not an error, and the caller needs the body to act
-//! on it. The exit code is read from the deserialized body, never from the
-//! HTTP status, which is 200 for every `DiffResult`.
+//! Exit 0 means exactly "compared and no regression"; a regression, a missing
+//! baseline, an unreadable side and every error exit 1. Which kind of 1 it
+//! was is in the output, not the code: a server answer prints the
+//! `ReportDiff` body on stdout with stderr empty, as on exit 0, while an
+//! error prints one JSON document on stderr with stdout empty. The exit code
+//! is read from the deserialized body, never from the HTTP status, which is
+//! 200 for every `DiffResult`.
 
 use std::process::ExitCode;
 
@@ -17,12 +20,7 @@ use hotpath::json::cloud_api::{DiffResult, ReportDiff};
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
 use crate::cmd::cloud::repo;
-use crate::cmd::cloud::selector::{validate_id, ReportSelector, Selector};
-
-/// Compared, and the policy calls it a regression.
-const EXIT_REGRESSION: u8 = 3;
-/// Nothing was judged: no baseline, or a side the server cannot read.
-const EXIT_NOT_JUDGED: u8 = 4;
+use crate::cmd::cloud::selector::{ReportSelector, Selector};
 
 #[derive(Args, Debug)]
 pub(crate) struct DiffArgs {
@@ -34,13 +32,6 @@ pub(crate) struct DiffArgs {
 
     #[command(flatten)]
     selector: ReportSelector,
-
-    #[arg(
-        long,
-        value_name = "ID",
-        help = "Compare against the report with this id instead of the recorded baseline"
-    )]
-    base: Option<String>,
 
     #[arg(
         long,
@@ -59,11 +50,10 @@ pub(crate) fn run(output: &Output, args: DiffArgs) -> Result<ExitCode, CliError>
 
 fn exit_code(result: &DiffResult) -> ExitCode {
     match result {
-        DiffResult::Compared(comparison) if comparison.verdict.regressed => {
-            ExitCode::from(EXIT_REGRESSION)
+        DiffResult::Compared(comparison) if !comparison.verdict.regressed => ExitCode::SUCCESS,
+        DiffResult::Compared(_) | DiffResult::NoBaseline | DiffResult::Unreadable { .. } => {
+            ExitCode::FAILURE
         }
-        DiffResult::Compared(_) => ExitCode::SUCCESS,
-        DiffResult::NoBaseline | DiffResult::Unreadable { .. } => ExitCode::from(EXIT_NOT_JUDGED),
     }
 }
 
@@ -73,11 +63,6 @@ fn request_path(args: &DiffArgs) -> Result<String, CliError> {
     let repo = repo::validate(&args.repo)?;
     let benchmark = repo::validate_benchmark(&args.benchmark)?;
     let selector = args.selector.validate()?;
-    let base = args
-        .base
-        .as_deref()
-        .map(|id| validate_id("--base", id))
-        .transpose()?;
 
     let mut query = vec![match selector {
         Selector::Pr(pr) => format!("pr={pr}"),
@@ -87,9 +72,6 @@ fn request_path(args: &DiffArgs) -> Result<String, CliError> {
     // clap rejects `--event` together with `--id`.
     if let Some(event) = args.selector.event {
         query.push(format!("event={}", event.as_str()));
-    }
-    if let Some(base) = base {
-        query.push(format!("base={base}"));
     }
     // Without `rows=` the server sends findings only.
     if args.full {

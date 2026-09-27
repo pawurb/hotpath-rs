@@ -110,8 +110,7 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 --id names a report; --event push|pull_request narrows --pr / --commit.
 
 The baseline is the one the server recorded for the head at upload, the one the PR
-comment compared, unless --base ID names another report of the same benchmark. The
-judging policy is the benchmark's policy in force now, not the one at upload time,
+comment compared. The judging policy is the benchmark's policy in force now, not the one at upload time,
 so a `set-policy` followed by `diff` shows the new judgement without a re-run.
 Numbers are never formatted: a value is a number in its column's `unit`, a change a
 number of percent.
@@ -125,14 +124,15 @@ complete, and `rows` in the body says which filter applied. --full lists every r
 every section, unjudged families included.
 
 Exit codes:
-  0  compared, no regression
-  3  compared, and the policy calls it a regression (see `sections[].rows` whose
-     `outcome` is `regression` and their `crossed` cells)
-  4  nothing was judged: the head has no baseline, or a side is unreadable
-  1  any error (unknown report, bad argument, auth, network, unparseable body)
+  0  compared and no regression
+  1  everything else: a regression (see `sections[].rows` whose `outcome` is
+     `regression` and their `crossed` cells), no baseline, an unreadable side, and
+     any error (unknown report, bad argument value, auth, network, unparseable body)
   2  usage error
-The body is printed on stdout for 0, 3 and 4; errors go to stderr as for every
-command. Reading needs only access to the repository. Poll with `report` to wait
+So 0 means exactly \"judged and fine\". Which kind of 1 it was is in the output: a
+server answer (regression, no baseline, unreadable) prints the body on stdout with
+stderr empty, as on exit 0; an error prints one JSON document on stderr with stdout
+empty, as for every command. Reading needs only access to the repository. Poll with `report` to wait
 for CI's upload. Same token and base URL environment as `auth`."
     )]
     Diff(DiffArgs),

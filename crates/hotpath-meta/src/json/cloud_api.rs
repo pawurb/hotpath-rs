@@ -372,17 +372,17 @@ pub struct PolicyRejected {
 }
 
 /// Body of `GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/diff`:
-/// one head report against one baseline, judged under the benchmark's policy
-/// in force now (not the one at upload time, so a `set-policy` followed by a
-/// diff shows the new judgement without a re-run).
+/// one head report against the baseline recorded for it at upload, judged
+/// under the benchmark's policy in force now (not the one at upload time, so
+/// a `set-policy` followed by a diff shows the new judgement without a
+/// re-run).
 ///
 /// The head is picked like `reports/latest` / `reports/{id}` pick a report:
 /// `pr=N` or `commit=SHA` (newest match by upload, narrowed by `event=`), or
-/// `head=ID`. `base=ID` names the baseline; without it the baseline is the
-/// head's recorded `baseline_id`, the one the PR comment compared. A `head=`
-/// or `base=` of another benchmark is `404 not_found`, the same report on
-/// both sides `400 bad_request`. All three `DiffResult`s answer 200. Reading
-/// needs only access to the repository. `rows=findings` (the default) or
+/// `head=ID`. The baseline is always the head's recorded `baseline_id`, the
+/// one the PR comment compared. A `head=` of another benchmark is
+/// `404 not_found`. All three `DiffResult`s answer 200. Reading needs only
+/// access to the repository. `rows=findings` (the default) or
 /// `rows=all` picks which rows the sections carry (see `RowFilter`); an
 /// unknown value is `400 bad_request`. The body carries only the sections of
 /// the families the policy lists.
@@ -409,10 +409,10 @@ pub struct ReportDiff {
     /// applied, so a filtered body never reads as a complete one.
     pub rows: RowFilter,
     pub result: DiffResult,
-    /// The dashboard's comparison page for this pair
-    /// (`.../benchmarks/{benchmark}/diff/{base_id}/{head_id}`); `None`
-    /// without a base.
-    pub dashboard_url: Option<String>,
+    /// The dashboard's comparison page for the head report
+    /// (`.../benchmarks/{benchmark}/reports/{head_id}/diff`), which exists
+    /// with or without a baseline.
+    pub dashboard_url: String,
 }
 
 /// Which rows the sections of a `ReportDiff` carry, as `rows=` asks. Only
@@ -436,29 +436,16 @@ pub enum RowFilter {
     Unknown,
 }
 
-/// The baseline side of a `ReportDiff` and how it was chosen.
+/// The baseline side of a `ReportDiff`: the baseline recorded for head at
+/// upload, the one the PR comment compared.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiffBase {
     pub report: ReportSummary,
-    pub selected: BaseSelection,
     /// Whether the baseline measured the commit head branched from
     /// (`head.base_sha`). `false`: another report stood in (the base
     /// branch's newest), so the base branch's own drift since the branch
-    /// point is in the diff. Computed the same way for a requested base.
+    /// point is in the diff.
     pub branch_point: bool,
-}
-
-/// How the baseline of a `ReportDiff` was chosen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BaseSelection {
-    /// The baseline recorded for head at upload (what the PR comment compared).
-    Recorded,
-    /// `base=` named it.
-    Requested,
-    /// A selection this client does not know.
-    #[serde(other)]
-    Unknown,
 }
 
 /// Which policy judged a `ReportDiff`.
@@ -474,13 +461,13 @@ pub struct AppliedPolicy {
 
 /// The outcome of a `ReportDiff`, internally tagged:
 /// `{"status": "compared", ...}`. The CLI's exit code reads it: 0 for
-/// `Compared` without a regression, 3 with one, 4 for the other two.
+/// `Compared` without a regression, 1 for everything else.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum DiffResult {
     Compared(Comparison),
     /// Head has no recorded baseline (a push report, a PR whose base branch
-    /// had no report yet) and none was requested.
+    /// had no report yet).
     NoBaseline,
     /// A side does not parse under the server's report schema: what the PR
     /// comment says in that case, structured.
@@ -522,7 +509,8 @@ pub struct Comparison {
 /// The tally of a `Comparison` over judged families only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verdict {
-    /// `regressions > 0`. The CLI's exit code reads this, nothing else.
+    /// `regressions > 0`. Decides between the CLI's exit 0 and 1 for a
+    /// `Compared` result.
     pub regressed: bool,
     pub regressions: u64,
     pub improvements: u64,
@@ -580,8 +568,8 @@ pub struct DiffSection {
     pub omitted_from_base: Vec<String>,
     /// Baseline entities missing from a truncated head. Sorted.
     pub omitted_from_head: Vec<String>,
-    /// The comparison page with this section's tab open.
-    pub dashboard_url: Option<String>,
+    /// The comparison page with this section's tab open (`?tab=`).
+    pub dashboard_url: String,
 }
 
 /// The resource a `DiffSection` covers.
@@ -809,11 +797,11 @@ mod tests {
 
     use crate::json::cloud_api::{
         normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
-        BaseSelection, BenchmarkList, BenchmarkSummary, ColumnRole, CommentOutcome, DiffCell,
-        DiffResource, DiffResult, DiffSide, Direction, FamilyName, PolicyLevel, PolicyProblem,
-        PolicyRejected, PolicySaved, PolicyUpdate, PolicyView, Presence, RepoList, Report,
-        ReportDiff, ReportSummary, Repository, RowFilter, RowOutcome, SectionKind, TokenStatus,
-        Unit, UploadCreated, DEFAULT_BASE_URL,
+        BenchmarkList, BenchmarkSummary, ColumnRole, CommentOutcome, DiffCell, DiffResource,
+        DiffResult, DiffSide, Direction, FamilyName, PolicyLevel, PolicyProblem, PolicyRejected,
+        PolicySaved, PolicyUpdate, PolicyView, Presence, RepoList, Report, ReportDiff,
+        ReportSummary, Repository, RowFilter, RowOutcome, SectionKind, TokenStatus, Unit,
+        UploadCreated, DEFAULT_BASE_URL,
     };
     use crate::output::ProfilingMode;
     use time::macros::datetime;
@@ -1252,7 +1240,7 @@ mod tests {
                 ],
                 "omitted_from_base": [],
                 "omitted_from_head": ["app::cut"],
-                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/diff/0199a3b0-0000-7000-8000-000000000000/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a?tab=functions-alloc"
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=alloc"
             },
             {
                 "resource": "sql",
@@ -1281,22 +1269,24 @@ mod tests {
                 ],
                 "omitted_from_base": [],
                 "omitted_from_head": [],
-                "dashboard_url": null
+                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
             }
         ],
         "skipped": ["functions timing: the reports measured different percentiles."],
         "notes": ["io is disabled by the policy."]
     }"#;
 
-    fn report_diff(base: &str, result: &str, dashboard_url: &str) -> serde_json::Value {
+    const DIFF_URL: &str = "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff";
+
+    fn report_diff(base: &str, result: &str) -> serde_json::Value {
         let body = format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","result":{result},"dashboard_url":{dashboard_url}}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","result":{result},"dashboard_url":"{DIFF_URL}"}}"#
         );
         serde_json::from_str(&body).unwrap()
     }
 
     fn recorded_base() -> String {
-        format!(r#"{{"report":{PUSH_SUMMARY},"selected":"recorded","branch_point":true}}"#)
+        format!(r#"{{"report":{PUSH_SUMMARY},"branch_point":true}}"#)
     }
 
     /// Parses `value` as a `ReportDiff` and checks it re-serializes equal.
@@ -1308,16 +1298,12 @@ mod tests {
 
     #[test]
     fn report_diff_compared_round_trips() {
-        let value = report_diff(
-            &recorded_base(),
-            COMPARED_RESULT,
-            r#""https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/diff/0199a3b0-0000-7000-8000-000000000000/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a""#,
-        );
+        let value = report_diff(&recorded_base(), COMPARED_RESULT);
         let diff = round_trip(&value);
         assert_eq!(diff.head, pr_summary());
         let base = diff.base.expect("compared has a base");
-        assert_eq!(base.selected, BaseSelection::Recorded);
         assert!(base.branch_point);
+        assert_eq!(diff.dashboard_url, DIFF_URL);
         assert_eq!(diff.policy.level, PolicyLevel::Benchmark);
         assert_eq!(diff.rows, RowFilter::All);
 
@@ -1367,14 +1353,14 @@ mod tests {
             ("/result/sections/1/family", serde_json::Value::Null),
             ("/result/sections/1/rows/0/outcome", serde_json::Value::Null),
         ] {
-            let mut value = report_diff(&recorded_base(), COMPARED_RESULT, "null");
+            let mut value = report_diff(&recorded_base(), COMPARED_RESULT);
             *value.pointer_mut(path).unwrap() = broken;
             assert!(
                 serde_json::from_value::<ReportDiff>(value).is_err(),
                 "{path} null"
             );
         }
-        let mut value = report_diff(&recorded_base(), COMPARED_RESULT, "null");
+        let mut value = report_diff(&recorded_base(), COMPARED_RESULT);
         value["result"]["sections"][1]["rows"][0]
             .as_object_mut()
             .unwrap()
@@ -1384,26 +1370,24 @@ mod tests {
 
     #[test]
     fn report_diff_no_baseline_round_trips() {
-        let mut value = report_diff("null", r#"{"status":"no_baseline"}"#, "null");
+        let mut value = report_diff("null", r#"{"status":"no_baseline"}"#);
         value["rows"] = "findings".into();
         let diff = round_trip(&value);
         assert_eq!(diff.rows, RowFilter::Findings);
         assert_eq!(diff.base, None);
         assert_eq!(diff.result, DiffResult::NoBaseline);
-        assert_eq!(diff.dashboard_url, None);
+        assert_eq!(diff.dashboard_url, DIFF_URL);
     }
 
     #[test]
     fn report_diff_unreadable_round_trips() {
-        let base =
-            format!(r#"{{"report":{PUSH_SUMMARY},"selected":"requested","branch_point":false}}"#);
+        let base = format!(r#"{{"report":{PUSH_SUMMARY},"branch_point":false}}"#);
         let value = report_diff(
             &base,
             r#"{"status":"unreadable","side":"base","hotpath_version":"0.20.0","error":"missing field `functions_timing`"}"#,
-            r#""https://hotpath.rs/x""#,
         );
         let diff = round_trip(&value);
-        assert_eq!(diff.base.unwrap().selected, BaseSelection::Requested);
+        assert!(!diff.base.unwrap().branch_point);
         assert_eq!(
             diff.result,
             DiffResult::Unreadable {
@@ -1422,13 +1406,11 @@ mod tests {
             .replacen(r#""kind": "alloc""#, r#""kind": "energy", "later": [1]"#, 1)
             .replacen(r#""presence": "both""#, r#""presence": "moved""#, 1)
             .replacen(r#""outcome": "regression""#, r#""outcome": "flaky""#, 1);
-        let mut value = report_diff(&recorded_base(), &result, "null");
+        let mut value = report_diff(&recorded_base(), &result);
         value["later"] = serde_json::json!({"anything": true});
-        value["base"]["selected"] = "guessed".into();
         value["rows"] = "sampled".into();
 
         let diff: ReportDiff = serde_json::from_value(value).unwrap();
-        assert_eq!(diff.base.unwrap().selected, BaseSelection::Unknown);
         assert_eq!(diff.rows, RowFilter::Unknown);
         let DiffResult::Compared(comparison) = diff.result else {
             panic!("not compared");
