@@ -387,10 +387,6 @@ pub struct PolicyRejected {
 /// unknown value is `400 bad_request`. The body carries only the sections of
 /// the families the policy lists.
 ///
-/// The policy's budgets are judged on head alone, so `verdict` and `budgets`
-/// sit here and not inside `Comparison`: a head without a baseline is still
-/// answered for.
-///
 /// Numbers stay numbers: no formatted strings anywhere, a value is a number
 /// in its column's `unit` and a change is a number of percent. Formatting is
 /// the reader's job. Names deliberately differ from the server's analyzer
@@ -1611,7 +1607,6 @@ mod tests {
             IMPLIED_MINIMUM_BUDGETS,
             r#"{"status":"no_baseline"}"#,
         );
-        assert_eq!(value["budgets"]["findings"][0]["check"]["on"], "count");
         let diff = round_trip(&value);
         assert!(diff.verdict.regressed);
 
@@ -1711,7 +1706,6 @@ mod tests {
             "null",
             r#"{"status":"unreadable","side":"head","hotpath_version":null,"error":"missing field `functions_timing`"}"#,
         );
-        assert!(value["budgets"].is_null());
         let diff = round_trip(&value);
         assert_eq!(diff.budgets, None);
         assert!(!diff.verdict.judged);

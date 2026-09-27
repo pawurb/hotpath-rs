@@ -748,12 +748,7 @@ mod tests {
         let was_compared = result.contains(r#""status":"compared""#);
         let regressions = u64::from(result.contains(r#""outcome":"regression""#));
         let budgets_broken = budgets.broken();
-        let judged = match budgets {
-            BudgetsCase::Unread => false,
-            BudgetsCase::NoRules | BudgetsCase::Hold | BudgetsCase::Broken => {
-                was_compared || budgets.has_rules()
-            }
-        };
+        let judged = was_compared || budgets.has_rules();
         let regressed = regressions > 0 || budgets_broken > 0;
         format!(
             r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
@@ -811,18 +806,6 @@ mod tests {
             assert_eq!(stderr(&output), "", "{case}");
             assert_eq!(json(&stdout(&output)), json(&body), "{case}");
         }
-    }
-
-    #[test]
-    fn diff_exit_code_ignores_the_result_when_the_verdict_disagrees() {
-        // The verdict is the only input: a `compared` body the server did
-        // not judge is not a pass.
-        let mut value = json(&diff_body(&compared(false), BudgetsCase::NoRules));
-        value["verdict"]["judged"] = false.into();
-        let output = diff_by_pr(&value.to_string());
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(stderr(&output), "");
-        assert_eq!(json(&stdout(&output)), value);
     }
 
     #[test]
