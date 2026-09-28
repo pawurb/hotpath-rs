@@ -91,9 +91,10 @@ the summary only; the payload is the uploaded hotpath JSON report, verbatim apar
 from key order and without `meta.policy`.
 
 `policy_path` names the policy file the report was judged under, relative to the
-repository root. It is null when the report carried no policy and the built-in
-default judged. The document is the file at that path in the measured commit; the API
-never returns it, with or without --no-payload.
+repository root, and `policy_url` is that file on GitHub, pinned to the measured
+commit. Both are null only when the report carried no policy and the built-in default
+judged; otherwise both are set. The document is the file at that path in the measured
+commit; the API never returns it, with or without --no-payload.
 
 A report of another benchmark, an unknown id, no match yet and a repository the
 token's user cannot see all answer 404 `not_found`: poll with --commit until it

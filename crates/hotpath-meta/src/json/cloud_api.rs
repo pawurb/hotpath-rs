@@ -215,11 +215,19 @@ pub struct ReportSummary {
     /// The PR comment this report produced, when it was posted.
     pub comment_url: Option<String>,
     /// The path of the policy file the report was judged under, relative to
-    /// the repository root (`hotpath/policy.toml`); `None` (`null` on the
-    /// wire) means the report carried no policy and the built-in default
-    /// judged. The document is the file at that path in the measured commit
-    /// and is never returned by the API.
+    /// the repository root (`hotpath/policy.toml`). `None` (`null` on the
+    /// wire) only when the report carried no policy and the built-in default
+    /// judged: a report that carried one always has its path, also when the
+    /// document does not parse. The document is the file at that path in the
+    /// measured commit and is never returned by the API.
     pub policy_path: Option<String>,
+    /// The policy file on GitHub, at the measured commit:
+    /// `https://github.com/{owner}/{name}/blob/{commit_sha}/{policy_path}`.
+    /// Pinned to `commit_sha`, so it shows the document that judged this
+    /// report whatever the branch holds now. `None` only when the report
+    /// carried no policy and the built-in default judged, as `policy_path`:
+    /// the two are set or `null` together.
+    pub policy_url: Option<String>,
     /// Size of the uploaded JSON in bytes.
     pub size_bytes: u64,
     /// Upload time, RFC 3339 on the wire.
@@ -988,8 +996,8 @@ mod tests {
         );
     }
 
-    const PR_SUMMARY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","policy_path":"hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
-    const PUSH_SUMMARY: &str = r#"{"id":"0199a3b0-0000-7000-8000-000000000000","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"push","commit_sha":"77de000000000000000000000000000000000000","head_sha":null,"base_sha":null,"git_ref":"refs/heads/main","base_ref":null,"head_ref":null,"pr_number":null,"run_id":"18237400000","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":null,"baseline_id":null,"comment_url":null,"policy_path":null,"size_bytes":80000,"created_at":"2026-09-25T17:00:00Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3b0-0000-7000-8000-000000000000"}"#;
+    const PR_SUMMARY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","policy_path":"hotpath/ci-policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
+    const PUSH_SUMMARY: &str = r#"{"id":"0199a3b0-0000-7000-8000-000000000000","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"push","commit_sha":"77de000000000000000000000000000000000000","head_sha":null,"base_sha":null,"git_ref":"refs/heads/main","base_ref":null,"head_ref":null,"pr_number":null,"run_id":"18237400000","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":null,"baseline_id":null,"comment_url":null,"policy_path":null,"policy_url":null,"size_bytes":80000,"created_at":"2026-09-25T17:00:00Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3b0-0000-7000-8000-000000000000"}"#;
 
     fn pr_summary() -> ReportSummary {
         ReportSummary {
@@ -1015,6 +1023,9 @@ mod tests {
                 "https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1".into(),
             ),
             policy_path: Some("hotpath/ci-policy.toml".into()),
+            policy_url: Some(
+                "https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml".into(),
+            ),
             size_bytes: 81234,
             created_at: datetime!(2026-09-25 18:03:11 UTC),
             dashboard_url: "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a".into(),
@@ -1033,6 +1044,7 @@ mod tests {
         assert_eq!(push.user_metadata, None);
         // No policy carried: the built-in default judged.
         assert_eq!(push.policy_path, None);
+        assert_eq!(push.policy_url, None);
         assert_eq!(push.git_ref.as_deref(), Some("refs/heads/main"));
         assert_eq!(serde_json::to_string(&push).unwrap(), PUSH_SUMMARY);
     }
@@ -1067,6 +1079,7 @@ mod tests {
         );
         let bare: Report = serde_json::from_str(&without).unwrap();
         assert_eq!(bare.summary.policy_path, None);
+        assert_eq!(bare.summary.policy_url, None);
         assert_eq!(serde_json::to_string(&bare).unwrap(), without);
 
         // A payload in the writer's key order parses to the same data.
