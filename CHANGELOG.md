@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.27.0] - 2026-09-28
+
+### 🚀 Features
+
+- [**breaking**] Rename channel metric name from proc to delay
+
+- [**breaking**] Unify rate JSON fields format and naming
+
+- Add hotpath cloud auth command behind the cloud feature
+
+- [**breaking**] Parse report created_at as time::OffsetDateTime
+
+- Add cloud API commands and types
+
+- Add hotpath cloud report command and report types
+
+- Add set-policy CLI
+
+- Add diff CLI command and types
+
+- Support diff report full param
+
+- Simplify diff policy
+
+- Adjust diff judgement logic
+
+- Add budgets support to diff CLI
+
+- Adjust CLI for CI actions
+
+- Self-describing cloud diff cells and advisory rows filter
+
+- Readable diff JSON values
+
+
+### 🐛 Bug Fixes
+
+- Simplify CLI error handling
+
+- Parsing logic
+
+- Simplify cloud upload ENVs
+
+- Wait on spawned children in sql_sqlite tests
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Update grafana dashboards
+
+- Add random regressions benchmark
+
+- Adjust drain benchmark
+
+- Adjust random benchmark
+
+- Release 0.27.0
+
+
 ## [0.26.1] - 2026-09-24
 
 ### 🚀 Features
