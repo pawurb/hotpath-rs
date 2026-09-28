@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
-    //! `hotpath cloud auth|repos|benchmarks|report|diff|get-policy|set-policy`
+    //! `hotpath cloud auth|repos|benchmarks|report|diff`
     //! against a mock hotpath.rs: the bearer request each sends, the JSON it
     //! re-emits, the error JSON on stderr (server bodies verbatim, client
     //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 0 or 1 read
@@ -11,12 +11,10 @@ mod tests {
     //! cargo test -p hotpath --features cloud --test cloud_cli
 
     use std::io::Write;
-    use std::path::PathBuf;
     use std::process::{Command, Output, Stdio};
 
     use hotpath::json::cloud_api::{
-        ApiError, ApiErrorCode, AuthStatus, PolicyLevel, PolicySaved, PolicyView, RepoList, Report,
-        ReportSummary, TokenStatus, POLICY_MAX_BYTES,
+        ApiError, ApiErrorCode, AuthStatus, RepoList, Report, ReportSummary, TokenStatus,
     };
     use mockito::{Matcher, Server, ServerGuard};
     use time::macros::datetime;
@@ -30,7 +28,7 @@ mod tests {
     const REPORTS_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/reports";
     const REPORT_ID: &str = "0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a";
     const SHA: &str = "9ab2000000000000000000000000000000000000";
-    const SUMMARY_BODY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
+    const SUMMARY_BODY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","policy_path":"hotpath/ci-policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
 
     /// `SUMMARY_BODY` plus a payload in the writer's (unsorted) key order.
     fn report_body() -> String {
@@ -492,6 +490,16 @@ mod tests {
         assert_eq!(json(&printed), json(&body));
         // Nullable fields print as `null`, the payload comes last.
         assert!(printed.contains(r#""git_ref":null"#), "{printed}");
+        // The policy is named by its path, the document is never returned.
+        assert!(
+            printed.contains(r#""policy_path":"hotpath/ci-policy.toml""#),
+            "{printed}"
+        );
+        assert!(
+            printed.contains(r#""policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml""#),
+            "{printed}"
+        );
+        assert!(!printed.contains(r#""policy":"#), "{printed}");
         assert!(
             printed.ends_with(",\"payload\":{\"meta\":{},\"version\":\"0.26.1\"}}\n"),
             "{printed}"
@@ -751,7 +759,7 @@ mod tests {
         let judged = was_compared || budgets.has_rules();
         let regressed = regressions > 0 || budgets_broken > 0;
         format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"path":null,"fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
             budgets = budgets.body(),
         )
     }
@@ -967,332 +975,24 @@ mod tests {
         mock.assert();
     }
 
-    const REPO_POLICY_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/policy";
-    const BENCHMARK_POLICY_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/policy";
-    const POLICY_SOURCE: &str = "[functions.timing]\nmin_percent_change = 5\n";
-    const POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":null,"level":"repo","stored":true,"source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
-    const BENCHMARK_POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","level":"repo","stored":false,"source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
-    const REPO_SAVED_BODY: &str =
-        r#"{"repository":"pawurb/hotpath-rs","benchmark":null,"level":"repo","dry_run":false}"#;
-    const BENCHMARK_DRY_RUN_BODY: &str =
-        r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","level":"benchmark","dry_run":true}"#;
-
-    /// A policy file with `contents`, unique to this test process and `name`.
-    fn policy_file(name: &str, contents: &[u8]) -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "hotpath_cloud_cli_{}_{name}.toml",
-            std::process::id()
-        ));
-        std::fs::write(&path, contents).unwrap();
-        path
-    }
-
-    /// A 200 mock of `PUT path` expecting exactly this `PolicyUpdate` body.
-    fn mock_put_policy(
-        server: &mut ServerGuard,
-        path: &str,
-        source: &str,
-        dry_run: bool,
-        body: &str,
-    ) -> mockito::Mock {
-        server
-            .mock("PUT", path)
-            .match_header("authorization", format!("Bearer {TOKEN}").as_str())
-            .match_header("content-type", "application/json")
-            .match_header("user-agent", Matcher::Regex("^hotpath-cli/[0-9]".into()))
-            .match_body(Matcher::Json(
-                serde_json::json!({ "source": source, "dry_run": dry_run }),
-            ))
-            .with_status(200)
-            .with_header("content-type", "application/json; charset=utf-8")
-            .with_body(body)
-            .create()
-    }
-
     #[test]
-    fn get_policy_prints_the_repo_and_benchmark_views() {
+    fn removed_policy_commands_are_usage_errors() {
         let mut server = Server::new();
-        let repo = mock_get(&mut server, REPO_POLICY_PATH, POLICY_VIEW_BODY);
-        let benchmark = mock_get(
-            &mut server,
-            BENCHMARK_POLICY_PATH,
-            BENCHMARK_POLICY_VIEW_BODY,
-        );
+        let mock = server
+            .mock("GET", Matcher::Regex("^/api/v1/".into()))
+            .expect(0)
+            .create();
 
-        let output = hotpath(
-            &server,
-            Some(TOKEN),
-            &["get-policy", "--repo", "pawurb/hotpath-rs"],
-        );
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{POLICY_VIEW_BODY}\n"));
-        assert_eq!(stderr(&output), "");
-
-        let output = hotpath(
-            &server,
-            Some(TOKEN),
-            &[
+        for args in [
+            // Gone: the policy is a file in the repository, read per report.
+            vec!["set-policy", "--repo", "pawurb/hotpath-rs", "--file", "x"],
+            vec![
                 "get-policy",
                 "--repo",
                 "pawurb/hotpath-rs",
                 "--benchmark",
                 "ci",
             ],
-        );
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{BENCHMARK_POLICY_VIEW_BODY}\n"));
-        let view: PolicyView = serde_json::from_str(stdout(&output).trim()).unwrap();
-        assert_eq!(view.level, PolicyLevel::Repo);
-        assert!(!view.stored);
-
-        repo.assert();
-        benchmark.assert();
-    }
-
-    #[test]
-    fn set_policy_puts_the_file_to_the_repo_level() {
-        let mut server = Server::new();
-        let mock = mock_put_policy(
-            &mut server,
-            REPO_POLICY_PATH,
-            POLICY_SOURCE,
-            false,
-            REPO_SAVED_BODY,
-        );
-        let file = policy_file("repo_level", POLICY_SOURCE.as_bytes());
-
-        let output = hotpath(
-            &server,
-            Some(TOKEN),
-            &[
-                "set-policy",
-                "--repo",
-                "pawurb/hotpath-rs",
-                "--file",
-                file.to_str().unwrap(),
-            ],
-        );
-        let _ = std::fs::remove_file(&file);
-        mock.assert();
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{REPO_SAVED_BODY}\n"));
-        assert_eq!(stderr(&output), "");
-    }
-
-    #[test]
-    fn set_policy_dry_run_puts_to_the_benchmark_level() {
-        let mut server = Server::new();
-        let mock = mock_put_policy(
-            &mut server,
-            BENCHMARK_POLICY_PATH,
-            POLICY_SOURCE,
-            true,
-            BENCHMARK_DRY_RUN_BODY,
-        );
-        let file = policy_file("benchmark_dry_run", POLICY_SOURCE.as_bytes());
-
-        let output = hotpath(
-            &server,
-            Some(TOKEN),
-            &[
-                "set-policy",
-                "--repo",
-                "pawurb/hotpath-rs",
-                "--benchmark",
-                "ci",
-                "--file",
-                file.to_str().unwrap(),
-                "--dry-run",
-            ],
-        );
-        let _ = std::fs::remove_file(&file);
-        mock.assert();
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        let saved: PolicySaved = serde_json::from_str(stdout(&output).trim()).unwrap();
-        assert_eq!(
-            saved,
-            PolicySaved {
-                repository: "pawurb/hotpath-rs".into(),
-                benchmark: Some("ci".into()),
-                level: PolicyLevel::Benchmark,
-                dry_run: true,
-            }
-        );
-    }
-
-    #[test]
-    fn set_policy_reads_stdin_for_a_dash_file() {
-        let mut server = Server::new();
-        let mock = mock_put_policy(
-            &mut server,
-            REPO_POLICY_PATH,
-            POLICY_SOURCE,
-            false,
-            REPO_SAVED_BODY,
-        );
-
-        let output = hotpath_with_stdin(
-            &server,
-            Some(TOKEN),
-            &["set-policy", "--repo", "pawurb/hotpath-rs", "--file", "-"],
-            POLICY_SOURCE.as_bytes(),
-        );
-        mock.assert();
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{REPO_SAVED_BODY}\n"));
-    }
-
-    #[test]
-    fn set_policy_sends_a_file_of_exactly_the_size_limit() {
-        let mut server = Server::new();
-        let source = format!("#{}", "x".repeat(POLICY_MAX_BYTES - 1));
-        let mock = mock_put_policy(
-            &mut server,
-            REPO_POLICY_PATH,
-            &source,
-            false,
-            REPO_SAVED_BODY,
-        );
-
-        let output = hotpath_with_stdin(
-            &server,
-            Some(TOKEN),
-            &["set-policy", "--repo", "pawurb/hotpath-rs", "--file", "-"],
-            source.as_bytes(),
-        );
-        mock.assert();
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-    }
-
-    #[test]
-    fn set_policy_refusals_print_the_server_body_verbatim() {
-        let rejected = r#"{"error":"The policy has 3 problems.","code":"invalid_policy","problems":[{"line":null,"message":"the policy sets no column"},{"line":2,"message":"unknown key `functions.timing.min_percent`"},{"line":5,"message":"functions.alloc.min_percent_change must be between 0 and 1000, got 5000"}]}"#;
-        let forbidden = error_body(
-            ApiErrorCode::Forbidden,
-            "Changing the policy of pawurb/hotpath-rs needs push permission.",
-        );
-        for (status, body) in [(422, rejected.to_string()), (403, forbidden)] {
-            let mut server = Server::new();
-            let mock = server
-                .mock("PUT", REPO_POLICY_PATH)
-                .with_status(status)
-                .with_header("content-type", "application/json")
-                .with_body(&body)
-                .create();
-
-            let output = hotpath_with_stdin(
-                &server,
-                Some(TOKEN),
-                &["set-policy", "--repo", "pawurb/hotpath-rs", "--file", "-"],
-                POLICY_SOURCE.as_bytes(),
-            );
-            mock.assert();
-            assert_eq!(output.status.code(), Some(1), "{body}");
-            assert_eq!(stdout(&output), "", "{body}");
-            assert_eq!(json(&stderr(&output)), json(&body));
-        }
-    }
-
-    #[test]
-    fn set_policy_rejects_bad_input_before_the_token_or_a_request() {
-        let mut server = Server::new();
-        let mock = server
-            .mock("PUT", Matcher::Regex("^/api/v1/".into()))
-            .expect(0)
-            .create();
-
-        let missing = std::env::temp_dir().join(format!(
-            "hotpath_cloud_cli_{}_missing.toml",
-            std::process::id()
-        ));
-        let blank = policy_file("blank", b"  \n\t\n");
-        let oversized = policy_file("oversized", &vec![b'#'; POLICY_MAX_BYTES + 1]);
-        let not_utf8 = policy_file("not_utf8", b"name = \"\xff\xfe\"\n");
-        let good = policy_file("good", POLICY_SOURCE.as_bytes());
-        let set = |file: &PathBuf| {
-            vec![
-                "set-policy".to_string(),
-                "--repo".into(),
-                "pawurb/hotpath-rs".into(),
-                "--file".into(),
-                file.to_str().unwrap().into(),
-            ]
-        };
-        let mut bad_repo = set(&good);
-        bad_repo[2] = "a/..".into();
-        let mut bad_benchmark = set(&good);
-        bad_benchmark.extend(["--benchmark".into(), "a/b".into()]);
-
-        let cases = [
-            (
-                set(&missing),
-                format!("could not read the policy file `{}`", missing.display()),
-            ),
-            (
-                set(&blank),
-                format!("the policy file `{}` is blank", blank.display()),
-            ),
-            (
-                set(&oversized),
-                format!(
-                    "the policy file `{}` is larger than {POLICY_MAX_BYTES} bytes",
-                    oversized.display()
-                ),
-            ),
-            (
-                set(&not_utf8),
-                format!(
-                    "the policy file `{}` is not valid UTF-8",
-                    not_utf8.display()
-                ),
-            ),
-            (bad_repo, "invalid --repo `a/..`".to_string()),
-            (bad_benchmark, "invalid --benchmark `a/b`".to_string()),
-        ];
-        for (args, expected) in cases {
-            let args: Vec<&str> = args.iter().map(String::as_str).collect();
-            let output = hotpath(&server, None, &args);
-            assert_eq!(output.status.code(), Some(1), "{args:?}");
-            assert_eq!(stdout(&output), "", "{args:?}");
-            let error = client_error(&output);
-            assert!(error.starts_with(&expected), "{args:?}: {error}");
-        }
-
-        let output = hotpath_with_stdin(
-            &server,
-            None,
-            &["set-policy", "--repo", "pawurb/hotpath-rs", "--file", "-"],
-            b"\n",
-        );
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(
-            client_error(&output),
-            "the policy file stdin (--file -) is blank."
-        );
-
-        for file in [blank, oversized, not_utf8, good] {
-            let _ = std::fs::remove_file(file);
-        }
-        mock.assert();
-    }
-
-    #[test]
-    fn policy_usage_errors_are_exit_2() {
-        let mut server = Server::new();
-        let mocks: Vec<_> = ["GET", "PUT"]
-            .into_iter()
-            .map(|method| {
-                server
-                    .mock(method, Matcher::Regex("^/api/v1/".into()))
-                    .expect(0)
-                    .create()
-            })
-            .collect();
-
-        for args in [
-            vec!["set-policy", "--repo", "pawurb/hotpath-rs"],
-            vec!["get-policy", "--repo", "pawurb/hotpath-rs", "--file", "x"],
-            vec!["get-policy"],
         ] {
             let output = hotpath(&server, Some(TOKEN), &args);
             assert_eq!(
@@ -1303,8 +1003,6 @@ mod tests {
             );
             assert_eq!(stdout(&output), "", "{args:?}");
         }
-        for mock in mocks {
-            mock.assert();
-        }
+        mock.assert();
     }
 }
