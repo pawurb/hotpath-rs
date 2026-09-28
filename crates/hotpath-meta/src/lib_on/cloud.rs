@@ -21,7 +21,11 @@
 //! never fail, even in strict mode.
 //!
 //! The response carries the server's verdict on the report, judged under the
-//! policy the report carried. `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION=1` turns a
+//! policy the report carried. When that document does not parse as a policy
+//! the built-in default judged instead: the server says so in
+//! `policy.fallback`, which is appended to the message and makes it a warning
+//! at least, never a failed job on its own.
+//! `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION=1` turns a
 //! regressed verdict into an error through the same exit path, and
 //! `HOTPATH_META_UPLOAD_RESPONSE_PATH` writes the response body to a file for
 //! custom rules. A failed or skipped upload has no verdict: it never fails
@@ -402,12 +406,22 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             if failing {
                 message.push_str(", failing the job (HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION)");
             }
+            let policy_fallback = created
+                .policy
+                .as_ref()
+                .and_then(|policy| policy.fallback.as_deref());
+            if let Some(fallback) = policy_fallback {
+                message.push_str(&format!("; policy: {fallback}"));
+            }
             if let Some(error) = &created.comment.error {
                 message.push_str(&format!("; comment failed: {error}"));
             }
             let level = if failing {
                 Level::Error
-            } else if verdict.regressed || created.comment.error.is_some() {
+            } else if verdict.regressed
+                || policy_fallback.is_some()
+                || created.comment.error.is_some()
+            {
                 Level::Warning
             } else {
                 Level::Notice
@@ -521,7 +535,7 @@ fn url_encode(s: &str) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::json::cloud_api::{CommentOutcome, UploadCreated, Verdict};
+    use crate::json::cloud_api::{AppliedPolicy, CommentOutcome, UploadCreated, Verdict};
     use crate::lib_on::cloud::{
         benchmark_name, escape_annotation, interpret, is_truthy, render, store_response,
         url_encode, Env, Level, Outcome,
@@ -862,6 +876,82 @@ mod tests {
                 "{prefix}; verdict: 1 regression; comment failed: the installation is suspended"
             )
         );
+    }
+
+    #[test]
+    fn render_policy_fallback_is_a_warning_next_to_the_verdict() {
+        let fallback = "hotpath/policy.toml does not parse as a policy (line 3: unknown key `functions.timing.min_percent`); the built-in default judged.";
+        let with_fallback = |verdict| Outcome::Uploaded {
+            created: Box::new(UploadCreated {
+                verdict,
+                policy: Some(AppliedPolicy {
+                    path: Some("hotpath/policy.toml".into()),
+                    fallback: Some(fallback.into()),
+                }),
+                ..created()
+            }),
+            request_id: None,
+        };
+        let prefix =
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
+
+        // A clean verdict under the wrong policy is not a plain pass, and not
+        // a failed job either, whatever the switches say.
+        for env in [env(true, false), env(true, true), guard_env(true)] {
+            let r = render(&with_fallback(verdict(0, 0)), &env, Some("meta"));
+            assert_eq!(r.level, Level::Warning);
+            assert_eq!(
+                r.message,
+                format!("{prefix}; verdict: no regressions; policy: {fallback}")
+            );
+        }
+
+        // A regression fails the job as it does without a fallback.
+        let r = render(
+            &with_fallback(verdict(1, 0)),
+            &guard_env(false),
+            Some("meta"),
+        );
+        assert_eq!(r.level, Level::Error);
+        assert_eq!(
+            r.message,
+            format!("{prefix}; verdict: 1 regression, failing the job (HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION); policy: {fallback}")
+        );
+        let r = render(
+            &with_fallback(verdict(1, 0)),
+            &env(true, false),
+            Some("meta"),
+        );
+        assert_eq!(r.level, Level::Warning);
+
+        // The policy judged, or the built-in did because there was none.
+        for policy in [
+            AppliedPolicy {
+                path: Some("hotpath/policy.toml".into()),
+                fallback: None,
+            },
+            AppliedPolicy {
+                path: None,
+                fallback: None,
+            },
+        ] {
+            let outcome = Outcome::Uploaded {
+                created: Box::new(UploadCreated {
+                    policy: Some(policy),
+                    ..created()
+                }),
+                request_id: None,
+            };
+            let r = render(&outcome, &env(true, false), Some("meta"));
+            assert_eq!(r.level, Level::Notice);
+            assert!(!r.message.contains("policy"), "{}", r.message);
+        }
+
+        // A server that does not send the field yet: `created()` has none.
+        assert_eq!(created().policy, None);
+        let r = render(&uploaded(verdict(0, 0)), &env(true, false), Some("meta"));
+        assert_eq!(r.level, Level::Notice);
+        assert_eq!(r.message, format!("{prefix}; verdict: no regressions"));
     }
 
     #[test]

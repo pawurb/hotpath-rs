@@ -1,10 +1,13 @@
 //! Builds the report `meta` object: toolchain, OS, timestamp, the source-root
 //! prefix the server needs to map relative `location.file` values back to
 //! repository paths, and - with the `hotpath-cloud` feature - the git/CI
-//! provenance that makes a report self-describing.
+//! provenance that makes a report self-describing, plus the policy file of
+//! the checkout, which the server judges the report under.
 
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
+
+use crate::json::policy_file::find_git_root;
 
 pub(crate) fn build_meta() -> crate::json::JsonMeta {
     let source_root = source_root();
@@ -26,15 +29,23 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
     cfg_if::cfg_if! {
         if #[cfg(feature = "hotpath-cloud")] {
             let ci = crate::lib_on::ci_info::detect();
-            let git = merge_git_info(local_git_info(), ci.as_ref());
+            let git_root = checkout_git_root();
+            let local = git_root
+                .as_deref()
+                .and_then(crate::lib_on::git_info::read_git_info_at);
+            let git = merge_git_info(local, ci.as_ref());
             // Set on every report, not only uploads, so a saved JSON says
             // which benchmark it is; the upload path reports invalid names.
             let benchmark = crate::lib_on::cloud::benchmark_name().ok();
             let ci = ci.map(|ci| ci.ci);
+            // On every report, not only uploads, so the report file a relay
+            // job posts carries the policy too.
+            let policy = checkout_policy(git_root.as_deref(), benchmark.as_deref());
         } else {
             let git: Option<crate::json::JsonGitInfo> = None;
             let ci: Option<crate::json::JsonCiInfo> = None;
             let benchmark: Option<String> = None;
+            let policy: Option<crate::json::JsonPolicy> = None;
         }
     }
 
@@ -46,22 +57,43 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
         git,
         ci,
         benchmark,
-        // Filled from the checkout's policy file once the lookup lands.
-        policy: None,
+        policy,
     }
 }
 
+/// The git root of the checkout the report describes: where its git identity
+/// is read and its policy file looked up.
 #[cfg(feature = "hotpath-cloud")]
-fn local_git_info() -> Option<crate::json::JsonGitInfo> {
+fn checkout_git_root() -> Option<PathBuf> {
     // A `HOTPATH_SOURCE_ROOT` override asserts the runtime checkout is the
     // source checkout, so its git identity is trusted even when checkout
     // resolution fails.
-    let git_root = if std::env::var("HOTPATH_SOURCE_ROOT").is_ok() {
-        find_git_root(&std::env::current_dir().ok()?)?
+    if std::env::var("HOTPATH_SOURCE_ROOT").is_ok() {
+        find_git_root(&std::env::current_dir().ok()?)
     } else {
-        resolve_checkout()?.git_root
-    };
-    crate::lib_on::git_info::read_git_info_at(&git_root)
+        Some(resolve_checkout()?.git_root)
+    }
+}
+
+/// The policy file of the checkout, as written; the client never parses it.
+/// A file that is there but cannot be sent is reported, and the report is
+/// written without a policy, which the server judges under the built-in
+/// default.
+#[cfg(feature = "hotpath-cloud")]
+fn checkout_policy(
+    git_root: Option<&Path>,
+    benchmark: Option<&str>,
+) -> Option<crate::json::JsonPolicy> {
+    use crate::json::policy_file::PolicyLookup;
+
+    match crate::json::policy_file::lookup(git_root, benchmark) {
+        PolicyLookup::NotFound => None,
+        PolicyLookup::Found(policy) => Some(policy),
+        PolicyLookup::Unusable(unusable) => {
+            eprintln!("hotpath: {unusable} The report carries no policy.");
+            None
+        }
+    }
 }
 
 /// The checkout is the commit identity; the environment only describes the
@@ -152,15 +184,6 @@ fn resolve_checkout() -> Option<ResolvedCheckout> {
         git_root,
         workspace_root,
     })
-}
-
-/// Nearest ancestor containing `.git` - a directory for regular checkouts, a
-/// `gitdir:` file for worktrees and submodules; `exists()` covers both.
-pub(crate) fn find_git_root(start: &Path) -> Option<PathBuf> {
-    start
-        .ancestors()
-        .find(|dir| dir.join(".git").exists())
-        .map(Path::to_path_buf)
 }
 
 /// Whole seconds, so the wire value stays `2026-08-27T10:15:42Z` as before.

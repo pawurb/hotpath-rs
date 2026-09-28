@@ -13,6 +13,11 @@ name: hotpath relay
 # branch would become everyone's baseline) and `meta.benchmark` is pinned (the
 # server prefers it over the `?benchmark=` query).
 #
+# The policy in the artifact (`meta.policy`) is the pull request's own: the
+# benchmark job read it from the checkout it measured, and the server judges the
+# report under it. It is passed on as written, so a pull request that edits its
+# policy file is judged under the edit, and only that pull request is.
+#
 # Call it from a workflow of your own:
 #
 #   name: hotpath relay
@@ -155,7 +160,8 @@ jobs:
 
           # The event is stamped, not trusted: this job's token is a
           # `workflow_run` one, which the server accepts only for a
-          # `pull_request` report.
+          # `pull_request` report. The assignments replace three keys and keep
+          # every other key of `meta`, `policy` included.
           jq --arg benchmark "$BENCHMARK" --arg source_root "$SOURCE_ROOT" \
             '.meta.benchmark = $benchmark | .meta.source_root = $source_root
              | .meta.ci.event = "pull_request"' \
@@ -166,7 +172,9 @@ jobs:
       # `::error::` annotation when the upload was rejected. The error body is
       # `{error, request_id}`; `request_id` (also the `x-request-id` header)
       # matches the server's log line. On success a `comment.error` means the
-      # server could not post or update the pull request comment.
+      # server could not post or update the pull request comment, and a
+      # `policy.fallback` that the policy the report carried does not parse, so
+      # the built-in default judged instead.
       - name: Upload the report
         run: |
           set -euo pipefail
@@ -200,9 +208,13 @@ jobs:
           if [ -n "$comment_error" ]; then
             echo "::warning::hotpath.rs comment failed: $comment_error"
           fi
+          policy_fallback=$(jq -r '.policy.fallback // empty' response.json 2>/dev/null || true)
+          if [ -n "$policy_fallback" ]; then
+            echo "::warning::hotpath.rs policy: $policy_fallback"
+          fi
 
       # The verdict is the one the pull request comment shows, judged under the
-      # policy in force at upload. A body without one is not a pass.
+      # policy the report carried. A body without one is not a pass.
       - name: Fail on a regression
         if: inputs.fail_on_regression
         run: |

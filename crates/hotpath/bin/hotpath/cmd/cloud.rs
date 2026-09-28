@@ -9,6 +9,7 @@ mod api;
 mod auth;
 mod benchmarks;
 mod diff;
+mod policy;
 mod repo;
 mod report;
 mod repos;
@@ -21,6 +22,7 @@ use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
 use crate::cmd::cloud::diff::DiffArgs;
+use crate::cmd::cloud::policy::ValidatePolicyArgs;
 use crate::cmd::cloud::report::ReportArgs;
 
 #[derive(Parser, Debug)]
@@ -178,6 +180,47 @@ stdout empty, as for every command. Reading needs only access to the repository.
 Poll with `report` to wait for CI's upload. Same token and base URL environment as `auth`."
     )]
     Diff(DiffArgs),
+
+    #[command(
+        about = "Check that the policy files of this repository parse as policies",
+        long_about = "Check that the policy files of this repository parse as policies
+(POST /api/v1/policy/validate, once per file).
+
+A policy is a TOML file in the repository. A run reads it and sends it inside its
+report, and the server judges the report under it, so a pull request is judged under
+its own policy. A run picks the first of:
+  1. the file HOTPATH_POLICY_PATH names (relative to the working directory, or
+     absolute; it must be inside the repository)
+  2. hotpath/<benchmark>-policy.toml
+  3. hotpath/policy.toml
+and without any of them the built-in default judges. The repository is the git
+repository the working directory is in.
+
+Without arguments every policy file in hotpath/ is checked: policy.toml and each
+*-policy.toml, in name order, 64 files at most. --benchmark NAME checks the one file
+a run of that benchmark picks, by the order above. --file PATH checks that file
+wherever it is, `-` reads stdin.
+
+The output is a JSON list with one entry per file checked: `path` (relative to the
+repository root, as given for --file), `valid`, and `problems`, empty when the file is
+valid. A problem has a `message` and the `line` it points at, null when it concerns the
+whole file. A TOML syntax error stops parsing, so it is reported alone; otherwise every
+structural and range problem of the file comes in one answer. The files are not parsed
+here, the server judges them. A file that is unreadable, not valid UTF-8, blank, larger
+than 65536 bytes or outside the repository is reported as a problem of that file
+without a request, and a run that finds such a file sends its report without a policy.
+
+Exit codes:
+  0  every file checked is valid
+  1  a file is not valid, no policy file was found, or any error (auth, network,
+     unparseable body)
+  2  usage error
+A file that is not valid is an answer: the list is printed on stdout with stderr empty
+and the other files are still checked. An error prints one JSON document on stderr
+with stdout empty, as for every command. Same token and base URL environment as
+`auth`."
+    )]
+    ValidatePolicy(ValidatePolicyArgs),
 }
 
 impl CloudArgs {
@@ -210,6 +253,7 @@ impl CloudArgs {
             CloudCommand::Benchmarks { repo } => benchmarks::run(output, &repo),
             CloudCommand::Report(args) => report::run(output, args),
             CloudCommand::Diff(args) => diff::run(output, args),
+            CloudCommand::ValidatePolicy(args) => policy::validate(output, args),
         }
     }
 }

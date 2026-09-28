@@ -6,6 +6,7 @@
 
 pub mod cloud_api;
 mod formatted;
+pub mod policy_file;
 pub use formatted::*;
 
 use serde::{Deserialize, Serialize};
