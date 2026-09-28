@@ -30,6 +30,15 @@ mod tests {
     ///
     /// cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-cloud
     fn run_example_in(cwd: Option<&Path>, envs: &[(&str, &str)]) -> (JsonMeta, String) {
+        run_named_example_in("basic_all_features", cwd, envs)
+    }
+
+    /// cargo run -p test-all-features --example no_locations --features hotpath,hotpath-cloud
+    fn run_named_example_in(
+        example: &str,
+        cwd: Option<&Path>,
+        envs: &[(&str, &str)],
+    ) -> (JsonMeta, String) {
         let mut cmd = Command::new("cargo");
         cmd.args([
             "run",
@@ -38,7 +47,7 @@ mod tests {
             "-p",
             "test-all-features",
             "--example",
-            "basic_all_features",
+            example,
             "--features",
             "hotpath,hotpath-cloud",
         ])
@@ -353,6 +362,13 @@ mod tests {
         }
     }
 
+    /// A directory outside any repository.
+    fn outside_any_repository(name: &str) -> Checkout {
+        let checkout = Checkout::new(name);
+        std::fs::remove_dir(checkout.root.join(".git")).unwrap();
+        checkout
+    }
+
     impl Drop for Checkout {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
@@ -458,5 +474,56 @@ mod tests {
         assert_eq!(meta.policy, None);
         assert!(stderr.contains("is outside the repository"), "{stderr}");
         assert!(stderr.contains("(HOTPATH_POLICY_PATH)"), "{stderr}");
+    }
+
+    /// Without `HOTPATH_SOURCE_ROOT` the checkout is verified against the
+    /// registered source locations. A report that cannot be verified still
+    /// carries the policy of the repository it ran in.
+    #[test]
+    fn policy_is_found_when_the_checkout_cannot_be_verified() {
+        let checkout = Checkout::new("unverified");
+        checkout
+            .write("hotpath/policy.toml", SHARED_POLICY.as_bytes())
+            .write("hotpath/ci-policy.toml", CI_POLICY.as_bytes());
+
+        for example in [
+            // Registers no source location at all.
+            "no_locations",
+            // Registers locations that no ancestor of the working directory has.
+            "basic_all_features",
+        ] {
+            let (meta, stderr) = run_named_example_in(
+                example,
+                Some(&checkout.root),
+                &[("HOTPATH_BENCHMARK", "ci")],
+            );
+            let policy = meta
+                .policy
+                .unwrap_or_else(|| panic!("{example}: no policy\n{stderr}"));
+            assert_eq!(policy.path, "hotpath/ci-policy.toml", "{example}");
+            assert_eq!(policy.source, CI_POLICY, "{example}");
+            // The commit identity keeps its stricter rule.
+            assert!(meta.git.is_none(), "{example}: {:?}", meta.git);
+        }
+    }
+
+    #[test]
+    fn upload_outside_any_repository_says_it_has_no_policy() {
+        let outside = outside_any_repository("no-repository");
+        outside.write("hotpath/policy.toml", SHARED_POLICY.as_bytes());
+        let message = "hotpath: no git repository found from the working directory";
+
+        let (meta, stderr) = run_named_example_in(
+            "no_locations",
+            Some(&outside.root),
+            &[("HOTPATH_UPLOAD", "1")],
+        );
+        assert_eq!(meta.policy, None);
+        assert!(stderr.contains(message), "{stderr}");
+
+        // Not an upload: nothing to warn about.
+        let (meta, stderr) = run_named_example_in("no_locations", Some(&outside.root), &[]);
+        assert_eq!(meta.policy, None);
+        assert!(!stderr.contains(message), "{stderr}");
     }
 }

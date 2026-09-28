@@ -40,7 +40,10 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
             let ci = ci.map(|ci| ci.ci);
             // On every report, not only uploads, so the report file a relay
             // job posts carries the policy too.
-            let policy = checkout_policy(git_root.as_deref(), benchmark.as_deref());
+            let policy = checkout_policy(
+                policy_root(git_root).as_deref(),
+                benchmark.as_deref(),
+            );
         } else {
             let git: Option<crate::json::JsonGitInfo> = None;
             let ci: Option<crate::json::JsonCiInfo> = None;
@@ -75,10 +78,24 @@ fn checkout_git_root() -> Option<PathBuf> {
     }
 }
 
+/// Where the policy file is looked up: the checkout's git root, else the git
+/// root above the working directory. The checkout is verified against the
+/// source locations the instrumentation registered, which a report may have
+/// none of (a guard built by hand around SQL, HTTP, server or thread
+/// profiling) or none that the working directory leads to (a nested
+/// workspace started from the repository root). That is a reason to withhold
+/// source links and the commit identity, not the policy: a run inside a
+/// repository is judged under that repository's policy file.
+#[cfg(feature = "hotpath-cloud")]
+fn policy_root(checkout_git_root: Option<PathBuf>) -> Option<PathBuf> {
+    checkout_git_root.or_else(|| find_git_root(&std::env::current_dir().ok()?))
+}
+
 /// The policy file of the checkout, as written; the client never parses it.
 /// A file that is there but cannot be sent is reported, and the report is
 /// written without a policy, which the server judges under the built-in
-/// default.
+/// default. So is an upload from outside any repository, where a policy file
+/// cannot be looked for at all.
 #[cfg(feature = "hotpath-cloud")]
 fn checkout_policy(
     git_root: Option<&Path>,
@@ -87,7 +104,15 @@ fn checkout_policy(
     use crate::json::policy_file::PolicyLookup;
 
     match crate::json::policy_file::lookup(git_root, benchmark) {
-        PolicyLookup::NotFound => None,
+        PolicyLookup::NotFound => {
+            if git_root.is_none() && crate::lib_on::cloud::enabled() {
+                eprintln!(
+                    "hotpath: no git repository found from the working directory, so no policy \
+                     file was looked for. The report carries no policy."
+                );
+            }
+            None
+        }
         PolicyLookup::Found(policy) => Some(policy),
         PolicyLookup::Unusable(unusable) => {
             eprintln!("hotpath: {unusable} The report carries no policy.");
