@@ -12,7 +12,7 @@
         if (card) {
             card.innerHTML =
                 '<h2 class="waitlist-card-title">🎉 You\'re in!</h2>' +
-                '<p>We\'ll email you when Hotpath Team is ready for early access.</p>';
+                '<p>We\'ll email you when Hotpath Cloud is ready for early access.</p>';
         }
         return;
     }
