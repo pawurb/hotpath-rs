@@ -112,9 +112,11 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 The baseline is the one the server recorded for the head at upload, the one the PR
 comment compared. The judging policy is the benchmark's policy in force now, not the one at upload time,
 so a `set-policy` followed by `diff` shows the new judgement without a re-run.
-Numbers are never formatted: a value is a number in its cell's `unit`, a change a
-number of percent. A cell names its `column`, and `family.metrics` names the
-columns the policy judges.
+Every value is a string formatted as the PR comment shows it (\"2.06 ms\", \"3.1 KB\",
+\"20\"), and its `unit` says how to read it. `change_percent` stays a number of
+percent and is the exact figure to reason about: rounding can make `base` and `head`
+read the same while it is not zero. A cell names its `column`, and `family.metrics`
+names the columns the policy judges.
 
 Each section is one metric family the policy lists; a family the policy leaves out is
 not in the body at all. A judged family decides the verdict; an unjudged one is still
