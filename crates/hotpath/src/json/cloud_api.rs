@@ -401,19 +401,14 @@ pub struct PolicyRejected {
 /// the families the policy lists.
 ///
 /// Every value is a string, formatted by the server exactly as the PR comment
-/// and the comparison page show it (`"2.06 ms"`, `"3.1 KB"`, `"20"`): the
-/// body is read mostly by agents, and nothing downstream does arithmetic on
-/// a value. A count is a string too, so a reader never branches on the JSON
-/// type of a value, and an absent side is `null`, never an empty string or a
-/// stand-in zero. The `unit` next to a value says which parser reads the
-/// string back (see `Unit`). The judgement stays numeric: `change_percent`
-/// (rounded to two decimals) and `FamilyJudgement::min_percent_change` are
-/// numbers of percent, and `change_percent` is the exact figure to reason
-/// about. Display rounding can make `base` and `head` read the same while
-/// `change_percent` is not zero; the lossless values are in the report
-/// payload. Names deliberately differ from the server's analyzer
-/// types where those read badly on the wire (`Presence::Both` / `Added`,
-/// `Change`, `DiffCell`); the server maps its types into these in one place.
+/// and the comparison page show it (`"2.06 ms"`, `"3.1 KB"`, counts too:
+/// `"20"`), and its `unit` says which parser reads it back. A change stays a
+/// number of percent, rounded to two decimals, and is the exact judgement:
+/// display rounding can make `base` and `head` read the same while
+/// `change_percent` is not zero. Names deliberately differ from the server's
+/// analyzer types where those read badly on the wire (`Presence::Both` /
+/// `Added`, `Change`, `DiffCell`); the server maps its types into these in
+/// one place.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReportDiff {
     /// `owner/name` as GitHub names it today.
@@ -671,8 +666,7 @@ pub enum BoundKind {
     Unknown,
 }
 
-/// Run-level values of a `Comparison`. The totals carry no `unit`: the field
-/// decides how its values are formatted.
+/// Run-level values of a `Comparison`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunTotals {
     /// Wall time of the run, a duration (`"1.25 s"`).
@@ -957,7 +951,7 @@ pub struct DiffCell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<ColumnRole>,
     /// `None` for an `Added` row: the baseline has no such entity. Never a
-    /// stand-in zero or an empty string.
+    /// stand-in zero.
     pub base: Option<String>,
     /// `None` for a `Removed` row.
     pub head: Option<String>,
