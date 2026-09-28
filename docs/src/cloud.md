@@ -2,7 +2,7 @@
 
 > **Note:** hotpath Cloud is currently in closed beta.
 
-hotpath Cloud is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a policy and posts the verdict as a comment on the pull request. The policy is a TOML file in your repository, `hotpath/policy.toml` or `hotpath/<benchmark>-policy.toml`, that each run sends inside its report, so a pull request is judged under its own policy and a report without one is judged under the built-in default. See [Regression policy](regression_policy.md) for the lookup order and for `hotpath cloud validate-policy`. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
+hotpath Cloud is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a per-repository policy and posts the verdict as a comment on the pull request. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
 
 <div class="waitlist-card" id="waitlist">
   <h2 class="waitlist-card-title"><span class="waitlist-card-brand">hotpath Cloud</span> - every Rust PR gets a performance review</h2>
