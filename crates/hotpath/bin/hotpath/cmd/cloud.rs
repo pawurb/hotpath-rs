@@ -22,7 +22,7 @@ use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
 use crate::cmd::cloud::diff::DiffArgs;
-use crate::cmd::cloud::policy::PolicyScope;
+use crate::cmd::cloud::policy::PolicyArgs;
 use crate::cmd::cloud::report::ReportArgs;
 
 #[derive(Parser, Debug)]
@@ -111,7 +111,7 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 
 The baseline is the one the server recorded for the head at upload, the one the PR
 comment compared. The judging policy is the one the head report carried when it was
-uploaded, the built-in default when it carried none (`policy.level` says which), so
+uploaded, the built-in default when it carried none (`policy.path` is then null), so
 the answer for a stored report does not change with a later edit of the policy.
 Every value is a string formatted as the PR comment shows it (\"2.06 ms\", \"3.1 KB\",
 \"20\"), and its `unit` says how to read it. `change_percent` stays a number of
@@ -139,7 +139,8 @@ of their section says so. Inside a section, a key that is unset or an empty list
 left out: `mode`, `totals`, `columns`, `omitted_from_base`, `omitted_from_head`, a
 row's `location` and `unreadable`, a cell's `role` and `crossed`. A cell's `base`,
 `head` and `change_percent` are always there, null when a side is absent, and so is
-every key outside the sections (`base`, `budgets`, `policy.fallback`, the run totals).
+every key outside the sections (`base`, `budgets`, `policy.path`, `policy.fallback`,
+the run totals).
 
 Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
 `[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without
@@ -175,20 +176,21 @@ Poll with `report` to wait for CI's upload. Same token and base URL environment 
     Diff(DiffArgs),
 
     #[command(
-        about = "Show the policy the newest report of a repository or one benchmark carried",
-        long_about = "Show the policy the newest report of a repository or one benchmark carried
-(GET /api/v1/repos/{owner}/{name}/policy, or .../benchmarks/{benchmark}/policy).
+        about = "Show the policy a benchmark was last judged under",
+        long_about = "Show the policy a benchmark was last judged under
+(GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/policy).
 
 A policy belongs to a report: each report carries the policy it is judged under, so
-this is what the scope was last judged under, not a setting of its own. Levels do not
-inherit from each other: exactly one document judges a report, and any key it omits
-takes the built-in value. `level` says which document `source` is (`default` when no
-report of the scope carried one, and `source` is then the built-in default),
-`report_id` the report it was read from, `path` the document's path in the
-repository, and `fallback` is set when the document does not parse as a policy and
-the built-in default judges instead. Same token and base URL environment as `auth`."
+this is not a setting of its own. It is the policy carried by the benchmark's newest
+`push` report, or by its newest report of any event when it has no `push` report, so
+a pull request never changes what is shown. Exactly one document judges a report, and
+any key it omits takes the built-in value. `report_id` is the report the policy was
+read from and `path` the document's path in the repository; both are null when the
+benchmark has no report that carried a policy, and `source` is then the built-in
+default. `fallback` is set when the document does not parse as a policy and the
+built-in default judges instead. Same token and base URL environment as `auth`."
     )]
-    GetPolicy(PolicyScope),
+    GetPolicy(PolicyArgs),
 }
 
 impl CloudArgs {
@@ -221,7 +223,7 @@ impl CloudArgs {
             CloudCommand::Benchmarks { repo } => benchmarks::run(output, &repo),
             CloudCommand::Report(args) => report::run(output, args),
             CloudCommand::Diff(args) => diff::run(output, args),
-            CloudCommand::GetPolicy(scope) => policy::get(output, scope),
+            CloudCommand::GetPolicy(args) => policy::get(output, args),
         }
     }
 }

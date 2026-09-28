@@ -269,7 +269,7 @@ pub struct UploadCreated {
     #[serde(default)]
     pub comment: CommentOutcome,
     /// The judgement of the uploaded report under the policy it carried
-    /// (`policy` says which): the diff against `baseline`, when there is one,
+    /// (`policy` names it): the diff against `baseline`, when there is one,
     /// and the budgets. The same `Verdict` the diff API answers with.
     /// Required: a body without a verdict must not read as "no regression".
     pub verdict: Verdict,
@@ -288,46 +288,28 @@ pub struct UploadCreated {
 /// bytes of UTF-8.
 pub const POLICY_MAX_BYTES: usize = 65536;
 
-/// Where a policy comes from. The policy lives in the repository and travels
-/// inside the report (`JsonMeta::policy`): `hotpath/<benchmark>-policy.toml`
-/// for one benchmark, else `hotpath/policy.toml` for every benchmark of the
-/// repository. Levels do not inherit from each other: exactly one document
-/// judges a report, and any key it omits takes the built-in value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PolicyLevel {
-    /// The report carried no policy: the built-in default applies. Only the
-    /// server answers with it, a client never sends it.
-    Default,
-    /// The repository's document, `hotpath/policy.toml`.
-    Repo,
-    /// One benchmark's document: `hotpath/<benchmark>-policy.toml`, or the
-    /// file `HOTPATH_POLICY_PATH` named for the run.
-    Benchmark,
-}
-
-/// Body of `GET /api/v1/repos/{owner}/{name}/policy` and
-/// `GET .../benchmarks/{benchmark}/policy`: the policy the newest report of
-/// the scope asked about carried. A policy belongs to a report, so this is
-/// what the scope was last judged under, not a setting of its own. Reading
-/// needs only access to the repository.
+/// Body of `GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/policy`:
+/// the policy carried by the benchmark's newest `push` report, or by its
+/// newest report of any event when it has no `push` report. A policy belongs
+/// to a report, so this is what the benchmark was last judged under, not a
+/// setting of its own. `push` reports come first because a pull request, a
+/// fork's included, must not change what the view shows. Reading needs only
+/// access to the repository.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolicyView {
     /// `owner/name` as GitHub names it today.
     pub repository: String,
-    /// The benchmark asked about; `None` for the whole repository.
-    pub benchmark: Option<String>,
-    /// Which level's document `source` is; `Default` when no report of the
-    /// scope carried a policy.
-    pub level: PolicyLevel,
+    /// The benchmark asked about.
+    pub benchmark: String,
     /// The id of the report the policy was read from; `None` exactly when
-    /// `level` is `Default`.
+    /// the benchmark has no report that carried a policy.
     pub report_id: Option<String>,
     /// The document's path in the repository (`hotpath/policy.toml`), as the
-    /// report named it; `None` exactly when `level` is `Default`.
+    /// report named it; `None` exactly when the benchmark has no report that
+    /// carried a policy.
     pub path: Option<String>,
-    /// The TOML document as written in the repository (or the built-in
-    /// default, verbatim).
+    /// The TOML document as written in the repository; the built-in default,
+    /// verbatim, when the benchmark has no report that carried a policy.
     pub source: String,
     /// Set when the document does not parse as a policy and the built-in
     /// default judges instead: the sentence saying so. `None` when `source`
@@ -493,11 +475,20 @@ pub struct DiffBase {
 }
 
 /// Which policy judged a report: in a `ReportDiff` and in `UploadCreated`.
+/// Exactly one document judges a report, the one it carried, and any key
+/// that document omits takes the built-in value; documents are never merged.
+/// Three cases, told apart by both fields together:
+///
+/// - `path` set, `fallback` unset: the policy the report carried judged.
+/// - `path` unset (`fallback` unset too): the report carried no policy and
+///   the built-in default judged.
+/// - `path` set, `fallback` set: the report carried a policy that does not
+///   parse and the built-in default judged instead.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedPolicy {
-    /// The level of the document the report carried; `Default` when it
-    /// carried none (see `PolicyLevel`).
-    pub level: PolicyLevel,
+    /// The path of the policy the report carried, relative to the
+    /// repository root (`JsonPolicy::path`); `None` when it carried none.
+    pub path: Option<String>,
     /// Set when the document the report carried does not parse as a policy
     /// and the built-in default judged instead: the sentence saying so (as
     /// `PolicyView::fallback`).
@@ -977,10 +968,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use crate::json::cloud_api::{
-        normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
-        BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity, BudgetFinding,
-        ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffRow, DiffSide,
-        Direction, FamilyName, PolicyLevel, PolicyProblem, PolicyRejected, PolicyValidated,
+        normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AppliedPolicy,
+        AuthStatus, BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity,
+        BudgetFinding, ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffRow,
+        DiffSide, Direction, FamilyName, PolicyProblem, PolicyRejected, PolicyValidated,
         PolicyValidation, PolicyView, Presence, RepoList, Report, ReportDiff, ReportSummary,
         Repository, RowFilter, RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict,
         DEFAULT_BASE_URL,
@@ -1071,7 +1062,7 @@ mod tests {
         // Payload keys already sorted: `Value` re-serializes objects in key
         // order, so only a sorted payload round-trips byte for byte.
         let payload = r#"{"meta":{},"version":"0.26.1"}"#;
-        let policy = r#"{"source":"[functions.timing]\nmin_percent_change = 5\n","path":"hotpath/ci-policy.toml","level":"benchmark"}"#;
+        let policy = r#"{"source":"[functions.timing]\nmin_percent_change = 5\n","path":"hotpath/ci-policy.toml"}"#;
         let body = format!(
             "{},\"policy\":{policy},\"payload\":{payload}}}",
             &PR_SUMMARY[..PR_SUMMARY.len() - 1]
@@ -1084,7 +1075,6 @@ mod tests {
                 policy: Some(JsonPolicy {
                     source: "[functions.timing]\nmin_percent_change = 5\n".into(),
                     path: "hotpath/ci-policy.toml".into(),
-                    level: PolicyLevel::Benchmark,
                 }),
                 payload: serde_json::from_str(payload).unwrap(),
             }
@@ -1257,11 +1247,11 @@ mod tests {
     #[test]
     fn upload_created_says_when_the_built_in_default_stood_in() {
         let body = format!(
-            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy":{{"level":"repo","fallback":"hotpath/policy.toml does not parse as a policy; the built-in default judged."}},"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy":{{"path":"hotpath/policy.toml","fallback":"hotpath/policy.toml does not parse as a policy; the built-in default judged."}},"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
         );
         let created: UploadCreated = serde_json::from_str(&body).unwrap();
         let policy = created.policy.as_ref().expect("policy");
-        assert_eq!(policy.level, PolicyLevel::Repo);
+        assert_eq!(policy.path.as_deref(), Some("hotpath/policy.toml"));
         assert_eq!(
             policy.fallback.as_deref(),
             Some("hotpath/policy.toml does not parse as a policy; the built-in default judged.")
@@ -1282,37 +1272,62 @@ mod tests {
 
     #[test]
     fn policy_view_round_trips() {
-        let repo = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","level":"repo","report_id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","path":"hotpath/policy.toml","source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
-        let view: PolicyView = serde_json::from_str(repo).unwrap();
+        let carried = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","path":"hotpath/policy.toml","source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
+        let view: PolicyView = serde_json::from_str(carried).unwrap();
         assert_eq!(
             view,
             PolicyView {
                 repository: "pawurb/hotpath-rs".into(),
-                benchmark: Some("ci".into()),
-                level: PolicyLevel::Repo,
+                benchmark: "ci".into(),
                 report_id: Some("0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a".into()),
                 path: Some("hotpath/policy.toml".into()),
                 source: "[functions.timing]\nmin_percent_change = 5\n".into(),
                 fallback: None,
             }
         );
-        assert_eq!(serde_json::to_string(&view).unwrap(), repo);
+        assert_eq!(serde_json::to_string(&view).unwrap(), carried);
 
-        let fallback = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","level":"benchmark","report_id":"r1","path":"hotpath/ci-policy.toml","source":"[old]\n","fallback":"The policy does not parse; the built-in default applies."}"#;
+        let fallback = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":"r1","path":"hotpath/ci-policy.toml","source":"[old]\n","fallback":"The policy does not parse; the built-in default applies."}"#;
         let view: PolicyView = serde_json::from_str(fallback).unwrap();
-        assert_eq!(view.level, PolicyLevel::Benchmark);
+        assert_eq!(view.path.as_deref(), Some("hotpath/ci-policy.toml"));
         assert_eq!(
             view.fallback.as_deref(),
             Some("The policy does not parse; the built-in default applies.")
         );
         assert_eq!(serde_json::to_string(&view).unwrap(), fallback);
 
-        // No report of the scope carried a policy.
-        let default = r#"{"repository":"a/b","benchmark":null,"level":"default","report_id":null,"path":null,"source":"","fallback":null,"later":1}"#;
-        let view: PolicyView = serde_json::from_str(default).unwrap();
-        assert_eq!(view.level, PolicyLevel::Default);
+        // No report of the benchmark carried a policy.
+        let built_in = r#"{"repository":"a/b","benchmark":"ci","report_id":null,"path":null,"source":"[functions.timing]\n","fallback":null}"#;
+        let view: PolicyView = serde_json::from_str(built_in).unwrap();
         assert_eq!(view.report_id, None);
         assert_eq!(view.path, None);
+        assert_eq!(serde_json::to_string(&view).unwrap(), built_in);
+
+        // The view is always of one benchmark.
+        assert!(serde_json::from_str::<PolicyView>(
+            r#"{"repository":"a/b","benchmark":null,"report_id":null,"path":null,"source":"","fallback":null}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn applied_policy_tells_no_policy_from_a_broken_one() {
+        let built_in = r#"{"path":null,"fallback":null}"#;
+        let policy: AppliedPolicy = serde_json::from_str(built_in).unwrap();
+        assert_eq!(
+            policy,
+            AppliedPolicy {
+                path: None,
+                fallback: None,
+            }
+        );
+        assert_eq!(serde_json::to_string(&policy).unwrap(), built_in);
+
+        let broken = r#"{"path":"hotpath/policy.toml","fallback":"hotpath/policy.toml does not parse as a policy; the built-in default judged."}"#;
+        let policy: AppliedPolicy = serde_json::from_str(broken).unwrap();
+        assert_eq!(policy.path.as_deref(), Some("hotpath/policy.toml"));
+        assert!(policy.fallback.is_some());
+        assert_eq!(serde_json::to_string(&policy).unwrap(), broken);
     }
 
     #[test]
@@ -1611,7 +1626,7 @@ mod tests {
 
     fn report_diff(base: &str, verdict: &str, budgets: &str, result: &str) -> serde_json::Value {
         let body = format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"level":"benchmark","fallback":null}},"rows":"all","verdict":{verdict},"budgets":{budgets},"result":{result},"dashboard_url":"{DIFF_URL}"}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"path":"hotpath/ci-policy.toml","fallback":null}},"rows":"all","verdict":{verdict},"budgets":{budgets},"result":{result},"dashboard_url":"{DIFF_URL}"}}"#
         );
         serde_json::from_str(&body).unwrap()
     }
@@ -1640,7 +1655,7 @@ mod tests {
         let base = diff.base.expect("compared has a base");
         assert!(base.branch_point);
         assert_eq!(diff.dashboard_url, DIFF_URL);
-        assert_eq!(diff.policy.level, PolicyLevel::Benchmark);
+        assert_eq!(diff.policy.path.as_deref(), Some("hotpath/ci-policy.toml"));
         assert_eq!(diff.rows, RowFilter::All);
 
         assert_eq!(diff.budgets.expect("head parses").rules, 0);

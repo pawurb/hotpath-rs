@@ -184,7 +184,6 @@ mod tests {
 
     #[cfg(feature = "hotpath-cloud")]
     mod cloud {
-        use crate::json::cloud_api::PolicyLevel;
         use crate::json::{JsonCiInfo, JsonGitInfo, JsonMeta, JsonPolicy, JsonPullRequest};
         use crate::lib_on::ci_info::CiContext;
         use crate::lib_on::report_meta::merge_git_info;
@@ -342,7 +341,6 @@ mod tests {
                 policy: Some(JsonPolicy {
                     source: "# ours\n[functions.timing]\n".to_string(),
                     path: "hotpath/ci-policy.toml".to_string(),
-                    level: PolicyLevel::Benchmark,
                 }),
             };
             let sent = meta.policy.clone();

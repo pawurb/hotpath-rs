@@ -12,7 +12,6 @@ use crate::json::{
     ThreadMetrics,
 };
 
-use crate::json::cloud_api::PolicyLevel;
 use crate::output::{format_bytes, format_duration, FunctionLog, FunctionLogsList, ProfilingMode};
 
 pub(crate) fn format_time_ago(nanos_ago: u64) -> String {
@@ -1161,10 +1160,9 @@ pub struct JsonPolicy {
     pub source: String,
     /// The file's path relative to the repository root, with forward
     /// slashes (`hotpath/policy.toml`). Never absolute, never with a `..`
-    /// segment.
+    /// segment. A policy file outside the repository is never sent. The
+    /// path alone identifies the policy.
     pub path: String,
-    /// `Repo` or `Benchmark`, never `Default`.
-    pub level: PolicyLevel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

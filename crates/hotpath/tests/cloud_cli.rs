@@ -14,8 +14,8 @@ mod tests {
     use std::process::{Command, Output, Stdio};
 
     use hotpath::json::cloud_api::{
-        ApiError, ApiErrorCode, AuthStatus, PolicyLevel, PolicyView, RepoList, Report,
-        ReportSummary, TokenStatus,
+        ApiError, ApiErrorCode, AuthStatus, PolicyView, RepoList, Report, ReportSummary,
+        TokenStatus,
     };
     use mockito::{Matcher, Server, ServerGuard};
     use time::macros::datetime;
@@ -751,7 +751,7 @@ mod tests {
         let judged = was_compared || budgets.has_rules();
         let regressed = regressions > 0 || budgets_broken > 0;
         format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"level":"default","fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"path":null,"fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
             budgets = budgets.body(),
         )
     }
@@ -967,32 +967,13 @@ mod tests {
         mock.assert();
     }
 
-    const REPO_POLICY_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/policy";
-    const BENCHMARK_POLICY_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/policy";
-    const POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":null,"level":"repo","report_id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","path":"hotpath/policy.toml","source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
-    const BENCHMARK_POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","level":"default","report_id":null,"path":null,"source":"\n","fallback":null}"#;
+    const POLICY_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/policy";
+    const POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","path":"hotpath/policy.toml","source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
+    const BUILT_IN_POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":null,"path":null,"source":"\n","fallback":null}"#;
 
-    #[test]
-    fn get_policy_prints_the_repo_and_benchmark_views() {
-        let mut server = Server::new();
-        let repo = mock_get(&mut server, REPO_POLICY_PATH, POLICY_VIEW_BODY);
-        let benchmark = mock_get(
-            &mut server,
-            BENCHMARK_POLICY_PATH,
-            BENCHMARK_POLICY_VIEW_BODY,
-        );
-
-        let output = hotpath(
-            &server,
-            Some(TOKEN),
-            &["get-policy", "--repo", "pawurb/hotpath-rs"],
-        );
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{POLICY_VIEW_BODY}\n"));
-        assert_eq!(stderr(&output), "");
-
-        let output = hotpath(
-            &server,
+    fn get_policy(server: &ServerGuard) -> Output {
+        hotpath(
+            server,
             Some(TOKEN),
             &[
                 "get-policy",
@@ -1001,15 +982,29 @@ mod tests {
                 "--benchmark",
                 "ci",
             ],
-        );
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{BENCHMARK_POLICY_VIEW_BODY}\n"));
-        let view: PolicyView = serde_json::from_str(stdout(&output).trim()).unwrap();
-        assert_eq!(view.level, PolicyLevel::Default);
-        assert_eq!(view.report_id, None);
+        )
+    }
 
-        repo.assert();
-        benchmark.assert();
+    #[test]
+    fn get_policy_prints_the_benchmark_view() {
+        let mut server = Server::new();
+        let mock = mock_get(&mut server, POLICY_PATH, POLICY_VIEW_BODY);
+        let output = get_policy(&server);
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(stdout(&output), format!("{POLICY_VIEW_BODY}\n"));
+        assert_eq!(stderr(&output), "");
+        mock.assert();
+
+        // A benchmark without a report that carried a policy.
+        let mut server = Server::new();
+        let mock = mock_get(&mut server, POLICY_PATH, BUILT_IN_POLICY_VIEW_BODY);
+        let output = get_policy(&server);
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(stdout(&output), format!("{BUILT_IN_POLICY_VIEW_BODY}\n"));
+        let view: PolicyView = serde_json::from_str(stdout(&output).trim()).unwrap();
+        assert_eq!(view.report_id, None);
+        assert_eq!(view.path, None);
+        mock.assert();
     }
 
     #[test]
@@ -1023,7 +1018,17 @@ mod tests {
         for args in [
             // Gone: the policy is a file in the repository.
             vec!["set-policy", "--repo", "pawurb/hotpath-rs", "--file", "x"],
-            vec!["get-policy", "--repo", "pawurb/hotpath-rs", "--file", "x"],
+            vec!["get-policy", "--repo", "pawurb/hotpath-rs"],
+            vec!["get-policy", "--benchmark", "ci"],
+            vec![
+                "get-policy",
+                "--repo",
+                "pawurb/hotpath-rs",
+                "--benchmark",
+                "ci",
+                "--file",
+                "x",
+            ],
             vec!["get-policy"],
         ] {
             let output = hotpath(&server, Some(TOKEN), &args);
