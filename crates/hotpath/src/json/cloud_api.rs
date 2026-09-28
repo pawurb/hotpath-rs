@@ -14,7 +14,7 @@ use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::json::{JsonLocation, JsonPolicy};
+use crate::json::JsonLocation;
 use crate::output::ProfilingMode;
 
 /// Base URL of the hotpath.rs API when nothing overrides it.
@@ -164,11 +164,11 @@ pub struct BenchmarkList {
     pub benchmarks: Vec<BenchmarkSummary>,
 }
 
-/// One stored report without its payload and its policy: the body of
-/// `reports/latest` and `reports/{id}` with `payload=false`, and the head of
-/// a `Report`. Every
+/// One stored report without its payload: the body of `reports/latest` and
+/// `reports/{id}` with `payload=false`, and the head of a `Report`. Every
 /// nullable field serializes as `null`, never omitted, so a reader sees
-/// "unknown" rather than a missing key.
+/// "unknown" rather than a missing key. It names the report's policy by its
+/// path; the API never returns a policy document.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReportSummary {
     /// The report's id (a uuid), the value `--id` and the dashboard URLs take.
@@ -214,6 +214,12 @@ pub struct ReportSummary {
     pub baseline_id: Option<String>,
     /// The PR comment this report produced, when it was posted.
     pub comment_url: Option<String>,
+    /// The path of the policy file the report was judged under, relative to
+    /// the repository root (`hotpath/policy.toml`); `None` (`null` on the
+    /// wire) means the report carried no policy and the built-in default
+    /// judged. The document is the file at that path in the measured commit
+    /// and is never returned by the API.
+    pub policy_path: Option<String>,
     /// Size of the uploaded JSON in bytes.
     pub size_bytes: u64,
     /// Upload time, RFC 3339 on the wire.
@@ -230,13 +236,9 @@ pub struct ReportSummary {
 pub struct Report {
     #[serde(flatten)]
     pub summary: ReportSummary,
-    /// The policy the report carried when it was uploaded (`meta.policy`),
-    /// as written; `None` (`null` on the wire) for a report uploaded without
-    /// one, which the built-in default judges. The server stores it apart
-    /// from the payload, so `payload.meta` has no `policy` key. This is the
-    /// only place the API returns a policy: a policy is read per report.
-    pub policy: Option<JsonPolicy>,
-    /// The uploaded hotpath JSON report, minus `meta.policy`. Untyped on
+    /// The uploaded hotpath JSON report, minus `meta.policy`: the server
+    /// stores the policy apart from the payload and names it in
+    /// `policy_path`. Untyped on
     /// purpose: a report older than the schema the server reads must still be
     /// fetchable (only a diff calls it unreadable). Deserialize it as
     /// `JsonReport` when a typed view is needed. Re-serialized through
@@ -291,7 +293,8 @@ pub const POLICY_MAX_BYTES: usize = 65536;
 
 /// Body of `POST /api/v1/policy/validate`: one policy document to check. The
 /// server parses it as it would when a report carries it and stores nothing.
-/// The answer is `PolicyValidated` (200) or `PolicyRejected` (422).
+/// The answer is `PolicyValidated` (200) or `PolicyRejected` (422); neither
+/// echoes the document.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolicyValidation {
     /// The whole TOML document, as written. At most `POLICY_MAX_BYTES`; blank
@@ -300,10 +303,12 @@ pub struct PolicyValidation {
 }
 
 /// Body of a successful `POST /api/v1/policy/validate` (200): the document
-/// parses as a policy and would judge the report that carries it.
+/// parses as a policy and would judge the report that carries it. The
+/// submitted document is not echoed back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolicyValidated {
-    /// Always `true`: a refused document is a 422 `PolicyRejected`.
+    /// Always `true`, never `false`: a refused document is always the 422
+    /// `PolicyRejected`, so the status alone decides.
     pub valid: bool,
 }
 
@@ -322,7 +327,8 @@ pub struct PolicyProblem {
 /// Body of `422` from `POST /api/v1/policy/validate` when the document is refused: an
 /// `ApiError` (`error`, `code` = `invalid_policy`) plus every problem found. A
 /// client that only knows `ApiError` still parses it (unknown fields are
-/// ignored); one that knows this type reads `problems`.
+/// ignored); one that knows this type reads `problems`. The problems point
+/// at lines of the submitted document, which itself is not echoed back.
 ///
 /// The server collects all the problems it can in one pass, within what TOML
 /// allows. A syntax error (an unbalanced quote, a bad table header) stops
@@ -947,7 +953,7 @@ mod tests {
         RowFilter, RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict,
         DEFAULT_BASE_URL,
     };
-    use crate::json::{JsonLocation, JsonPolicy};
+    use crate::json::JsonLocation;
     use crate::output::ProfilingMode;
     use time::macros::datetime;
 
@@ -982,8 +988,8 @@ mod tests {
         );
     }
 
-    const PR_SUMMARY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
-    const PUSH_SUMMARY: &str = r#"{"id":"0199a3b0-0000-7000-8000-000000000000","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"push","commit_sha":"77de000000000000000000000000000000000000","head_sha":null,"base_sha":null,"git_ref":"refs/heads/main","base_ref":null,"head_ref":null,"pr_number":null,"run_id":"18237400000","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":null,"baseline_id":null,"comment_url":null,"size_bytes":80000,"created_at":"2026-09-25T17:00:00Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3b0-0000-7000-8000-000000000000"}"#;
+    const PR_SUMMARY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","policy_path":"hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
+    const PUSH_SUMMARY: &str = r#"{"id":"0199a3b0-0000-7000-8000-000000000000","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"push","commit_sha":"77de000000000000000000000000000000000000","head_sha":null,"base_sha":null,"git_ref":"refs/heads/main","base_ref":null,"head_ref":null,"pr_number":null,"run_id":"18237400000","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":null,"baseline_id":null,"comment_url":null,"policy_path":null,"size_bytes":80000,"created_at":"2026-09-25T17:00:00Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3b0-0000-7000-8000-000000000000"}"#;
 
     fn pr_summary() -> ReportSummary {
         ReportSummary {
@@ -1008,6 +1014,7 @@ mod tests {
             comment_url: Some(
                 "https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1".into(),
             ),
+            policy_path: Some("hotpath/ci-policy.toml".into()),
             size_bytes: 81234,
             created_at: datetime!(2026-09-25 18:03:11 UTC),
             dashboard_url: "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a".into(),
@@ -1024,6 +1031,8 @@ mod tests {
         assert_eq!(push.head_sha, None);
         assert_eq!(push.pr_number, None);
         assert_eq!(push.user_metadata, None);
+        // No policy carried: the built-in default judged.
+        assert_eq!(push.policy_path, None);
         assert_eq!(push.git_ref.as_deref(), Some("refs/heads/main"));
         assert_eq!(serde_json::to_string(&push).unwrap(), PUSH_SUMMARY);
     }
@@ -1033,9 +1042,8 @@ mod tests {
         // Payload keys already sorted: `Value` re-serializes objects in key
         // order, so only a sorted payload round-trips byte for byte.
         let payload = r#"{"meta":{},"version":"0.26.1"}"#;
-        let policy = r#"{"source":"[functions.timing]\nmin_percent_change = 5\n","path":"hotpath/ci-policy.toml"}"#;
         let body = format!(
-            "{},\"policy\":{policy},\"payload\":{payload}}}",
+            "{},\"payload\":{payload}}}",
             &PR_SUMMARY[..PR_SUMMARY.len() - 1]
         );
         let report: Report = serde_json::from_str(&body).unwrap();
@@ -1043,19 +1051,22 @@ mod tests {
             report,
             Report {
                 summary: pr_summary(),
-                policy: Some(JsonPolicy {
-                    source: "[functions.timing]\nmin_percent_change = 5\n".into(),
-                    path: "hotpath/ci-policy.toml".into(),
-                }),
                 payload: serde_json::from_str(payload).unwrap(),
             }
         );
+        assert_eq!(
+            report.summary.policy_path.as_deref(),
+            Some("hotpath/ci-policy.toml")
+        );
         assert_eq!(serde_json::to_string(&report).unwrap(), body);
 
-        // A report uploaded without a policy says so with a `null`.
-        let without = body.replace(policy, "null");
+        // A report that carried no policy says so with a `null` path.
+        let without = format!(
+            "{},\"payload\":{payload}}}",
+            &PUSH_SUMMARY[..PUSH_SUMMARY.len() - 1]
+        );
         let bare: Report = serde_json::from_str(&without).unwrap();
-        assert_eq!(bare.policy, None);
+        assert_eq!(bare.summary.policy_path, None);
         assert_eq!(serde_json::to_string(&bare).unwrap(), without);
 
         // A payload in the writer's key order parses to the same data.

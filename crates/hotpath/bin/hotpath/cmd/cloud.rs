@@ -88,7 +88,12 @@ locally, so `--commit $(git rev-parse HEAD)` on a PR branch still finds the PR's
 report. --event push|pull_request narrows --pr / --commit to one event (the same
 commit is often measured by a push to main and as a PR head). --no-payload asks for
 the summary only; the payload is the uploaded hotpath JSON report, verbatim apart
-from key order.
+from key order and without `meta.policy`.
+
+`policy_path` names the policy file the report was judged under, relative to the
+repository root. It is null when the report carried no policy and the built-in
+default judged. The document is the file at that path in the measured commit; the API
+never returns it, with or without --no-payload.
 
 A report of another benchmark, an unknown id, no match yet and a repository the
 token's user cannot see all answer 404 `not_found`: poll with --commit until it
