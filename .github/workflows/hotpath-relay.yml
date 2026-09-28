@@ -201,7 +201,8 @@ jobs:
             echo '```'; jq . response.json 2>/dev/null || cat response.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$status" != 201 ] && [ "$status" != 200 ]; then
-            detail=$(jq -r '.error // empty' response.json 2>/dev/null || cat response.json)
+            # A refused policy lists what is wrong with it after the sentence.
+            detail=$(jq -r '[.error // empty] + [(.problems // [])[] | (if .line then "line \(.line): " else "" end) + .message] | join("; ")' response.json 2>/dev/null || cat response.json)
             echo "::error::hotpath.rs rejected the report (HTTP $status, request ${request_id:--}): ${detail:-empty body}"
             exit 1
           fi
