@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
-    //! `hotpath cloud auth|repos|benchmarks|report|diff|get-policy`
+    //! `hotpath cloud auth|repos|benchmarks|report|diff`
     //! against a mock hotpath.rs: the bearer request each sends, the JSON it
     //! re-emits, the error JSON on stderr (server bodies verbatim, client
     //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 0 or 1 read
@@ -14,8 +14,7 @@ mod tests {
     use std::process::{Command, Output, Stdio};
 
     use hotpath::json::cloud_api::{
-        ApiError, ApiErrorCode, AuthStatus, PolicyView, RepoList, Report, ReportSummary,
-        TokenStatus,
+        ApiError, ApiErrorCode, AuthStatus, RepoList, Report, ReportSummary, TokenStatus,
     };
     use mockito::{Matcher, Server, ServerGuard};
     use time::macros::datetime;
@@ -967,48 +966,8 @@ mod tests {
         mock.assert();
     }
 
-    const POLICY_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/policy";
-    const POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","path":"hotpath/policy.toml","source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
-    const BUILT_IN_POLICY_VIEW_BODY: &str = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":null,"path":null,"source":"\n","fallback":null}"#;
-
-    fn get_policy(server: &ServerGuard) -> Output {
-        hotpath(
-            server,
-            Some(TOKEN),
-            &[
-                "get-policy",
-                "--repo",
-                "pawurb/hotpath-rs",
-                "--benchmark",
-                "ci",
-            ],
-        )
-    }
-
     #[test]
-    fn get_policy_prints_the_benchmark_view() {
-        let mut server = Server::new();
-        let mock = mock_get(&mut server, POLICY_PATH, POLICY_VIEW_BODY);
-        let output = get_policy(&server);
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{POLICY_VIEW_BODY}\n"));
-        assert_eq!(stderr(&output), "");
-        mock.assert();
-
-        // A benchmark without a report that carried a policy.
-        let mut server = Server::new();
-        let mock = mock_get(&mut server, POLICY_PATH, BUILT_IN_POLICY_VIEW_BODY);
-        let output = get_policy(&server);
-        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        assert_eq!(stdout(&output), format!("{BUILT_IN_POLICY_VIEW_BODY}\n"));
-        let view: PolicyView = serde_json::from_str(stdout(&output).trim()).unwrap();
-        assert_eq!(view.report_id, None);
-        assert_eq!(view.path, None);
-        mock.assert();
-    }
-
-    #[test]
-    fn policy_usage_errors_are_exit_2() {
+    fn removed_policy_commands_are_usage_errors() {
         let mut server = Server::new();
         let mock = server
             .mock("GET", Matcher::Regex("^/api/v1/".into()))
@@ -1016,20 +975,15 @@ mod tests {
             .create();
 
         for args in [
-            // Gone: the policy is a file in the repository.
+            // Gone: the policy is a file in the repository, read per report.
             vec!["set-policy", "--repo", "pawurb/hotpath-rs", "--file", "x"],
-            vec!["get-policy", "--repo", "pawurb/hotpath-rs"],
-            vec!["get-policy", "--benchmark", "ci"],
             vec![
                 "get-policy",
                 "--repo",
                 "pawurb/hotpath-rs",
                 "--benchmark",
                 "ci",
-                "--file",
-                "x",
             ],
-            vec!["get-policy"],
         ] {
             let output = hotpath(&server, Some(TOKEN), &args);
             assert_eq!(

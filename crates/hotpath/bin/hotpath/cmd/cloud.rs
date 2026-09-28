@@ -9,7 +9,6 @@ mod api;
 mod auth;
 mod benchmarks;
 mod diff;
-mod policy;
 mod repo;
 mod report;
 mod repos;
@@ -22,7 +21,6 @@ use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
 use crate::cmd::cloud::diff::DiffArgs;
-use crate::cmd::cloud::policy::PolicyArgs;
 use crate::cmd::cloud::report::ReportArgs;
 
 #[derive(Parser, Debug)]
@@ -174,23 +172,6 @@ stdout empty, as for every command. Reading needs only access to the repository.
 Poll with `report` to wait for CI's upload. Same token and base URL environment as `auth`."
     )]
     Diff(DiffArgs),
-
-    #[command(
-        about = "Show the policy a benchmark was last judged under",
-        long_about = "Show the policy a benchmark was last judged under
-(GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/policy).
-
-A policy belongs to a report: each report carries the policy it is judged under, so
-this is not a setting of its own. It is the policy carried by the benchmark's newest
-`push` report, or by its newest report of any event when it has no `push` report, so
-a pull request never changes what is shown. Exactly one document judges a report, and
-any key it omits takes the built-in value. `report_id` is the report the policy was
-read from and `path` the document's path in the repository; both are null when the
-benchmark has no report that carried a policy, and `source` is then the built-in
-default. `fallback` is set when the document does not parse as a policy and the
-built-in default judges instead. Same token and base URL environment as `auth`."
-    )]
-    GetPolicy(PolicyArgs),
 }
 
 impl CloudArgs {
@@ -223,7 +204,6 @@ impl CloudArgs {
             CloudCommand::Benchmarks { repo } => benchmarks::run(output, &repo),
             CloudCommand::Report(args) => report::run(output, args),
             CloudCommand::Diff(args) => diff::run(output, args),
-            CloudCommand::GetPolicy(args) => policy::get(output, args),
         }
     }
 }

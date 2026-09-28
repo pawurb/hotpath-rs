@@ -233,7 +233,8 @@ pub struct Report {
     /// The policy the report carried when it was uploaded (`meta.policy`),
     /// as written; `None` (`null` on the wire) for a report uploaded without
     /// one, which the built-in default judges. The server stores it apart
-    /// from the payload, so `payload.meta` has no `policy` key.
+    /// from the payload, so `payload.meta` has no `policy` key. This is the
+    /// only place the API returns a policy: a policy is read per report.
     pub policy: Option<JsonPolicy>,
     /// The uploaded hotpath JSON report, minus `meta.policy`. Untyped on
     /// purpose: a report older than the schema the server reads must still be
@@ -287,35 +288,6 @@ pub struct UploadCreated {
 /// Largest policy document a report may carry and the server stores, in
 /// bytes of UTF-8.
 pub const POLICY_MAX_BYTES: usize = 65536;
-
-/// Body of `GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/policy`:
-/// the policy carried by the benchmark's newest `push` report, or by its
-/// newest report of any event when it has no `push` report. A policy belongs
-/// to a report, so this is what the benchmark was last judged under, not a
-/// setting of its own. `push` reports come first because a pull request, a
-/// fork's included, must not change what the view shows. Reading needs only
-/// access to the repository.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PolicyView {
-    /// `owner/name` as GitHub names it today.
-    pub repository: String,
-    /// The benchmark asked about.
-    pub benchmark: String,
-    /// The id of the report the policy was read from; `None` exactly when
-    /// the benchmark has no report that carried a policy.
-    pub report_id: Option<String>,
-    /// The document's path in the repository (`hotpath/policy.toml`), as the
-    /// report named it; `None` exactly when the benchmark has no report that
-    /// carried a policy.
-    pub path: Option<String>,
-    /// The TOML document as written in the repository; the built-in default,
-    /// verbatim, when the benchmark has no report that carried a policy.
-    pub source: String,
-    /// Set when the document does not parse as a policy and the built-in
-    /// default judges instead: the sentence saying so. `None` when `source`
-    /// is what judges.
-    pub fallback: Option<String>,
-}
 
 /// Body of `POST /api/v1/policy/validate`: one policy document to check. The
 /// server parses it as it would when a report carries it and stores nothing.
@@ -490,8 +462,7 @@ pub struct AppliedPolicy {
     /// repository root (`JsonPolicy::path`); `None` when it carried none.
     pub path: Option<String>,
     /// Set when the document the report carried does not parse as a policy
-    /// and the built-in default judged instead: the sentence saying so (as
-    /// `PolicyView::fallback`).
+    /// and the built-in default judged instead: the sentence saying so.
     pub fallback: Option<String>,
 }
 
@@ -972,8 +943,8 @@ mod tests {
         AuthStatus, BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity,
         BudgetFinding, ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffRow,
         DiffSide, Direction, FamilyName, PolicyProblem, PolicyRejected, PolicyValidated,
-        PolicyValidation, PolicyView, Presence, RepoList, Report, ReportDiff, ReportSummary,
-        Repository, RowFilter, RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict,
+        PolicyValidation, Presence, RepoList, Report, ReportDiff, ReportSummary, Repository,
+        RowFilter, RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict,
         DEFAULT_BASE_URL,
     };
     use crate::json::{JsonLocation, JsonPolicy};
@@ -1268,46 +1239,6 @@ mod tests {
         assert!(serde_json::from_str::<UploadCreated>(&no_verdict).is_err());
         let no_url = r#"{"id":"r1","repository":"a/b","benchmark":"meta","verdict":{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}}"#;
         assert!(serde_json::from_str::<UploadCreated>(no_url).is_err());
-    }
-
-    #[test]
-    fn policy_view_round_trips() {
-        let carried = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","path":"hotpath/policy.toml","source":"[functions.timing]\nmin_percent_change = 5\n","fallback":null}"#;
-        let view: PolicyView = serde_json::from_str(carried).unwrap();
-        assert_eq!(
-            view,
-            PolicyView {
-                repository: "pawurb/hotpath-rs".into(),
-                benchmark: "ci".into(),
-                report_id: Some("0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a".into()),
-                path: Some("hotpath/policy.toml".into()),
-                source: "[functions.timing]\nmin_percent_change = 5\n".into(),
-                fallback: None,
-            }
-        );
-        assert_eq!(serde_json::to_string(&view).unwrap(), carried);
-
-        let fallback = r#"{"repository":"pawurb/hotpath-rs","benchmark":"ci","report_id":"r1","path":"hotpath/ci-policy.toml","source":"[old]\n","fallback":"The policy does not parse; the built-in default applies."}"#;
-        let view: PolicyView = serde_json::from_str(fallback).unwrap();
-        assert_eq!(view.path.as_deref(), Some("hotpath/ci-policy.toml"));
-        assert_eq!(
-            view.fallback.as_deref(),
-            Some("The policy does not parse; the built-in default applies.")
-        );
-        assert_eq!(serde_json::to_string(&view).unwrap(), fallback);
-
-        // No report of the benchmark carried a policy.
-        let built_in = r#"{"repository":"a/b","benchmark":"ci","report_id":null,"path":null,"source":"[functions.timing]\n","fallback":null}"#;
-        let view: PolicyView = serde_json::from_str(built_in).unwrap();
-        assert_eq!(view.report_id, None);
-        assert_eq!(view.path, None);
-        assert_eq!(serde_json::to_string(&view).unwrap(), built_in);
-
-        // The view is always of one benchmark.
-        assert!(serde_json::from_str::<PolicyView>(
-            r#"{"repository":"a/b","benchmark":null,"report_id":null,"path":null,"source":"","fallback":null}"#
-        )
-        .is_err());
     }
 
     #[test]
