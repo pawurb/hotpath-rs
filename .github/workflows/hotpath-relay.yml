@@ -16,7 +16,8 @@ name: hotpath relay
 # The policy in the artifact (`meta.policy`) is the pull request's own: the
 # benchmark job read it from the checkout it measured, and the server judges the
 # report under it. It is passed on as written, so a pull request that edits its
-# policy file is judged under the edit, and only that pull request is.
+# policy file is judged under the edit, and only that pull request is. A policy
+# that is not valid fails the upload: nothing else is judged in its place.
 #
 # Call it from a workflow of your own:
 #
@@ -172,9 +173,9 @@ jobs:
       # `::error::` annotation when the upload was rejected. The error body is
       # `{error, request_id}`; `request_id` (also the `x-request-id` header)
       # matches the server's log line. On success a `comment.error` means the
-      # server could not post or update the pull request comment, and a
-      # `policy.fallback` that the policy the report carried does not parse, so
-      # the built-in default judged instead.
+      # server could not post or update the pull request comment. A report
+      # whose policy is not valid is rejected like any other, with the reason in
+      # `error`.
       - name: Upload the report
         run: |
           set -euo pipefail
@@ -207,10 +208,6 @@ jobs:
           comment_error=$(jq -r '.comment.error // empty' response.json 2>/dev/null || true)
           if [ -n "$comment_error" ]; then
             echo "::warning::hotpath.rs comment failed: $comment_error"
-          fi
-          policy_fallback=$(jq -r '.policy.fallback // empty' response.json 2>/dev/null || true)
-          if [ -n "$policy_fallback" ]; then
-            echo "::warning::hotpath.rs policy: $policy_fallback"
           fi
 
       # The verdict is the one the pull request comment shows, judged under the

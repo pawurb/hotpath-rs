@@ -79,8 +79,8 @@ pub enum ApiErrorCode {
     MethodNotAllowed,
     /// 429; the `Retry-After` header says how many seconds to wait.
     RateLimited,
-    /// A policy sent for validation was refused (422); the body is a
-    /// `PolicyRejected` with every problem found.
+    /// A policy was refused (422), sent for validation or carried by an
+    /// upload; the body is a `PolicyRejected` with every problem found.
     InvalidPolicy,
     Internal,
     /// A code this client does not know; printed like any other error. Also
@@ -280,16 +280,23 @@ pub struct UploadCreated {
     #[serde(default)]
     pub comment: CommentOutcome,
     /// The judgement of the uploaded report under the policy it carried
-    /// (`policy` names it): the diff against `baseline`, when there is one,
-    /// and the budgets. The same `Verdict` the diff API answers with.
+    /// (`policy_path` names it): the diff against `baseline`, when there is
+    /// one, and the budgets. The same `Verdict` the diff API answers with.
     /// Required: a body without a verdict must not read as "no regression".
     pub verdict: Verdict,
-    /// Which policy judged. Its `fallback` is set when the report carried a
-    /// document that does not parse as a policy and the built-in default
-    /// judged instead, so the verdict is not the one the repository asked
-    /// for. `None` only from a server that does not send it yet.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub policy: Option<AppliedPolicy>,
+    /// The path of the policy file the report was judged under, as
+    /// `ReportSummary::policy_path`: `None` when the report carried no
+    /// policy and the built-in default judged. Nothing else ever stands in:
+    /// an upload whose policy is not valid is refused with a 422
+    /// `PolicyRejected`. Defaulted so a server that does not send it yet
+    /// still parses.
+    #[serde(default)]
+    pub policy_path: Option<String>,
+    /// That file on GitHub, pinned to the measured commit, as
+    /// `ReportSummary::policy_url`. Set or `None` together with
+    /// `policy_path`; defaulted like it.
+    #[serde(default)]
+    pub policy_url: Option<String>,
     /// The dashboard's page for the report against its baseline
     /// (`.../benchmarks/{benchmark}/reports/{id}/diff`).
     pub dashboard_url: String,
@@ -332,7 +339,8 @@ pub struct PolicyProblem {
     pub message: String,
 }
 
-/// Body of `422` from `POST /api/v1/policy/validate` when the document is refused: an
+/// Body of `422` from `POST /api/v1/policy/validate`, and from an upload
+/// whose report carries such a policy, when the document is refused: an
 /// `ApiError` (`error`, `code` = `invalid_policy`) plus every problem found. A
 /// client that only knows `ApiError` still parses it (unknown fields are
 /// ignored); one that knows this type reads `problems`. The problems point
@@ -361,7 +369,8 @@ pub struct PolicyRejected {
 /// one head report against the baseline recorded for it at upload, judged
 /// under the policy the head report carried (the built-in default when it
 /// carried none), so the answer for a stored report never changes with a
-/// later edit of the policy file.
+/// later edit of the policy file. The policy is named by `head.policy_path`
+/// and `head.policy_url`; no other policy ever stands in for it.
 ///
 /// The head is picked like `reports/latest` / `reports/{id}` pick a report:
 /// `pr=N` or `commit=SHA` (newest match by upload, narrowed by `event=`), or
@@ -393,8 +402,6 @@ pub struct ReportDiff {
     /// The report compared against; `None` exactly when `result` is
     /// `NoBaseline`.
     pub base: Option<DiffBase>,
-    /// The policy that judged (for `Compared`) or would judge.
-    pub policy: AppliedPolicy,
     /// Which rows `DiffSection::rows` carries: the `rows=` the server
     /// applied, so a filtered body never reads as a complete one.
     pub rows: RowFilter,
@@ -460,26 +467,6 @@ pub struct DiffBase {
     pub branch_point: bool,
 }
 
-/// Which policy judged a report: in a `ReportDiff` and in `UploadCreated`.
-/// Exactly one document judges a report, the one it carried, and any key
-/// that document omits takes the built-in value; documents are never merged.
-/// Three cases, told apart by both fields together:
-///
-/// - `path` set, `fallback` unset: the policy the report carried judged.
-/// - `path` unset (`fallback` unset too): the report carried no policy and
-///   the built-in default judged.
-/// - `path` set, `fallback` set: the report carried a policy that does not
-///   parse and the built-in default judged instead.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AppliedPolicy {
-    /// The path of the policy the report carried, relative to the
-    /// repository root (`JsonPolicy::path`); `None` when it carried none.
-    pub path: Option<String>,
-    /// Set when the document the report carried does not parse as a policy
-    /// and the built-in default judged instead: the sentence saying so.
-    pub fallback: Option<String>,
-}
-
 /// The outcome of comparing head with its baseline, internally tagged:
 /// `{"status": "compared", ...}`. The answer for the report as a whole,
 /// budgets included, is `ReportDiff::verdict`.
@@ -491,7 +478,9 @@ pub enum DiffResult {
     /// had no report yet).
     NoBaseline,
     /// A side does not parse under the server's report schema: what the PR
-    /// comment says in that case, structured.
+    /// comment says in that case, structured. `side: head` also covers a head
+    /// report whose policy can no longer be read, and `error` then names the
+    /// policy file: the report is not judged under another policy instead.
     Unreadable {
         side: DiffSide,
         /// The side's `hotpath_version`, when it reported one.
@@ -953,13 +942,12 @@ mod tests {
     use std::collections::BTreeMap;
 
     use crate::json::cloud_api::{
-        normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AppliedPolicy,
-        AuthStatus, BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity,
-        BudgetFinding, ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffRow,
-        DiffSide, Direction, FamilyName, PolicyProblem, PolicyRejected, PolicyValidated,
-        PolicyValidation, Presence, RepoList, Report, ReportDiff, ReportSummary, Repository,
-        RowFilter, RowOutcome, SectionKind, TokenStatus, Unit, UploadCreated, Verdict,
-        DEFAULT_BASE_URL,
+        normalize_base_url, validate_benchmark_name, ApiError, ApiErrorCode, AuthStatus,
+        BenchmarkList, BenchmarkSummary, BoundKind, BudgetCheck, BudgetEntity, BudgetFinding,
+        ColumnRole, CommentOutcome, DiffCell, DiffResource, DiffResult, DiffRow, DiffSide,
+        Direction, FamilyName, PolicyProblem, PolicyRejected, PolicyValidated, PolicyValidation,
+        Presence, RepoList, Report, ReportDiff, ReportSummary, Repository, RowFilter, RowOutcome,
+        SectionKind, TokenStatus, Unit, UploadCreated, Verdict, DEFAULT_BASE_URL,
     };
     use crate::json::JsonLocation;
     use crate::output::ProfilingMode;
@@ -1235,22 +1223,31 @@ mod tests {
         .unwrap();
         assert_eq!(bare.baseline, None);
         assert_eq!(bare.comment, CommentOutcome::default());
-        assert_eq!(bare.policy, None);
-        assert_eq!(full.policy, None);
+        // A server that does not send the policy fields yet.
+        assert_eq!(bare.policy_path, None);
+        assert_eq!(bare.policy_url, None);
     }
 
     #[test]
-    fn upload_created_says_when_the_built_in_default_stood_in() {
+    fn upload_created_names_the_policy_that_judged() {
         let body = format!(
-            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy":{{"path":"hotpath/policy.toml","fallback":"hotpath/policy.toml does not parse as a policy; the built-in default judged."}},"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/a/b/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
         );
         let created: UploadCreated = serde_json::from_str(&body).unwrap();
-        let policy = created.policy.as_ref().expect("policy");
-        assert_eq!(policy.path.as_deref(), Some("hotpath/policy.toml"));
+        assert_eq!(created.policy_path.as_deref(), Some("hotpath/policy.toml"));
         assert_eq!(
-            policy.fallback.as_deref(),
-            Some("hotpath/policy.toml does not parse as a policy; the built-in default judged.")
+            created.policy_url.as_deref(),
+            Some("https://github.com/a/b/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml")
         );
+        assert_eq!(serde_json::to_string(&created).unwrap(), body);
+
+        // No policy carried, the built-in default judged: `null` on the wire.
+        let body = format!(
+            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy_path":null,"policy_url":null,"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+        );
+        let created: UploadCreated = serde_json::from_str(&body).unwrap();
+        assert_eq!(created.policy_path, None);
+        assert_eq!(created.policy_url, None);
         assert_eq!(serde_json::to_string(&created).unwrap(), body);
     }
 
@@ -1263,26 +1260,6 @@ mod tests {
         assert!(serde_json::from_str::<UploadCreated>(&no_verdict).is_err());
         let no_url = r#"{"id":"r1","repository":"a/b","benchmark":"meta","verdict":{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}}"#;
         assert!(serde_json::from_str::<UploadCreated>(no_url).is_err());
-    }
-
-    #[test]
-    fn applied_policy_tells_no_policy_from_a_broken_one() {
-        let built_in = r#"{"path":null,"fallback":null}"#;
-        let policy: AppliedPolicy = serde_json::from_str(built_in).unwrap();
-        assert_eq!(
-            policy,
-            AppliedPolicy {
-                path: None,
-                fallback: None,
-            }
-        );
-        assert_eq!(serde_json::to_string(&policy).unwrap(), built_in);
-
-        let broken = r#"{"path":"hotpath/policy.toml","fallback":"hotpath/policy.toml does not parse as a policy; the built-in default judged."}"#;
-        let policy: AppliedPolicy = serde_json::from_str(broken).unwrap();
-        assert_eq!(policy.path.as_deref(), Some("hotpath/policy.toml"));
-        assert!(policy.fallback.is_some());
-        assert_eq!(serde_json::to_string(&policy).unwrap(), broken);
     }
 
     #[test]
@@ -1581,7 +1558,7 @@ mod tests {
 
     fn report_diff(base: &str, verdict: &str, budgets: &str, result: &str) -> serde_json::Value {
         let body = format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"policy":{{"path":"hotpath/ci-policy.toml","fallback":null}},"rows":"all","verdict":{verdict},"budgets":{budgets},"result":{result},"dashboard_url":"{DIFF_URL}"}}"#
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{PR_SUMMARY},"base":{base},"rows":"all","verdict":{verdict},"budgets":{budgets},"result":{result},"dashboard_url":"{DIFF_URL}"}}"#
         );
         serde_json::from_str(&body).unwrap()
     }
@@ -1610,7 +1587,10 @@ mod tests {
         let base = diff.base.expect("compared has a base");
         assert!(base.branch_point);
         assert_eq!(diff.dashboard_url, DIFF_URL);
-        assert_eq!(diff.policy.path.as_deref(), Some("hotpath/ci-policy.toml"));
+        assert_eq!(
+            diff.head.policy_path.as_deref(),
+            Some("hotpath/ci-policy.toml")
+        );
         assert_eq!(diff.rows, RowFilter::All);
 
         assert_eq!(diff.budgets.expect("head parses").rules, 0);

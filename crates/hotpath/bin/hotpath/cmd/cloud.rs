@@ -117,8 +117,11 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 
 The baseline is the one the server recorded for the head at upload, the one the PR
 comment compared. The judging policy is the one the head report carried when it was
-uploaded, the built-in default when it carried none (`policy.path` is then null), so
-the answer for a stored report does not change with a later edit of the policy.
+uploaded, named by `head.policy_path` and `head.policy_url`, the built-in default
+when it carried none (both are then null), so the answer for a stored report does not
+change with a later edit of the policy. No other policy ever stands in: a head report
+whose policy can no longer be read is answered as `unreadable` naming `head`, with
+the policy file in `error`.
 Every value is a string formatted as the PR comment shows it (\"2.06 ms\", \"3.1 KB\",
 \"20\"), and its `unit` says how to read it. `change_percent` stays a number of
 percent and is the exact figure to reason about: rounding can make `base` and `head`
@@ -145,8 +148,7 @@ of their section says so. Inside a section, a key that is unset or an empty list
 left out: `mode`, `totals`, `columns`, `omitted_from_base`, `omitted_from_head`, a
 row's `location` and `unreadable`, a cell's `role` and `crossed`. A cell's `base`,
 `head` and `change_percent` are always there, null when a side is absent, and so is
-every key outside the sections (`base`, `budgets`, `policy.path`, `policy.fallback`,
-the run totals).
+every key outside the sections (`base`, `budgets`, the run totals).
 
 Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
 `[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without
@@ -209,6 +211,8 @@ structural and range problem of the file comes in one answer. The files are not 
 here, the server judges them. A file that is unreadable, not valid UTF-8, blank, larger
 than 65536 bytes or outside the repository is reported as a problem of that file
 without a request, and a run that finds such a file sends its report without a policy.
+An upload whose policy the server finds not valid is refused, so check the files
+before they reach the default branch.
 
 Exit codes:
   0  every file checked is valid
