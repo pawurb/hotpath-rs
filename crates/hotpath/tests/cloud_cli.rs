@@ -724,7 +724,7 @@ mod tests {
             let findings = match self {
                 BudgetsCase::Unread => return "null".to_string(),
                 BudgetsCase::Broken => {
-                    r#"{"resource":"functions","rule":0,"pattern":"app::run","message":"run must stay under 1 ms","entity":{"key":"app::run","name":"app::run","location":null},"check":{"on":"column","family":"timing","kind":"timing","column":"p95"},"bound":"max","unit":"duration","limit":1000000.0,"actual":1500000.0,"broken":true}"#
+                    r#"{"resource":"functions","rule":0,"pattern":"app::run","message":"run must stay under 1 ms","entity":{"key":"app::run","name":"app::run","location":null},"check":{"on":"column","family":"timing","kind":"timing","column":"p95"},"bound":"max","unit":"duration","limit":"1.00 ms","actual":"1.50 ms","broken":true}"#
                 }
                 BudgetsCase::NoRules | BudgetsCase::Hold => "",
             };
@@ -764,7 +764,7 @@ mod tests {
             ("unchanged", "", 0)
         };
         format!(
-            r#"{{"status":"compared","totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metrics":["p95"],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","presence":"both","outcome":"{outcome}","cells":[{{"column":"p95","unit":"duration","base":1000.0,"head":1500.0,"change_percent":50.0{crossed}}}]}}],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
+            r#"{{"status":"compared","totals":{{"elapsed":null,"allocated":null,"peak_rss":null}},"sections":[{{"resource":"functions","kind":"timing","mode":"timing","base_coverage":{{"included":1,"total":1}},"head_coverage":{{"included":1,"total":1}},"family":{{"name":"timing","judged":true,"min_percent_change":10.0,"metrics":["p95"],"counts":{{"ignored":0,"below_floor":0,"added":0,"removed":0,"too_few_calls":0,"regressions":{regressions},"improvements":0,"unchanged":{unchanged}}}}},"rows":[{{"key":"app::run","name":"app::run","presence":"both","outcome":"{outcome}","cells":[{{"column":"p95","unit":"duration","base":"1.00 µs","head":"1.50 µs","change_percent":50.0{crossed}}}]}}],"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=timing"}}],"skipped":[],"notes":[]}}"#,
             unchanged = 1 - regressions,
         )
     }
