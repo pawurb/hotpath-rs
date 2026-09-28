@@ -400,9 +400,18 @@ pub struct PolicyRejected {
 /// unknown value is `400 bad_request`. The body carries only the sections of
 /// the families the policy lists.
 ///
-/// Numbers stay numbers: no formatted strings anywhere, a value is a number
-/// in its cell's `unit` and a change is a number of percent. Formatting is
-/// the reader's job. Names deliberately differ from the server's analyzer
+/// Every value is a string, formatted by the server exactly as the PR comment
+/// and the comparison page show it (`"2.06 ms"`, `"3.1 KB"`, `"20"`): the
+/// body is read mostly by agents, and nothing downstream does arithmetic on
+/// a value. A count is a string too, so a reader never branches on the JSON
+/// type of a value, and an absent side is `null`, never an empty string or a
+/// stand-in zero. The `unit` next to a value says which parser reads the
+/// string back (see `Unit`). The judgement stays numeric: `change_percent`
+/// (rounded to two decimals) and `FamilyJudgement::min_percent_change` are
+/// numbers of percent, and `change_percent` is the exact figure to reason
+/// about. Display rounding can make `base` and `head` read the same while
+/// `change_percent` is not zero; the lossless values are in the report
+/// payload. Names deliberately differ from the server's analyzer
 /// types where those read badly on the wire (`Presence::Both` / `Added`,
 /// `Change`, `DiffCell`); the server maps its types into these in one place.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -607,10 +616,11 @@ pub struct BudgetFinding {
     pub bound: BoundKind,
     /// The unit of `limit` and `actual`.
     pub unit: Unit,
-    /// The bound, in `unit`.
-    pub limit: f64,
-    /// Head's value, in `unit`; 0 for a count when `entity` is `None`.
-    pub actual: f64,
+    /// The bound, formatted as `unit` says (see `ReportDiff`).
+    pub limit: String,
+    /// Head's value, formatted as `unit` says; `"0"` for a count when
+    /// `entity` is `None`.
+    pub actual: String,
     pub broken: bool,
 }
 
@@ -661,24 +671,25 @@ pub enum BoundKind {
     Unknown,
 }
 
-/// Run-level numbers of a `Comparison`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// Run-level values of a `Comparison`. The totals carry no `unit`: the field
+/// decides how its values are formatted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunTotals {
-    /// Wall time of the run, nanoseconds.
+    /// Wall time of the run, a duration (`"1.25 s"`).
     pub elapsed: Option<Change>,
-    /// Bytes allocated over the run (alloc-bytes mode only).
+    /// Memory allocated over the run (alloc-bytes mode only), a byte count
+    /// (`"3.1 KB"`).
     pub allocated: Option<Change>,
-    /// Peak RSS of the process, bytes.
+    /// Peak RSS of the process, a byte count.
     pub peak_rss: Option<Change>,
 }
 
-/// Both sides of one number and the relative change. Values are in the
-/// natural integer scale of their unit carried as `f64` (every real value is
-/// far below 2^53, so nothing is lost).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// Both sides of one value and the relative change. The sides are display
+/// strings (see `ReportDiff`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Change {
-    pub base: f64,
-    pub head: f64,
+    pub base: String,
+    pub head: String,
     /// `(head - base) / base * 100`; `0 -> x` is `100`, `0 -> 0` is `0`.
     pub change_percent: f64,
 }
@@ -778,22 +789,24 @@ pub struct DiffColumn {
     pub role: Option<ColumnRole>,
 }
 
-/// What a value in a column is. The unit is the value's scale on the wire.
+/// What a value in a column is: how its string is formatted (see
+/// `ReportDiff`) and which parser reads it back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Unit {
-    /// A plain count of calls.
+    /// A plain count of calls (`"20"`); `parse_count` reads it.
     Calls,
-    /// Nanoseconds.
+    /// A duration (`"2.06 ms"`); `parse_duration` reads it as nanoseconds.
     Duration,
+    /// A byte count (`"3.1 KB"`); `parse_bytes` reads it as bytes.
     Bytes,
-    /// Allocation count.
+    /// Allocation count (`"1500"`); `parse_count` reads it.
     Count,
-    /// Percent points (`12.34`), not basis points.
+    /// Percent points with one decimal (`"12.3%"`).
     Percent,
-    /// A ratio, as the report carries it.
+    /// A ratio with two decimals (`"0.25"`).
     Rate,
-    /// Bytes per second.
+    /// Bytes per second (`"30.3 KB/s"`). No parser reads it back.
     Throughput,
     /// A unit this client does not know.
     #[serde(other)]
@@ -944,10 +957,10 @@ pub struct DiffCell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<ColumnRole>,
     /// `None` for an `Added` row: the baseline has no such entity. Never a
-    /// stand-in zero.
-    pub base: Option<f64>,
+    /// stand-in zero or an empty string.
+    pub base: Option<String>,
     /// `None` for a `Removed` row.
-    pub head: Option<f64>,
+    pub head: Option<String>,
     /// `None` when a side is absent.
     pub change_percent: Option<f64>,
     /// Set on a cell of one of the family's metrics that crossed the family's
@@ -1349,16 +1362,16 @@ mod tests {
     const COMPARED_RESULT: &str = r#"{
         "status": "compared",
         "totals": {
-            "elapsed": {"base": 1200000000.0, "head": 1250000000.0, "change_percent": 4.1666},
+            "elapsed": {"base": "1.20 s", "head": "1.25 s", "change_percent": 4.17},
             "allocated": null,
-            "peak_rss": {"base": 0.0, "head": 4096.0, "change_percent": 100.0}
+            "peak_rss": {"base": "0 B", "head": "4.0 KB", "change_percent": 100.0}
         },
         "sections": [
             {
                 "resource": "functions",
                 "kind": "alloc",
                 "mode": "alloc-bytes",
-                "totals": [{"label": "elapsed", "unit": "duration", "value": {"base": 10.0, "head": 12.0, "change_percent": 20.0}}],
+                "totals": [{"label": "elapsed", "unit": "duration", "value": {"base": "10 ns", "head": "12 ns", "change_percent": 20.0}}],
                 "columns": [
                     {"key": "calls", "unit": "calls", "role": "volume"},
                     {"key": "total", "unit": "bytes", "worse": "up"},
@@ -1381,8 +1394,8 @@ mod tests {
                         "presence": "both",
                         "outcome": "regression",
                         "cells": [
-                            {"column": "calls", "unit": "calls", "role": "volume", "base": 100.0, "head": 100.0, "change_percent": 0.0},
-                            {"column": "total", "unit": "bytes", "base": 2048.0, "head": 3136.0, "change_percent": 53.125, "crossed": "up"}
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": "100", "head": "100", "change_percent": 0.0},
+                            {"column": "total", "unit": "bytes", "base": "2.0 KB", "head": "3.1 KB", "change_percent": 53.13, "crossed": "up"}
                         ],
                         "unreadable": ["percent_total"]
                     },
@@ -1392,9 +1405,9 @@ mod tests {
                         "presence": "added",
                         "outcome": "added",
                         "cells": [
-                            {"column": "calls", "unit": "calls", "role": "volume", "base": null, "head": 3.0, "change_percent": null},
-                            {"column": "total", "unit": "bytes", "base": null, "head": 512.0, "change_percent": null},
-                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": null, "head": 1.5, "change_percent": null}
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": null, "head": "3", "change_percent": null},
+                            {"column": "total", "unit": "bytes", "base": null, "head": "512 B", "change_percent": null},
+                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": null, "head": "1.5%", "change_percent": null}
                         ]
                     },
                     {
@@ -1404,9 +1417,9 @@ mod tests {
                         "presence": "removed",
                         "outcome": "removed",
                         "cells": [
-                            {"column": "calls", "unit": "calls", "role": "volume", "base": 7.0, "head": null, "change_percent": null},
-                            {"column": "total", "unit": "bytes", "base": 64.0, "head": null, "change_percent": null},
-                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": 0.25, "head": null, "change_percent": null}
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": "7", "head": null, "change_percent": null},
+                            {"column": "total", "unit": "bytes", "base": "64 B", "head": null, "change_percent": null},
+                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": "0.2%", "head": null, "change_percent": null}
                         ]
                     }
                 ],
@@ -1432,7 +1445,7 @@ mod tests {
                         "name": "SELECT 1",
                         "presence": "both",
                         "outcome": "regression",
-                        "cells": [{"column": "p95", "unit": "duration", "base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
+                        "cells": [{"column": "p95", "unit": "duration", "base": "1.00 µs", "head": "1.50 µs", "change_percent": 50.0, "crossed": "up"}]
                     }
                 ],
                 "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
@@ -1450,7 +1463,7 @@ mod tests {
     const FINDINGS_RESULT: &str = r#"{
         "status": "compared",
         "totals": {
-            "elapsed": {"base": 1200000000.0, "head": 1250000000.0, "change_percent": 4.1666},
+            "elapsed": {"base": "1.20 s", "head": "1.25 s", "change_percent": 4.17},
             "allocated": null,
             "peak_rss": null
         },
@@ -1459,7 +1472,7 @@ mod tests {
                 "resource": "functions",
                 "kind": "alloc",
                 "mode": "alloc-bytes",
-                "totals": [{"label": "elapsed", "unit": "duration", "value": {"base": 10.0, "head": 12.0, "change_percent": 20.0}}],
+                "totals": [{"label": "elapsed", "unit": "duration", "value": {"base": "10 ns", "head": "12 ns", "change_percent": 20.0}}],
                 "base_coverage": {"included": 3, "total": 3},
                 "head_coverage": {"included": 3, "total": 3},
                 "family": {
@@ -1477,8 +1490,8 @@ mod tests {
                         "presence": "both",
                         "outcome": "regression",
                         "cells": [
-                            {"column": "calls", "unit": "calls", "role": "volume", "base": 100.0, "head": 100.0, "change_percent": 0.0},
-                            {"column": "total", "unit": "bytes", "base": 2048.0, "head": 3136.0, "change_percent": 53.125, "crossed": "up"}
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": "100", "head": "100", "change_percent": 0.0},
+                            {"column": "total", "unit": "bytes", "base": "2.0 KB", "head": "3.1 KB", "change_percent": 53.13, "crossed": "up"}
                         ],
                         "unreadable": ["percent_total"]
                     },
@@ -1488,10 +1501,10 @@ mod tests {
                         "presence": "added",
                         "outcome": "added",
                         "cells": [
-                            {"column": "calls", "unit": "calls", "role": "volume", "base": null, "head": 3.0, "change_percent": null},
-                            {"column": "avg", "unit": "bytes", "base": null, "head": 170.0, "change_percent": null},
-                            {"column": "total", "unit": "bytes", "base": null, "head": 512.0, "change_percent": null},
-                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": null, "head": 1.5, "change_percent": null}
+                            {"column": "calls", "unit": "calls", "role": "volume", "base": null, "head": "3", "change_percent": null},
+                            {"column": "avg", "unit": "bytes", "base": null, "head": "170 B", "change_percent": null},
+                            {"column": "total", "unit": "bytes", "base": null, "head": "512 B", "change_percent": null},
+                            {"column": "percent_total", "unit": "percent", "role": "floor", "base": null, "head": "1.5%", "change_percent": null}
                         ]
                     }
                 ],
@@ -1541,8 +1554,8 @@ mod tests {
                 "check": {"on": "column", "family": "alloc", "kind": "alloc", "column": "avg"},
                 "bound": "max",
                 "unit": "bytes",
-                "limit": 1024.0,
-                "actual": 3136.0,
+                "limit": "1.0 KB",
+                "actual": "3.1 KB",
                 "broken": true
             },
             {
@@ -1554,8 +1567,8 @@ mod tests {
                 "check": {"on": "count", "name": "count", "implied": false},
                 "bound": "min",
                 "unit": "calls",
-                "limit": 10.0,
-                "actual": 12.0,
+                "limit": "10",
+                "actual": "12",
                 "broken": false
             }
         ],
@@ -1577,8 +1590,8 @@ mod tests {
                 "check": {"on": "count", "name": "calls", "implied": true},
                 "bound": "min",
                 "unit": "calls",
-                "limit": 1.0,
-                "actual": 0.0,
+                "limit": "1",
+                "actual": "0",
                 "broken": true
             }
         ],
@@ -1643,9 +1656,9 @@ mod tests {
                 column: "total".into(),
                 unit: Unit::Bytes,
                 role: None,
-                base: Some(2048.0),
-                head: Some(3136.0),
-                change_percent: Some(53.125),
+                base: Some("2.0 KB".into()),
+                head: Some("3.1 KB".into()),
+                change_percent: Some(53.13),
                 crossed: Some(Direction::Up),
             }
         );
@@ -1708,7 +1721,7 @@ mod tests {
             "name": "SELECT 1",
             "presence": "both",
             "outcome": "regression",
-            "cells": [{"column": "p95", "unit": "duration", "base": 1000.0, "head": 1500.0, "change_percent": 50.0, "crossed": "up"}]
+            "cells": [{"column": "p95", "unit": "duration", "base": "1.00 µs", "head": "1.50 µs", "change_percent": 50.0, "crossed": "up"}]
         }]);
         let diff = round_trip(&value);
         assert_eq!(diff.rows, RowFilter::Advisory);
@@ -1782,8 +1795,8 @@ mod tests {
                 },
                 bound: BoundKind::Max,
                 unit: Unit::Bytes,
-                limit: 1024.0,
-                actual: 3136.0,
+                limit: "1.0 KB".into(),
+                actual: "3.1 KB".into(),
                 broken: true,
             }
         );
@@ -1819,7 +1832,7 @@ mod tests {
                 implied: true,
             }
         );
-        assert_eq!(finding.actual, 0.0);
+        assert_eq!(finding.actual, "0");
         assert!(finding.broken);
     }
 
@@ -1845,6 +1858,27 @@ mod tests {
         );
         value["budgets"]["findings"][0]["check"]["on"] = "ratio".into();
         assert!(serde_json::from_value::<ReportDiff>(value).is_err());
+    }
+
+    #[test]
+    fn report_diff_rejects_a_numeric_value() {
+        // The shape before display values: a server still sending numbers is
+        // a parse error, not a body passed through.
+        for (path, number) in [
+            ("/result/sections/0/rows/0/cells/1/base", 2048.0),
+            ("/result/sections/0/totals/0/value/head", 12.0),
+            ("/result/totals/elapsed/base", 1200000000.0),
+            ("/budgets/findings/0/limit", 1024.0),
+            ("/budgets/findings/0/actual", 3136.0),
+        ] {
+            let mut value =
+                report_diff(&recorded_base(), COMPARED_VERDICT, BUDGETS, COMPARED_RESULT);
+            *value.pointer_mut(path).unwrap() = number.into();
+            let error = serde_json::from_value::<ReportDiff>(value)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("expected a string"), "{path}: {error}");
+        }
     }
 
     #[test]
