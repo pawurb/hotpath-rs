@@ -12,6 +12,7 @@ use crate::json::{
     ThreadMetrics,
 };
 
+use crate::json::cloud_api::PolicyLevel;
 use crate::output::{format_bytes, format_duration, FunctionLog, FunctionLogsList, ProfilingMode};
 
 pub(crate) fn format_time_ago(nanos_ago: u64) -> String {
@@ -1143,6 +1144,27 @@ pub struct JsonMeta {
     /// upload URL. Same validation as `HOTPATH_META_BENCHMARK`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub benchmark: Option<String>,
+    /// The policy file of the checkout the report was measured on, which the
+    /// server judges this report under. Only present with the
+    /// `hotpath-cloud-meta` feature; omitted when the repository has no
+    /// policy file, and the built-in default judges then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<JsonPolicy>,
+}
+
+/// A policy document as a report carries it. The client reads the file and
+/// never parses it: the server's parser is the only judge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JsonPolicy {
+    /// The TOML document as written, comments included. Not blank, at most
+    /// `cloud_api::POLICY_MAX_BYTES`.
+    pub source: String,
+    /// The file's path relative to the repository root, with forward
+    /// slashes (`hotpath/policy.toml`). Never absolute, never with a `..`
+    /// segment.
+    pub path: String,
+    /// `Repo` or `Benchmark`, never `Default`.
+    pub level: PolicyLevel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

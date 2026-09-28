@@ -46,6 +46,8 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
         git,
         ci,
         benchmark,
+        // Filled from the checkout's policy file once the lookup lands.
+        policy: None,
     }
 }
 
@@ -182,7 +184,8 @@ mod tests {
 
     #[cfg(feature = "hotpath-cloud-meta")]
     mod cloud {
-        use crate::json::{JsonCiInfo, JsonGitInfo, JsonMeta, JsonPullRequest};
+        use crate::json::cloud_api::PolicyLevel;
+        use crate::json::{JsonCiInfo, JsonGitInfo, JsonMeta, JsonPolicy, JsonPullRequest};
         use crate::lib_on::ci_info::CiContext;
         use crate::lib_on::report_meta::merge_git_info;
         use time::macros::datetime;
@@ -310,6 +313,7 @@ mod tests {
                 git: Some(detached_local(LOCAL_SHA)),
                 ci: None,
                 benchmark: None,
+                policy: None,
             };
             let value: serde_json::Value = serde_json::to_value(&meta).unwrap();
             let keys = |value: &serde_json::Value| -> Vec<String> {
@@ -335,7 +339,13 @@ mod tests {
                 ),
                 ci: Some(pull_request_ci(LOCAL_SHA).ci),
                 benchmark: Some("ci".to_string()),
+                policy: Some(JsonPolicy {
+                    source: "# ours\n[functions.timing]\n".to_string(),
+                    path: "hotpath/ci-policy.toml".to_string(),
+                    level: PolicyLevel::Benchmark,
+                }),
             };
+            let sent = meta.policy.clone();
             let json = serde_json::to_string(&meta).unwrap();
             let back: JsonMeta = serde_json::from_str(&json).unwrap();
 
@@ -352,6 +362,7 @@ mod tests {
             assert_eq!(pr.head_ref, "feature-x");
             assert_eq!(pr.head_sha.as_deref(), Some(HEAD_SHA));
             assert_eq!(back.benchmark.as_deref(), Some("ci"));
+            assert_eq!(back.policy, sent);
         }
 
         #[test]
@@ -369,6 +380,7 @@ mod tests {
             assert_eq!(git.repository, None);
             assert!(meta.ci.is_none());
             assert!(meta.benchmark.is_none());
+            assert!(meta.policy.is_none());
         }
     }
 }

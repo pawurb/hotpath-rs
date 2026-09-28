@@ -773,6 +773,7 @@ mod test {
                 git: None,
                 ci: None,
                 benchmark: None,
+                policy: None,
             })
         }
     }

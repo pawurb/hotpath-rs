@@ -21,7 +21,7 @@
 //! never fail, even in strict mode.
 //!
 //! The response carries the server's verdict on the report, judged under the
-//! policy in force at upload. `HOTPATH_UPLOAD_FAIL_ON_REGRESSION=1` turns a
+//! policy the report carried. `HOTPATH_UPLOAD_FAIL_ON_REGRESSION=1` turns a
 //! regressed verdict into an error through the same exit path, and
 //! `HOTPATH_UPLOAD_RESPONSE_PATH` writes the response body to a file for
 //! custom rules. A failed or skipped upload has no verdict: it never fails
@@ -106,7 +106,7 @@ pub(crate) enum Outcome {
     /// even in strict mode.
     Skipped(String),
     Uploaded {
-        created: UploadCreated,
+        created: Box<UploadCreated>,
         /// From the `x-request-id` response header.
         request_id: Option<String>,
     },
@@ -297,7 +297,7 @@ pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -
     if matches!(status, 200 | 201) {
         return match serde_json::from_str::<UploadCreated>(&body) {
             Ok(created) => Outcome::Uploaded {
-                created,
+                created: Box::new(created),
                 request_id,
             },
             Err(_) => Outcome::Failed {
@@ -556,10 +556,10 @@ mod tests {
 
     fn uploaded(verdict: Verdict) -> Outcome {
         Outcome::Uploaded {
-            created: UploadCreated {
+            created: Box::new(UploadCreated {
                 verdict,
                 ..created()
-            },
+            }),
             request_id: None,
         }
     }
@@ -579,6 +579,7 @@ mod tests {
             baseline: Some("r0".into()),
             comment: CommentOutcome::default(),
             verdict: verdict(0, 0),
+            policy: None,
             dashboard_url: DASHBOARD_URL.into(),
         }
     }
@@ -747,7 +748,7 @@ mod tests {
     #[test]
     fn render_uploaded() {
         let outcome = Outcome::Uploaded {
-            created: created(),
+            created: Box::new(created()),
             request_id: Some("abc".into()),
         };
         let r = render(&outcome, &env(true, false), Some("meta"));
@@ -774,10 +775,10 @@ mod tests {
         );
 
         let no_baseline = Outcome::Uploaded {
-            created: UploadCreated {
+            created: Box::new(UploadCreated {
                 baseline: None,
                 ..created()
-            },
+            }),
             request_id: None,
         };
         assert_eq!(
@@ -831,14 +832,14 @@ mod tests {
     #[test]
     fn render_regressed_with_comment_error_carries_both() {
         let outcome = Outcome::Uploaded {
-            created: UploadCreated {
+            created: Box::new(UploadCreated {
                 comment: CommentOutcome {
                     url: None,
                     error: Some("the installation is suspended".into()),
                 },
                 verdict: verdict(1, 0),
                 ..created()
-            },
+            }),
             request_id: None,
         };
         let prefix =
@@ -902,13 +903,13 @@ mod tests {
     #[test]
     fn render_uploaded_with_comment_error_is_one_warning() {
         let outcome = Outcome::Uploaded {
-            created: UploadCreated {
+            created: Box::new(UploadCreated {
                 comment: CommentOutcome {
                     url: None,
                     error: Some("approve \"Pull requests: write\" for the installation".into()),
                 },
                 ..created()
-            },
+            }),
             request_id: None,
         };
         let r = render(&outcome, &env(true, false), Some("meta"));
@@ -927,10 +928,10 @@ mod tests {
             CommentOutcome::default(),
         ] {
             let outcome = Outcome::Uploaded {
-                created: UploadCreated {
+                created: Box::new(UploadCreated {
                     comment,
                     ..created()
-                },
+                }),
                 request_id: None,
             };
             let r = render(&outcome, &env(true, false), Some("meta"));

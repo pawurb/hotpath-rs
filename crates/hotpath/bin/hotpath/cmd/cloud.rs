@@ -22,7 +22,7 @@ use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
 use crate::cmd::cloud::diff::DiffArgs;
-use crate::cmd::cloud::policy::{PolicyScope, SetPolicyArgs};
+use crate::cmd::cloud::policy::PolicyScope;
 use crate::cmd::cloud::report::ReportArgs;
 
 #[derive(Parser, Debug)]
@@ -99,8 +99,8 @@ exits 0 to wait for CI's upload. Same token and base URL environment as `auth`."
     Report(ReportArgs),
 
     #[command(
-        about = "Compare a stored report with its baseline under the current policy",
-        long_about = "Compare a stored report with its baseline under the current policy
+        about = "Compare a stored report with its baseline under the policy it carried",
+        long_about = "Compare a stored report with its baseline under the policy it carried
 (GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/diff?pr=N|commit=SHA|head=ID).
 
 The head report is selected exactly as `report` selects one: --pr and --commit
@@ -110,8 +110,9 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 --id names a report; --event push|pull_request narrows --pr / --commit.
 
 The baseline is the one the server recorded for the head at upload, the one the PR
-comment compared. The judging policy is the benchmark's policy in force now, not the one at upload time,
-so a `set-policy` followed by `diff` shows the new judgement without a re-run.
+comment compared. The judging policy is the one the head report carried when it was
+uploaded, the built-in default when it carried none (`policy.level` says which), so
+the answer for a stored report does not change with a later edit of the policy.
 Every value is a string formatted as the PR comment shows it (\"2.06 ms\", \"3.1 KB\",
 \"20\"), and its `unit` says how to read it. `change_percent` stays a number of
 percent and is the exact figure to reason about: rounding can make `base` and `head`
@@ -174,39 +175,20 @@ Poll with `report` to wait for CI's upload. Same token and base URL environment 
     Diff(DiffArgs),
 
     #[command(
-        about = "Show the PR comment policy in force for a repository or one benchmark",
-        long_about = "Show the PR comment policy in force for a repository or one benchmark
+        about = "Show the policy the newest report of a repository or one benchmark carried",
+        long_about = "Show the policy the newest report of a repository or one benchmark carried
 (GET /api/v1/repos/{owner}/{name}/policy, or .../benchmarks/{benchmark}/policy).
 
-A repo policy applies to every benchmark of the repository; a benchmark policy
-overrides it for one benchmark. Levels do not inherit from each other: the one that
-applies is the benchmark's if stored, else the repo's if stored, else the built-in
-default, and any key a stored document omits takes the built-in value. `level` says
-which document `source` is, `stored` whether the scope asked about has its own (when
-false, `source` is what it inherits: a starting point for an edit), and `fallback` is
-set when the stored document no longer parses and the built-in default judges
-instead. Same token and base URL environment as `auth`."
+A policy belongs to a report: each report carries the policy it is judged under, so
+this is what the scope was last judged under, not a setting of its own. Levels do not
+inherit from each other: exactly one document judges a report, and any key it omits
+takes the built-in value. `level` says which document `source` is (`default` when no
+report of the scope carried one, and `source` is then the built-in default),
+`report_id` the report it was read from, `path` the document's path in the
+repository, and `fallback` is set when the document does not parse as a policy and
+the built-in default judges instead. Same token and base URL environment as `auth`."
     )]
     GetPolicy(PolicyScope),
-
-    #[command(
-        about = "Replace the PR comment policy of a repository or one benchmark",
-        long_about = "Replace the PR comment policy of a repository or one benchmark
-(PUT /api/v1/repos/{owner}/{name}/policy, or .../benchmarks/{benchmark}/policy).
-
---file is the whole TOML document (`-` reads stdin), stored as written: it replaces
-what the scope has, nothing is merged. The document is not parsed here; the server
-judges it. At most 65536 bytes, not blank. --dry-run validates without storing.
-
-Writing needs push permission on the repository (403 `forbidden` otherwise), and a
-benchmark must exist, created by its first upload, to hold a policy (404
-`not_found`). A refused document exits 1 with the server's 422 body on stderr:
-`code` is `invalid_policy` and `problems` lists every problem found, each with its
-`line` when the server can name one. A TOML syntax error stops parsing, so it is
-reported alone; otherwise every structural and range problem comes in one answer.
-Same token and base URL environment as `auth`."
-    )]
-    SetPolicy(SetPolicyArgs),
 }
 
 impl CloudArgs {
@@ -240,7 +222,6 @@ impl CloudArgs {
             CloudCommand::Report(args) => report::run(output, args),
             CloudCommand::Diff(args) => diff::run(output, args),
             CloudCommand::GetPolicy(scope) => policy::get(output, scope),
-            CloudCommand::SetPolicy(args) => policy::set(output, args),
         }
     }
 }
