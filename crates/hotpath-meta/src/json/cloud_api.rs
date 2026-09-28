@@ -800,7 +800,8 @@ pub enum Unit {
     Percent,
     /// A ratio with two decimals (`"0.25"`).
     Rate,
-    /// Bytes per second (`"30.3 KB/s"`). No parser reads it back.
+    /// Bytes per second (`"30.3 KB"`), without a `/s` suffix, as the report's
+    /// `bytes_per_sec` carries it; `parse_bytes` reads it.
     Throughput,
     /// A unit this client does not know.
     #[serde(other)]
