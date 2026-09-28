@@ -943,8 +943,7 @@ mod tests {
             assert!(!r.message.contains("policy"), "{}", r.message);
         }
 
-        // A server that does not send the field yet: `created()` has none.
-        assert_eq!(created().policy, None);
+        // A server that does not send the field yet.
         let r = render(&uploaded(verdict(0, 0)), &env(true, false), Some("meta"));
         assert_eq!(r.level, Level::Notice);
         assert_eq!(r.message, format!("{prefix}; verdict: no regressions"));

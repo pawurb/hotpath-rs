@@ -11,7 +11,7 @@
 //! Every argument is validated and every file read before the client is
 //! built.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Args;
@@ -45,7 +45,6 @@ pub(crate) struct ValidatePolicyArgs {
     file: Option<PathBuf>,
 }
 
-/// One file of the answer.
 #[derive(Debug, Serialize)]
 struct CheckedFile {
     /// Relative to the repository root for a file of the repository, as
@@ -172,7 +171,7 @@ fn candidates(args: &ValidatePolicyArgs) -> Result<Vec<Candidate>, CliError> {
         .collect())
 }
 
-fn not_a_repository(cwd: &std::path::Path) -> String {
+fn not_a_repository(cwd: &Path) -> String {
     format!(
         "`{}` is not inside a git repository, so it has no policy files. Use --file to check one file.",
         cwd.display()

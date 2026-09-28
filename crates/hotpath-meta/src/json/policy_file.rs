@@ -23,12 +23,10 @@ use crate::json::JsonPolicy;
 
 /// Directory of the policy files, relative to the repository root.
 pub const POLICY_DIR: &str = "hotpath";
-/// The shared policy file inside `POLICY_DIR`.
-pub const SHARED_POLICY_FILE: &str = "policy.toml";
-/// What follows the benchmark name in a benchmark's policy file name.
-pub const BENCHMARK_POLICY_SUFFIX: &str = "-policy.toml";
+const SHARED_POLICY_FILE: &str = "policy.toml";
+const BENCHMARK_POLICY_SUFFIX: &str = "-policy.toml";
 /// Most policy files `list` reads from one `POLICY_DIR`.
-pub const MAX_POLICY_FILES: usize = 64;
+const MAX_POLICY_FILES: usize = 64;
 
 /// `HOTPATH_META_POLICY_PATH`: the policy file for this run, instead of the ones
 /// in `hotpath/`. Relative to the working directory, or absolute; either way
@@ -39,7 +37,6 @@ pub static POLICY_PATH: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
         .map(PathBuf::from)
 });
 
-/// What a lookup found.
 #[derive(Debug)]
 pub enum PolicyLookup {
     /// The repository has no policy file for the run: the built-in default
@@ -50,7 +47,6 @@ pub enum PolicyLookup {
     Unusable(UnusablePolicy),
 }
 
-/// A policy file that cannot be sent, and why.
 #[derive(Debug)]
 pub struct UnusablePolicy {
     /// The file as a message names it.
@@ -63,7 +59,6 @@ pub enum UnusableReason {
     Unreadable(std::io::Error),
     NotUtf8(std::string::FromUtf8Error),
     Blank,
-    /// Over `POLICY_MAX_BYTES`.
     TooLarge,
     /// The file resolves, symlinks followed, to a place outside the
     /// repository, so it has no path a report could name.
@@ -103,8 +98,6 @@ impl fmt::Display for UnusablePolicy {
     }
 }
 
-impl std::error::Error for UnusablePolicy {}
-
 /// `list` found more than `MAX_POLICY_FILES` policy files.
 #[derive(Debug)]
 pub struct TooManyPolicyFiles;
@@ -118,8 +111,6 @@ impl fmt::Display for TooManyPolicyFiles {
     }
 }
 
-impl std::error::Error for TooManyPolicyFiles {}
-
 /// Nearest ancestor containing `.git` - a directory for regular checkouts, a
 /// `gitdir:` file for worktrees and submodules; `exists()` covers both.
 pub fn find_git_root(start: &Path) -> Option<PathBuf> {
@@ -132,16 +123,7 @@ pub fn find_git_root(start: &Path) -> Option<PathBuf> {
 /// The policy a run of `benchmark` in the checkout at `git_root` is judged
 /// under.
 pub fn lookup(git_root: Option<&Path>, benchmark: Option<&str>) -> PolicyLookup {
-    lookup_with(git_root, benchmark, POLICY_PATH.as_deref())
-}
-
-/// `lookup` with the value of `HOTPATH_META_POLICY_PATH` passed in.
-pub fn lookup_with(
-    git_root: Option<&Path>,
-    benchmark: Option<&str>,
-    override_path: Option<&Path>,
-) -> PolicyLookup {
-    if let Some(path) = override_path {
+    if let Some(path) = POLICY_PATH.as_deref() {
         return match read_override(git_root, path) {
             Ok(policy) => PolicyLookup::Found(policy),
             Err(unusable) => PolicyLookup::Unusable(unusable),
