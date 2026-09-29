@@ -1461,7 +1461,7 @@ mod tests {
     #[test]
     fn init_writes_the_default_policy_and_never_replaces_it_unasked() {
         let mut server = Server::new();
-        let mock = mock_default_policy(&mut server, 3);
+        let mock = mock_default_policy(&mut server, 4);
         let checkout = Checkout::new("init");
 
         let output = checkout.init(&server, Some(TOKEN), &[]);
@@ -1514,6 +1514,24 @@ mod tests {
             checkout.read("hotpath/nightly-policy.toml").as_deref(),
             Some(DEFAULT_SOURCE)
         );
+        // --output elsewhere takes the JSON result; the policy is still written.
+        let output = checkout.init(
+            &server,
+            Some(TOKEN),
+            &["--benchmark", "ci", "--output", "../result.json"],
+        );
+        assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+        assert_eq!(stdout(&output), "");
+        assert_eq!(
+            json(&checkout.read("result.json").unwrap()),
+            json(r#"{"path":"hotpath/ci-policy.toml","replaced":false}"#)
+        );
+        assert_eq!(
+            checkout.read("hotpath/ci-policy.toml").as_deref(),
+            Some(DEFAULT_SOURCE)
+        );
+        std::fs::remove_file(checkout.root.join("hotpath/ci-policy.toml")).unwrap();
+
         // No temporary file is left next to them.
         let mut files: Vec<String> = std::fs::read_dir(checkout.root.join("hotpath"))
             .unwrap()
@@ -1544,6 +1562,22 @@ mod tests {
 
         let mut cases: Vec<(&Checkout, &[&str], &str)> = vec![
             (&outside, &[], "is not inside a git repository"),
+            // `init` runs from `src/`: two spellings of the file it writes.
+            (
+                &empty,
+                &["--output", "../hotpath/policy.toml"],
+                "--output names `hotpath/policy.toml`",
+            ),
+            (
+                &empty,
+                &[
+                    "--benchmark",
+                    "ci",
+                    "--output",
+                    "./../hotpath/../hotpath/ci-policy.toml",
+                ],
+                "--output names `hotpath/ci-policy.toml`",
+            ),
             (&directory, &["--force"], "exists and is not a file"),
             (&empty, &["--benchmark", "a/b"], "invalid --benchmark `a/b`"),
         ];

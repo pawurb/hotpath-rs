@@ -12,7 +12,7 @@
 
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Args;
@@ -63,6 +63,13 @@ pub(crate) fn run(output: &Output, args: InitArgs) -> Result<ExitCode, CliError>
     let relative = policy_file_path(benchmark);
     let target = root.join(&relative);
     let replaced = existing(&target, &relative, args.force)?;
+    if let Some(file) = &output.file {
+        if resolve(&cwd.join(file)) == resolve(&target) {
+            return Err(CliError::client(format!(
+                "--output names `{relative}`, the policy file this command writes; the JSON result would replace it. Drop --output or name another file."
+            )));
+        }
+    }
 
     let policy: DefaultPolicy = Client::from_env()?.get(DEFAULT_POLICY_PATH)?;
     write(&target, &relative, &policy.source, args.force)?;
@@ -72,6 +79,39 @@ pub(crate) fn run(output: &Output, args: InitArgs) -> Result<ExitCode, CliError>
         replaced,
     })?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// `path` with `.` and `..` resolved and its deepest existing ancestor
+/// canonicalized (symlinks followed), so two spellings of one file compare
+/// equal even when the file and its directory do not exist yet.
+fn resolve(path: &Path) -> PathBuf {
+    let mut lexical = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                lexical.pop();
+            }
+            other => lexical.push(other),
+        }
+    }
+    let mut missing = Vec::new();
+    let mut existing = lexical.as_path();
+    loop {
+        if let Ok(canonical) = existing.canonicalize() {
+            return missing
+                .iter()
+                .rev()
+                .fold(canonical, |path, name| path.join(name));
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                missing.push(name.to_os_string());
+                existing = parent;
+            }
+            _ => return lexical,
+        }
+    }
 }
 
 /// Whether `target` is there to be replaced. Anything already at the path is
