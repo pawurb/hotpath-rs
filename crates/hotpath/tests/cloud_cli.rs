@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
-    //! `hotpath cloud auth|repos|benchmarks|report|diff`
+    //! `hotpath cloud auth|repos|benchmarks|report|diff|validate-policy`
     //! against a mock hotpath.rs: the bearer request each sends, the JSON it
     //! re-emits, the error JSON on stderr (server bodies verbatim, client
     //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 0 or 1 read
@@ -11,10 +11,12 @@ mod tests {
     //! cargo test -p hotpath --features cloud --test cloud_cli
 
     use std::io::Write;
+    use std::path::{Path, PathBuf};
     use std::process::{Command, Output, Stdio};
 
     use hotpath::json::cloud_api::{
         ApiError, ApiErrorCode, AuthStatus, RepoList, Report, ReportSummary, TokenStatus,
+        POLICY_MAX_BYTES,
     };
     use mockito::{Matcher, Server, ServerGuard};
     use time::macros::datetime;
@@ -71,16 +73,36 @@ mod tests {
         args: &[&str],
         stdin: &[u8],
     ) -> Output {
+        hotpath_in(server, token, args, stdin, None, None)
+    }
+
+    /// `hotpath cloud <args>` run from `cwd`, with `HOTPATH_POLICY_PATH` set
+    /// to `policy_path`.
+    fn hotpath_in(
+        server: &ServerGuard,
+        token: Option<&str>,
+        args: &[&str],
+        stdin: &[u8],
+        cwd: Option<&Path>,
+        policy_path: Option<&str>,
+    ) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_hotpath"));
         cmd.arg("cloud")
             .args(args)
             .env("HOTPATH_API_URL", format!("{}/", server.url()))
             .env_remove("HOTPATH_API_TOKEN")
+            .env_remove("HOTPATH_POLICY_PATH")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if let Some(token) = token {
             cmd.env("HOTPATH_API_TOKEN", token);
+        }
+        if let Some(cwd) = cwd {
+            cmd.current_dir(cwd);
+        }
+        if let Some(policy_path) = policy_path {
+            cmd.env("HOTPATH_POLICY_PATH", policy_path);
         }
         let mut child = cmd.spawn().expect("failed to run the hotpath binary");
         // The binary may exit without reading stdin, so a broken pipe is fine.
@@ -759,7 +781,7 @@ mod tests {
         let judged = was_compared || budgets.has_rules();
         let regressed = regressions > 0 || budgets_broken > 0;
         format!(
-            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"policy":{{"path":null,"fallback":null}},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
+            r#"{{"repository":"pawurb/hotpath-rs","benchmark":"ci","head":{SUMMARY_BODY},"base":{base},"rows":"findings","verdict":{{"judged":{judged},"regressed":{regressed},"regressions":{regressions},"improvements":0,"budgets_broken":{budgets_broken}}},"budgets":{budgets},"result":{result},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff"}}"#,
             budgets = budgets.body(),
         )
     }
@@ -995,6 +1017,389 @@ mod tests {
             ],
         ] {
             let output = hotpath(&server, Some(TOKEN), &args);
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "{args:?}: {}",
+                stderr(&output)
+            );
+            assert_eq!(stdout(&output), "", "{args:?}");
+        }
+        mock.assert();
+    }
+
+    const VALIDATE_PATH: &str = "/api/v1/policy/validate";
+    const GOOD_POLICY: &str = "[functions.timing]\nmin_percent_change = 5\n";
+    const BAD_POLICY: &str = "[functions.timing]\nmin_percent = 5\n";
+    const REJECTED_BODY: &str = r#"{"error":"The policy has 1 problem.","code":"invalid_policy","problems":[{"line":2,"message":"unknown key `functions.timing.min_percent`"}]}"#;
+    const REJECTED_PROBLEMS: &str =
+        r#"[{"line":2,"message":"unknown key `functions.timing.min_percent`"}]"#;
+
+    /// A directory that stands for a checkout: it has a `.git` and whatever
+    /// files a test writes. Removed on drop, so a failed test leaves nothing.
+    struct Checkout {
+        root: PathBuf,
+    }
+
+    impl Checkout {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir()
+                .join(format!("hotpath_cloud_cli_{}_{name}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join(".git")).unwrap();
+            Self { root }
+        }
+
+        /// A directory without a `.git` anywhere above what the test made.
+        fn without_git(name: &str) -> Self {
+            let checkout = Self::new(name);
+            std::fs::remove_dir(checkout.root.join(".git")).unwrap();
+            checkout
+        }
+
+        fn write(&self, path: &str, contents: &[u8]) -> &Self {
+            let path = self.root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, contents).unwrap();
+            self
+        }
+
+        fn validate(&self, server: &ServerGuard, token: Option<&str>, args: &[&str]) -> Output {
+            let mut all = vec!["validate-policy"];
+            all.extend_from_slice(args);
+            hotpath_in(server, token, &all, b"", Some(&self.root), None)
+        }
+    }
+
+    impl Drop for Checkout {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    /// A mock of the validation route for exactly this document.
+    fn mock_validate(
+        server: &mut ServerGuard,
+        source: &str,
+        status: usize,
+        body: &str,
+    ) -> mockito::Mock {
+        server
+            .mock("POST", VALIDATE_PATH)
+            .match_header("authorization", format!("Bearer {TOKEN}").as_str())
+            .match_header("content-type", "application/json")
+            .match_header("user-agent", Matcher::Regex("^hotpath-cli/[0-9]".into()))
+            .match_body(Matcher::Json(serde_json::json!({ "source": source })))
+            .with_status(status)
+            .with_header("content-type", "application/json; charset=utf-8")
+            .with_body(body)
+            .create()
+    }
+
+    fn mock_no_validation(server: &mut ServerGuard) -> mockito::Mock {
+        server
+            .mock("POST", Matcher::Regex("^/api/v1/".into()))
+            .expect(0)
+            .create()
+    }
+
+    #[test]
+    fn validate_policy_checks_every_policy_file_of_the_checkout() {
+        let mut server = Server::new();
+        let good = mock_validate(&mut server, GOOD_POLICY, 200, r#"{"valid":true}"#);
+        let bad = mock_validate(&mut server, BAD_POLICY, 422, REJECTED_BODY);
+        let checkout = Checkout::new("every_file");
+        checkout
+            .write("hotpath/policy.toml", GOOD_POLICY.as_bytes())
+            .write("hotpath/ci-policy.toml", BAD_POLICY.as_bytes())
+            .write("hotpath/blank-policy.toml", b" \n\t\n")
+            // Not policy files.
+            .write("hotpath/notes.toml", b"x")
+            .write("policy.toml", b"x");
+
+        let output = checkout.validate(&server, Some(TOKEN), &[]);
+        assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
+        assert_eq!(stderr(&output), "");
+        // In name order; a refused file does not stop the ones after it.
+        assert_eq!(
+            json(&stdout(&output)),
+            json(&format!(
+                r#"[{{"path":"hotpath/blank-policy.toml","valid":false,"problems":[{{"line":null,"message":"the policy file `hotpath/blank-policy.toml` is blank."}}]}},{{"path":"hotpath/ci-policy.toml","valid":false,"problems":{REJECTED_PROBLEMS}}},{{"path":"hotpath/policy.toml","valid":true,"problems":[]}}]"#
+            ))
+        );
+        good.assert();
+        bad.assert();
+    }
+
+    #[test]
+    fn validate_policy_exits_0_when_every_file_is_valid() {
+        let mut server = Server::new();
+        let mock = mock_validate(&mut server, GOOD_POLICY, 200, r#"{"valid":true}"#).expect(2);
+        let checkout = Checkout::new("all_valid");
+        checkout
+            .write("hotpath/policy.toml", GOOD_POLICY.as_bytes())
+            .write("hotpath/ci-policy.toml", GOOD_POLICY.as_bytes());
+
+        let output = checkout.validate(&server, Some(TOKEN), &[]);
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(
+            stdout(&output),
+            "[{\"path\":\"hotpath/ci-policy.toml\",\"valid\":true,\"problems\":[]},{\"path\":\"hotpath/policy.toml\",\"valid\":true,\"problems\":[]}]\n"
+        );
+        assert_eq!(stderr(&output), "");
+        mock.assert();
+    }
+
+    #[test]
+    fn validate_policy_benchmark_checks_the_file_a_run_would_pick() {
+        let mut server = Server::new();
+        let good = mock_validate(&mut server, GOOD_POLICY, 200, r#"{"valid":true}"#).expect(2);
+        let bad = mock_validate(&mut server, BAD_POLICY, 422, REJECTED_BODY);
+        let checkout = Checkout::new("benchmark");
+        checkout
+            .write("hotpath/policy.toml", GOOD_POLICY.as_bytes())
+            .write("hotpath/ci-policy.toml", BAD_POLICY.as_bytes())
+            .write("config/special.toml", GOOD_POLICY.as_bytes());
+
+        // Its own file wins over the shared one.
+        let output = checkout.validate(&server, Some(TOKEN), &["--benchmark", "ci"]);
+        assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
+        assert_eq!(
+            json(&stdout(&output)),
+            json(&format!(
+                r#"[{{"path":"hotpath/ci-policy.toml","valid":false,"problems":{REJECTED_PROBLEMS}}}]"#
+            ))
+        );
+
+        // A benchmark without its own file uses the shared one.
+        let output = checkout.validate(&server, Some(TOKEN), &["--benchmark", "nightly"]);
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(
+            json(&stdout(&output)),
+            json(r#"[{"path":"hotpath/policy.toml","valid":true,"problems":[]}]"#)
+        );
+
+        // `HOTPATH_POLICY_PATH` wins over both, as it does for the run.
+        let output = hotpath_in(
+            &server,
+            Some(TOKEN),
+            &["validate-policy", "--benchmark", "ci"],
+            b"",
+            Some(&checkout.root),
+            Some("config/special.toml"),
+        );
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(
+            json(&stdout(&output)),
+            json(r#"[{"path":"config/special.toml","valid":true,"problems":[]}]"#)
+        );
+
+        good.assert();
+        bad.assert();
+    }
+
+    #[test]
+    fn validate_policy_file_checks_a_file_anywhere_and_stdin() {
+        let mut server = Server::new();
+        let mock = mock_validate(&mut server, GOOD_POLICY, 200, r#"{"valid":true}"#).expect(2);
+        // No checkout is needed for a file named on the command line.
+        let outside = Checkout::without_git("file_anywhere");
+        outside.write("candidate.toml", GOOD_POLICY.as_bytes());
+        let file = outside.root.join("candidate.toml");
+
+        let output = outside.validate(
+            &server,
+            Some(TOKEN),
+            &["--file", file.to_str().unwrap(), "--pretty"],
+        );
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(
+            json(&stdout(&output)),
+            serde_json::json!([{ "path": file.to_str().unwrap(), "valid": true, "problems": [] }])
+        );
+        assert!(stdout(&output).starts_with("[\n  {\n"), "pretty");
+
+        let output = hotpath_with_stdin(
+            &server,
+            Some(TOKEN),
+            &["validate-policy", "--file", "-"],
+            GOOD_POLICY.as_bytes(),
+        );
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(
+            json(&stdout(&output)),
+            json(r#"[{"path":"-","valid":true,"problems":[]}]"#)
+        );
+        mock.assert();
+    }
+
+    #[test]
+    fn validate_policy_refuses_unusable_files_without_a_token_or_a_request() {
+        let mut server = Server::new();
+        let mock = mock_no_validation(&mut server);
+        let checkout = Checkout::new("unusable");
+        checkout
+            .write("hotpath/blank-policy.toml", b"\n")
+            .write(
+                "hotpath/large-policy.toml",
+                &vec![b'#'; POLICY_MAX_BYTES + 1],
+            )
+            .write("hotpath/latin-policy.toml", b"name = \"\xff\xfe\"\n");
+        let outside = Checkout::without_git("unusable_outside");
+        outside.write("policy.toml", GOOD_POLICY.as_bytes());
+
+        let output = checkout.validate(&server, None, &[]);
+        assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
+        assert_eq!(stderr(&output), "");
+        let files = json(&stdout(&output));
+        let files = files.as_array().unwrap();
+        let expected = [
+            (
+                "hotpath/blank-policy.toml",
+                "the policy file `hotpath/blank-policy.toml` is blank.",
+            ),
+            (
+                "hotpath/large-policy.toml",
+                "the policy file `hotpath/large-policy.toml` is larger than 65536 bytes",
+            ),
+            (
+                "hotpath/latin-policy.toml",
+                "the policy file `hotpath/latin-policy.toml` is not valid UTF-8",
+            ),
+        ];
+        assert_eq!(files.len(), expected.len(), "{files:?}");
+        for (file, (path, message)) in files.iter().zip(expected) {
+            assert_eq!(file["path"], path);
+            assert_eq!(file["valid"], false);
+            assert_eq!(file["problems"].as_array().unwrap().len(), 1, "{file}");
+            assert_eq!(file["problems"][0]["line"], serde_json::Value::Null);
+            let found = file["problems"][0]["message"].as_str().unwrap();
+            assert!(found.starts_with(message), "{found}");
+        }
+
+        // An override that leads out of the repository, and one that is missing.
+        for (policy_path, message) in [
+            (
+                outside.root.join("policy.toml"),
+                "is outside the repository",
+            ),
+            (checkout.root.join("hotpath/gone.toml"), "could not read"),
+        ] {
+            let output = hotpath_in(
+                &server,
+                None,
+                &["validate-policy", "--benchmark", "ci"],
+                b"",
+                Some(&checkout.root),
+                Some(policy_path.to_str().unwrap()),
+            );
+            assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
+            let files = json(&stdout(&output));
+            assert_eq!(files[0]["valid"], false, "{files}");
+            let found = files[0]["problems"][0]["message"].as_str().unwrap();
+            assert!(found.contains(message), "{found}");
+            assert!(found.contains("HOTPATH_POLICY_PATH"), "{found}");
+        }
+
+        // A link out of the repository is followed before the check.
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(
+                outside.root.join("policy.toml"),
+                checkout.root.join("hotpath/linked-policy.toml"),
+            )
+            .unwrap();
+            let output = checkout.validate(&server, None, &["--benchmark", "linked"]);
+            assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
+            let files = json(&stdout(&output));
+            let found = files[0]["problems"][0]["message"].as_str().unwrap();
+            assert!(found.contains("is outside the repository"), "{found}");
+        }
+
+        // A readable file needs the token, which is asked for before any request.
+        checkout.write("hotpath/policy.toml", GOOD_POLICY.as_bytes());
+        let output = checkout.validate(&server, None, &["--benchmark", "nightly"]);
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        assert!(client_error(&output).starts_with("HOTPATH_API_TOKEN is not set"));
+
+        mock.assert();
+    }
+
+    #[test]
+    fn validate_policy_without_a_file_to_check_is_an_error() {
+        let mut server = Server::new();
+        let mock = mock_no_validation(&mut server);
+        let empty = Checkout::new("no_file");
+        empty.write("hotpath/notes.toml", b"x");
+        let outside = Checkout::without_git("no_checkout");
+        let crowded = Checkout::new("too_many");
+        for i in 0..65 {
+            crowded.write(&format!("hotpath/b{i}-policy.toml"), GOOD_POLICY.as_bytes());
+        }
+
+        let cases: [(&Checkout, &[&str], &str); 5] = [
+            (&empty, &[], "no policy file in "),
+            (
+                &empty,
+                &["--benchmark", "ci"],
+                "no policy file for benchmark `ci` in ",
+            ),
+            (&outside, &[], "is not inside a git repository"),
+            (&crowded, &[], "`hotpath/` has more than 64 policy files"),
+            (&empty, &["--benchmark", "a/b"], "invalid --benchmark `a/b`"),
+        ];
+        for (checkout, args, expected) in cases {
+            let output = checkout.validate(&server, Some(TOKEN), args);
+            assert_eq!(output.status.code(), Some(1), "{args:?}");
+            assert_eq!(stdout(&output), "", "{args:?}");
+            let error = client_error(&output);
+            assert!(error.contains(expected), "{args:?}: {error}");
+        }
+        mock.assert();
+    }
+
+    #[test]
+    fn validate_policy_stops_on_any_error_but_a_refused_document() {
+        let unauthorized = error_body(ApiErrorCode::InvalidToken, "The token does not work.");
+        // A 422 that is not about the document is not a result either.
+        let other_422 = error_body(ApiErrorCode::BadRequest, "The body is not JSON.");
+        for (status, body) in [(401, unauthorized), (422, other_422)] {
+            let mut server = Server::new();
+            let mock = server
+                .mock("POST", VALIDATE_PATH)
+                .with_status(status)
+                .with_header("content-type", "application/json")
+                .with_body(&body)
+                .expect(1)
+                .create();
+            let checkout = Checkout::new(&format!("stops_{status}"));
+            checkout
+                .write("hotpath/policy.toml", GOOD_POLICY.as_bytes())
+                .write("hotpath/ci-policy.toml", BAD_POLICY.as_bytes());
+
+            let output = checkout.validate(&server, Some(TOKEN), &[]);
+            assert_eq!(output.status.code(), Some(1), "{body}");
+            assert_eq!(stdout(&output), "", "{body}");
+            assert_eq!(json(&stderr(&output)), json(&body));
+            mock.assert();
+        }
+    }
+
+    #[test]
+    fn validate_policy_usage_errors_are_exit_2() {
+        let mut server = Server::new();
+        let mock = mock_no_validation(&mut server);
+        let checkout = Checkout::new("usage");
+        checkout.write("hotpath/policy.toml", GOOD_POLICY.as_bytes());
+
+        let cases: [&[&str]; 3] = [
+            &["--benchmark", "ci", "--file", "hotpath/policy.toml"],
+            &["--repo", "pawurb/hotpath-rs"],
+            &["--benchmark"],
+        ];
+        for args in cases {
+            let output = checkout.validate(&server, Some(TOKEN), args);
             assert_eq!(
                 output.status.code(),
                 Some(2),

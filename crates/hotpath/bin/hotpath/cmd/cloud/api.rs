@@ -1,5 +1,5 @@
 //! Shared plumbing of the `hotpath cloud` commands: the token and base URL
-//! from the environment, the bearer `GET` and the JSON output. The
+//! from the environment, the bearer `GET` / `POST` and the JSON output. The
 //! token comes only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of
 //! shell history and `ps`) and is never printed, not even in an error. Every
 //! failure is one JSON document on stderr (`CliError`): a non-2xx server body
@@ -94,6 +94,25 @@ impl Client {
             .get(&url)
             .header("Authorization", &self.authorization())
             .call();
+        self.read_response(&url, resp)
+    }
+
+    /// `POST {base_url}{path}` with `body` as JSON and the bearer token; the
+    /// answer is handled like `get`'s.
+    pub(crate) fn post<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, CliError> {
+        let url = format!("{}{path}", self.base_url);
+        let body = serde_json::to_vec(body)
+            .map_err(|e| CliError::client(format!("could not serialize the request: {e}")))?;
+        let resp = self
+            .agent
+            .post(&url)
+            .header("Authorization", &self.authorization())
+            .header("Content-Type", "application/json")
+            .send(&body[..]);
         self.read_response(&url, resp)
     }
 

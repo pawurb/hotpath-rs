@@ -21,7 +21,9 @@
 //! never fail, even in strict mode.
 //!
 //! The response carries the server's verdict on the report, judged under the
-//! policy the report carried. `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION=1` turns a
+//! policy the report carried, which the step summary links. An upload whose
+//! policy is not valid is refused like any other rejected upload.
+//! `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION=1` turns a
 //! regressed verdict into an error through the same exit path, and
 //! `HOTPATH_META_UPLOAD_RESPONSE_PATH` writes the response body to a file for
 //! custom rules. A failed or skipped upload has no verdict: it never fails
@@ -38,7 +40,10 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::json::cloud_api::{validate_benchmark_name, ApiError, UploadCreated, Verdict, API_URL};
+use crate::json::cloud_api::{
+    validate_benchmark_name, ApiError, ApiErrorCode, PolicyProblem, PolicyRejected, UploadCreated,
+    Verdict, API_URL,
+};
 use crate::json::JsonReport;
 
 const AUDIENCE: &str = "hotpath.rs";
@@ -46,6 +51,9 @@ const MINT_TIMEOUT: Duration = Duration::from_secs(10);
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 /// Longest raw (unparseable) response body quoted in a message.
 const MAX_QUOTED_BODY: usize = 2000;
+/// Most problems of a refused policy listed in a message; the step summary
+/// has the whole body.
+const MAX_LISTED_PROBLEMS: usize = 20;
 
 /// `HOTPATH_META_UPLOAD_STRICT=1`: a failed upload is an `::error::` and exits 1.
 /// Off by default so an adopter's benchmark job never goes red because
@@ -292,7 +300,9 @@ pub(crate) fn post_report(base_url: &str, token: &str, benchmark: &str, body: &[
 }
 
 /// A 201 (or the 200 of an already stored run) parses as `UploadCreated`,
-/// anything else tries `ApiError` and falls back to quoting the raw body.
+/// anything else tries `ApiError` and falls back to quoting the raw body. A
+/// refused policy (`PolicyRejected`) lists its problems after the sentence,
+/// since the sentence alone only counts them.
 pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -> Outcome {
     let request = |id: Option<&str>| id.map(|id| format!(", request {id}")).unwrap_or_default();
     if matches!(status, 200 | 201) {
@@ -313,8 +323,9 @@ pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -
     }
     let message = match serde_json::from_str::<ApiError>(&body) {
         Ok(error) => format!(
-            "{} (HTTP {status}{})",
+            "{}{} (HTTP {status}{})",
             error.error,
+            policy_problems(&error, &body),
             request(request_id.as_deref())
         ),
         Err(_) => format!(
@@ -327,6 +338,36 @@ pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -
         message,
         body: Some(body),
     }
+}
+
+/// The problems of a refused policy as ` <problem>; <problem>`, empty for any
+/// other rejection.
+fn policy_problems(error: &ApiError, body: &str) -> String {
+    if error.code != ApiErrorCode::InvalidPolicy {
+        return String::new();
+    }
+    let Ok(rejected) = serde_json::from_str::<PolicyRejected>(body) else {
+        return String::new();
+    };
+    let describe = |problem: &PolicyProblem| match problem.line {
+        Some(line) => format!("line {line}: {}", problem.message),
+        None => problem.message.clone(),
+    };
+    let mut listed: Vec<String> = rejected
+        .problems
+        .iter()
+        .take(MAX_LISTED_PROBLEMS)
+        .map(describe)
+        .collect();
+    if let Some(more) = rejected.problems.len().checked_sub(MAX_LISTED_PROBLEMS) {
+        if more > 0 {
+            listed.push(format!("and {more} more"));
+        }
+    }
+    if listed.is_empty() {
+        return String::new();
+    }
+    format!(" {}", listed.join("; "))
 }
 
 /// Writes the body of an upload to `path` as one JSON document, re-serialized
@@ -374,11 +415,11 @@ fn verdict_summary(verdict: &Verdict) -> String {
 
 /// One message at one level.
 pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> Rendered {
-    let (level, message, link, body) = match outcome {
+    let (level, message, links, body) = match outcome {
         Outcome::Skipped(reason) => (
             Level::Notice,
             format!("upload skipped: {reason}"),
-            None,
+            Vec::new(),
             None,
         ),
         Outcome::Uploaded {
@@ -412,10 +453,18 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             } else {
                 Level::Notice
             };
+            let mut links = vec![format!(
+                "[Open the report on hotpath.rs]({})",
+                created.dashboard_url
+            )];
+            if let Some(url) = &created.policy_url {
+                let path = created.policy_path.as_deref().unwrap_or(url);
+                links.push(format!("[Policy: {path}]({url})"));
+            }
             (
                 level,
                 message,
-                Some(created.dashboard_url.as_str()),
+                links,
                 serde_json::to_string_pretty(created).ok(),
             )
         }
@@ -429,7 +478,7 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             (
                 level,
                 format!("upload failed: {message}"),
-                None,
+                Vec::new(),
                 body.map(str::to_string),
             )
         }
@@ -443,8 +492,8 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
         "## {heading}\n\n{}: hotpath-meta: {message}\n",
         level.as_str()
     );
-    if let Some(link) = link {
-        summary.push_str(&format!("\n[Open the report on hotpath.rs]({link})\n"));
+    for link in links {
+        summary.push_str(&format!("\n{link}\n"));
     }
     if let Some(body) = body {
         summary.push_str(&format!("\n```\n{body}\n```\n"));
@@ -583,7 +632,8 @@ mod tests {
             baseline: Some("r0".into()),
             comment: CommentOutcome::default(),
             verdict: verdict(0, 0),
-            policy: None,
+            policy_path: None,
+            policy_url: None,
             dashboard_url: DASHBOARD_URL.into(),
         }
     }
@@ -709,6 +759,45 @@ mod tests {
             Outcome::Failed {
                 message: "meta.ci.event is \"pull_request\" but the token was issued to a \"workflow_run\" run. Forward it through hotpath-relay.yml. (HTTP 400, request 1bac4db9-15a)".into(),
                 body: Some(body.into()),
+            }
+        );
+
+        // A refused policy says what is wrong with it, not only how much.
+        let refused = r#"{"error":"The policy hotpath/ci-policy.toml has 2 problems.","code":"invalid_policy","problems":[{"line":null,"message":"the policy sets no column"},{"line":3,"message":"unknown key `functions.timing.min_percent`"}]}"#;
+        assert_eq!(
+            interpret(422, Some("abc".into()), refused.into()),
+            Outcome::Failed {
+                message: "The policy hotpath/ci-policy.toml has 2 problems. the policy sets no column; line 3: unknown key `functions.timing.min_percent` (HTTP 422, request abc)".into(),
+                body: Some(refused.into()),
+            }
+        );
+        // A long list is cut, and a body without problems is only its sentence.
+        let problems: Vec<String> = (1..=25)
+            .map(|line| format!(r#"{{"line":{line},"message":"bad"}}"#))
+            .collect();
+        let many = format!(
+            r#"{{"error":"The policy has 25 problems.","code":"invalid_policy","problems":[{}]}}"#,
+            problems.join(",")
+        );
+        let Outcome::Failed { message, .. } = interpret(422, None, many) else {
+            panic!()
+        };
+        assert!(
+            message.ends_with("line 20: bad; and 5 more (HTTP 422)"),
+            "{message}"
+        );
+        assert!(!message.contains("line 21"), "{message}");
+        assert_eq!(
+            interpret(
+                422,
+                None,
+                r#"{"error":"The policy is not valid.","code":"invalid_policy"}"#.into()
+            ),
+            Outcome::Failed {
+                message: "The policy is not valid. (HTTP 422)".into(),
+                body: Some(
+                    r#"{"error":"The policy is not valid.","code":"invalid_policy"}"#.into()
+                ),
             }
         );
 
@@ -862,6 +951,36 @@ mod tests {
                 "{prefix}; verdict: 1 regression; comment failed: the installation is suspended"
             )
         );
+    }
+
+    #[test]
+    fn render_links_the_policy_in_the_step_summary() {
+        let url = "https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml";
+        let outcome = Outcome::Uploaded {
+            created: Box::new(UploadCreated {
+                policy_path: Some("hotpath/ci-policy.toml".into()),
+                policy_url: Some(url.into()),
+                ..created()
+            }),
+            request_id: None,
+        };
+        let r = render(&outcome, &env(true, false), Some("meta"));
+        assert_eq!(r.level, Level::Notice);
+        assert_eq!(
+            r.message,
+            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); verdict: no regressions"
+        );
+        assert!(
+            r.summary.contains(&format!(
+                "\n[Open the report on hotpath.rs]({DASHBOARD_URL})\n\n[Policy: hotpath/ci-policy.toml]({url})\n"
+            )),
+            "{}",
+            r.summary
+        );
+
+        // No policy carried, or a server that does not name it yet.
+        let r = render(&uploaded(verdict(0, 0)), &env(true, false), Some("meta"));
+        assert!(!r.summary.contains("[Policy"), "{}", r.summary);
     }
 
     #[test]

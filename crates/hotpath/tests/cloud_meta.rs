@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::process::Command;
 
     use hotpath::json::{JsonMeta, JsonReport};
@@ -21,22 +21,45 @@ mod tests {
         String::from_utf8_lossy(&output.stdout).trim().to_string()
     }
 
-    /// cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-cloud
     fn run_example(envs: &[(&str, &str)]) -> JsonMeta {
+        run_example_in(None, envs).0
+    }
+
+    /// The report's `meta` and the run's stderr. With `cwd` the example runs
+    /// from that directory, which stands for the checkout.
+    ///
+    /// cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-cloud
+    fn run_example_in(cwd: Option<&Path>, envs: &[(&str, &str)]) -> (JsonMeta, String) {
+        run_named_example_in("basic_all_features", cwd, envs)
+    }
+
+    /// cargo run -p test-all-features --example no_locations --features hotpath,hotpath-cloud
+    fn run_named_example_in(
+        example: &str,
+        cwd: Option<&Path>,
+        envs: &[(&str, &str)],
+    ) -> (JsonMeta, String) {
         let mut cmd = Command::new("cargo");
         cmd.args([
             "run",
+            "--manifest-path",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"),
             "-p",
             "test-all-features",
             "--example",
-            "basic_all_features",
+            example,
             "--features",
             "hotpath,hotpath-cloud",
         ])
         .env("HOTPATH_OUTPUT_FORMAT", "json")
         .env("HOTPATH_REPORT", "functions-timing")
         .env_remove("HOTPATH_UPLOAD")
-        .env_remove("HOTPATH_BENCHMARK");
+        .env_remove("HOTPATH_BENCHMARK")
+        .env_remove("HOTPATH_POLICY_PATH")
+        .env_remove("HOTPATH_SOURCE_ROOT");
+        if let Some(cwd) = cwd {
+            cmd.current_dir(cwd);
+        }
         for var in [
             "GITHUB_ACTIONS",
             "GITHUB_BASE_REF",
@@ -64,12 +87,13 @@ mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
+        let meta = serde_json::Deserializer::from_str(&stdout[json_start..])
             .into_iter::<JsonReport>()
             .next()
             .expect("No JSON value in output")
             .expect("Failed to parse JSON report")
-            .meta
+            .meta;
+        (meta, String::from_utf8_lossy(&output.stderr).into_owned())
     }
 
     fn write_event_payload(name: &str, base_sha: &str) -> PathBuf {
@@ -299,5 +323,207 @@ mod tests {
         let ci = meta.ci.expect("ci info");
         assert_eq!(ci.event, "push");
         assert!(ci.pull_request.is_none());
+    }
+
+    const SHARED_POLICY: &str = "# shared\n[functions.timing]\nmin_percent_change = 5\n";
+    const CI_POLICY: &str = "# ci\n[functions.alloc]\nmin_percent_change = 10\n";
+    const SPECIAL_POLICY: &str = "# special\n[sql]\n";
+
+    /// A directory that stands for a checkout: it has a `.git` and whatever
+    /// files a test writes. Removed on drop, so a failed test leaves nothing.
+    struct Checkout {
+        root: PathBuf,
+    }
+
+    impl Checkout {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "hotpath-cloud-meta-policy-{}-{name}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join(".git")).unwrap();
+            Self { root }
+        }
+
+        fn write(&self, path: &str, contents: &[u8]) -> &Self {
+            let path = self.root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, contents).unwrap();
+            self
+        }
+
+        /// Runs the example from the checkout. `HOTPATH_SOURCE_ROOT` makes
+        /// the git root above the working directory the report's checkout.
+        fn run(&self, envs: &[(&str, &str)]) -> (JsonMeta, String) {
+            let mut all = vec![("HOTPATH_SOURCE_ROOT", "")];
+            all.extend_from_slice(envs);
+            run_example_in(Some(&self.root), &all)
+        }
+    }
+
+    /// A directory outside any repository.
+    fn outside_any_repository(name: &str) -> Checkout {
+        let checkout = Checkout::new(name);
+        std::fs::remove_dir(checkout.root.join(".git")).unwrap();
+        checkout
+    }
+
+    impl Drop for Checkout {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn policy_of_the_benchmark_wins_over_the_shared_one() {
+        let checkout = Checkout::new("benchmark-file");
+        checkout
+            .write("hotpath/policy.toml", SHARED_POLICY.as_bytes())
+            .write("hotpath/ci-policy.toml", CI_POLICY.as_bytes());
+
+        let (meta, stderr) = checkout.run(&[("HOTPATH_BENCHMARK", "ci")]);
+        let policy = meta.policy.expect("policy");
+        assert_eq!(policy.path, "hotpath/ci-policy.toml");
+        // As written, comments included.
+        assert_eq!(policy.source, CI_POLICY);
+        assert!(!stderr.contains("policy file"), "{stderr}");
+
+        // A benchmark without its own file uses the shared one.
+        let (meta, _) = checkout.run(&[("HOTPATH_BENCHMARK", "nightly")]);
+        let policy = meta.policy.expect("policy");
+        assert_eq!(policy.path, "hotpath/policy.toml");
+        assert_eq!(policy.source, SHARED_POLICY);
+    }
+
+    #[test]
+    fn checkout_without_a_policy_file_sends_none() {
+        let checkout = Checkout::new("no-file");
+        checkout.write("hotpath/notes.toml", b"x");
+
+        let (meta, stderr) = checkout.run(&[("HOTPATH_BENCHMARK", "ci")]);
+        assert_eq!(meta.policy, None);
+        assert!(!stderr.contains("policy file"), "{stderr}");
+    }
+
+    #[test]
+    fn policy_path_override_wins_over_the_policy_directory() {
+        let checkout = Checkout::new("override");
+        checkout
+            .write("hotpath/policy.toml", SHARED_POLICY.as_bytes())
+            .write("hotpath/ci-policy.toml", CI_POLICY.as_bytes())
+            .write("config/special.toml", SPECIAL_POLICY.as_bytes());
+
+        // Relative to the working directory.
+        let (meta, _) = checkout.run(&[
+            ("HOTPATH_BENCHMARK", "ci"),
+            ("HOTPATH_POLICY_PATH", "config/special.toml"),
+        ]);
+        let policy = meta.policy.expect("policy");
+        assert_eq!(policy.path, "config/special.toml");
+        assert_eq!(policy.source, SPECIAL_POLICY);
+    }
+
+    #[test]
+    fn unusable_policy_file_is_reported_and_not_sent() {
+        let checkout = Checkout::new("unusable");
+        checkout
+            .write("hotpath/policy.toml", SHARED_POLICY.as_bytes())
+            .write("hotpath/blank-policy.toml", b" \n\t\n")
+            .write("hotpath/large-policy.toml", &vec![b'#'; 65537])
+            .write("hotpath/latin-policy.toml", b"name = \"\xff\xfe\"\n");
+
+        // Never treated as "no file": the shared file does not stand in.
+        for (benchmark, message) in [
+            (
+                "blank",
+                "hotpath: the policy file `hotpath/blank-policy.toml` is blank.",
+            ),
+            (
+                "large",
+                "hotpath: the policy file `hotpath/large-policy.toml` is larger than 65536 bytes",
+            ),
+            (
+                "latin",
+                "hotpath: the policy file `hotpath/latin-policy.toml` is not valid UTF-8",
+            ),
+        ] {
+            let (meta, stderr) = checkout.run(&[("HOTPATH_BENCHMARK", benchmark)]);
+            assert_eq!(meta.policy, None, "{benchmark}");
+            assert!(stderr.contains(message), "{benchmark}: {stderr}");
+            assert!(
+                stderr.contains("The report carries no policy."),
+                "{benchmark}: {stderr}"
+            );
+        }
+    }
+
+    #[test]
+    fn policy_path_override_outside_the_repository_is_refused() {
+        let checkout = Checkout::new("override-outside");
+        checkout.write("hotpath/policy.toml", SHARED_POLICY.as_bytes());
+        let outside = std::env::temp_dir().join(format!(
+            "hotpath-cloud-meta-policy-{}-outside.toml",
+            std::process::id()
+        ));
+        std::fs::write(&outside, SPECIAL_POLICY).unwrap();
+
+        let (meta, stderr) = checkout.run(&[("HOTPATH_POLICY_PATH", outside.to_str().unwrap())]);
+        let _ = std::fs::remove_file(&outside);
+
+        assert_eq!(meta.policy, None);
+        assert!(stderr.contains("is outside the repository"), "{stderr}");
+        assert!(stderr.contains("(HOTPATH_POLICY_PATH)"), "{stderr}");
+    }
+
+    /// Without `HOTPATH_SOURCE_ROOT` the checkout is verified against the
+    /// registered source locations. A report that cannot be verified still
+    /// carries the policy of the repository it ran in.
+    #[test]
+    fn policy_is_found_when_the_checkout_cannot_be_verified() {
+        let checkout = Checkout::new("unverified");
+        checkout
+            .write("hotpath/policy.toml", SHARED_POLICY.as_bytes())
+            .write("hotpath/ci-policy.toml", CI_POLICY.as_bytes());
+
+        for example in [
+            // Registers no source location at all.
+            "no_locations",
+            // Registers locations that no ancestor of the working directory has.
+            "basic_all_features",
+        ] {
+            let (meta, stderr) = run_named_example_in(
+                example,
+                Some(&checkout.root),
+                &[("HOTPATH_BENCHMARK", "ci")],
+            );
+            let policy = meta
+                .policy
+                .unwrap_or_else(|| panic!("{example}: no policy\n{stderr}"));
+            assert_eq!(policy.path, "hotpath/ci-policy.toml", "{example}");
+            assert_eq!(policy.source, CI_POLICY, "{example}");
+            // The commit identity keeps its stricter rule.
+            assert!(meta.git.is_none(), "{example}: {:?}", meta.git);
+        }
+    }
+
+    #[test]
+    fn upload_outside_any_repository_says_it_has_no_policy() {
+        let outside = outside_any_repository("no-repository");
+        outside.write("hotpath/policy.toml", SHARED_POLICY.as_bytes());
+        let message = "hotpath: no git repository found from the working directory";
+
+        let (meta, stderr) = run_named_example_in(
+            "no_locations",
+            Some(&outside.root),
+            &[("HOTPATH_UPLOAD", "1")],
+        );
+        assert_eq!(meta.policy, None);
+        assert!(stderr.contains(message), "{stderr}");
+
+        // Not an upload: nothing to warn about.
+        let (meta, stderr) = run_named_example_in("no_locations", Some(&outside.root), &[]);
+        assert_eq!(meta.policy, None);
+        assert!(!stderr.contains(message), "{stderr}");
     }
 }

@@ -9,6 +9,7 @@ mod api;
 mod auth;
 mod benchmarks;
 mod diff;
+mod policy;
 mod repo;
 mod report;
 mod repos;
@@ -21,6 +22,7 @@ use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
 use crate::cmd::cloud::diff::DiffArgs;
+use crate::cmd::cloud::policy::ValidatePolicyArgs;
 use crate::cmd::cloud::report::ReportArgs;
 
 #[derive(Parser, Debug)]
@@ -115,8 +117,11 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 
 The baseline is the one the server recorded for the head at upload, the one the PR
 comment compared. The judging policy is the one the head report carried when it was
-uploaded, the built-in default when it carried none (`policy.path` is then null), so
-the answer for a stored report does not change with a later edit of the policy.
+uploaded, named by `head.policy_path` and `head.policy_url`, the built-in default
+when it carried none (both are then null), so the answer for a stored report does not
+change with a later edit of the policy. No other policy ever stands in: a head report
+whose policy can no longer be read is answered as `unreadable` naming `head`, with
+the policy file in `error`.
 Every value is a string formatted as the PR comment shows it (\"2.06 ms\", \"3.1 KB\",
 \"20\"), and its `unit` says how to read it. `change_percent` stays a number of
 percent and is the exact figure to reason about: rounding can make `base` and `head`
@@ -143,8 +148,7 @@ of their section says so. Inside a section, a key that is unset or an empty list
 left out: `mode`, `totals`, `columns`, `omitted_from_base`, `omitted_from_head`, a
 row's `location` and `unreadable`, a cell's `role` and `crossed`. A cell's `base`,
 `head` and `change_percent` are always there, null when a side is absent, and so is
-every key outside the sections (`base`, `budgets`, `policy.path`, `policy.fallback`,
-the run totals).
+every key outside the sections (`base`, `budgets`, the run totals).
 
 Budgets are the policy's absolute bounds on named entities (`[[functions.budgets]]`,
 `[[sql.budgets]]`, ...). They are judged on the head report alone, so a report without
@@ -178,6 +182,49 @@ stdout empty, as for every command. Reading needs only access to the repository.
 Poll with `report` to wait for CI's upload. Same token and base URL environment as `auth`."
     )]
     Diff(DiffArgs),
+
+    #[command(
+        about = "Check that the policy files of this repository parse as policies",
+        long_about = "Check that the policy files of this repository parse as policies
+(POST /api/v1/policy/validate, once per file).
+
+A policy is a TOML file in the repository. A run reads it and sends it inside its
+report, and the server judges the report under it, so a pull request is judged under
+its own policy. A run picks the first of:
+  1. the file HOTPATH_POLICY_PATH names (relative to the working directory, or
+     absolute; it must be inside the repository)
+  2. hotpath/<benchmark>-policy.toml
+  3. hotpath/policy.toml
+and without any of them the built-in default judges. The repository is the git
+repository the working directory is in.
+
+Without arguments every policy file in hotpath/ is checked: policy.toml and each
+*-policy.toml, in name order, 64 files at most. --benchmark NAME checks the one file
+a run of that benchmark picks, by the order above. --file PATH checks that file
+wherever it is, `-` reads stdin.
+
+The output is a JSON list with one entry per file checked: `path` (relative to the
+repository root, as given for --file), `valid`, and `problems`, empty when the file is
+valid. A problem has a `message` and the `line` it points at, null when it concerns the
+whole file. A TOML syntax error stops parsing, so it is reported alone; otherwise every
+structural and range problem of the file comes in one answer. The files are not parsed
+here, the server judges them. A file that is unreadable, not valid UTF-8, blank, larger
+than 65536 bytes or outside the repository is reported as a problem of that file
+without a request, and a run that finds such a file sends its report without a policy.
+An upload whose policy the server finds not valid is refused, so check the files
+before they reach the default branch.
+
+Exit codes:
+  0  every file checked is valid
+  1  a file is not valid, no policy file was found, or any error (auth, network,
+     unparseable body)
+  2  usage error
+A file that is not valid is an answer: the list is printed on stdout with stderr empty
+and the other files are still checked. An error prints one JSON document on stderr
+with stdout empty, as for every command. Same token and base URL environment as
+`auth`."
+    )]
+    ValidatePolicy(ValidatePolicyArgs),
 }
 
 impl CloudArgs {
@@ -210,6 +257,7 @@ impl CloudArgs {
             CloudCommand::Benchmarks { repo } => benchmarks::run(output, &repo),
             CloudCommand::Report(args) => report::run(output, args),
             CloudCommand::Diff(args) => diff::run(output, args),
+            CloudCommand::ValidatePolicy(args) => policy::validate(output, args),
         }
     }
 }
