@@ -1,0 +1,34 @@
+# Shared policy: judges every benchmark without its own
+# `hotpath/<benchmark>-policy.toml` (`meta`, `random`). Pins the judged
+# families of the built-in default so a server-side default change does not
+# shift how this repository is judged.
+
+[functions]
+# `drain_into` bytes in `meta` follow the consumer buffer's peak doubling,
+# which flips with thread scheduling between runs of one commit.
+ignore = ["hotpath_drain::EventQueue::drain_into"]
+min_percent_total = 0.5
+
+[functions.alloc]
+judged = true
+min_percent_change = 2
+metrics = ["avg", "total"]
+min_calls = 0
+
+[functions.timing]
+judged = false
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 10
+
+[server.alloc]
+judged = true
+min_percent_change = 2
+metrics = ["avg", "total"]
+min_calls = 0
+
+[server.timing]
+judged = true
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 0
