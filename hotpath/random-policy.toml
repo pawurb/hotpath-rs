@@ -1,0 +1,78 @@
+# Policy for the `random` benchmark (`cloud-random-benchmark.yml`, the
+# `test-axum` `benchmark_random` example). It exists to check PR comments:
+# every resource draws `fast` or `slow` (3x the work) on each run, so two runs
+# differ by +200% or -67% wherever a draw changed. Every family the example
+# produces is judged, with the built-in bars, so each draw shows in the comment
+# and the verdict.
+
+[functions]
+min_percent_total = 0.5
+
+[functions.alloc]
+judged = true
+min_percent_change = 2
+metrics = ["avg", "total"]
+min_calls = 0
+
+[functions.timing]
+judged = true
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 10
+
+[sql]
+min_percent_total = 0.5
+
+[sql.timing]
+judged = true
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 0
+
+[http]
+min_percent_total = 0.5
+
+[http.timing]
+judged = true
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 0
+
+[server]
+min_percent_total = 0.5
+
+[server.alloc]
+judged = true
+min_percent_change = 2
+metrics = ["avg", "total"]
+min_calls = 0
+
+[server.timing]
+judged = true
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 0
+
+[mutexes.timing]
+judged = true
+min_percent_change = 50
+metrics = ["wait_avg", "acquire_avg"]
+min_calls = 0
+
+[rw_locks.timing]
+judged = true
+min_percent_change = 50
+metrics = ["read_wait_avg", "write_wait_avg", "read_acquire_avg", "write_acquire_avg"]
+min_calls = 0
+
+[channels.flow]
+judged = true
+min_percent_change = 50
+metrics = ["delay_avg", "max_queue_size"]
+min_calls = 0
+
+[io.flow]
+judged = true
+min_percent_change = 50
+metrics = ["avg", "errors", "bytes_per_sec"]
+min_calls = 0

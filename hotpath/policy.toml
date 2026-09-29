@@ -1,5 +1,5 @@
 # Shared policy: judges every benchmark without its own
-# `hotpath/<benchmark>-policy.toml` (`meta`, `random`). Pins the judged
+# `hotpath/<benchmark>-policy.toml` (`meta`). Pins the judged
 # families of the built-in default so a server-side default change does not
 # shift how this repository is judged.
 
