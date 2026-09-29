@@ -10,8 +10,11 @@ name: hotpath relay
 # The pull request context in the artifact is trusted: lying there only distorts
 # the pull request's own comment. Two fields could affect other reports and are
 # enforced here: `ci.event` must be `pull_request` (a `push` on the default
-# branch would become everyone's baseline) and `meta.benchmark` is pinned (the
-# server prefers it over the `?benchmark=` query).
+# branch would become everyone's baseline) and `meta.benchmark` must be the
+# `benchmark` input (the server prefers it over the `?benchmark=` query). The
+# benchmark is checked, not rewritten: the benchmark job picked the report's
+# policy file by that name, so a report renamed here would be stored under one
+# benchmark and judged under the policy of another.
 #
 # The policy in the artifact (`meta.policy`) is the pull request's own: the
 # benchmark job read it from the checkout it measured, and the server judges the
@@ -46,8 +49,9 @@ name: hotpath relay
 # The benchmark job it pairs with checks out `github.event.pull_request.head.sha`
 # (not the default merge ref, whose commit this workflow cannot vouch for), runs
 # the benchmark **with the `hotpath-cloud` feature** and with
-# `HOTPATH_OUTPUT_FORMAT=json` plus `HOTPATH_OUTPUT_PATH=<report_file>`, and
-# uploads that file as `<artifact_name>`. The feature is what makes a JSON report
+# `HOTPATH_OUTPUT_FORMAT=json` plus `HOTPATH_OUTPUT_PATH=<report_file>` and
+# `HOTPATH_BENCHMARK=<benchmark>`, the same name as the `benchmark` input here,
+# and uploads that file as `<artifact_name>`. The feature is what makes a JSON report
 # an upload payload: without it `meta.git`, `meta.ci` and `meta.benchmark` are
 # absent and the report carries no provenance, so the check
 # below rejects it. No `HOTPATH_UPLOAD` is needed or wanted - that job has no
@@ -158,14 +162,19 @@ jobs:
             echo "::error::report does not describe this pull request: meta.ci.event must be \"pull_request\" and meta.ci.pull_request.head_sha must be $HEAD_SHA. A report built without the hotpath-cloud feature has no meta.ci at all."
             exit 1
           fi
+          if ! jq -e --arg benchmark "$BENCHMARK" '.meta.benchmark == $benchmark' \
+            "$REPORT_PATH" > /dev/null; then
+            found=$(jq -r '.meta.benchmark // "none"' "$REPORT_PATH")
+            echo "::error::report was built for benchmark '$found', not '$BENCHMARK'. Set HOTPATH_BENCHMARK=$BENCHMARK in the benchmark job: the report's policy file is picked by that name."
+            exit 1
+          fi
 
           # The event is stamped, not trusted: this job's token is a
           # `workflow_run` one, which the server accepts only for a
-          # `pull_request` report. The assignments replace three keys and keep
+          # `pull_request` report. The assignments replace two keys and keep
           # every other key of `meta`, `policy` included.
-          jq --arg benchmark "$BENCHMARK" --arg source_root "$SOURCE_ROOT" \
-            '.meta.benchmark = $benchmark | .meta.source_root = $source_root
-             | .meta.ci.event = "pull_request"' \
+          jq --arg source_root "$SOURCE_ROOT" \
+            '.meta.source_root = $source_root | .meta.ci.event = "pull_request"' \
             "$REPORT_PATH" > upload.json
 
       # The server's answer is the one line that explains a failure, so it is
