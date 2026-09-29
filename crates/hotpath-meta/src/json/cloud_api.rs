@@ -709,8 +709,6 @@ pub struct DiffSection {
     /// Baseline entities missing from a truncated head. Sorted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub omitted_from_head: Vec<String>,
-    /// The comparison page with this section's tab open (`?tab=`).
-    pub dashboard_url: String,
 }
 
 /// The resource a `DiffSection` covers.
@@ -1367,8 +1365,7 @@ mod tests {
                         ]
                     }
                 ],
-                "omitted_from_head": ["app::cut"],
-                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=alloc"
+                "omitted_from_head": ["app::cut"]
             },
             {
                 "resource": "sql",
@@ -1391,8 +1388,7 @@ mod tests {
                         "outcome": "regression",
                         "cells": [{"column": "p95", "unit": "duration", "base": "1.00 µs", "head": "1.50 µs", "change_percent": 50.0, "crossed": "up"}]
                     }
-                ],
-                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
+                ]
             }
         ],
         "skipped": ["functions timing: the reports measured different percentiles."],
@@ -1451,8 +1447,7 @@ mod tests {
                             {"column": "percent_total", "unit": "percent", "role": "floor", "base": null, "head": "1.5%", "change_percent": null}
                         ]
                     }
-                ],
-                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=alloc"
+                ]
             },
             {
                 "resource": "sql",
@@ -1466,8 +1461,7 @@ mod tests {
                     "metrics": ["p95"],
                     "counts": {"ignored": 0, "below_floor": 0, "added": 0, "removed": 0, "too_few_calls": 0, "regressions": 1, "improvements": 0, "unchanged": 0}
                 },
-                "rows": [],
-                "dashboard_url": "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a/diff?tab=sql"
+                "rows": []
             }
         ],
         "skipped": [],
