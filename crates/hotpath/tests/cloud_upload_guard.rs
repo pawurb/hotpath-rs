@@ -13,7 +13,7 @@ mod tests {
     use hotpath::json::JsonReport;
     use mockito::{Matcher, Server, ServerGuard};
 
-    const REGRESSED_BODY: &str = r#"{"id":"r1","repository":"pawurb/hotpath-rs","benchmark":"guard-test","baseline":"r0","comment":{"url":"https://github.com/c/1"},"verdict":{"judged":true,"regressed":true,"regressions":2,"improvements":0,"budgets_broken":1},"dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/guard-test/reports/r1/diff"}"#;
+    const REGRESSED_BODY: &str = r#"{"id":"r1","repository":"pawurb/hotpath-rs","benchmark":"guard-test","baseline":"r0","comment":{"url":"https://github.com/c/1"},"verdict":{"judged":true,"regressed":true,"regressions":2,"improvements":0,"budgets_broken":1},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/guard-test/reports/r1/diff"}"#;
 
     fn mock_server(status: usize, body: &str) -> (ServerGuard, mockito::Mock) {
         let mut server = Server::new();
@@ -40,11 +40,24 @@ mod tests {
         dir
     }
 
-    // cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-cloud
+    /// Runs from this crate, inside this repository, so the upload carries
+    /// the repository's own `hotpath/policy.toml`.
     fn run_upload(server: &ServerGuard, dir: &Path, env: &[(&str, &str)]) -> Output {
+        run_upload_in(None, server, dir, env)
+    }
+
+    // cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-cloud
+    fn run_upload_in(
+        cwd: Option<&Path>,
+        server: &ServerGuard,
+        dir: &Path,
+        env: &[(&str, &str)],
+    ) -> Output {
         let mut cmd = Command::new("cargo");
         cmd.args([
             "run",
+            "--manifest-path",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"),
             "-p",
             "test-all-features",
             "--example",
@@ -66,9 +79,14 @@ mod tests {
         .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
         .env_remove("HOTPATH_UPLOAD_STRICT")
         .env_remove("HOTPATH_UPLOAD_FAIL_ON_REGRESSION")
+        .env_remove("HOTPATH_POLICY_PATH")
+        .env_remove("HOTPATH_SOURCE_ROOT")
         // Under Actions the child would annotate and summarize the test's own job.
         .env_remove("GITHUB_ACTIONS")
         .env_remove("GITHUB_STEP_SUMMARY");
+        if let Some(cwd) = cwd {
+            cmd.current_dir(cwd);
+        }
         for (key, value) in env {
             cmd.env(key, value);
         }
@@ -135,6 +153,50 @@ mod tests {
         assert_local_report(&dir);
         assert!(!stale.exists(), "a stale verdict was left behind");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn report_without_a_policy_is_never_sent() {
+        let dir = scratch_dir("no-policy");
+        // A checkout of its own: this repository has a policy file.
+        let checkout = dir.join("checkout");
+        std::fs::create_dir_all(checkout.join(".git")).unwrap();
+        let mut server = Server::new();
+        let token = server.mock("GET", "/token").expect(0).create();
+        let upload = server.mock("POST", "/api/v1/reports").expect(0).create();
+        let refusal = "hotpath: upload failed: the report carries no policy file and hotpath.rs \
+                       refuses reports without one. Add `hotpath/guard-test-policy.toml` or \
+                       `hotpath/policy.toml` to the repository";
+
+        let output = run_upload_in(Some(&checkout), &server, &dir, &[]);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "stderr:\n{stderr}");
+        assert!(stderr.contains(refusal), "stderr:\n{stderr}");
+        assert_local_report(&dir);
+        assert!(!dir.join("response.json").exists());
+
+        // A file that is there but cannot be sent is refused the same way,
+        // and a failed upload fails the job in strict mode.
+        std::fs::create_dir_all(checkout.join("hotpath")).unwrap();
+        std::fs::write(checkout.join("hotpath/policy.toml"), " \n").unwrap();
+        let output = run_upload_in(
+            Some(&checkout),
+            &server,
+            &dir,
+            &[("HOTPATH_UPLOAD_STRICT", "1")],
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(1), "stderr:\n{stderr}");
+        assert!(
+            stderr.contains("hotpath: the policy file `hotpath/policy.toml` is blank."),
+            "stderr:\n{stderr}"
+        );
+        assert!(stderr.contains(refusal), "stderr:\n{stderr}");
+        assert_local_report(&dir);
+
+        token.assert();
+        upload.assert();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -132,11 +132,11 @@ fn candidate(args: &ValidatePolicyArgs) -> Result<Candidate, CliError> {
         PolicyLookup::NotFound => Err(CliError::client(match (&git_root, benchmark) {
             (None, _) => not_a_repository(&cwd),
             (Some(root), Some(benchmark)) => format!(
-                "no policy file for benchmark `{benchmark}` in `{}`: neither `{POLICY_DIR}/{benchmark}-policy.toml` nor `{POLICY_DIR}/policy.toml` exists, so the built-in default judges it.",
+                "no policy file for benchmark `{benchmark}` in `{}`: neither `{POLICY_DIR}/{benchmark}-policy.toml` nor `{POLICY_DIR}/policy.toml` exists, so hotpath.rs refuses its reports. Add one of them.",
                 root.display()
             ),
             (Some(root), None) => format!(
-                "no shared policy file in `{}`: `{POLICY_DIR}/policy.toml` does not exist, so the built-in default judges every benchmark without its own policy file. Check a benchmark's own `{POLICY_DIR}/<benchmark>-policy.toml` with --benchmark NAME.",
+                "no shared policy file in `{}`: `{POLICY_DIR}/policy.toml` does not exist, so hotpath.rs refuses the reports of every benchmark without its own policy file. Check a benchmark's own `{POLICY_DIR}/<benchmark>-policy.toml` with --benchmark NAME.",
                 root.display()
             ),
         })),
@@ -145,7 +145,7 @@ fn candidate(args: &ValidatePolicyArgs) -> Result<Candidate, CliError> {
 
 fn not_a_repository(cwd: &Path) -> String {
     format!(
-        "`{}` is not inside a git repository, so it has no policy files. Use --file to check one file.",
+        "`{}` is not inside a git repository, so it has no policy files and hotpath.rs refuses its reports. Use --file to check one file.",
         cwd.display()
     )
 }

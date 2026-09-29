@@ -21,8 +21,9 @@
 //! never fail, even in strict mode.
 //!
 //! The response carries the server's verdict on the report, judged under the
-//! policy the report carried, which the step summary links. An upload whose
-//! policy is not valid is refused like any other rejected upload.
+//! policy the report carried, which the step summary links. A report without
+//! a policy is never sent: the upload fails before a token is minted. An
+//! upload whose policy is not valid is refused like any other rejected upload.
 //! `HOTPATH_META_UPLOAD_FAIL_ON_REGRESSION=1` turns a
 //! regressed verdict into an error through the same exit path, and
 //! `HOTPATH_META_UPLOAD_RESPONSE_PATH` writes the response body to a file for
@@ -44,6 +45,7 @@ use crate::json::cloud_api::{
     validate_benchmark_name, ApiError, ApiErrorCode, PolicyProblem, PolicyRejected, UploadCreated,
     Verdict, API_URL,
 };
+use crate::json::policy_file::policy_files_hint;
 use crate::json::JsonReport;
 
 const AUDIENCE: &str = "hotpath.rs";
@@ -215,6 +217,14 @@ fn run(report: &JsonReport) -> Outcome {
         Ok(name) => name,
         Err(msg) => return Outcome::Skipped(msg),
     };
+    // Refused before a token is minted; the server refuses it too
+    // (`ApiErrorCode::PolicyRequired`), for a payload built by other means.
+    if report.meta.policy.is_none() {
+        return Outcome::Failed {
+            message: missing_policy_message(Some(&benchmark)),
+            body: None,
+        };
+    }
     let token = match mint_token(&request_url, &request_token) {
         Ok(token) => token,
         Err(message) => {
@@ -234,6 +244,15 @@ fn run(report: &JsonReport) -> Outcome {
         }
     };
     post_report(&API_URL, &token, &benchmark, &body)
+}
+
+/// Why a report without `meta.policy` is not sent, and what to add.
+pub(crate) fn missing_policy_message(benchmark: Option<&str>) -> String {
+    format!(
+        "the report carries no policy file and hotpath.rs refuses reports without one. Add {} \
+         to the repository and check it with `hotpath cloud validate-policy`.",
+        policy_files_hint(benchmark)
+    )
 }
 
 fn agent(timeout: Duration) -> ureq::Agent {
@@ -453,14 +472,10 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             } else {
                 Level::Notice
             };
-            let mut links = vec![format!(
-                "[Open the report on hotpath.rs]({})",
-                created.dashboard_url
-            )];
-            if let Some(url) = &created.policy_url {
-                let path = created.policy_path.as_deref().unwrap_or(url);
-                links.push(format!("[Policy: {path}]({url})"));
-            }
+            let links = vec![
+                format!("[Open the report on hotpath.rs]({})", created.dashboard_url),
+                format!("[Policy: {}]({})", created.policy_path, created.policy_url),
+            ];
             (
                 level,
                 message,
@@ -578,7 +593,8 @@ mod tests {
 
     const DASHBOARD_URL: &str =
         "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/meta/reports/r1/diff";
-    const VERDICT_FIELDS: &str = r#""verdict":{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0},"dashboard_url":"https://hotpath.rs/d""#;
+    const POLICY_URL: &str = "https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml";
+    const VERDICT_FIELDS: &str = r#""verdict":{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/a/b/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"https://hotpath.rs/d""#;
 
     fn env(actions: bool, strict: bool) -> Env {
         Env {
@@ -632,8 +648,8 @@ mod tests {
             baseline: Some("r0".into()),
             comment: CommentOutcome::default(),
             verdict: verdict(0, 0),
-            policy_path: None,
-            policy_url: None,
+            policy_path: "hotpath/policy.toml".into(),
+            policy_url: POLICY_URL.into(),
             dashboard_url: DASHBOARD_URL.into(),
         }
     }
@@ -855,7 +871,7 @@ mod tests {
         ));
         assert!(
             r.summary.contains(&format!(
-                "\n[Open the report on hotpath.rs]({DASHBOARD_URL})\n\n```\n{{\n  \"id\": \"r1\""
+                "\n[Open the report on hotpath.rs]({DASHBOARD_URL})\n\n[Policy: hotpath/policy.toml]({POLICY_URL})\n\n```\n{{\n  \"id\": \"r1\""
             )),
             "{}",
             r.summary
@@ -951,36 +967,6 @@ mod tests {
                 "{prefix}; verdict: 1 regression; comment failed: the installation is suspended"
             )
         );
-    }
-
-    #[test]
-    fn render_links_the_policy_in_the_step_summary() {
-        let url = "https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml";
-        let outcome = Outcome::Uploaded {
-            created: Box::new(UploadCreated {
-                policy_path: Some("hotpath/ci-policy.toml".into()),
-                policy_url: Some(url.into()),
-                ..created()
-            }),
-            request_id: None,
-        };
-        let r = render(&outcome, &env(true, false), Some("meta"));
-        assert_eq!(r.level, Level::Notice);
-        assert_eq!(
-            r.message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); verdict: no regressions"
-        );
-        assert!(
-            r.summary.contains(&format!(
-                "\n[Open the report on hotpath.rs]({DASHBOARD_URL})\n\n[Policy: hotpath/ci-policy.toml]({url})\n"
-            )),
-            "{}",
-            r.summary
-        );
-
-        // No policy carried, or a server that does not name it yet.
-        let r = render(&uploaded(verdict(0, 0)), &env(true, false), Some("meta"));
-        assert!(!r.summary.contains("[Policy"), "{}", r.summary);
     }
 
     #[test]

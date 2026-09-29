@@ -1146,7 +1146,8 @@ pub struct JsonMeta {
     /// The policy file of the checkout the report was measured on, which the
     /// server judges this report under. Only present with the
     /// `hotpath-cloud-meta` feature; omitted when the repository has no
-    /// policy file, and the built-in default judges then.
+    /// usable policy file. The report is still written then, but hotpath.rs
+    /// refuses to store it: every uploaded report must carry its policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<JsonPolicy>,
 }
