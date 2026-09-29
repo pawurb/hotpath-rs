@@ -330,8 +330,9 @@ pub struct PolicyValidated {
 }
 
 /// Body of `GET /api/v1/policy/default` (200): the release's key defaults as
-/// a starting policy file. Every key a policy file omits takes its value from
-/// here, so committing it verbatim judges exactly as a file that sets no key.
+/// a starting policy file that lists every metric family. Inside a table a
+/// policy file writes, a key it omits takes its value from here; a family
+/// table it leaves out is not judged at all, so an empty file judges nothing.
 /// Not a document any report carried: those stay in the user's repository.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefaultPolicy {
