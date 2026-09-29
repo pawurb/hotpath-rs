@@ -184,9 +184,9 @@ Poll with `report` to wait for CI's upload. Same token and base URL environment 
     Diff(DiffArgs),
 
     #[command(
-        about = "Check that the policy files of this repository parse as policies",
-        long_about = "Check that the policy files of this repository parse as policies
-(POST /api/v1/policy/validate, once per file).
+        about = "Check that a policy file of this repository parses as a policy",
+        long_about = "Check that a policy file of this repository parses as a policy
+(POST /api/v1/policy/validate). One file is checked per run.
 
 A policy is a TOML file in the repository. A run reads it and sends it inside its
 report, and the server judges the report under it, so a pull request is judged under
@@ -198,31 +198,31 @@ its own policy. A run picks the first of:
 and without any of them the built-in default judges. The repository is the git
 repository the working directory is in.
 
-Without arguments every policy file in hotpath/ is checked: policy.toml and each
-*-policy.toml, in name order, 64 files at most. --benchmark NAME checks the one file
-a run of that benchmark picks, by the order above. --file PATH checks that file
-wherever it is, `-` reads stdin.
+Without arguments the file a run without a benchmark policy of its own picks is
+checked: HOTPATH_POLICY_PATH if set, else hotpath/policy.toml. --benchmark NAME checks
+the file a run of that benchmark picks, by the order above, so each
+hotpath/<benchmark>-policy.toml is checked with its own --benchmark. --file PATH checks
+that file wherever it is, `-` reads stdin.
 
-The output is a JSON list with one entry per file checked: `path` (relative to the
-repository root, as given for --file), `valid`, and `problems`, empty when the file is
-valid. A problem has a `message` and the `line` it points at, null when it concerns the
-whole file. A TOML syntax error stops parsing, so it is reported alone; otherwise every
-structural and range problem of the file comes in one answer. The files are not parsed
-here, the server judges them. A file that is unreadable, not valid UTF-8, blank, larger
+The output is one JSON object: `path` (relative to the repository root, as given for
+--file), `valid`, and `problems`, empty when the file is valid. A problem has a
+`message` and the `line` it points at, null when it concerns the whole file. A TOML
+syntax error stops parsing, so it is reported alone; otherwise every structural and
+range problem of the file comes in one answer. The file is not parsed here, the
+server judges it. A file that is unreadable, not valid UTF-8, blank, larger
 than 65536 bytes or outside the repository is reported as a problem of that file
 without a request, and a run that finds such a file sends its report without a policy.
-An upload whose policy the server finds not valid is refused, so check the files
-before they reach the default branch.
+An upload whose policy the server finds not valid is refused, so check each file
+before it reaches the default branch.
 
 Exit codes:
-  0  every file checked is valid
-  1  a file is not valid, no policy file was found, or any error (auth, network,
+  0  the file is valid
+  1  the file is not valid, no policy file was found, or any error (auth, network,
      unparseable body)
   2  usage error
-A file that is not valid is an answer: the list is printed on stdout with stderr empty
-and the other files are still checked. An error prints one JSON document on stderr
-with stdout empty, as for every command. Same token and base URL environment as
-`auth`."
+A file that is not valid is an answer: the object is printed on stdout with stderr
+empty. An error prints one JSON document on stderr with stdout empty, as for every
+command. Same token and base URL environment as `auth`."
     )]
     ValidatePolicy(ValidatePolicyArgs),
 }
