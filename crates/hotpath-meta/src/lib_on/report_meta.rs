@@ -43,6 +43,7 @@ pub(crate) fn build_meta() -> crate::json::JsonMeta {
             let policy = checkout_policy(
                 policy_root(git_root).as_deref(),
                 benchmark.as_deref(),
+                ci.is_some(),
             );
         } else {
             let git: Option<crate::json::JsonGitInfo> = None;
@@ -92,23 +93,33 @@ fn policy_root(checkout_git_root: Option<PathBuf>) -> Option<PathBuf> {
 }
 
 /// The policy file of the checkout, as written; the client never parses it.
-/// A file that is there but cannot be sent is reported, and the report is
-/// written without a policy, which the server judges under the built-in
-/// default. So is an upload from outside any repository, where a policy file
-/// cannot be looked for at all.
+/// Without one, a file that is there but cannot be sent included, the report
+/// is still written but its upload is refused: by `cloud::upload` before
+/// anything is sent, and by the server for a report posted by other means.
+/// A missing file is reported here only on a CI run that does not upload
+/// itself (the benchmark job of a relay), so that job's log says why the
+/// relay will fail; an upload run reports it once, as its outcome.
 #[cfg(feature = "hotpath-cloud-meta")]
 fn checkout_policy(
     git_root: Option<&Path>,
     benchmark: Option<&str>,
+    in_ci: bool,
 ) -> Option<crate::json::JsonPolicy> {
     use crate::json::policy_file::PolicyLookup;
 
     match crate::json::policy_file::lookup(git_root, benchmark) {
         PolicyLookup::NotFound => {
-            if git_root.is_none() && crate::lib_on::cloud::enabled() {
+            let uploading = crate::lib_on::cloud::enabled();
+            if git_root.is_none() && (uploading || in_ci) {
                 eprintln!(
                     "hotpath: no git repository found from the working directory, so no policy \
-                     file was looked for. The report carries no policy."
+                     file was looked for."
+                );
+            }
+            if in_ci && !uploading {
+                eprintln!(
+                    "hotpath: {}",
+                    crate::lib_on::cloud::missing_policy_message(benchmark)
                 );
             }
             None

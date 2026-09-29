@@ -37,8 +37,8 @@ pub static POLICY_PATH: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
 
 #[derive(Debug)]
 pub enum PolicyLookup {
-    /// The repository has no policy file for the run: the built-in default
-    /// judges.
+    /// The repository has no policy file for the run, or there is no
+    /// repository to look in: hotpath.rs refuses the upload.
     NotFound,
     Found(JsonPolicy),
     /// A file is there, or was asked for by name, and cannot be sent.
@@ -93,6 +93,16 @@ impl fmt::Display for UnusablePolicy {
                 "the policy file {file} cannot be placed in a repository: no git repository was found."
             ),
         }
+    }
+}
+
+/// The files a run of `benchmark` would pick up, as a message names them:
+/// what to add when there is none.
+pub fn policy_files_hint(benchmark: Option<&str>) -> String {
+    let shared = format!("`{POLICY_DIR}/{SHARED_POLICY_FILE}`");
+    match benchmark {
+        Some(name) => format!("`{POLICY_DIR}/{name}{BENCHMARK_POLICY_SUFFIX}` or {shared}"),
+        None => shared,
     }
 }
 

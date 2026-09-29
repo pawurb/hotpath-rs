@@ -401,9 +401,26 @@ mod tests {
         let checkout = Checkout::new("no-file");
         checkout.write("hotpath/notes.toml", b"x");
 
+        // A local run: the report is written and nothing is said.
         let (meta, stderr) = checkout.run(&[("HOTPATH_BENCHMARK", "ci")]);
         assert_eq!(meta.policy, None);
         assert!(!stderr.contains("policy file"), "{stderr}");
+
+        // The benchmark job of a relay writes the report and does not upload
+        // it: its log says why the relay will be refused.
+        let (meta, stderr) = checkout.run(&[
+            ("HOTPATH_BENCHMARK", "ci"),
+            ("GITHUB_ACTIONS", "true"),
+            ("GITHUB_EVENT_NAME", "pull_request"),
+        ]);
+        assert_eq!(meta.policy, None);
+        assert!(
+            stderr.contains(
+                "hotpath: the report carries no policy file and hotpath.rs refuses reports \
+                 without one. Add `hotpath/ci-policy.toml` or `hotpath/policy.toml`"
+            ),
+            "{stderr}"
+        );
     }
 
     #[test]

@@ -30,7 +30,7 @@ mod tests {
     const REPORTS_PATH: &str = "/api/v1/repos/pawurb/hotpath-rs/benchmarks/ci/reports";
     const REPORT_ID: &str = "0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a";
     const SHA: &str = "9ab2000000000000000000000000000000000000";
-    const SUMMARY_BODY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","policy_path":"hotpath/ci-policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
+    const SUMMARY_BODY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","regressed":false,"policy_path":"hotpath/ci-policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
 
     /// `SUMMARY_BODY` plus a payload in the writer's (unsorted) key order.
     fn report_body() -> String {
@@ -1342,13 +1342,23 @@ mod tests {
             .write("hotpath/notes.toml", b"x");
         let outside = Checkout::without_git("no_checkout");
 
-        let cases: [(&Checkout, &[&str], &str); 5] = [
+        let cases: [(&Checkout, &[&str], &str); 7] = [
             (&unshared, &[], "no shared policy file in "),
+            (
+                &unshared,
+                &[],
+                "so hotpath.rs refuses the reports of every benchmark",
+            ),
             (&unshared, &[], "with --benchmark NAME"),
             (
                 &unshared,
                 &["--benchmark", "nightly"],
                 "no policy file for benchmark `nightly` in ",
+            ),
+            (
+                &unshared,
+                &["--benchmark", "nightly"],
+                "so hotpath.rs refuses its reports. Add one of them.",
             ),
             (&outside, &[], "is not inside a git repository"),
             (

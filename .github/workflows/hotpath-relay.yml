@@ -21,6 +21,8 @@ name: hotpath relay
 # report under it. It is passed on as written, so a pull request that edits its
 # policy file is judged under the edit, and only that pull request is. A policy
 # that is not valid fails the upload: nothing else is judged in its place.
+# A report without a policy (no file in the checkout) is refused before the
+# upload: every report must carry one.
 #
 # Call it from a workflow of your own:
 #
@@ -160,6 +162,12 @@ jobs:
             '.meta.ci.event == "pull_request" and .meta.ci.pull_request.head_sha == $sha' \
             "$REPORT_PATH" > /dev/null; then
             echo "::error::report does not describe this pull request: meta.ci.event must be \"pull_request\" and meta.ci.pull_request.head_sha must be $HEAD_SHA. A report built without the hotpath-cloud feature has no meta.ci at all."
+            exit 1
+          fi
+          # hotpath.rs refuses a report without its policy file; the
+          # benchmark job found none in the pull request's checkout.
+          if ! jq -e '.meta.policy != null' "$REPORT_PATH" > /dev/null; then
+            echo "::error::report carries no policy file, and hotpath.rs refuses reports without one. Add hotpath/$BENCHMARK-policy.toml or hotpath/policy.toml to the repository and check it with \`hotpath cloud validate-policy\`."
             exit 1
           fi
           if ! jq -e --arg benchmark "$BENCHMARK" '.meta.benchmark == $benchmark' \

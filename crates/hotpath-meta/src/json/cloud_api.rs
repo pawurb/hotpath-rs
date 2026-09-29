@@ -82,6 +82,10 @@ pub enum ApiErrorCode {
     /// A policy was refused (422), sent for validation or carried by an
     /// upload; the body is a `PolicyRejected` with every problem found.
     InvalidPolicy,
+    /// An upload carried no policy (422): every report must carry the
+    /// repository's policy file. A plain `ApiError`, there is no document to
+    /// list problems for.
+    PolicyRequired,
     Internal,
     /// A code this client does not know; printed like any other error. Also
     /// the default, so a body without `code` still parses.
@@ -214,20 +218,23 @@ pub struct ReportSummary {
     pub baseline_id: Option<String>,
     /// The PR comment this report produced, when it was posted.
     pub comment_url: Option<String>,
+    /// The verdict the upload gave, as its PR comment and upload response
+    /// stated it (`Verdict::regressed`). Stored once at upload and never
+    /// recomputed: the payload, the policy and the baseline it was judged
+    /// with are all fixed then. `None` (`null` on the wire) when nothing was
+    /// judged (no baseline and no budgets, a report the server cannot read),
+    /// which never reads as passed.
+    pub regressed: Option<bool>,
     /// The path of the policy file the report was judged under, relative to
-    /// the repository root (`hotpath/policy.toml`). `None` (`null` on the
-    /// wire) only when the report carried no policy and the built-in default
-    /// judged: a report that carried one always has its path, also when the
-    /// document does not parse. The document is the file at that path in the
-    /// measured commit and is never returned by the API.
-    pub policy_path: Option<String>,
+    /// the repository root (`hotpath/policy.toml`). Every report carries
+    /// one: an upload without a policy is refused. The document is the file
+    /// at that path in the measured commit and is never returned by the API.
+    pub policy_path: String,
     /// The policy file on GitHub, at the measured commit:
     /// `https://github.com/{owner}/{name}/blob/{commit_sha}/{policy_path}`.
     /// Pinned to `commit_sha`, so it shows the document that judged this
-    /// report whatever the branch holds now. `None` only when the report
-    /// carried no policy and the built-in default judged, as `policy_path`:
-    /// the two are set or `null` together.
-    pub policy_url: Option<String>,
+    /// report whatever the branch holds now.
+    pub policy_url: String,
     /// Size of the uploaded JSON in bytes.
     pub size_bytes: u64,
     /// Upload time, RFC 3339 on the wire.
@@ -285,18 +292,13 @@ pub struct UploadCreated {
     /// Required: a body without a verdict must not read as "no regression".
     pub verdict: Verdict,
     /// The path of the policy file the report was judged under, as
-    /// `ReportSummary::policy_path`: `None` when the report carried no
-    /// policy and the built-in default judged. Nothing else ever stands in:
-    /// an upload whose policy is not valid is refused with a 422
-    /// `PolicyRejected`. Defaulted so a server that does not send it yet
-    /// still parses.
-    #[serde(default)]
-    pub policy_path: Option<String>,
+    /// `ReportSummary::policy_path`. Nothing else ever stands in: an upload
+    /// without a policy is refused with a 422 `PolicyRequired`, one whose
+    /// policy is not valid with a 422 `PolicyRejected`.
+    pub policy_path: String,
     /// That file on GitHub, pinned to the measured commit, as
-    /// `ReportSummary::policy_url`. Set or `None` together with
-    /// `policy_path`; defaulted like it.
-    #[serde(default)]
-    pub policy_url: Option<String>,
+    /// `ReportSummary::policy_url`.
+    pub policy_url: String,
     /// The dashboard's page for the report against its baseline
     /// (`.../benchmarks/{benchmark}/reports/{id}/diff`).
     pub dashboard_url: String,
@@ -325,6 +327,17 @@ pub struct PolicyValidated {
     /// Always `true`, never `false`: a refused document is always the 422
     /// `PolicyRejected`, so the status alone decides.
     pub valid: bool,
+}
+
+/// Body of `GET /api/v1/policy/default` (200): the release's key defaults as
+/// a starting policy file. Every key a policy file omits takes its value from
+/// here, so committing it verbatim judges exactly as a file that sets no key.
+/// Not a document any report carried: those stay in the user's repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefaultPolicy {
+    /// The TOML document as written, comments included: they document each
+    /// key.
+    pub source: String,
 }
 
 /// One thing wrong with a submitted policy.
@@ -367,8 +380,7 @@ pub struct PolicyRejected {
 
 /// Body of `GET /api/v1/repos/{owner}/{name}/benchmarks/{benchmark}/diff`:
 /// one head report against the baseline recorded for it at upload, judged
-/// under the policy the head report carried (the built-in default when it
-/// carried none), so the answer for a stored report never changes with a
+/// under the policy the head report carried, so the answer for a stored report never changes with a
 /// later edit of the policy file. The policy is named by `head.policy_path`
 /// and `head.policy_url`; no other policy ever stands in for it.
 ///
@@ -984,8 +996,8 @@ mod tests {
         );
     }
 
-    const PR_SUMMARY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","policy_path":"hotpath/ci-policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
-    const PUSH_SUMMARY: &str = r#"{"id":"0199a3b0-0000-7000-8000-000000000000","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"push","commit_sha":"77de000000000000000000000000000000000000","head_sha":null,"base_sha":null,"git_ref":"refs/heads/main","base_ref":null,"head_ref":null,"pr_number":null,"run_id":"18237400000","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":null,"baseline_id":null,"comment_url":null,"policy_path":null,"policy_url":null,"size_bytes":80000,"created_at":"2026-09-25T17:00:00Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3b0-0000-7000-8000-000000000000"}"#;
+    const PR_SUMMARY: &str = r#"{"id":"0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"pull_request","commit_sha":"3f1c000000000000000000000000000000000000","head_sha":"9ab2000000000000000000000000000000000000","base_sha":"77de000000000000000000000000000000000000","git_ref":null,"base_ref":"main","head_ref":"channel-delay","pr_number":105,"run_id":"18237461234","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":{"profile":"release"},"baseline_id":"0199a3b0-0000-7000-8000-000000000000","comment_url":"https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1","regressed":false,"policy_path":"hotpath/ci-policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml","size_bytes":81234,"created_at":"2026-09-25T18:03:11Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a"}"#;
+    const PUSH_SUMMARY: &str = r#"{"id":"0199a3b0-0000-7000-8000-000000000000","repository":"pawurb/hotpath-rs","benchmark":"ci","event":"push","commit_sha":"77de000000000000000000000000000000000000","head_sha":null,"base_sha":null,"git_ref":"refs/heads/main","base_ref":null,"head_ref":null,"pr_number":null,"run_id":"18237400000","workflow":"CI","actor":"pawurb","ci_provider":"github-actions","hotpath_version":"0.26.1","user_metadata":null,"baseline_id":null,"comment_url":null,"regressed":null,"policy_path":"hotpath/ci-policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/77de000000000000000000000000000000000000/hotpath/ci-policy.toml","size_bytes":80000,"created_at":"2026-09-25T17:00:00Z","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3b0-0000-7000-8000-000000000000"}"#;
 
     fn pr_summary() -> ReportSummary {
         ReportSummary {
@@ -1010,10 +1022,9 @@ mod tests {
             comment_url: Some(
                 "https://github.com/pawurb/hotpath-rs/pull/105#issuecomment-1".into(),
             ),
-            policy_path: Some("hotpath/ci-policy.toml".into()),
-            policy_url: Some(
-                "https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml".into(),
-            ),
+            regressed: Some(false),
+            policy_path: "hotpath/ci-policy.toml".into(),
+            policy_url: "https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/ci-policy.toml".into(),
             size_bytes: 81234,
             created_at: datetime!(2026-09-25 18:03:11 UTC),
             dashboard_url: "https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/ci/reports/0199a3c2-7d2e-7b41-9c3a-1f2e3d4c5b6a".into(),
@@ -1030,9 +1041,8 @@ mod tests {
         assert_eq!(push.head_sha, None);
         assert_eq!(push.pr_number, None);
         assert_eq!(push.user_metadata, None);
-        // No policy carried: the built-in default judged.
-        assert_eq!(push.policy_path, None);
-        assert_eq!(push.policy_url, None);
+        // Not judged stays `null`, never `false`.
+        assert_eq!(push.regressed, None);
         assert_eq!(push.git_ref.as_deref(), Some("refs/heads/main"));
         assert_eq!(serde_json::to_string(&push).unwrap(), PUSH_SUMMARY);
     }
@@ -1054,21 +1064,7 @@ mod tests {
                 payload: serde_json::from_str(payload).unwrap(),
             }
         );
-        assert_eq!(
-            report.summary.policy_path.as_deref(),
-            Some("hotpath/ci-policy.toml")
-        );
         assert_eq!(serde_json::to_string(&report).unwrap(), body);
-
-        // A report that carried no policy says so with a `null` path.
-        let without = format!(
-            "{},\"payload\":{payload}}}",
-            &PUSH_SUMMARY[..PUSH_SUMMARY.len() - 1]
-        );
-        let bare: Report = serde_json::from_str(&without).unwrap();
-        assert_eq!(bare.summary.policy_path, None);
-        assert_eq!(bare.summary.policy_url, None);
-        assert_eq!(serde_json::to_string(&bare).unwrap(), without);
 
         // A payload in the writer's key order parses to the same data.
         let unsorted = body.replace(payload, r#"{"version":"0.26.1","meta":{}}"#);
@@ -1197,6 +1193,8 @@ mod tests {
 
     const UPLOAD_DASHBOARD_URL: &str =
         "https://hotpath.rs/app/repos/a/b/benchmarks/meta/reports/r1/diff";
+    const POLICY_URL: &str =
+        "https://github.com/a/b/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml";
 
     #[test]
     fn upload_created_parses_with_and_without_comment() {
@@ -1204,6 +1202,7 @@ mod tests {
             r#"{{"id":"r1","repository":"a/b","benchmark":"meta","baseline":"r0",
                 "comment":{{"url":"https://github.com/c/1","error":"the report does not parse"}},
                 "verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":2,"budgets_broken":0}},
+                "policy_path":"hotpath/policy.toml","policy_url":"{POLICY_URL}",
                 "dashboard_url":"{UPLOAD_DASHBOARD_URL}","later":true}}"#
         ))
         .unwrap();
@@ -1218,36 +1217,22 @@ mod tests {
         let bare: UploadCreated = serde_json::from_str(&format!(
             r#"{{"id":"r1","repository":"a/b","benchmark":"meta",
                 "verdict":{{"judged":false,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},
+                "policy_path":"hotpath/policy.toml","policy_url":"{POLICY_URL}",
                 "dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
         ))
         .unwrap();
         assert_eq!(bare.baseline, None);
         assert_eq!(bare.comment, CommentOutcome::default());
-        // A server that does not send the policy fields yet.
-        assert_eq!(bare.policy_path, None);
-        assert_eq!(bare.policy_url, None);
     }
 
     #[test]
     fn upload_created_names_the_policy_that_judged() {
         let body = format!(
-            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/a/b/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
+            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy_path":"hotpath/policy.toml","policy_url":"{POLICY_URL}","dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
         );
         let created: UploadCreated = serde_json::from_str(&body).unwrap();
-        assert_eq!(created.policy_path.as_deref(), Some("hotpath/policy.toml"));
-        assert_eq!(
-            created.policy_url.as_deref(),
-            Some("https://github.com/a/b/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml")
-        );
-        assert_eq!(serde_json::to_string(&created).unwrap(), body);
-
-        // No policy carried, the built-in default judged: `null` on the wire.
-        let body = format!(
-            r#"{{"id":"r1","repository":"a/b","benchmark":"meta","comment":{{}},"verdict":{{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0}},"policy_path":null,"policy_url":null,"dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
-        );
-        let created: UploadCreated = serde_json::from_str(&body).unwrap();
-        assert_eq!(created.policy_path, None);
-        assert_eq!(created.policy_url, None);
+        assert_eq!(created.policy_path, "hotpath/policy.toml");
+        assert_eq!(created.policy_url, POLICY_URL);
         assert_eq!(serde_json::to_string(&created).unwrap(), body);
     }
 
@@ -1587,10 +1572,7 @@ mod tests {
         let base = diff.base.expect("compared has a base");
         assert!(base.branch_point);
         assert_eq!(diff.dashboard_url, DIFF_URL);
-        assert_eq!(
-            diff.head.policy_path.as_deref(),
-            Some("hotpath/ci-policy.toml")
-        );
+        assert_eq!(diff.head.policy_path, "hotpath/ci-policy.toml");
         assert_eq!(diff.rows, RowFilter::All);
 
         assert_eq!(diff.budgets.expect("head parses").rules, 0);
