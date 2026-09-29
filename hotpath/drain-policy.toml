@@ -1,0 +1,28 @@
+# Policy for the `drain` benchmark (`cloud-drain-benchmark.yml`, the
+# `hotpath-drain` `throughput` example). The example runs in lockstep rounds,
+# so allocations are deterministic: identical bytes on every run of a commit.
+# Timing stays unjudged, as in the built-in: a shared CI runner is too noisy.
+
+[functions]
+min_percent_total = 0.5
+
+# The producer hot path recycles drained chunks instead of allocating new
+# ones: ~1.2 B per push and 1.2 MB over the run. Before chunk recycling it
+# was 24 B and 23.1 MB, which this rule reports as a breach.
+[[functions.budgets]]
+match = "hotpath_drain::EventProducer::push"
+alloc = { avg = "2 B", total = "2 MB" }
+calls = { min = 1000000, max = 1000000 }
+message = "push allocates again: drained chunks are no longer recycled to producers"
+
+[functions.alloc]
+judged = true
+min_percent_change = 2
+metrics = ["avg", "total"]
+min_calls = 0
+
+[functions.timing]
+judged = false
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 10
