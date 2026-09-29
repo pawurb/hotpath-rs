@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
-    //! `hotpath cloud auth|repos|benchmarks|report|diff|validate-policy`
+    //! `hotpath cloud auth|repos|benchmarks|report|diff|validate-policy|init`
     //! against a mock hotpath.rs: the bearer request each sends, the JSON it
     //! re-emits, the error JSON on stderr (server bodies verbatim, client
     //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 0 or 1 read
@@ -1069,6 +1069,20 @@ mod tests {
             all.extend_from_slice(args);
             hotpath_in(server, token, &all, b"", Some(&self.root), None)
         }
+
+        /// `init` run from a directory below the root, which is found as the
+        /// git root above it.
+        fn init(&self, server: &ServerGuard, token: Option<&str>, args: &[&str]) -> Output {
+            let cwd = self.root.join("src");
+            std::fs::create_dir_all(&cwd).unwrap();
+            let mut all = vec!["init"];
+            all.extend_from_slice(args);
+            hotpath_in(server, token, &all, b"", Some(&cwd), None)
+        }
+
+        fn read(&self, path: &str) -> Option<String> {
+            std::fs::read_to_string(self.root.join(path)).ok()
+        }
     }
 
     impl Drop for Checkout {
@@ -1424,6 +1438,155 @@ mod tests {
             );
             assert_eq!(stdout(&output), "", "{args:?}");
         }
+        mock.assert();
+    }
+
+    const DEFAULT_POLICY_PATH: &str = "/api/v1/policy/default";
+    /// Comments and a non-ASCII character: the file is written byte for byte.
+    const DEFAULT_SOURCE: &str =
+        "# hotpath policy \u{2192} starting point\n[functions.timing]\njudged = true\n";
+
+    fn mock_default_policy(server: &mut ServerGuard, hits: usize) -> mockito::Mock {
+        server
+            .mock("GET", DEFAULT_POLICY_PATH)
+            .match_header("authorization", format!("Bearer {TOKEN}").as_str())
+            .match_header("user-agent", Matcher::Regex("^hotpath-cli/[0-9]".into()))
+            .with_status(200)
+            .with_header("content-type", "application/json; charset=utf-8")
+            .with_body(serde_json::json!({ "source": DEFAULT_SOURCE }).to_string())
+            .expect(hits)
+            .create()
+    }
+
+    #[test]
+    fn init_writes_the_default_policy_and_never_replaces_it_unasked() {
+        let mut server = Server::new();
+        let mock = mock_default_policy(&mut server, 3);
+        let checkout = Checkout::new("init");
+
+        let output = checkout.init(&server, Some(TOKEN), &[]);
+        assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+        assert_eq!(stderr(&output), "");
+        assert_eq!(
+            json(&stdout(&output)),
+            json(r#"{"path":"hotpath/policy.toml","replaced":false}"#)
+        );
+        assert_eq!(
+            checkout.read("hotpath/policy.toml").as_deref(),
+            Some(DEFAULT_SOURCE)
+        );
+
+        // The file is the repository's now: refused without --force, before
+        // the token is even read.
+        checkout.write("hotpath/policy.toml", GOOD_POLICY.as_bytes());
+        let output = checkout.init(&server, None, &[]);
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        assert!(
+            client_error(&output).starts_with("`hotpath/policy.toml` already exists."),
+            "{}",
+            stderr(&output)
+        );
+        assert_eq!(
+            checkout.read("hotpath/policy.toml").as_deref(),
+            Some(GOOD_POLICY)
+        );
+
+        let output = checkout.init(&server, Some(TOKEN), &["--force", "--pretty"]);
+        assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+        assert_eq!(
+            json(&stdout(&output)),
+            json(r#"{"path":"hotpath/policy.toml","replaced":true}"#)
+        );
+        assert_eq!(
+            checkout.read("hotpath/policy.toml").as_deref(),
+            Some(DEFAULT_SOURCE)
+        );
+
+        // A benchmark's own file sits next to the shared one.
+        let output = checkout.init(&server, Some(TOKEN), &["--benchmark", "nightly"]);
+        assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+        assert_eq!(
+            json(&stdout(&output)),
+            json(r#"{"path":"hotpath/nightly-policy.toml","replaced":false}"#)
+        );
+        assert_eq!(
+            checkout.read("hotpath/nightly-policy.toml").as_deref(),
+            Some(DEFAULT_SOURCE)
+        );
+        // No temporary file is left next to them.
+        let mut files: Vec<String> = std::fs::read_dir(checkout.root.join("hotpath"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        files.sort();
+        assert_eq!(files, ["nightly-policy.toml", "policy.toml"]);
+        mock.assert();
+    }
+
+    #[test]
+    fn init_refuses_before_any_request() {
+        let mut server = Server::new();
+        let mock = mock_default_policy(&mut server, 0);
+        let outside = Checkout::without_git("init_outside");
+        let linked = Checkout::new("init_symlink");
+        linked.write("elsewhere.toml", GOOD_POLICY.as_bytes());
+        std::fs::create_dir_all(linked.root.join("hotpath")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            linked.root.join("elsewhere.toml"),
+            linked.root.join("hotpath/policy.toml"),
+        )
+        .unwrap();
+        let directory = Checkout::new("init_directory");
+        std::fs::create_dir_all(directory.root.join("hotpath/policy.toml")).unwrap();
+        let empty = Checkout::new("init_no_token");
+
+        let mut cases: Vec<(&Checkout, &[&str], &str)> = vec![
+            (&outside, &[], "is not inside a git repository"),
+            (&directory, &["--force"], "exists and is not a file"),
+            (&empty, &["--benchmark", "a/b"], "invalid --benchmark `a/b`"),
+        ];
+        #[cfg(unix)]
+        cases.push((&linked, &["--force"], "is a symlink"));
+        for (checkout, args, expected) in cases {
+            let output = checkout.init(&server, Some(TOKEN), args);
+            assert_eq!(output.status.code(), Some(1), "{args:?}");
+            assert_eq!(stdout(&output), "", "{args:?}");
+            let error = client_error(&output);
+            assert!(error.contains(expected), "{args:?}: {error}");
+        }
+        assert_eq!(
+            linked.read("elsewhere.toml").as_deref(),
+            Some(GOOD_POLICY),
+            "the symlink target was written"
+        );
+
+        // Nothing to refuse: the token is what is missing, and nothing is written.
+        let output = empty.init(&server, None, &[]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(client_error(&output).starts_with("HOTPATH_API_TOKEN is not set"));
+        assert!(!empty.root.join("hotpath").exists());
+        mock.assert();
+    }
+
+    #[test]
+    fn init_passes_a_server_error_through_and_writes_nothing() {
+        let mut server = Server::new();
+        let body = error_body(ApiErrorCode::InvalidToken, "The token does not work.");
+        let mock = server
+            .mock("GET", DEFAULT_POLICY_PATH)
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(&body)
+            .create();
+        let checkout = Checkout::new("init_error");
+
+        let output = checkout.init(&server, Some(TOKEN), &[]);
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output), "");
+        assert_eq!(stderr(&output).trim(), body);
+        assert!(!checkout.root.join("hotpath").exists());
         mock.assert();
     }
 }

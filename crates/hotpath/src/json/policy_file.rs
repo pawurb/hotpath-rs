@@ -99,10 +99,24 @@ impl fmt::Display for UnusablePolicy {
 /// The files a run of `benchmark` would pick up, as a message names them:
 /// what to add when there is none.
 pub fn policy_files_hint(benchmark: Option<&str>) -> String {
-    let shared = format!("`{POLICY_DIR}/{SHARED_POLICY_FILE}`");
+    let shared = format!("`{}`", policy_file_path(None));
     match benchmark {
-        Some(name) => format!("`{POLICY_DIR}/{name}{BENCHMARK_POLICY_SUFFIX}` or {shared}"),
+        Some(_) => format!("`{}` or {shared}", policy_file_path(benchmark)),
         None => shared,
+    }
+}
+
+/// The policy file of `benchmark` relative to the repository root
+/// (`hotpath/<benchmark>-policy.toml`), the shared `hotpath/policy.toml`
+/// without one.
+pub fn policy_file_path(benchmark: Option<&str>) -> String {
+    format!("{POLICY_DIR}/{}", policy_file_name(benchmark))
+}
+
+fn policy_file_name(benchmark: Option<&str>) -> String {
+    match benchmark {
+        Some(name) => format!("{name}{BENCHMARK_POLICY_SUFFIX}"),
+        None => SHARED_POLICY_FILE.to_string(),
     }
 }
 
@@ -127,11 +141,8 @@ pub fn lookup(git_root: Option<&Path>, benchmark: Option<&str>) -> PolicyLookup 
     let Some(git_root) = git_root else {
         return PolicyLookup::NotFound;
     };
-    let benchmark_file = benchmark.map(|name| format!("{name}{BENCHMARK_POLICY_SUFFIX}"));
-    for file_name in benchmark_file
-        .into_iter()
-        .chain([SHARED_POLICY_FILE.to_string()])
-    {
+    let benchmark_file = benchmark.map(|name| policy_file_name(Some(name)));
+    for file_name in benchmark_file.into_iter().chain([policy_file_name(None)]) {
         match read_in_policy_dir(git_root, &file_name) {
             Ok(None) => {}
             Ok(Some(policy)) => return PolicyLookup::Found(policy),

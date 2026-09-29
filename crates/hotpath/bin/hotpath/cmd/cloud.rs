@@ -9,6 +9,7 @@ mod api;
 mod auth;
 mod benchmarks;
 mod diff;
+mod init;
 mod policy;
 mod repo;
 mod report;
@@ -22,6 +23,7 @@ use clap::{Parser, Subcommand};
 
 use crate::cmd::cloud::api::{CliError, Output};
 use crate::cmd::cloud::diff::DiffArgs;
+use crate::cmd::cloud::init::InitArgs;
 use crate::cmd::cloud::policy::ValidatePolicyArgs;
 use crate::cmd::cloud::report::ReportArgs;
 
@@ -94,8 +96,7 @@ from key order and without `meta.policy`.
 
 `policy_path` names the policy file the report was judged under, relative to the
 repository root, and `policy_url` is that file on GitHub, pinned to the measured
-commit. Both are null only when the report carried no policy and the built-in default
-judged; otherwise both are set. The document is the file at that path in the measured
+commit. Every stored report carries its policy, so both are always set. The document is the file at that path in the measured
 commit; the API never returns it, with or without --no-payload.
 
 A report of another benchmark, an unknown id, no match yet and a repository the
@@ -117,9 +118,8 @@ commit, so `--commit $(git rev-parse HEAD)` on a PR branch finds the PR's report
 
 The baseline is the one the server recorded for the head at upload, the one the PR
 comment compared. The judging policy is the one the head report carried when it was
-uploaded, named by `head.policy_path` and `head.policy_url`, the built-in default
-when it carried none (both are then null), so the answer for a stored report does not
-change with a later edit of the policy. No other policy ever stands in: a head report
+uploaded, named by `head.policy_path` and `head.policy_url`, so the answer for a
+stored report does not change with a later edit of the policy. No other policy ever stands in: a head report
 whose policy can no longer be read is answered as `unreadable` naming `head`, with
 the policy file in `error`.
 Every value is a string formatted as the PR comment shows it (\"2.06 ms\", \"3.1 KB\",
@@ -195,8 +195,9 @@ its own policy. A run picks the first of:
      absolute; it must be inside the repository)
   2. hotpath/<benchmark>-policy.toml
   3. hotpath/policy.toml
-and without any of them the built-in default judges. The repository is the git
-repository the working directory is in.
+and without any of them the upload is refused (`init` writes a starting file). A key
+a file leaves out takes the release's default. The repository is the git repository
+the working directory is in.
 
 Without arguments the file a run without a benchmark policy of its own picks is
 checked: HOTPATH_POLICY_PATH if set, else hotpath/policy.toml. --benchmark NAME checks
@@ -211,7 +212,7 @@ syntax error stops parsing, so it is reported alone; otherwise every structural 
 range problem of the file comes in one answer. The file is not parsed here, the
 server judges it. A file that is unreadable, not valid UTF-8, blank, larger
 than 65536 bytes or outside the repository is reported as a problem of that file
-without a request, and a run that finds such a file sends its report without a policy.
+without a request, and a run that finds such a file does not upload its report.
 An upload whose policy the server finds not valid is refused, so check each file
 before it reaches the default branch.
 
@@ -225,6 +226,33 @@ empty. An error prints one JSON document on stderr with stdout empty, as for eve
 command. Same token and base URL environment as `auth`."
     )]
     ValidatePolicy(ValidatePolicyArgs),
+
+    #[command(
+        about = "Write the default policy as this repository's policy file (GET /api/v1/policy/default)",
+        long_about = "Write the default policy as this repository's policy file (GET /api/v1/policy/default).
+
+Every uploaded report must carry a policy file of its repository, and a key the file
+leaves out takes the release's default. This command fetches those defaults, comments
+included, and writes them as hotpath/policy.toml, the file every benchmark without
+its own policy is judged under, or with --benchmark NAME as hotpath/NAME-policy.toml.
+The document comes from the server, so it always matches the release that judges.
+Committed unchanged, it judges exactly as a file that sets no key; edit it, then check
+it with `validate-policy`. HOTPATH_POLICY_PATH, when set at run time, still wins over
+both files.
+
+The repository is the git repository the working directory is in. An existing file is
+never replaced without --force, and a symlink never; both are refused before any
+request. The output is one JSON object: `path` (relative to the repository root) and
+`replaced`, whether an existing file was replaced.
+
+Exit codes:
+  0  the file was written
+  1  the file exists (without --force), no git repository, or any error (auth,
+     network, unparseable body)
+  2  usage error
+Same token and base URL environment as `auth`."
+    )]
+    Init(InitArgs),
 }
 
 impl CloudArgs {
@@ -258,6 +286,7 @@ impl CloudArgs {
             CloudCommand::Report(args) => report::run(output, args),
             CloudCommand::Diff(args) => diff::run(output, args),
             CloudCommand::ValidatePolicy(args) => policy::validate(output, args),
+            CloudCommand::Init(args) => init::run(output, args),
         }
     }
 }
