@@ -1,15 +1,14 @@
-//! `hotpath cloud validate-policy`: asks the server whether the policy files
-//! of this checkout parse as policies, before a run is judged under them.
-//! Which file a run picks is decided by `hotpath::json::policy_file`, the
-//! lookup the upload uses, so this command never approves a file the upload
-//! would not send.
+//! `hotpath cloud validate-policy`: asks the server whether one policy file
+//! parses as a policy, before a run is judged under it. Without `--file` the
+//! file is the one `hotpath::json::policy_file::lookup` picks, the lookup the
+//! upload uses, so this command never approves a file the upload would not
+//! send.
 //!
 //! The document is sent as written and never parsed here: the server's
 //! parser is the only judge. What the client can tell without it (a file
 //! that is unreadable, not UTF-8, blank, too large or outside the
 //! repository) is reported as a problem of that file and costs no request.
-//! Every argument is validated and every file read before the client is
-//! built.
+//! Every argument is validated and the file read before the client is built.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -40,7 +39,7 @@ pub(crate) struct ValidatePolicyArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Check this file instead of the ones in the repository, `-` for stdin"
+        help = "Check this file instead of the one the repository picks, `-` for stdin"
     )]
     file: Option<PathBuf>,
 }
@@ -80,53 +79,42 @@ impl Candidate {
 }
 
 pub(crate) fn validate(output: &Output, args: ValidatePolicyArgs) -> Result<ExitCode, CliError> {
-    let candidates = candidates(&args)?;
+    let candidate = candidate(&args)?;
 
-    // Built for the first document there is to send, so files that are all
-    // refused here are reported without a token.
-    let mut client = None;
-    let mut checked = Vec::with_capacity(candidates.len());
-    for candidate in candidates {
-        let problems = match candidate.source {
-            Ok(source) => {
-                let client = match &client {
-                    Some(client) => client,
-                    None => client.insert(Client::from_env()?),
-                };
-                server_problems(client, source)?
-            }
-            Err(unusable) => vec![PolicyProblem {
-                line: None,
-                message: unusable.to_string(),
-            }],
-        };
-        checked.push(CheckedFile {
-            path: candidate.path,
-            valid: problems.is_empty(),
-            problems,
-        });
-    }
+    // A file refused here is reported without a token.
+    let problems = match candidate.source {
+        Ok(source) => server_problems(&Client::from_env()?, source)?,
+        Err(unusable) => vec![PolicyProblem {
+            line: None,
+            message: unusable.to_string(),
+        }],
+    };
+    let checked = CheckedFile {
+        path: candidate.path,
+        valid: problems.is_empty(),
+        problems,
+    };
 
     output.emit(&checked)?;
-    Ok(if checked.iter().all(|file| file.valid) {
+    Ok(if checked.valid {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     })
 }
 
-/// The files the arguments name, never empty: no file to check is an error.
-fn candidates(args: &ValidatePolicyArgs) -> Result<Vec<Candidate>, CliError> {
+/// The one file the arguments name: no file to check is an error.
+fn candidate(args: &ValidatePolicyArgs) -> Result<Candidate, CliError> {
     if let Some(file) = &args.file {
         let source = if file.as_os_str() == "-" {
             policy_file::read_source(&mut std::io::stdin().lock(), "stdin (--file -)")
         } else {
             policy_file::read_file(file)
         };
-        return Ok(vec![Candidate {
+        return Ok(Candidate {
             path: file.display().to_string(),
             source,
-        }]);
+        });
     }
 
     let benchmark = args
@@ -138,37 +126,21 @@ fn candidates(args: &ValidatePolicyArgs) -> Result<Vec<Candidate>, CliError> {
         .map_err(|e| CliError::client(format!("could not read the working directory: {e}")))?;
     let git_root = find_git_root(&cwd);
 
-    if let Some(benchmark) = benchmark {
-        return match policy_file::lookup(git_root.as_deref(), Some(benchmark)) {
-            PolicyLookup::Found(policy) => Ok(vec![Candidate::found(policy)]),
-            PolicyLookup::Unusable(unusable) => Ok(vec![Candidate::unusable(unusable)]),
-            PolicyLookup::NotFound => Err(CliError::client(match &git_root {
-                Some(root) => format!(
-                    "no policy file for benchmark `{benchmark}` in `{}`: neither `{POLICY_DIR}/{benchmark}-policy.toml` nor `{POLICY_DIR}/policy.toml` exists, so the built-in default judges it.",
-                    root.display()
-                ),
-                None => not_a_repository(&cwd),
-            })),
-        };
+    match policy_file::lookup(git_root.as_deref(), benchmark) {
+        PolicyLookup::Found(policy) => Ok(Candidate::found(policy)),
+        PolicyLookup::Unusable(unusable) => Ok(Candidate::unusable(unusable)),
+        PolicyLookup::NotFound => Err(CliError::client(match (&git_root, benchmark) {
+            (None, _) => not_a_repository(&cwd),
+            (Some(root), Some(benchmark)) => format!(
+                "no policy file for benchmark `{benchmark}` in `{}`: neither `{POLICY_DIR}/{benchmark}-policy.toml` nor `{POLICY_DIR}/policy.toml` exists, so the built-in default judges it.",
+                root.display()
+            ),
+            (Some(root), None) => format!(
+                "no shared policy file in `{}`: `{POLICY_DIR}/policy.toml` does not exist, so the built-in default judges every benchmark without its own policy file. Check a benchmark's own `{POLICY_DIR}/<benchmark>-policy.toml` with --benchmark NAME.",
+                root.display()
+            ),
+        })),
     }
-
-    let Some(git_root) = git_root else {
-        return Err(CliError::client(not_a_repository(&cwd)));
-    };
-    let files = policy_file::list(&git_root).map_err(|e| CliError::client(e.to_string()))?;
-    if files.is_empty() {
-        return Err(CliError::client(format!(
-            "no policy file in `{}`: neither `{POLICY_DIR}/policy.toml` nor a `{POLICY_DIR}/*-policy.toml` exists, so the built-in default judges every benchmark.",
-            git_root.display()
-        )));
-    }
-    Ok(files
-        .into_iter()
-        .map(|file| match file {
-            Ok(policy) => Candidate::found(policy),
-            Err(unusable) => Candidate::unusable(unusable),
-        })
-        .collect())
 }
 
 fn not_a_repository(cwd: &Path) -> String {

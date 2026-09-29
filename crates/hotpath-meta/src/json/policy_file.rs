@@ -25,8 +25,6 @@ use crate::json::JsonPolicy;
 pub const POLICY_DIR: &str = "hotpath";
 const SHARED_POLICY_FILE: &str = "policy.toml";
 const BENCHMARK_POLICY_SUFFIX: &str = "-policy.toml";
-/// Most policy files `list` reads from one `POLICY_DIR`.
-const MAX_POLICY_FILES: usize = 64;
 
 /// `HOTPATH_META_POLICY_PATH`: the policy file for this run, instead of the ones
 /// in `hotpath/`. Relative to the working directory, or absolute; either way
@@ -98,19 +96,6 @@ impl fmt::Display for UnusablePolicy {
     }
 }
 
-/// `list` found more than `MAX_POLICY_FILES` policy files.
-#[derive(Debug)]
-pub struct TooManyPolicyFiles;
-
-impl fmt::Display for TooManyPolicyFiles {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "`{POLICY_DIR}/` has more than {MAX_POLICY_FILES} policy files, the most one run checks."
-        )
-    }
-}
-
 /// Nearest ancestor containing `.git` - a directory for regular checkouts, a
 /// `gitdir:` file for worktrees and submodules; `exists()` covers both.
 pub fn find_git_root(start: &Path) -> Option<PathBuf> {
@@ -144,43 +129,6 @@ pub fn lookup(git_root: Option<&Path>, benchmark: Option<&str>) -> PolicyLookup 
         }
     }
     PolicyLookup::NotFound
-}
-
-/// Every policy file in `hotpath/` of the checkout, each read as `lookup`
-/// reads it: `policy.toml` and each `*-policy.toml`, in name order. Empty
-/// when there is none.
-pub fn list(
-    git_root: &Path,
-) -> Result<Vec<Result<JsonPolicy, UnusablePolicy>>, TooManyPolicyFiles> {
-    let dir = git_root.join(POLICY_DIR);
-    if !dir.is_dir() {
-        return Ok(Vec::new());
-    }
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(entries) => entries,
-        Err(error) => {
-            return Ok(vec![Err(UnusablePolicy {
-                file: format!("`{POLICY_DIR}/`"),
-                reason: UnusableReason::Unreadable(error),
-            })])
-        }
-    };
-    let mut names = Vec::new();
-    for name in entries.filter_map(|entry| entry.ok()?.file_name().into_string().ok()) {
-        if name == SHARED_POLICY_FILE || name.ends_with(BENCHMARK_POLICY_SUFFIX) {
-            if names.len() == MAX_POLICY_FILES {
-                return Err(TooManyPolicyFiles);
-            }
-            names.push(name);
-        }
-    }
-    names.sort();
-
-    Ok(names
-        .iter()
-        // A file removed since the directory was listed is left out.
-        .filter_map(|name| read_in_policy_dir(git_root, name).transpose())
-        .collect())
 }
 
 /// The document `reader` yields, refused when it is unreadable, over
