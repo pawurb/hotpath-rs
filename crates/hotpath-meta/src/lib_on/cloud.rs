@@ -490,6 +490,7 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             if let Some(error) = &created.comment.error {
                 message.push_str(&format!("; comment failed: {error}"));
             }
+            message.push_str(&format!("; diff: {}", created.dashboard_url));
             let level = if failing {
                 Level::Error
             } else if verdict.regressed || created.comment.error.is_some() {
@@ -899,7 +900,7 @@ mod tests {
         assert_eq!(r.level, Level::Notice);
         assert_eq!(
             r.message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0, request abc); verdict: no regressions"
+            format!("uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0, request abc); verdict: no regressions; diff: {DASHBOARD_URL}")
         );
         assert!(r.summary.starts_with(
             "## hotpath.rs meta benchmark\n\nnotice: hotpath-meta: uploaded report r1"
@@ -927,7 +928,7 @@ mod tests {
         };
         assert_eq!(
             render(&no_baseline, &env(false, UploadMode::Enabled), None).message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline none); verdict: no regressions"
+            format!("uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline none); verdict: no regressions; diff: {DASHBOARD_URL}")
         );
     }
 
@@ -945,14 +946,17 @@ mod tests {
         assert_eq!(r.level, Level::Error);
         assert_eq!(
             r.message,
-            format!("{prefix}; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_META_UPLOAD=fail-on-regression)")
+            format!("{prefix}; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_META_UPLOAD=fail-on-regression); diff: {DASHBOARD_URL}")
         );
 
         // Below fail-on-regression: a warning.
         for mode in [UploadMode::Enabled, UploadMode::FailOnError] {
             let r = render(&uploaded(verdict(1, 0)), &env(true, mode), Some("meta"));
             assert_eq!(r.level, Level::Warning);
-            assert_eq!(r.message, format!("{prefix}; verdict: 1 regression"));
+            assert_eq!(
+                r.message,
+                format!("{prefix}; verdict: 1 regression; diff: {DASHBOARD_URL}")
+            );
         }
 
         // Broken budgets alone are a regression.
@@ -964,7 +968,7 @@ mod tests {
         assert_eq!(r.level, Level::Error);
         assert_eq!(
             r.message,
-            format!("{prefix}; verdict: 2 budgets broken, failing the job (HOTPATH_META_UPLOAD=fail-on-regression)")
+            format!("{prefix}; verdict: 2 budgets broken, failing the job (HOTPATH_META_UPLOAD=fail-on-regression); diff: {DASHBOARD_URL}")
         );
 
         // Nothing judged never fails, and neither does a clean verdict.
@@ -978,7 +982,10 @@ mod tests {
             Some("meta"),
         );
         assert_eq!(r.level, Level::Notice);
-        assert_eq!(r.message, format!("{prefix}; verdict: not judged"));
+        assert_eq!(
+            r.message,
+            format!("{prefix}; verdict: not judged; diff: {DASHBOARD_URL}")
+        );
         assert_eq!(
             render(
                 &uploaded(verdict(0, 0)),
@@ -1013,14 +1020,14 @@ mod tests {
         assert_eq!(r.level, Level::Error);
         assert_eq!(
             r.message,
-            format!("{prefix}; verdict: 1 regression, failing the job (HOTPATH_META_UPLOAD=fail-on-regression); comment failed: the installation is suspended")
+            format!("{prefix}; verdict: 1 regression, failing the job (HOTPATH_META_UPLOAD=fail-on-regression); comment failed: the installation is suspended; diff: {DASHBOARD_URL}")
         );
         let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
             format!(
-                "{prefix}; verdict: 1 regression; comment failed: the installation is suspended"
+                "{prefix}; verdict: 1 regression; comment failed: the installation is suspended; diff: {DASHBOARD_URL}"
             )
         );
     }
@@ -1081,7 +1088,7 @@ mod tests {
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
-            "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); verdict: no regressions; comment failed: approve \"Pull requests: write\" for the installation"
+            format!("uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); verdict: no regressions; comment failed: approve \"Pull requests: write\" for the installation; diff: {DASHBOARD_URL}")
         );
 
         // A comment that was posted, or nothing to post, is a plain notice.
