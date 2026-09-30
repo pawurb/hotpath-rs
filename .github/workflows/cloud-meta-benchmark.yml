@@ -10,11 +10,13 @@ on:
 # hot paths.
 #
 # Pushes and pull requests upload in process with the job's OIDC token, and a
-# failed upload or a regressed verdict fails the job. Fork pull requests get no
-# `id-token: write`, so their upload is skipped and the grep fails the job.
+# failed upload or a regressed verdict fails the job. The job is skipped for
+# fork pull requests.
 jobs:
   benchmark:
     name: cloud meta benchmark
+    # Fork pull requests get no `id-token: write`, so there is nothing to upload.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
