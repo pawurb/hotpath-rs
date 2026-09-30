@@ -460,7 +460,7 @@ fn verdict_summary(verdict: &Verdict) -> String {
 
 /// A received body indented for the step summary; as received when it does
 /// not re-parse. Keys come out sorted (no `serde_json/preserve_order` in the
-/// library); `HOTPATH_UPLOAD_RESPONSE_PATH` keeps the server's bytes.
+/// library); `HOTPATH_META_UPLOAD_RESPONSE_PATH` keeps the server's bytes.
 fn pretty_body(body: &str) -> String {
     serde_json::from_str::<serde_json::Value>(body)
         .and_then(|value| serde_json::to_string_pretty(&value))
