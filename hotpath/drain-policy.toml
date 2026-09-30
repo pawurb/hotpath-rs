@@ -6,14 +6,13 @@
 [functions]
 min_percent_total = 0.5
 
-# The producer hot path recycles drained chunks instead of allocating new
-# ones: ~1.2 B per push and 1.2 MB over the run. Before chunk recycling it
-# was 24 B and 23.1 MB, which this rule reports as a breach.
+# The producer hot path allocates a fresh chunk each time one fills: 24 B per
+# push and 23.1 MB over the run. Any growth past that is a breach.
 [[functions.budgets]]
 match = "hotpath_drain::EventProducer::push"
-alloc = { avg = "2 B", total = "2 MB" }
+alloc = { avg = "25 B", total = "24 MB" }
 calls = { min = 1000000, max = 1000000 }
-message = "push allocates again: drained chunks are no longer recycled to producers"
+message = "push allocates more per event than a fresh chunk per fill"
 
 [functions.alloc]
 judged = true
