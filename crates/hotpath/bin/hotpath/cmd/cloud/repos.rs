@@ -4,12 +4,10 @@
 
 use std::process::ExitCode;
 
-use hotpath::json::cloud_api::RepoList;
-
 use crate::cmd::cloud::api::{CliError, Client, Output};
 
 pub(crate) fn run(output: &Output) -> Result<ExitCode, CliError> {
-    let repos: RepoList = Client::from_env()?.get("/api/v1/repos")?;
-    output.emit(&repos)?;
+    let repos = Client::from_env()?.get_raw("/api/v1/repos")?;
+    output.emit_raw(&repos)?;
     Ok(ExitCode::SUCCESS)
 }

@@ -14,11 +14,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Args;
-use hotpath::json::cloud_api::{
-    ApiErrorCode, PolicyProblem, PolicyRejected, PolicyValidated, PolicyValidation,
-};
+use hotpath::json::cloud_api::{ApiErrorCode, PolicyProblem, PolicyRejected, PolicyValidation};
 use hotpath::json::policy_file::{self, find_git_root, PolicyLookup, UnusablePolicy, POLICY_DIR};
 use hotpath::json::JsonPolicy;
+use serde::de::IgnoredAny;
 use serde::Serialize;
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
@@ -151,10 +150,11 @@ fn not_a_repository(cwd: &Path) -> String {
 }
 
 /// What the server finds wrong with `source`, nothing when it is a policy.
+/// The 200 alone says it is: its body is not read.
 /// A refused document is an answer about that file; anything else the server
 /// or the network does is a failure of the command.
 fn server_problems(client: &Client, source: String) -> Result<Vec<PolicyProblem>, CliError> {
-    match client.post::<_, PolicyValidated>(VALIDATE_PATH, &PolicyValidation { source }) {
+    match client.post::<_, IgnoredAny>(VALIDATE_PATH, &PolicyValidation { source }) {
         Ok(_) => Ok(Vec::new()),
         Err(CliError::Server(body)) => match serde_json::from_str::<PolicyRejected>(&body) {
             Ok(rejected) if rejected.code == ApiErrorCode::InvalidPolicy => Ok(rejected.problems),

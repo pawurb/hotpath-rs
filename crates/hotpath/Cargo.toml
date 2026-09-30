@@ -49,7 +49,8 @@ hotpath-alloc = ["hotpath-macros/hotpath-alloc"]
 hotpath-cloud = ["dep:ureq", "ureq/rustls", "ureq/json"]
 utils = ["json", "dep:eyre", "dep:clap", "dep:ureq", "ureq/json", "ureq/rustls", "ureq/gzip"]
 # `hotpath cloud ...` subcommands of the `hotpath` binary: the hotpath.rs read API client
-cloud = ["json", "dep:eyre", "dep:clap", "dep:ureq", "ureq/json", "ureq/rustls"]
+# `serde_json/preserve_order` keeps the server's key order when `--pretty` re-indents a body
+cloud = ["json", "dep:eyre", "dep:clap", "dep:ureq", "ureq/json", "ureq/rustls", "serde_json/preserve_order"]
 tui = ["json", "dep:eyre", "dep:clap", "dep:reqwest", "reqwest/json", "reqwest/rustls", "dep:crossterm", "dep:ratatui", "dep:crossbeam-channel", "dep:tokio", "tokio/rt", "tokio/rt-multi-thread", "crossbeam", "dep:futures-util"]
 demo = ["hotpath", "hotpath-prometheus", "sqlx", "dep:sqlx", "diesel", "diesel/sqlite", "dep:libsqlite3-sys", "reqwest-0-13", "axum-0-8"]
 tokio = ["dep:tokio", "tokio/sync", "tokio/time"]

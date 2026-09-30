@@ -1,7 +1,10 @@
 //! Shared plumbing of the `hotpath cloud` commands: the token and base URL
 //! from the environment, the bearer `GET` / `POST` and the JSON output. The
 //! token comes only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of
-//! shell history and `ps`) and is never printed, not even in an error. Every
+//! shell history and `ps`) and is never printed, not even in an error. A 2xx
+//! body the command only prints passes through as received (`RawBody`), so a
+//! field this client does not know yet still reaches the caller; only the
+//! parts a command branches on are typed (`hotpath::json::cloud_api`). Every
 //! failure is one JSON document on stderr (`CliError`): a non-2xx server body
 //! exactly as received - the client adds no hints, whatever the server says is
 //! the whole advice - or `{"error": "..."}` built here when there is no such
@@ -16,7 +19,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use hotpath::json::cloud_api::API_URL;
-use serde::de::DeserializeOwned;
+use serde::de::{DeserializeOwned, IgnoredAny};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -58,6 +61,20 @@ impl CliError {
     }
 }
 
+/// A 2xx body that is valid JSON, kept exactly as received.
+pub(crate) struct RawBody {
+    url: String,
+    body: String,
+}
+
+impl RawBody {
+    /// The body parsed as `T`, the part of it a command branches on; failing
+    /// like `Client::get` does.
+    pub(crate) fn parse<T: DeserializeOwned>(&self) -> Result<T, CliError> {
+        parse_body(&self.url, &self.body)
+    }
+}
+
 pub(crate) struct Client {
     base_url: String,
     token: String,
@@ -89,12 +106,26 @@ impl Client {
     /// anything else is the server body as the error (see `CliError::server`).
     pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, CliError> {
         let url = format!("{}{path}", self.base_url);
+        let body = self.get_body(&url)?;
+        parse_body(&url, &body)
+    }
+
+    /// `GET {base_url}{path}` like `get`, with the 2xx body kept as received:
+    /// for a command that only prints it.
+    pub(crate) fn get_raw(&self, path: &str) -> Result<RawBody, CliError> {
+        let url = format!("{}{path}", self.base_url);
+        let body = self.get_body(&url)?;
+        parse_body::<IgnoredAny>(&url, &body)?;
+        Ok(RawBody { url, body })
+    }
+
+    fn get_body(&self, url: &str) -> Result<String, CliError> {
         let resp = self
             .agent
-            .get(&url)
+            .get(url)
             .header("Authorization", &self.authorization())
             .call();
-        self.read_response(&url, resp)
+        self.read_response(url, resp)
     }
 
     /// `POST {base_url}{path}` with `body` as JSON and the bearer token; the
@@ -113,32 +144,37 @@ impl Client {
             .header("Authorization", &self.authorization())
             .header("Content-Type", "application/json")
             .send(&body[..]);
-        self.read_response(&url, resp)
+        let body = self.read_response(&url, resp)?;
+        parse_body(&url, &body)
     }
 
     fn authorization(&self) -> String {
         format!("Bearer {}", self.token)
     }
 
-    /// A 2xx body parsed as `T`, or the failure: the transport error (which
+    /// A 2xx body as received, or the failure: the transport error (which
     /// names the base URL only) or the non-2xx body (see `CliError::server`).
-    fn read_response<T: DeserializeOwned>(
+    fn read_response(
         &self,
         url: &str,
         resp: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
-    ) -> Result<T, CliError> {
+    ) -> Result<String, CliError> {
         let mut resp = resp
             .map_err(|e| CliError::client(format!("request to {} failed: {e}", self.base_url)))?;
         let status = resp.status().as_u16();
+        let body = resp.body_mut().read_to_string();
         if (200..300).contains(&status) {
-            return resp
-                .body_mut()
-                .read_json::<T>()
-                .map_err(|e| CliError::client(format!("invalid response from {url}: {e}")));
+            return body.map_err(|e| CliError::client(format!("invalid response from {url}: {e}")));
         }
-        let body = resp.body_mut().read_to_string().unwrap_or_default();
-        Err(CliError::server(status, body))
+        Err(CliError::server(status, body.unwrap_or_default()))
     }
+}
+
+/// A 2xx body of `url` parsed as `T`; a body that does not parse is an error,
+/// never a default.
+fn parse_body<T: DeserializeOwned>(url: &str, body: &str) -> Result<T, CliError> {
+    serde_json::from_str(body)
+        .map_err(|e| CliError::client(format!("invalid response from {url}: {e}")))
 }
 
 fn quote_body(body: &str) -> String {
@@ -164,9 +200,29 @@ pub(crate) struct Output {
 
 impl Output {
     pub(crate) fn emit<T: Serialize>(&self, value: &T) -> Result<(), CliError> {
-        let mut json = self
+        let json = self
             .render(value)
             .map_err(|e| CliError::client(format!("could not serialize the response: {e}")))?;
+        self.write(json)
+    }
+
+    /// Writes a body as the server sent it (see `render_raw`).
+    pub(crate) fn emit_raw(&self, body: &RawBody) -> Result<(), CliError> {
+        self.write(self.render_raw(&body.body))
+    }
+
+    pub(crate) fn emit_error(&self, error: &CliError) {
+        let json = match error {
+            CliError::Server(raw) => self.render_raw(raw),
+            CliError::Client(message) => {
+                let value = json!({ "error": message });
+                self.render(&value).unwrap_or_else(|_| value.to_string())
+            }
+        };
+        eprintln!("{json}");
+    }
+
+    fn write(&self, mut json: String) -> Result<(), CliError> {
         json.push('\n');
         match &self.file {
             Some(path) => std::fs::write(path, json)
@@ -177,18 +233,17 @@ impl Output {
         }
     }
 
-    pub(crate) fn emit_error(&self, error: &CliError) {
-        let json = match error {
-            CliError::Server(raw) if !self.pretty => raw.clone(),
-            CliError::Server(raw) => serde_json::from_str::<Value>(raw)
-                .and_then(|value| self.render(&value))
-                .unwrap_or_else(|_| raw.clone()),
-            CliError::Client(message) => {
-                let value = json!({ "error": message });
-                self.render(&value).unwrap_or_else(|_| value.to_string())
-            }
-        };
-        eprintln!("{json}");
+    /// A server body: compact output is the body exactly as received
+    /// (trimmed), `--pretty` re-indents it in the server's key order
+    /// (`serde_json/preserve_order` under the `cloud` feature).
+    fn render_raw(&self, raw: &str) -> String {
+        let raw = raw.trim();
+        if !self.pretty {
+            return raw.to_string();
+        }
+        serde_json::from_str::<Value>(raw)
+            .and_then(|value| self.render(&value))
+            .unwrap_or_else(|_| raw.to_string())
     }
 
     fn render<T: Serialize>(&self, value: &T) -> serde_json::Result<String> {
