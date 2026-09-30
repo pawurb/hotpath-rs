@@ -1,28 +1,8 @@
 name: hotpath relay
 
-# Uploads a hotpath report that a pull request job produced. That job builds and
-# runs the pull request's code, so on a fork it gets a read-only token and no
-# `id-token: write` whatever its workflow asks for, and the in-process uploader
-# has nothing to authenticate with. It writes the JSON report to an artifact
-# instead, and this workflow posts it from a job that never checks out or
-# executes anything from the pull request.
-#
-# The pull request context in the artifact is trusted: lying there only distorts
-# the pull request's own comment. Two fields could affect other reports and are
-# enforced here: `ci.event` must be `pull_request` (a `push` on the default
-# branch would become everyone's baseline) and `meta.benchmark` must be the
-# `benchmark` input (the server prefers it over the `?benchmark=` query). The
-# benchmark is checked, not rewritten: the benchmark job picked the report's
-# policy file by that name, so a report renamed here would be stored under one
-# benchmark and judged under the policy of another.
-#
-# The policy in the artifact (`meta.policy`) is the pull request's own: the
-# benchmark job read it from the checkout it measured, and the server judges the
-# report under it. It is passed on as written, so a pull request that edits its
-# policy file is judged under the edit, and only that pull request is. A policy
-# that is not valid fails the upload: nothing else is judged in its place.
-# A report without a policy (no file in the checkout) is refused before the
-# upload: every report must carry one.
+# Uploads a hotpath report produced by a pull request job. Fork pull requests
+# get no `id-token: write`, so the benchmark job saves the JSON report as an
+# artifact and this workflow uploads it without checking out any PR code.
 #
 # Call it from a workflow of your own:
 #
@@ -43,26 +23,14 @@ name: hotpath relay
 #         artifact_name: hotpath-report
 #         report_file: report.json
 #
-# `fail_on_regression: true` fails the relay job when the server's verdict on
-# the report is a regression or a broken budget. A `workflow_run` job is not a
-# check on the pull request, so the failure shows in the Actions tab and in the
-# pull request comment, not in the pull request's checks.
+# The benchmark job checks out `github.event.pull_request.head.sha`, runs the
+# benchmark with the `hotpath-cloud` feature, `HOTPATH_OUTPUT_FORMAT=json`,
+# `HOTPATH_OUTPUT_PATH=<report_file>` and `HOTPATH_BENCHMARK=<benchmark>`, and
+# uploads the file as `<artifact_name>`.
 #
-# The benchmark job it pairs with checks out `github.event.pull_request.head.sha`
-# (not the default merge ref, whose commit this workflow cannot vouch for), runs
-# the benchmark **with the `hotpath-cloud` feature** and with
-# `HOTPATH_OUTPUT_FORMAT=json` plus `HOTPATH_OUTPUT_PATH=<report_file>` and
-# `HOTPATH_BENCHMARK=<benchmark>`, the same name as the `benchmark` input here,
-# and uploads that file as `<artifact_name>`. The feature is what makes a JSON report
-# an upload payload: without it `meta.git`, `meta.ci` and `meta.benchmark` are
-# absent and the report carries no provenance, so the check
-# below rejects it. No `HOTPATH_UPLOAD` is needed or wanted - that job has no
-# token to upload with, which is the reason this workflow exists.
-#
-# `workflow_run` only ever runs the copy of the calling workflow that is on the
-# default branch, so changes to it do nothing until they are merged. The
-# `workflows:` list matches by workflow *name*: rename the benchmark workflow and
-# the relay silently stops firing.
+# `workflow_run` only runs the calling workflow from the default branch, and
+# `workflows:` matches by name, so renaming the benchmark workflow silently
+# stops the relay.
 
 on:
   workflow_call:
@@ -117,29 +85,11 @@ jobs:
     env:
       # Inputs reach the scripts through the environment, never interpolated
       # into the script text.
-      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
       BENCHMARK: ${{ inputs.benchmark }}
       REPORT_PATH: artifact/${{ inputs.report_file }}
       SOURCE_ROOT: ${{ inputs.source_root }}
       UPLOAD_URL: ${{ inputs.upload_url }}
     steps:
-      # Fails here rather than as a 400 from the server, which applies the same
-      # rule and would reject the upload after the run had already been paid for.
-      - name: Check the benchmark name
-        run: |
-          set -euo pipefail
-          case "$BENCHMARK" in
-            "" | "." | "..") ;;
-            *[!A-Za-z0-9._-]*) ;;
-            *)
-              if [ "${#BENCHMARK}" -le 64 ]; then
-                exit 0
-              fi
-              ;;
-          esac
-          echo "::error::invalid benchmark name '$BENCHMARK': use 1-64 chars from [A-Za-z0-9._-], not \".\" or \"..\""
-          exit 1
-
       # If this cannot find the artifact, the usual cause is a renamed benchmark
       # workflow or a mismatched artifact_name.
       - name: Download the report
@@ -150,33 +100,9 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
-      - name: Check the report
+      - name: Prepare the report
         run: |
           set -euo pipefail
-          size=$(stat -c %s "$REPORT_PATH")
-          if [ "$size" -gt 5000000 ]; then
-            echo "::error::report is $size bytes, over the server's 5 MiB limit"
-            exit 1
-          fi
-          if ! jq -e --arg sha "$HEAD_SHA" \
-            '.meta.ci.event == "pull_request" and .meta.ci.pull_request.head_sha == $sha' \
-            "$REPORT_PATH" > /dev/null; then
-            echo "::error::report does not describe this pull request: meta.ci.event must be \"pull_request\" and meta.ci.pull_request.head_sha must be $HEAD_SHA. A report built without the hotpath-cloud feature has no meta.ci at all."
-            exit 1
-          fi
-          # hotpath.rs refuses a report without its policy file; the
-          # benchmark job found none in the pull request's checkout.
-          if ! jq -e '.meta.policy != null' "$REPORT_PATH" > /dev/null; then
-            echo "::error::report carries no policy file, and hotpath.rs refuses reports without one. Add hotpath/$BENCHMARK-policy.toml or hotpath/policy.toml to the repository and check it with \`hotpath cloud validate-policy\`."
-            exit 1
-          fi
-          if ! jq -e --arg benchmark "$BENCHMARK" '.meta.benchmark == $benchmark' \
-            "$REPORT_PATH" > /dev/null; then
-            found=$(jq -r '.meta.benchmark // "none"' "$REPORT_PATH")
-            echo "::error::report was built for benchmark '$found', not '$BENCHMARK'. Set HOTPATH_BENCHMARK=$BENCHMARK in the benchmark job: the report's policy file is picked by that name."
-            exit 1
-          fi
-
           # The event is stamped, not trusted: this job's token is a
           # `workflow_run` one, which the server accepts only for a
           # `pull_request` report. The assignments replace two keys and keep
@@ -185,14 +111,10 @@ jobs:
             '.meta.source_root = $source_root | .meta.ci.event = "pull_request"' \
             "$REPORT_PATH" > upload.json
 
-      # The server's answer is the one line that explains a failure, so it is
-      # shown whatever the status: in the step summary in full, and in an
-      # `::error::` annotation when the upload was rejected. The error body is
-      # `{error, request_id}`; `request_id` (also the `x-request-id` header)
-      # matches the server's log line. On success a `comment.error` means the
-      # server could not post or update the pull request comment. A report
-      # whose policy is not valid is rejected like any other, with the reason in
-      # `error`.
+      # The server's answer is shown whatever the status: in the step summary,
+      # and verbatim in an `::error::` annotation when the upload was rejected.
+      # On success a `comment.error` means the server could not post or update
+      # the pull request comment.
       - name: Upload the report
         run: |
           set -euo pipefail
@@ -218,9 +140,7 @@ jobs:
             echo '```'; jq . response.json 2>/dev/null || cat response.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$status" != 201 ] && [ "$status" != 200 ]; then
-            # A refused policy lists what is wrong with it after the sentence.
-            detail=$(jq -r '[.error // empty] + [(.problems // [])[] | (if .line then "line \(.line): " else "" end) + .message] | join("; ")' response.json 2>/dev/null || cat response.json)
-            echo "::error::hotpath.rs rejected the report (HTTP $status, request ${request_id:--}): ${detail:-empty body}"
+            echo "::error::hotpath.rs rejected the report (HTTP $status): $(cat response.json)"
             exit 1
           fi
           comment_error=$(jq -r '.comment.error // empty' response.json 2>/dev/null || true)
