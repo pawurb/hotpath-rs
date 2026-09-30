@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.0] - 2026-09-30
+
+### 🚀 Features
+
+- [**breaking**] Diff policy improvements
+
+- Attach policy to report JSON
+
+- Require policy files
+
+- Add CLI to seed default policy file
+
+- Unify CI upload status in HOTPATH_UPLOAD env
+
+
+### 🐛 Bug Fixes
+
+- Adjust validate-policy CLI
+
+- Remove redundant dashboard_url
+
+
+### 🚜 Refactor
+
+- [**breaking**] Extract CLI JSON types
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Add regression policy files
+
+- Update policy warning
+
+- Release 0.28.0
+
+
 ## [0.27.0] - 2026-09-28
 
 ### 🚀 Features
