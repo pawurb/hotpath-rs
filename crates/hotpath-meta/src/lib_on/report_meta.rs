@@ -374,8 +374,11 @@ mod tests {
                 policy: None,
             };
             let value: serde_json::Value = serde_json::to_value(&meta).unwrap();
+            // Sorted: the `cloud` feature turns on `serde_json/preserve_order`.
             let keys = |value: &serde_json::Value| -> Vec<String> {
-                value.as_object().unwrap().keys().cloned().collect()
+                let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+                keys.sort();
+                keys
             };
             assert_eq!(
                 keys(&value),
