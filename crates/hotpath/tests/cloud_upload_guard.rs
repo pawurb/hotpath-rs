@@ -1,8 +1,7 @@
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
     //! The upload's verdict as a CI guard, against a mock hotpath.rs that also
-    //! mints the OIDC token: `HOTPATH_UPLOAD_FAIL_ON_REGRESSION` decides the
-    //! exit code and `HOTPATH_UPLOAD_RESPONSE_PATH` receives the response body.
+    //! mints the OIDC token: the `HOTPATH_UPLOAD` mode decides the exit code and `HOTPATH_UPLOAD_RESPONSE_PATH` receives the response body.
     //!
     //! cargo test --features hotpath --test cloud_upload_guard -- --nocapture --test-threads=1
 
@@ -77,8 +76,6 @@ mod tests {
             format!("{}/token", server.url()),
         )
         .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
-        .env_remove("HOTPATH_UPLOAD_STRICT")
-        .env_remove("HOTPATH_UPLOAD_FAIL_ON_REGRESSION")
         .env_remove("HOTPATH_POLICY_PATH")
         .env_remove("HOTPATH_SOURCE_ROOT")
         // Under Actions the child would annotate and summarize the test's own job.
@@ -105,13 +102,13 @@ mod tests {
         let dir = scratch_dir("regressed");
         let (server, upload) = mock_server(201, REGRESSED_BODY);
 
-        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD_FAIL_ON_REGRESSION", "1")]);
+        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-regression")]);
         let stderr = String::from_utf8_lossy(&output.stderr);
         upload.assert();
         assert_eq!(output.status.code(), Some(1), "stderr:\n{stderr}");
         assert!(
             stderr.contains(
-                "; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_UPLOAD_FAIL_ON_REGRESSION)"
+                "; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_UPLOAD=fail-on-regression)"
             ),
             "stderr:\n{stderr}"
         );
@@ -120,8 +117,8 @@ mod tests {
             std::fs::read(dir.join("response.json")).expect("response file was not written");
         assert_eq!(response, REGRESSED_BODY.as_bytes());
 
-        // Without the switch the same answer is a warning and the job passes.
-        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD_STRICT", "1")]);
+        // Below fail-on-regression the same answer is a warning and the job passes.
+        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-error")]);
         assert!(
             output.status.success(),
             "stderr:\n{}",
@@ -133,22 +130,35 @@ mod tests {
     }
 
     #[test]
-    fn failed_upload_never_fails_through_the_switch() {
+    fn failed_upload_fails_under_fail_on_regression() {
         let dir = scratch_dir("failed");
         let stale = dir.join("response.json");
         std::fs::write(&stale, REGRESSED_BODY).unwrap();
         let (server, upload) = mock_server(500, r#"{"error":"database error","code":"internal"}"#);
 
-        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD_FAIL_ON_REGRESSION", "1")]);
+        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-regression")]);
         let stderr = String::from_utf8_lossy(&output.stderr);
         upload.assert();
-        assert!(output.status.success(), "stderr:\n{stderr}");
+        assert_eq!(output.status.code(), Some(1), "stderr:\n{stderr}");
         assert!(
             stderr.contains("hotpath: upload failed: database error (HTTP 500"),
             "stderr:\n{stderr}"
         );
         assert_local_report(&dir);
         assert!(!stale.exists(), "a stale verdict was left behind");
+
+        // An unknown mode still uploads, as `enabled`: a warning, and the job passes.
+        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "strict")]);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "stderr:\n{stderr}");
+        assert!(
+            stderr.contains("hotpath: upload failed: database error (HTTP 500"),
+            "stderr:\n{stderr}"
+        );
+        assert!(
+            stderr.contains("hotpath: unknown HOTPATH_UPLOAD \"strict\", uploading as \"enabled\""),
+            "stderr:\n{stderr}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -174,14 +184,14 @@ mod tests {
         assert!(!dir.join("response.json").exists());
 
         // A file that is there but cannot be sent is refused the same way,
-        // and a failed upload fails the job in strict mode.
+        // and a failed upload fails the job under fail-on-error.
         std::fs::create_dir_all(checkout.join("hotpath")).unwrap();
         std::fs::write(checkout.join("hotpath/policy.toml"), " \n").unwrap();
         let output = run_upload_in(
             Some(&checkout),
             &server,
             &dir,
-            &[("HOTPATH_UPLOAD_STRICT", "1")],
+            &[("HOTPATH_UPLOAD", "fail-on-error")],
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert_eq!(output.status.code(), Some(1), "stderr:\n{stderr}");
