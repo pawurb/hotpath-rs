@@ -1,5 +1,5 @@
 //! Uploads the JSON report to hotpath.rs from GitHub Actions, authenticated
-//! with the job's OIDC token. Enabled at runtime by `HOTPATH_UPLOAD=1`; the
+//! with the job's OIDC token. Enabled at runtime by `HOTPATH_UPLOAD` (`UploadMode`); the
 //! benchmark name comes from `HOTPATH_BENCHMARK` (default `default`, validated
 //! by `json::cloud_api::validate_benchmark_name` - invalid names skip the upload). The target
 //! base URL is `https://hotpath.rs` unless `HOTPATH_API_URL` overrides it.
@@ -15,20 +15,19 @@
 //! `error` sentence of the `ApiError` body (plus status and request id)
 //! and a failed comment prints `comment.error`; the client branches on
 //! `verdict.regressed` and on nothing else the server says. A failure is a
-//! warning by default and never changes the exit code;
-//! `HOTPATH_UPLOAD_STRICT=1` turns it into an error and `upload` returns
+//! warning under `HOTPATH_UPLOAD=enabled` and never changes the exit code;
+//! `HOTPATH_UPLOAD=fail-on-error` turns it into an error and `upload` returns
 //! `true`, on which the guard exits 1 once the local report is written. Skips
-//! never fail, even in strict mode.
+//! never fail, whatever the mode.
 //!
 //! The response carries the server's verdict on the report, judged under the
 //! policy the report carried, which the step summary links. A report without
 //! a policy is never sent: the upload fails before a token is minted. An
 //! upload whose policy is not valid is refused like any other rejected upload.
-//! `HOTPATH_UPLOAD_FAIL_ON_REGRESSION=1` turns a
-//! regressed verdict into an error through the same exit path, and
-//! `HOTPATH_UPLOAD_RESPONSE_PATH` writes the response body to a file for
-//! custom rules. A failed or skipped upload has no verdict: it never fails
-//! through that switch and leaves no response file.
+//! `HOTPATH_UPLOAD=fail-on-regression` also turns a regressed verdict into an
+//! error through the same exit path, and `HOTPATH_UPLOAD_RESPONSE_PATH` writes
+//! the response body to a file for custom rules. A failed or skipped upload
+//! leaves no response file.
 //!
 //! No retries yet: a retry is only safe once the server insert is idempotent
 //! per run, otherwise a timed-out upload that was in fact stored would be
@@ -57,17 +56,45 @@ const MAX_QUOTED_BODY: usize = 2000;
 /// has the whole body.
 const MAX_LISTED_PROBLEMS: usize = 20;
 
-/// `HOTPATH_UPLOAD_STRICT=1`: a failed upload is an `::error::` and exits 1.
-/// Off by default so an adopter's benchmark job never goes red because
-/// hotpath.rs is down.
-pub(crate) static STRICT: LazyLock<bool> = LazyLock::new(|| truthy_var("HOTPATH_UPLOAD_STRICT"));
+/// `HOTPATH_UPLOAD`: whether the report is uploaded and what fails the job.
+/// Each mode fails on everything the previous one does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum UploadMode {
+    /// Unset, empty, `0` or `false`.
+    Off,
+    /// `enabled`, `1` or `true`: failures and regressions are warnings, so an
+    /// adopter's job never goes red because hotpath.rs is down.
+    Enabled,
+    /// `fail-on-error`: a failed upload is an `::error::` and exits 1.
+    FailOnError,
+    /// `fail-on-regression`: a regressed verdict exits 1 too.
+    FailOnRegression,
+}
 
-/// `HOTPATH_UPLOAD_FAIL_ON_REGRESSION=1`: an upload whose verdict is
-/// `regressed` is an `::error::` and exits 1. Independent of `STRICT`, which
-/// is about the upload failing; this is about what the upload found. Off by
-/// default so an adopter's job never goes red unless they asked for it.
-pub(crate) static FAIL_ON_REGRESSION: LazyLock<bool> =
-    LazyLock::new(|| truthy_var("HOTPATH_UPLOAD_FAIL_ON_REGRESSION"));
+impl UploadMode {
+    fn parse(v: &str) -> Option<Self> {
+        match v.trim().to_ascii_lowercase().as_str() {
+            "" | "0" | "false" => Some(UploadMode::Off),
+            "enabled" | "1" | "true" => Some(UploadMode::Enabled),
+            "fail-on-error" => Some(UploadMode::FailOnError),
+            "fail-on-regression" => Some(UploadMode::FailOnRegression),
+            _ => None,
+        }
+    }
+}
+
+/// An unknown value uploads without failing the job: a typo must not
+/// silently turn the upload off.
+pub(crate) static UPLOAD: LazyLock<UploadMode> = LazyLock::new(|| {
+    let value = std::env::var("HOTPATH_UPLOAD").unwrap_or_default();
+    UploadMode::parse(&value).unwrap_or_else(|| {
+        eprintln!(
+            "hotpath: unknown HOTPATH_UPLOAD {value:?}, uploading as \"enabled\"; \
+             expected enabled, fail-on-error or fail-on-regression"
+        );
+        UploadMode::Enabled
+    })
+});
 
 /// `HOTPATH_UPLOAD_RESPONSE_PATH`: file the response body of an upload is
 /// written to. A file and not stdout, which belongs to the profiled program.
@@ -79,7 +106,7 @@ pub(crate) static RESPONSE_PATH: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
 });
 
 pub(crate) fn enabled() -> bool {
-    truthy_var("HOTPATH_UPLOAD")
+    *UPLOAD != UploadMode::Off
 }
 
 fn truthy_var(name: &str) -> bool {
@@ -113,7 +140,7 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
 pub(crate) enum Outcome {
     /// Nothing was sent and nothing is wrong with the server: not in Actions,
     /// no token, invalid benchmark name, the program panicked. Never fails,
-    /// even in strict mode.
+    /// whatever the `HOTPATH_UPLOAD` mode.
     Skipped(String),
     Uploaded {
         /// The part of `body` this client reads.
@@ -164,8 +191,7 @@ pub(crate) struct Rendered {
 pub(crate) struct Env {
     /// `GITHUB_ACTIONS` is set: emit workflow commands.
     actions: bool,
-    strict: bool,
-    fail_on_regression: bool,
+    mode: UploadMode,
     /// `GITHUB_STEP_SUMMARY`, when set and non-empty.
     summary: Option<PathBuf>,
 }
@@ -174,8 +200,7 @@ impl Env {
     fn from_process() -> Self {
         Env {
             actions: truthy_var("GITHUB_ACTIONS"),
-            strict: *STRICT,
-            fail_on_regression: *FAIL_ON_REGRESSION,
+            mode: *UPLOAD,
             summary: std::env::var_os("GITHUB_STEP_SUMMARY")
                 .filter(|p| !p.is_empty())
                 .map(PathBuf::from),
@@ -183,8 +208,8 @@ impl Env {
     }
 }
 
-/// Returns `true` when the caller must exit 1: a failed upload in strict
-/// mode, or a regressed verdict with `HOTPATH_UPLOAD_FAIL_ON_REGRESSION` on.
+/// Returns `true` when the caller must exit 1: a failed upload under
+/// `fail-on-error`, or a regressed verdict under `fail-on-regression`.
 /// The response file is written first, so it is there in both cases.
 pub(crate) fn upload(report: &JsonReport) -> bool {
     let outcome = run(report);
@@ -469,9 +494,9 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             );
             let verdict = &created.verdict;
             message.push_str(&format!("; verdict: {}", verdict_summary(verdict)));
-            let failing = verdict.regressed && env.fail_on_regression;
+            let failing = verdict.regressed && env.mode >= UploadMode::FailOnRegression;
             if failing {
-                message.push_str(", failing the job (HOTPATH_UPLOAD_FAIL_ON_REGRESSION)");
+                message.push_str(", failing the job (HOTPATH_UPLOAD=fail-on-regression)");
             }
             if let Some(error) = &created.comment.error {
                 message.push_str(&format!("; comment failed: {error}"));
@@ -490,7 +515,7 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             (level, message, links, Some(pretty_body(body)))
         }
         Outcome::Failed { message, body } => {
-            let level = if env.strict {
+            let level = if env.mode >= UploadMode::FailOnError {
                 Level::Error
             } else {
                 Level::Warning
@@ -591,7 +616,7 @@ mod tests {
     use crate::json::cloud_api::{CommentOutcome, UploadCreated, Verdict};
     use crate::lib_on::cloud::{
         benchmark_name, escape_annotation, interpret, is_truthy, render, store_response,
-        url_encode, Env, Level, Outcome,
+        url_encode, Env, Level, Outcome, UploadMode,
     };
 
     const DASHBOARD_URL: &str =
@@ -599,20 +624,11 @@ mod tests {
     const POLICY_URL: &str = "https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml";
     const VERDICT_FIELDS: &str = r#""verdict":{"judged":true,"regressed":false,"regressions":0,"improvements":0,"budgets_broken":0},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/a/b/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"https://hotpath.rs/d""#;
 
-    fn env(actions: bool, strict: bool) -> Env {
+    fn env(actions: bool, mode: UploadMode) -> Env {
         Env {
             actions,
-            strict,
-            fail_on_regression: false,
+            mode,
             summary: None,
-        }
-    }
-
-    /// `HOTPATH_UPLOAD_FAIL_ON_REGRESSION` on.
-    fn guard_env(strict: bool) -> Env {
-        Env {
-            fail_on_regression: true,
-            ..env(true, strict)
         }
     }
 
@@ -664,6 +680,25 @@ mod tests {
             policy_url: POLICY_URL.into(),
             dashboard_url: DASHBOARD_URL.into(),
         }
+    }
+
+    #[test]
+    fn upload_mode_values() {
+        assert_eq!(UploadMode::parse(""), Some(UploadMode::Off));
+        assert_eq!(UploadMode::parse("0"), Some(UploadMode::Off));
+        assert_eq!(UploadMode::parse("false"), Some(UploadMode::Off));
+        assert_eq!(UploadMode::parse("1"), Some(UploadMode::Enabled));
+        assert_eq!(UploadMode::parse(" TRUE "), Some(UploadMode::Enabled));
+        assert_eq!(UploadMode::parse("enabled"), Some(UploadMode::Enabled));
+        assert_eq!(
+            UploadMode::parse("fail-on-error"),
+            Some(UploadMode::FailOnError)
+        );
+        assert_eq!(
+            UploadMode::parse("Fail-On-Regression"),
+            Some(UploadMode::FailOnRegression)
+        );
+        assert_eq!(UploadMode::parse("strict"), None);
     }
 
     #[test]
@@ -877,7 +912,7 @@ mod tests {
             body: body.replacen('{', r#"{"new_field":1,"#, 1),
             request_id: Some("abc".into()),
         };
-        let r = render(&outcome, &env(true, false), Some("meta"));
+        let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
         assert_eq!(r.level, Level::Notice);
         assert_eq!(
             r.message,
@@ -897,9 +932,9 @@ mod tests {
         assert!(r.summary.contains("\n  \"id\": \"r1\""), "{}", r.summary);
         assert!(r.summary.ends_with("\n}\n```\n"), "{}", r.summary);
 
-        // Strict mode changes nothing on success.
+        // Failing on errors changes nothing on success.
         assert_eq!(
-            render(&outcome, &env(true, true), Some("meta")).level,
+            render(&outcome, &env(true, UploadMode::FailOnError), Some("meta")).level,
             Level::Notice
         );
 
@@ -911,7 +946,7 @@ mod tests {
             None,
         );
         assert_eq!(
-            render(&no_baseline, &env(false, false), None).message,
+            render(&no_baseline, &env(false, UploadMode::Enabled), None).message,
             "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline none); verdict: no regressions"
         );
     }
@@ -922,26 +957,34 @@ mod tests {
             "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
 
         // The switch on: an error, on which `upload` returns `true`.
-        let r = render(&uploaded(verdict(2, 1)), &guard_env(false), Some("meta"));
+        let r = render(
+            &uploaded(verdict(2, 1)),
+            &env(true, UploadMode::FailOnRegression),
+            Some("meta"),
+        );
         assert_eq!(r.level, Level::Error);
         assert_eq!(
             r.message,
-            format!("{prefix}; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_UPLOAD_FAIL_ON_REGRESSION)")
+            format!("{prefix}; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_UPLOAD=fail-on-regression)")
         );
 
-        // The switch off: a warning, and strict mode is about failed uploads only.
-        for strict in [false, true] {
-            let r = render(&uploaded(verdict(1, 0)), &env(true, strict), Some("meta"));
+        // Below fail-on-regression: a warning.
+        for mode in [UploadMode::Enabled, UploadMode::FailOnError] {
+            let r = render(&uploaded(verdict(1, 0)), &env(true, mode), Some("meta"));
             assert_eq!(r.level, Level::Warning);
             assert_eq!(r.message, format!("{prefix}; verdict: 1 regression"));
         }
 
         // Broken budgets alone are a regression.
-        let r = render(&uploaded(verdict(0, 2)), &guard_env(false), Some("meta"));
+        let r = render(
+            &uploaded(verdict(0, 2)),
+            &env(true, UploadMode::FailOnRegression),
+            Some("meta"),
+        );
         assert_eq!(r.level, Level::Error);
         assert_eq!(
             r.message,
-            format!("{prefix}; verdict: 2 budgets broken, failing the job (HOTPATH_UPLOAD_FAIL_ON_REGRESSION)")
+            format!("{prefix}; verdict: 2 budgets broken, failing the job (HOTPATH_UPLOAD=fail-on-regression)")
         );
 
         // Nothing judged never fails, and neither does a clean verdict.
@@ -949,11 +992,20 @@ mod tests {
             judged: false,
             ..verdict(0, 0)
         };
-        let r = render(&uploaded(not_judged), &guard_env(true), Some("meta"));
+        let r = render(
+            &uploaded(not_judged),
+            &env(true, UploadMode::FailOnRegression),
+            Some("meta"),
+        );
         assert_eq!(r.level, Level::Notice);
         assert_eq!(r.message, format!("{prefix}; verdict: not judged"));
         assert_eq!(
-            render(&uploaded(verdict(0, 0)), &guard_env(true), Some("meta")).level,
+            render(
+                &uploaded(verdict(0, 0)),
+                &env(true, UploadMode::FailOnRegression),
+                Some("meta")
+            )
+            .level,
             Level::Notice
         );
     }
@@ -973,13 +1025,17 @@ mod tests {
         );
         let prefix =
             "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
-        let r = render(&outcome, &guard_env(false), Some("meta"));
+        let r = render(
+            &outcome,
+            &env(true, UploadMode::FailOnRegression),
+            Some("meta"),
+        );
         assert_eq!(r.level, Level::Error);
         assert_eq!(
             r.message,
-            format!("{prefix}; verdict: 1 regression, failing the job (HOTPATH_UPLOAD_FAIL_ON_REGRESSION); comment failed: the installation is suspended")
+            format!("{prefix}; verdict: 1 regression, failing the job (HOTPATH_UPLOAD=fail-on-regression); comment failed: the installation is suspended")
         );
-        let r = render(&outcome, &env(true, false), Some("meta"));
+        let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
@@ -1039,7 +1095,7 @@ mod tests {
             },
             None,
         );
-        let r = render(&outcome, &env(true, false), Some("meta"));
+        let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
@@ -1061,7 +1117,7 @@ mod tests {
                 },
                 None,
             );
-            let r = render(&outcome, &env(true, false), Some("meta"));
+            let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
             assert_eq!(r.level, Level::Notice);
             assert!(!r.message.contains("comment"));
         }
@@ -1072,8 +1128,12 @@ mod tests {
         let outcome = Outcome::Skipped(
             "not in GitHub Actions or missing `id-token: write` permission".into(),
         );
-        for (actions, strict) in [(false, false), (true, false), (true, true)] {
-            let r = render(&outcome, &env(actions, strict), Some("meta"));
+        for (actions, mode) in [
+            (false, UploadMode::Enabled),
+            (true, UploadMode::Enabled),
+            (true, UploadMode::FailOnError),
+        ] {
+            let r = render(&outcome, &env(actions, mode), Some("meta"));
             assert_eq!(r.level, Level::Notice);
             assert_eq!(
                 r.message,
@@ -1084,7 +1144,7 @@ mod tests {
                 "## hotpath.rs meta benchmark\n\nnotice: hotpath: upload skipped: not in GitHub Actions or missing `id-token: write` permission\n"
             );
         }
-        assert!(render(&outcome, &env(true, true), None)
+        assert!(render(&outcome, &env(true, UploadMode::FailOnError), None)
             .summary
             .starts_with("## hotpath.rs upload\n"));
     }
@@ -1095,7 +1155,7 @@ mod tests {
             message: "request to https://hotpath.rs failed: connection refused".into(),
             body: None,
         };
-        let r = render(&outcome, &env(true, false), Some("meta"));
+        let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
@@ -1106,27 +1166,32 @@ mod tests {
             "## hotpath.rs meta benchmark\n\nwarning: hotpath: upload failed: request to https://hotpath.rs failed: connection refused\n"
         );
         assert_eq!(
-            render(&outcome, &env(true, true), Some("meta")).level,
+            render(&outcome, &env(true, UploadMode::FailOnError), Some("meta")).level,
             Level::Error
         );
-        // Outside Actions the level still follows strict; only emission differs.
+        // Outside Actions the level still follows the mode; only emission differs.
         assert_eq!(
-            render(&outcome, &env(false, false), Some("meta")).level,
+            render(&outcome, &env(false, UploadMode::Enabled), Some("meta")).level,
             Level::Warning
         );
         assert_eq!(
-            render(&outcome, &env(false, true), Some("meta")).level,
+            render(&outcome, &env(false, UploadMode::FailOnError), Some("meta")).level,
             Level::Error
         );
-        // The regression switch is about the verdict, which a failure lacks.
+        // Failing on a regression includes failing on a failed upload.
         assert_eq!(
-            render(&outcome, &guard_env(false), Some("meta")).level,
-            Level::Warning
+            render(
+                &outcome,
+                &env(true, UploadMode::FailOnRegression),
+                Some("meta")
+            )
+            .level,
+            Level::Error
         );
 
         // A server body goes into the summary's fenced block; an empty one does not.
         let rejected = interpret(403, None, r#"{"error":"not installed"}"#.into());
-        let r = render(&rejected, &env(true, false), Some("meta"));
+        let r = render(&rejected, &env(true, UploadMode::Enabled), Some("meta"));
         assert_eq!(r.message, "upload failed: not installed (HTTP 403)");
         assert!(
             r.summary
@@ -1135,9 +1200,11 @@ mod tests {
             r.summary
         );
         let timeout = interpret(408, Some("deadbeef".into()), String::new());
-        assert!(!render(&timeout, &env(true, false), Some("meta"))
-            .summary
-            .contains("```"));
+        assert!(
+            !render(&timeout, &env(true, UploadMode::Enabled), Some("meta"))
+                .summary
+                .contains("```")
+        );
     }
 
     #[test]

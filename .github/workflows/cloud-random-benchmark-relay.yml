@@ -5,8 +5,10 @@ on:
     workflows: ["Cloud random benchmark"]
     types: [completed]
 
-# Twin of `cloud-meta-benchmark-relay.yml` for the `random` series; see that
-# file for why the relay is referenced by full path and `@main`.
+# This repo is the first consumer of its own relay: `hotpath-relay.yml` is the
+# reusable workflow adopters call. Referenced by full path rather than `./` so
+# this call resolves exactly the way an adopter's does, and `@main` so the relay
+# under test is the one on the default branch.
 jobs:
   relay:
     uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@main

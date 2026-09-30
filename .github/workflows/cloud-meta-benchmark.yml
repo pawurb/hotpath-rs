@@ -9,13 +9,12 @@ on:
 # subsystem a fixed number of times while `hotpath-meta` profiles hotpath's own
 # hot paths.
 #
-# Pushes upload in process with the job's OIDC token. Fork PRs get no
-# `id-token: write`, so pull requests write the report to an artifact and
-# `cloud-meta-benchmark-relay.yml` uploads it.
+# Pushes and pull requests upload in process with the job's OIDC token, and a
+# failed upload or a regressed verdict fails the job. Fork pull requests get no
+# `id-token: write`, so their upload is skipped and the grep fails the job.
 jobs:
-  upload:
-    name: cloud meta benchmark (push)
-    if: github.event_name == 'push'
+  benchmark:
+    name: cloud meta benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -26,13 +25,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # The uploader reports its own outcome: one `::notice::` / `::warning::`
-      # / `::error::` annotation plus a step summary block, and with
-      # `HOTPATH_META_UPLOAD_STRICT=1` a failed upload exits 1. The grep is a
+      # / `::error::` annotation plus a step summary block. The grep is a
       # second guard that also covers a silently missing upload line.
       - name: Run meta benchmark and upload report
         env:
-          HOTPATH_META_UPLOAD: "1"
-          HOTPATH_META_UPLOAD_STRICT: "1"
+          HOTPATH_META_UPLOAD: fail-on-regression
           HOTPATH_META_BENCHMARK: meta
           HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_META_EXCLUDE_WRAPPER: "true"
@@ -43,35 +40,3 @@ jobs:
           cargo run -q --release -p test-all-features --example benchmark_meta \
             --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta,hotpath-prometheus 2>&1 | tee run.log
           grep -q '^hotpath-meta: uploaded report ' run.log
-
-  report:
-    name: cloud meta benchmark (pull request)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Run meta benchmark and write report
-        env:
-          HOTPATH_META_BENCHMARK: meta
-          HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
-          HOTPATH_META_EXCLUDE_WRAPPER: "true"
-          HOTPATH_META_OUTPUT_FORMAT: json
-          HOTPATH_META_OUTPUT_PATH: meta-report.json
-          HOTPATH_OUTPUT_FORMAT: none
-        run: |
-          cargo run -q --release -p test-all-features --example benchmark_meta \
-            --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta,hotpath-prometheus
-          test -s meta-report.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: meta-report
-          path: meta-report.json
-          retention-days: 1
-          if-no-files-found: error
