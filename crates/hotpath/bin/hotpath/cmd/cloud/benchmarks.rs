@@ -5,8 +5,6 @@
 
 use std::process::ExitCode;
 
-use hotpath::json::cloud_api::BenchmarkList;
-
 use crate::cmd::cloud::api::{CliError, Client, Output};
 use crate::cmd::cloud::repo;
 
@@ -14,8 +12,7 @@ pub(crate) fn run(output: &Output, repo: &str) -> Result<ExitCode, CliError> {
     // Validated before the client is built: a bad value is reported even
     // without a token and never costs a request.
     let repo = repo::validate(repo)?;
-    let benchmarks: BenchmarkList =
-        Client::from_env()?.get(&format!("/api/v1/repos/{repo}/benchmarks"))?;
-    output.emit(&benchmarks)?;
+    let benchmarks = Client::from_env()?.get_raw(&format!("/api/v1/repos/{repo}/benchmarks"))?;
+    output.emit_raw(&benchmarks)?;
     Ok(ExitCode::SUCCESS)
 }

@@ -9,11 +9,11 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
 
-    use hotpath::json::cloud_api::UploadCreated;
     use hotpath::json::JsonReport;
     use mockito::{Matcher, Server, ServerGuard};
 
-    const REGRESSED_BODY: &str = r#"{"id":"r1","repository":"pawurb/hotpath-rs","benchmark":"guard-test","baseline":"r0","comment":{"url":"https://github.com/c/1"},"verdict":{"judged":true,"regressed":true,"regressions":2,"improvements":0,"budgets_broken":1},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/guard-test/reports/r1/diff"}"#;
+    /// With a field this client does not know, which the response file keeps.
+    const REGRESSED_BODY: &str = r#"{"id":"r1","new_field":{"z":1,"a":2},"repository":"pawurb/hotpath-rs","benchmark":"guard-test","baseline":"r0","comment":{"url":"https://github.com/c/1"},"verdict":{"judged":true,"regressed":true,"regressions":2,"improvements":0,"budgets_broken":1},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/guard-test/reports/r1/diff"}"#;
 
     fn mock_server(status: usize, body: &str) -> (ServerGuard, mockito::Mock) {
         let mut server = Server::new();
@@ -116,12 +116,9 @@ mod tests {
             "stderr:\n{stderr}"
         );
         assert_local_report(&dir);
-        let response = std::fs::read_to_string(dir.join("response.json"))
-            .expect("response file was not written");
-        assert_eq!(
-            serde_json::from_str::<UploadCreated>(&response).unwrap(),
-            serde_json::from_str::<UploadCreated>(REGRESSED_BODY).unwrap()
-        );
+        let response =
+            std::fs::read(dir.join("response.json")).expect("response file was not written");
+        assert_eq!(response, REGRESSED_BODY.as_bytes());
 
         // Without the switch the same answer is a warning and the job passes.
         let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD_STRICT", "1")]);

@@ -4,7 +4,7 @@
 //! is picked like `report` picks a report (`selector.rs`). Sections carry
 //! only the PR comment's findings, each row cut to the cells that explain
 //! it, unless `--full` asks for every row, every cell and the column legend
-//! (`RowFilter`), and `budgets.findings` only the broken budgets.
+//! (`rows=all`), and `budgets.findings` only the broken budgets.
 //! `--advisory` is the step between: the same cut, with the findings of the
 //! unjudged families listed too.
 //!
@@ -15,15 +15,18 @@
 //! (an unreadable head, or no comparable baseline under a policy without
 //! budgets) and every error. A missing or unreadable baseline does not fail a
 //! report whose budgets hold. Which kind of failure it was is in the output,
-//! not the code: a server answer prints the `ReportDiff` body on stdout with
-//! stderr empty, as on exit 0, while an error prints one JSON document on
-//! stderr with stdout empty. The exit code is read from the deserialized
-//! body, never from the HTTP status, which is 200 for every `DiffResult`.
+//! not the code: a server answer prints the diff body on stdout, as received,
+//! with stderr empty, as on exit 0, while an error prints one JSON document on
+//! stderr with stdout empty. The exit code is read from the body's top-level
+//! `verdict` (`DiffVerdict`), never from the HTTP status, which is 200 for
+//! every result. The rest of the body is the server's to shape: this client
+//! prints it without reading it.
 
 use std::process::ExitCode;
 
 use clap::Args;
-use hotpath::json::cloud_api::{ReportDiff, Verdict};
+use hotpath::json::cloud_api::Verdict;
+use serde::Deserialize;
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
 use crate::cmd::cloud::repo;
@@ -57,9 +60,18 @@ pub(crate) struct DiffArgs {
 pub(crate) fn run(output: &Output, args: DiffArgs) -> Result<ExitCode, CliError> {
     let path = request_path(&args)?;
     let client = Client::from_env()?;
-    let diff: ReportDiff = client.get(&path)?;
-    output.emit(&diff)?;
-    Ok(exit_code(&diff.verdict))
+    let diff = client.get_raw(&path)?;
+    // Parsed before anything is printed: a body without a verdict prints
+    // nothing on stdout.
+    let DiffVerdict { verdict } = diff.parse()?;
+    output.emit_raw(&diff)?;
+    Ok(exit_code(&verdict))
+}
+
+/// The part of a diff body the exit code reads; serde ignores the rest.
+#[derive(Deserialize)]
+struct DiffVerdict {
+    verdict: Verdict,
 }
 
 fn exit_code(verdict: &Verdict) -> ExitCode {

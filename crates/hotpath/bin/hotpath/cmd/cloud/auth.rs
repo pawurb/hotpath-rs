@@ -5,12 +5,10 @@
 
 use std::process::ExitCode;
 
-use hotpath::json::cloud_api::AuthStatus;
-
 use crate::cmd::cloud::api::{CliError, Client, Output};
 
 pub(crate) fn run(output: &Output) -> Result<ExitCode, CliError> {
-    let status: AuthStatus = Client::from_env()?.get("/api/v1/auth")?;
-    output.emit(&status)?;
+    let status = Client::from_env()?.get_raw("/api/v1/auth")?;
+    output.emit_raw(&status)?;
     Ok(ExitCode::SUCCESS)
 }

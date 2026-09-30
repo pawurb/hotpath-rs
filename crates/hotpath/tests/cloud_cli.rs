@@ -1,8 +1,9 @@
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
     //! `hotpath cloud auth|repos|benchmarks|report|diff|validate-policy|init`
-    //! against a mock hotpath.rs: the bearer request each sends, the JSON it
-    //! re-emits, the error JSON on stderr (server bodies verbatim, client
+    //! against a mock hotpath.rs: the bearer request each sends, the 2xx body
+    //! it passes through as received (unknown fields and the server's key
+    //! order included), the error JSON on stderr (server bodies verbatim, client
     //! failures as `{"error": ...}`) with exit 1, `diff`'s exit 0 or 1 read
     //! from its body, argument validation before any request (and before the
     //! token is read), clap usage errors with exit 2, and that the token never
@@ -14,12 +15,9 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output, Stdio};
 
-    use hotpath::json::cloud_api::{
-        ApiError, ApiErrorCode, AuthStatus, RepoList, Report, ReportSummary, TokenStatus,
-        POLICY_MAX_BYTES,
-    };
+    use hotpath::json::cloud_api::{ApiError, ApiErrorCode, POLICY_MAX_BYTES};
     use mockito::{Matcher, Server, ServerGuard};
-    use time::macros::datetime;
+    use serde_json::json;
 
     const TOKEN: &str = "hpat_5f3c9a1b2d4e6f7a8b9c0d1e2f3a4b5c";
     const AUTH_BODY: &str =
@@ -176,17 +174,45 @@ mod tests {
         assert_eq!(stdout(&output), format!("{AUTH_BODY}\n"));
         assert_eq!(stderr(&output), "");
 
-        let status: AuthStatus = serde_json::from_str(stdout(&output).trim()).unwrap();
         assert_eq!(
-            status,
-            AuthStatus {
-                login: "pawurb".into(),
-                token: TokenStatus {
-                    name: "laptop".into(),
-                    expires_at: datetime!(2027-01-01 00:00:00 UTC),
-                },
-            }
+            json(&stdout(&output)),
+            json!({
+                "login": "pawurb",
+                "token": {"name": "laptop", "expires_at": "2027-01-01T00:00:00Z"}
+            })
         );
+    }
+
+    #[test]
+    fn auth_passes_unknown_fields_and_the_server_key_order_through() {
+        // Keys out of alphabetical order, a field no client type knows and
+        // server spacing: compact output is the body as received.
+        let body = r#"{"token":{"name":"laptop","expires_at":"2027-01-01T00:00:00Z","scopes":["read"]}, "login":"pawurb","new_field":1}"#;
+        let mut server = Server::new();
+        let mock = mock_get(&mut server, "/api/v1/auth", body).expect(2);
+
+        let output = hotpath(&server, Some(TOKEN), &["auth"]);
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(stdout(&output), format!("{body}\n"));
+
+        let output = hotpath(&server, Some(TOKEN), &["auth", "--pretty"]);
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(
+            stdout(&output),
+            r#"{
+  "token": {
+    "name": "laptop",
+    "expires_at": "2027-01-01T00:00:00Z",
+    "scopes": [
+      "read"
+    ]
+  },
+  "login": "pawurb",
+  "new_field": 1
+}
+"#
+        );
+        mock.assert();
     }
 
     #[test]
@@ -196,10 +222,16 @@ mod tests {
 
         let output = hotpath(&server, Some(TOKEN), &["auth", "--pretty"]);
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        let expected: AuthStatus = serde_json::from_str(AUTH_BODY).unwrap();
         assert_eq!(
             stdout(&output),
-            format!("{}\n", serde_json::to_string_pretty(&expected).unwrap())
+            r#"{
+  "login": "pawurb",
+  "token": {
+    "name": "laptop",
+    "expires_at": "2027-01-01T00:00:00Z"
+  }
+}
+"#
         );
 
         let path = std::env::temp_dir().join("hotpath_cloud_cli_auth_output.json");
@@ -344,21 +376,24 @@ mod tests {
     }
 
     #[test]
-    fn auth_unreadable_success_body_is_an_error() {
+    fn auth_non_json_success_body_is_an_error() {
         let mut server = Server::new();
         let mock = server
             .mock("GET", "/api/v1/auth")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"login":"pawurb"}"#)
+            .with_body(r#"{"login":"pawurb""#)
+            .expect(2)
             .create();
 
-        let output = hotpath(&server, Some(TOKEN), &["auth"]);
+        for args in [&["auth"][..], &["auth", "--pretty"]] {
+            let output = hotpath(&server, Some(TOKEN), args);
+            assert_eq!(output.status.code(), Some(1));
+            assert_eq!(stdout(&output), "");
+            let error = client_error(&output);
+            assert!(error.starts_with("invalid response from "), "{error}");
+        }
         mock.assert();
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(stdout(&output), "");
-        let error = client_error(&output);
-        assert!(error.starts_with("invalid response from "), "{error}");
     }
 
     #[test]
@@ -396,11 +431,12 @@ mod tests {
 
         let output = hotpath(&server, Some(TOKEN), &["repos", "--pretty"]);
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        let expected: RepoList = serde_json::from_str(REPOS_BODY).unwrap();
-        assert_eq!(
-            stdout(&output),
-            format!("{}\n", serde_json::to_string_pretty(&expected).unwrap())
+        let printed = stdout(&output);
+        assert!(
+            printed.starts_with("{\n  \"repositories\": [\n"),
+            "{printed}"
         );
+        assert_eq!(json(&printed), json(REPOS_BODY));
 
         mock.assert();
     }
@@ -508,9 +544,8 @@ mod tests {
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
         assert_eq!(stderr(&output), "");
         let printed = stdout(&output);
-        assert!(!printed.trim_end().contains('\n'), "compact: {printed}");
-        assert_eq!(json(&printed), json(&body));
-        // Nullable fields print as `null`, the payload comes last.
+        assert_eq!(printed, format!("{body}\n"));
+        // Nullable fields print as `null`.
         assert!(printed.contains(r#""git_ref":null"#), "{printed}");
         // The policy is named by its path, the document is never returned.
         assert!(
@@ -522,10 +557,6 @@ mod tests {
             "{printed}"
         );
         assert!(!printed.contains(r#""policy":"#), "{printed}");
-        assert!(
-            printed.ends_with(",\"payload\":{\"meta\":{},\"version\":\"0.26.1\"}}\n"),
-            "{printed}"
-        );
 
         let output = hotpath(
             &server,
@@ -533,10 +564,15 @@ mod tests {
             &report_args(&["--pr", "105", "--pretty"]),
         );
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-        let expected: Report = serde_json::from_str(&body).unwrap();
-        assert_eq!(
-            stdout(&output),
-            format!("{}\n", serde_json::to_string_pretty(&expected).unwrap())
+        let printed = stdout(&output);
+        assert_eq!(json(&printed), json(&body));
+        // The server's key order: the payload last, as the writer ordered it.
+        assert!(printed.starts_with("{\n  \"id\": "), "{printed}");
+        assert!(
+            printed.ends_with(
+                "\n  \"payload\": {\n    \"version\": \"0.26.1\",\n    \"meta\": {}\n  }\n}\n"
+            ),
+            "{printed}"
         );
 
         mock.assert();
@@ -584,8 +620,7 @@ mod tests {
         mock.assert();
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
         assert_eq!(stdout(&output), format!("{SUMMARY_BODY}\n"));
-        let summary: ReportSummary = serde_json::from_str(stdout(&output).trim()).unwrap();
-        assert_eq!(summary.id, REPORT_ID);
+        assert_eq!(json(&stdout(&output))["id"], REPORT_ID);
     }
 
     #[test]
@@ -834,8 +869,40 @@ mod tests {
             let case = format!("{budgets:?} {result}");
             assert_eq!(output.status.code(), Some(code), "{case}");
             assert_eq!(stderr(&output), "", "{case}");
-            assert_eq!(json(&stdout(&output)), json(&body), "{case}");
+            assert_eq!(stdout(&output), format!("{body}\n"), "{case}");
         }
+    }
+
+    #[test]
+    fn diff_passes_unknown_fields_through_and_still_exits_by_the_verdict() {
+        for (budgets, code) in [(BudgetsCase::Hold, 0), (BudgetsCase::Broken, 1)] {
+            let body = diff_body(&compared(false), budgets);
+            let body = format!(r#"{{"new_field":{{"z":1,"a":2}},{}"#, &body[1..]);
+            let output = diff_by_pr(&body);
+            assert_eq!(output.status.code(), Some(code), "{budgets:?}");
+            assert_eq!(stderr(&output), "", "{budgets:?}");
+            assert_eq!(stdout(&output), format!("{body}\n"), "{budgets:?}");
+        }
+
+        let body = diff_body(&compared(false), BudgetsCase::Hold);
+        let body = format!(r#"{{"new_field":{{"z":1,"a":2}},{}"#, &body[1..]);
+        let mut server = Server::new();
+        let mock = mock_report(&mut server, DIFF_PATH, "pr=42", &body);
+        let output = hotpath(
+            &server,
+            Some(TOKEN),
+            &diff_args(&["--pr", "42", "--pretty"]),
+        );
+        mock.assert();
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        let printed = stdout(&output);
+        assert!(
+            printed.starts_with(
+                "{\n  \"new_field\": {\n    \"z\": 1,\n    \"a\": 2\n  },\n  \"repository\": "
+            ),
+            "{printed}"
+        );
+        assert_eq!(json(&printed), json(&body));
     }
 
     #[test]
@@ -909,16 +976,27 @@ mod tests {
     }
 
     #[test]
-    fn diff_body_without_a_result_is_an_error_not_a_pass() {
+    fn diff_body_without_a_verdict_is_an_error_not_a_pass() {
         let body = diff_body(&compared(false), BudgetsCase::NoRules);
         let mut value = json(&body);
-        value.as_object_mut().unwrap().remove("result");
+        value.as_object_mut().unwrap().remove("verdict");
         let output = diff_by_pr(&value.to_string());
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(stdout(&output), "");
         let error = client_error(&output);
         assert!(error.starts_with("invalid response from"), "{error}");
-        assert!(error.contains("result"), "{error}");
+        assert!(error.contains("verdict"), "{error}");
+    }
+
+    #[test]
+    fn diff_body_without_a_result_still_exits_by_the_verdict() {
+        // The rest of the body is the server's: only the verdict is read.
+        let mut value = json(&diff_body(&compared(false), BudgetsCase::NoRules));
+        value.as_object_mut().unwrap().remove("result");
+        let body = value.to_string();
+        let output = diff_by_pr(&body);
+        assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+        assert_eq!(stdout(&output), format!("{body}\n"));
     }
 
     #[test]

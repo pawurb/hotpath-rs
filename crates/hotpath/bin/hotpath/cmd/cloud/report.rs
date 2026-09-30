@@ -10,7 +10,6 @@
 use std::process::ExitCode;
 
 use clap::Args;
-use hotpath::json::cloud_api::{Report, ReportSummary};
 
 use crate::cmd::cloud::api::{CliError, Client, Output};
 use crate::cmd::cloud::repo;
@@ -33,15 +32,9 @@ pub(crate) struct ReportArgs {
 
 pub(crate) fn run(output: &Output, args: ReportArgs) -> Result<ExitCode, CliError> {
     let path = request_path(&args)?;
-    let client = Client::from_env()?;
-    // The request, not the body, decides which type the answer has.
-    if args.no_payload {
-        let summary: ReportSummary = client.get(&path)?;
-        output.emit(&summary)?;
-    } else {
-        let report: Report = client.get(&path)?;
-        output.emit(&report)?;
-    }
+    // The request (`payload=false`), not the client, decides the body's shape.
+    let report = Client::from_env()?.get_raw(&path)?;
+    output.emit_raw(&report)?;
     Ok(ExitCode::SUCCESS)
 }
 

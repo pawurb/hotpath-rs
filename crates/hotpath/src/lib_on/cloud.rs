@@ -116,7 +116,11 @@ pub(crate) enum Outcome {
     /// even in strict mode.
     Skipped(String),
     Uploaded {
+        /// The part of `body` this client reads.
         created: Box<UploadCreated>,
+        /// The response body as received, with every field the server sent,
+        /// known to this client or not.
+        body: String,
         /// From the `x-request-id` response header.
         request_id: Option<String>,
     },
@@ -328,6 +332,7 @@ pub(crate) fn interpret(status: u16, request_id: Option<String>, body: String) -
         return match serde_json::from_str::<UploadCreated>(&body) {
             Ok(created) => Outcome::Uploaded {
                 created: Box::new(created),
+                body,
                 request_id,
             },
             Err(_) => Outcome::Failed {
@@ -389,18 +394,14 @@ fn policy_problems(error: &ApiError, body: &str) -> String {
     format!(" {}", listed.join("; "))
 }
 
-/// Writes the body of an upload to `path` as one JSON document, re-serialized
-/// from the parsed `UploadCreated` so the file has the documented shape. A
+/// Writes the body of an upload to `path` byte for byte as received, so the
+/// file carries the fields this client does not know yet too. A
 /// skipped or failed upload has no verdict: a file already at `path` is
 /// removed, so a stale verdict from an earlier step is never read as this
 /// run's.
 pub(crate) fn store_response(outcome: &Outcome, path: &Path) -> std::io::Result<()> {
     match outcome {
-        Outcome::Uploaded { created, .. } => {
-            let mut body = serde_json::to_vec(created)?;
-            body.push(b'\n');
-            std::fs::write(path, body)
-        }
+        Outcome::Uploaded { body, .. } => std::fs::write(path, body),
         Outcome::Skipped(_) | Outcome::Failed { .. } => match std::fs::remove_file(path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
@@ -432,6 +433,15 @@ fn verdict_summary(verdict: &Verdict) -> String {
     }
 }
 
+/// A received body indented for the step summary; as received when it does
+/// not re-parse. Keys come out sorted (no `serde_json/preserve_order` in the
+/// library); `HOTPATH_UPLOAD_RESPONSE_PATH` keeps the server's bytes.
+fn pretty_body(body: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body)
+        .and_then(|value| serde_json::to_string_pretty(&value))
+        .unwrap_or_else(|_| body.trim().to_string())
+}
+
 /// One message at one level.
 pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> Rendered {
     let (level, message, links, body) = match outcome {
@@ -443,6 +453,7 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
         ),
         Outcome::Uploaded {
             created,
+            body,
             request_id,
         } => {
             let mut message = format!(
@@ -476,12 +487,7 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
                 format!("[Open the report on hotpath.rs]({})", created.dashboard_url),
                 format!("[Policy: {}]({})", created.policy_path, created.policy_url),
             ];
-            (
-                level,
-                message,
-                links,
-                serde_json::to_string_pretty(created).ok(),
-            )
+            (level, message, links, Some(pretty_body(body)))
         }
         Outcome::Failed { message, body } => {
             let level = if env.strict {
@@ -621,12 +627,21 @@ mod tests {
     }
 
     fn uploaded(verdict: Verdict) -> Outcome {
-        Outcome::Uploaded {
-            created: Box::new(UploadCreated {
+        uploaded_as(
+            UploadCreated {
                 verdict,
                 ..created()
-            }),
-            request_id: None,
+            },
+            None,
+        )
+    }
+
+    /// `created` as the server would send it.
+    fn uploaded_as(created: UploadCreated, request_id: Option<&str>) -> Outcome {
+        Outcome::Uploaded {
+            body: serde_json::to_string(&created).unwrap(),
+            created: Box::new(created),
+            request_id: request_id.map(str::to_string),
         }
     }
 
@@ -708,6 +723,7 @@ mod tests {
             Outcome::Uploaded {
                 created,
                 request_id,
+                ..
             } => {
                 assert_eq!(created.id, "r1");
                 assert_eq!(
@@ -853,8 +869,12 @@ mod tests {
 
     #[test]
     fn render_uploaded() {
+        // The step summary shows the received body, a field this client does
+        // not know included.
+        let body = serde_json::to_string(&created()).unwrap();
         let outcome = Outcome::Uploaded {
             created: Box::new(created()),
+            body: body.replacen('{', r#"{"new_field":1,"#, 1),
             request_id: Some("abc".into()),
         };
         let r = render(&outcome, &env(true, false), Some("meta"));
@@ -868,11 +888,14 @@ mod tests {
             .starts_with("## hotpath.rs meta benchmark\n\nnotice: hotpath: uploaded report r1"));
         assert!(
             r.summary.contains(&format!(
-                "\n[Open the report on hotpath.rs]({DASHBOARD_URL})\n\n[Policy: hotpath/policy.toml]({POLICY_URL})\n\n```\n{{\n  \"id\": \"r1\""
+                "\n[Open the report on hotpath.rs]({DASHBOARD_URL})\n\n[Policy: hotpath/policy.toml]({POLICY_URL})\n\n```\n{{\n  \""
             )),
             "{}",
             r.summary
         );
+        assert!(r.summary.contains("\n  \"new_field\": 1"), "{}", r.summary);
+        assert!(r.summary.contains("\n  \"id\": \"r1\""), "{}", r.summary);
+        assert!(r.summary.ends_with("\n}\n```\n"), "{}", r.summary);
 
         // Strict mode changes nothing on success.
         assert_eq!(
@@ -880,13 +903,13 @@ mod tests {
             Level::Notice
         );
 
-        let no_baseline = Outcome::Uploaded {
-            created: Box::new(UploadCreated {
+        let no_baseline = uploaded_as(
+            UploadCreated {
                 baseline: None,
                 ..created()
-            }),
-            request_id: None,
-        };
+            },
+            None,
+        );
         assert_eq!(
             render(&no_baseline, &env(false, false), None).message,
             "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline none); verdict: no regressions"
@@ -937,17 +960,17 @@ mod tests {
 
     #[test]
     fn render_regressed_with_comment_error_carries_both() {
-        let outcome = Outcome::Uploaded {
-            created: Box::new(UploadCreated {
+        let outcome = uploaded_as(
+            UploadCreated {
                 comment: CommentOutcome {
                     url: None,
                     error: Some("the installation is suspended".into()),
                 },
                 verdict: verdict(1, 0),
                 ..created()
-            }),
-            request_id: None,
-        };
+            },
+            None,
+        );
         let prefix =
             "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
         let r = render(&outcome, &guard_env(false), Some("meta"));
@@ -979,18 +1002,16 @@ mod tests {
         store_response(&failed, &path).unwrap();
         assert!(!path.exists());
 
-        // An upload overwrites whatever was there with the parsed body.
+        // An upload overwrites whatever was there with the body as received,
+        // a field this client does not know and the server's spacing included.
         std::fs::write(&path, "x".repeat(4096)).unwrap();
-        store_response(&uploaded(verdict(1, 0)), &path).unwrap();
-        let written: UploadCreated =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(
-            written,
-            UploadCreated {
-                verdict: verdict(1, 0),
-                ..created()
-            }
+        let body = format!(
+            r#"{{"id":"r1", "repository":"a/b","benchmark":"meta","new_field":{{"b":1,"a":2}},{VERDICT_FIELDS}}}"#
         );
+        let outcome = interpret(201, None, body.clone());
+        assert!(matches!(outcome, Outcome::Uploaded { .. }), "{outcome:?}");
+        store_response(&outcome, &path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body);
 
         // A failed or skipped upload leaves no verdict of an earlier run behind.
         store_response(&failed, &path).unwrap();
@@ -1008,16 +1029,16 @@ mod tests {
 
     #[test]
     fn render_uploaded_with_comment_error_is_one_warning() {
-        let outcome = Outcome::Uploaded {
-            created: Box::new(UploadCreated {
+        let outcome = uploaded_as(
+            UploadCreated {
                 comment: CommentOutcome {
                     url: None,
                     error: Some("approve \"Pull requests: write\" for the installation".into()),
                 },
                 ..created()
-            }),
-            request_id: None,
-        };
+            },
+            None,
+        );
         let r = render(&outcome, &env(true, false), Some("meta"));
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
@@ -1033,13 +1054,13 @@ mod tests {
             },
             CommentOutcome::default(),
         ] {
-            let outcome = Outcome::Uploaded {
-                created: Box::new(UploadCreated {
+            let outcome = uploaded_as(
+                UploadCreated {
                     comment,
                     ..created()
-                }),
-                request_id: None,
-            };
+                },
+                None,
+            );
             let r = render(&outcome, &env(true, false), Some("meta"));
             assert_eq!(r.level, Level::Notice);
             assert!(!r.message.contains("comment"));
