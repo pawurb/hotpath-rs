@@ -250,7 +250,8 @@ fn run(report: &JsonReport) -> Outcome {
 pub(crate) fn missing_policy_message(benchmark: Option<&str>) -> String {
     format!(
         "the report carries no policy file and hotpath.rs refuses reports without one. Add {} \
-         to the repository and check it with `hotpath cloud validate-policy`.",
+         to the repository (`hotpath cloud init` writes the default policy) and check it \
+         with `hotpath cloud validate-policy`.",
         policy_files_hint(benchmark)
     )
 }
