@@ -1,5 +1,9 @@
 # CI integration: benchmark Rust pull requests in GitHub Actions
 
+`hotpath Cloud` provides a simple way to catch Rust performance regressions in Github Actions CI pipeline. 
+
+By configuring a custom [regressions policy](/regression_policy) and (performance budgets)(performance_budgets) you can cherry-pick performance signals which are critical for your application. 
+
 > **Note:** hotpath Cloud is currently in closed beta.
 
 `hotpath` reviews the performance of every pull request. Your CI job runs a benchmark with `hotpath` profiling enabled and uploads the report. hotpath.rs compares it with the report of the base branch, judges the difference under your policy and posts the result as a comment on the pull request.

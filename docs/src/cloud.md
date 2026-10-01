@@ -1,6 +1,10 @@
-# hotpath Cloud
+# `hotpath Cloud` - performance regression feedback for developers and coding agents
+
+`hotpath Cloud` is a backend service for the open-source `hotpath-rs` library. 
 
 > **Note:** hotpath Cloud is currently in closed beta.
+
+
 
 hotpath Cloud is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a per-repository policy and posts the verdict as a comment on the pull request. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
 
