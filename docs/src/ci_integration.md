@@ -1,6 +1,6 @@
 # CI integration: benchmark Rust pull requests in GitHub Actions
 
-> **Note:** hotpath Cloud is currently in closed beta. See [hotpath Cloud](cloud.md) to request access.
+> **Note:** hotpath Cloud is currently in closed beta.
 
 `hotpath Cloud` reviews the performance of every pull request. Your CI job runs a benchmark with `hotpath` profiling enabled and uploads the report. hotpath.rs compares it with the report of the base branch and posts the result as a comment on the pull request.
 

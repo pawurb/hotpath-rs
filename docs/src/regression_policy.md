@@ -1,6 +1,6 @@
 # Regression policy: decide what counts as a performance regression
 
-> **Note:** hotpath Cloud is currently in closed beta. See [hotpath Cloud](cloud.md) to request access.
+> **Note:** hotpath Cloud is currently in closed beta.
 
 The regression policy is a TOML file in your repository, `hotpath/policy.toml`, that decides which changes between a pull request and its baseline count as regressions. For every profiled resource it sets how large a change must be to matter, which metrics decide, and which entries to ignore. For hard limits that hold whatever the baseline did, add [performance budgets](performance_budgets.md) to the same file.
 
