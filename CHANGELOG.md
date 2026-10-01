@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.1] - 2026-10-01
+
+### 🐛 Bug Fixes
+
+- Fix drain versioning and release 0.28.1
+
+
 ## [0.28.0] - 2026-09-30
 
 ### 🚀 Features
