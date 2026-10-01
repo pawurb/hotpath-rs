@@ -33,17 +33,15 @@ hotpath init-ci --agent claude # or --agent codex / --agent opencode
 
 `hotpath init-ci` downloads the [hotpath_init_ci agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init_ci/SKILL.md) from GitHub and starts your installed Claude Code, Codex or OpenCode with it as setup instructions. The agent adds the `hotpath-cloud` feature, a [regression policy](regression_policy.md) file and a GitHub Actions benchmark workflow, so every pull request gets a performance comment.
 
-Your agent remains in control: you review and approve edits through its regular permission prompts. Requires `curl` and the `claude`, `codex` or `opencode` CLI on `PATH`.
-
-You can also install the skill directly, without the hotpath CLI:
+Use `--forks` for public repositories that want to benchmark pull requests from forks. Fork pull requests need a [separate setup](ci_integration.md#pull-requests-from-forks) for security reasons:
 
 ```bash
-mkdir -p ~/.claude/skills/hotpath_init_ci
-curl -fsSL https://raw.githubusercontent.com/pawurb/hotpath-rs/main/skills/hotpath_init_ci/SKILL.md \
-  -o ~/.claude/skills/hotpath_init_ci/SKILL.md
+hotpath init-ci --agent claude --forks
 ```
 
-Then run `/hotpath_init_ci` in a Claude Code session.
+For private repositories, or if you don't need benchmarks on pull requests from forks, run `hotpath init-ci` without `--forks`.
+
+Your agent remains in control: you review and approve edits through its regular permission prompts. Requires `curl` and the `claude`, `codex` or `opencode` CLI on `PATH`.
 
 ### Manual setup
 

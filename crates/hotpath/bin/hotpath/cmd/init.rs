@@ -14,6 +14,9 @@ pub enum Setup {
     Profiling,
     /// `hotpath init-ci`: the hotpath Cloud CI integration.
     Ci,
+    /// `hotpath init-ci --forks`: the CI integration with the relay workflow
+    /// that also covers pull requests from forks.
+    CiForks,
 }
 
 impl Setup {
@@ -21,6 +24,7 @@ impl Setup {
         match self {
             Self::Profiling => "hotpath_init",
             Self::Ci => "hotpath_init_ci",
+            Self::CiForks => "hotpath_init_ci_forks",
         }
     }
 
@@ -28,6 +32,9 @@ impl Setup {
         match self {
             Self::Profiling => "Set up hotpath profiling in this repo.",
             Self::Ci => "Set up the hotpath Cloud CI integration in this repo.",
+            Self::CiForks => {
+                "Set up the hotpath Cloud CI integration in this repo, covering pull requests from forks."
+            }
         }
     }
 }
