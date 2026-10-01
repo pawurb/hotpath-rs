@@ -9,7 +9,7 @@ hotpath-rs is a lightweight, feature-gated Rust profiler that tracks function ex
 Workspace layout:
 - `crates/hotpath` - Main library with profiling runtime, reporting, metrics/MCP servers, and the TUI/CLI binaries
 - `crates/hotpath-macros` - Procedural macros (`#[measure]`, `#[main]`, `#[future_fn]`, ...)
-- `crates/hotpath-drain` - Lock-free per-thread chunked SPSC event queues plus the single-consumer registry (`EventProducer`, `EventQueue`, `EventQueueRegistry`); re-exported inside hotpath as `crate::batch`
+- `crates/hotpath-drain` - Lock-free per-thread SPSC event queues and their registry; re-exported inside hotpath as `crate::batch`
 - `crates/test-*` - One integration-test crate per instrumented subsystem or third-party integration; the current list is the `members` array in the root `Cargo.toml`
   - `test-toasty` is NOT a workspace member: toasty's rusqlite and the workspace's sqlx-sqlite have conflicting `links = "sqlite3"` values, so it's built via `cargo run --manifest-path crates/test-toasty/Cargo.toml ...`
 - `crates/hotpath-meta` / `crates/hotpath-macros-meta` / `crates/hotpath-drain-meta` - Copies of hotpath used to profile the profiler itself (not intended for external use)
@@ -19,13 +19,13 @@ Workspace layout:
 
 The dev_docs point to where things are defined in source and record gotchas the code can't show - read them only when a task needs the specifics:
 
-- `dev_docs/features.md` - Where feature flags, macros, the builder API, and env vars are defined, plus behavior gotchas
-- `dev_docs/architecture.md` - Background workers, metrics/MCP server code map, CPU sampling internals and pitfalls
-- `dev_docs/tui.md` - TUI build/usage, console code map, layout conventions
-- `dev_docs/testing.md` - Integration-test patterns (`crates/hotpath/tests/`): polling the metrics endpoint vs parsing the guard-drop JSON report, example code, and test-file conventions. Read before writing or modifying an integration test.
-- `CONTRIBUTING.md` - Meta-crate mirroring (syncmeta skill), self and overhead benchmark commands (`just bench_meta`, `just compare_meta`, per-subsystem `benchmark_*` examples), samply tracing, the exact CI check commands to run locally, and docs build prerequisites
+- `dev_docs/features.md` - Where features, macros, the builder API, env vars and cloud code are defined, plus gotchas
+- `dev_docs/architecture.md` - Background workers, servers, CPU sampling code map
+- `dev_docs/tui.md` - TUI build/usage and code map
+- `dev_docs/testing.md` - Integration-test patterns. Read before writing or modifying an integration test.
+- `CONTRIBUTING.md` - Meta-crate mirroring, benchmark commands, samply tracing, local CI check commands, docs build prerequisites
 
-Common sources of truth: the metrics API is the `Route` enum in `crates/hotpath/src/json.rs` + `metrics_server.rs`, MCP tools are the `#[tool]` methods in `mcp_server.rs`, env vars are parsed mainly in `lib_on/hotpath_guard.rs` (user-facing reference: `docs/src/configuration.md`), feature flags are in `crates/hotpath/Cargo.toml`, macro parameters are doc-commented in `crates/hotpath-macros/src/lib.rs`.
+Keep dev_docs and this file pointer-style: where something lives plus at most a one-line gotcha. Never describe exact logic, wire formats or design rationale there; that belongs in code comments.
 
 ## Development Commands
 
@@ -52,29 +52,23 @@ TUI quickstart (details in `dev_docs/tui.md`): run a profiled example in one ter
 
 ## Architecture
 
-**Profiling pipeline**: Measurements flow from instrumented code -> per-thread lock-free chunked SPSC queue (`crates/hotpath-drain`, aliased as `crate::batch`) -> background worker thread (single consumer, sweeps all queues every 50ms and once more at shutdown) -> statistics aggregation -> report generation on program exit. The producer hot path is a plain slot store plus one `Release` publish of the chunk length - no mutex, no RMW atomic - and queues remain drainable from the worker at any moment, so events buffered on parked threads (e.g. idle tokio workers) still reach the final report. Producers are gated by a per-registry `active` flag so events cannot accumulate unbounded when no worker is consuming.
-
-Each subsystem has a dedicated background worker thread named `hp-<subsystem>`, spawned from its `lib_on/<subsystem>.rs` - see `dev_docs/architecture.md`.
+**Profiling pipeline**: instrumented code -> per-thread lock-free SPSC queue (`crates/hotpath-drain`) -> per-subsystem `hp-<subsystem>` worker thread (sweeps every 50ms and once more at shutdown) -> statistics -> report on guard drop. The producer path must stay free of locks and RMW atomics.
 
 **Feature gating**: `lib.rs` orchestrates via `cfg_if!`; `lib_on.rs` is the enabled implementation, `lib_off.rs` the no-op stubs. Every public macro must exist in both. Time profiling uses `time::TimeGuard`; allocation profiling uses a custom global allocator with `alloc::MeasurementGuard`.
 
-**Async caveats**: async function profiling works on any async runtime with no runtime-specific feature flag (see `crates/test-smol-async`); the `tokio` feature is only needed for tokio-specific integrations (tokio channels/locks, async `io!` traits, `tokio_runtime!()`). Allocation profiling works for async functions on any async runtime: allocations are measured around each instrumented `poll()` (`measure_poll_alloc` in `lib_on/futures/wrapper.rs`) and aggregated across threads via `AsyncAllocBridge`, which the async measurement guard snapshots on drop. 
+**Async caveats**: async function profiling works on any async runtime with no runtime-specific feature flag (see `crates/test-smol-async`); the `tokio` feature is only needed for tokio-specific integrations (tokio channels/locks, async `io!` traits, `tokio_runtime!()`). Async allocation profiling is measured per `poll()` (`lib_on/futures/wrapper.rs`).
 
-**Servers**: a localhost-only metrics HTTP server (tiny_http, port 6770) starts by default and feeds the TUI; the `Route` enum in `src/json.rs` is the route table - read it plus `metrics_server.rs` when modifying the API. An optional MCP server (`hotpath-mcp` feature, port 6771) lives in `mcp_server.rs`.
+**Servers**: localhost metrics HTTP server (port 6770, on by default, feeds the TUI) in `metrics_server.rs` with routes in the `Route` enum in `src/json.rs`; optional MCP server (`hotpath-mcp`, port 6771) in `mcp_server.rs`.
 
-**Cloud report precision**: with the `hotpath-cloud` feature and `HOTPATH_UPLOAD=1` (or JSON output), the final JSON report renders durations and byte counts losslessly (`Precision::Exact` in `output.rs`: 3/6/9 decimals for µs/ms/s, bytes as a plain `N B`) so the server parses exact values back; display output keeps the rounded form. Never applied on the live metrics-server path, so the TUI/MCP always see display formatting. Gating details in `dev_docs/features.md`. The uploaded report also carries complete section lists (every display limit is ignored on the cloud path), and every section list serializes `total_count` / `included_count` so consumers can detect truncation.
+**CPU sampling** (`hotpath-cpu`): external `samply` worker; see `dev_docs/architecture.md`.
 
-**CPU sampling** (`hotpath-cpu`, macOS/Linux): an external `samply` worker records the host process; symbols are resolved from the binary and matched back to instrumented function names. Pitfall: bare `#[hotpath::measure]` on a method inside an `impl` block needs `impl_type = "TypeName"` for CPU attribution to match the demangled symbol (`#[measure_all]` on inherent impls auto-injects it; trait impl methods never match). Full internals in `dev_docs/architecture.md`.
-
-**Source tracking**: `lib_on/caller_stack.rs` maintains a per-thread stack of instrumented function names; SQL queries and HTTP requests record the innermost instrumented caller as their `source`.
+**Source tracking**: `lib_on/caller_stack.rs` gives SQL/HTTP entries their `source` (innermost instrumented caller).
 
 ### Key Files
 
 - `crates/hotpath/src/lib.rs` / `lib_on.rs` / `lib_off.rs` - Entry points (feature orchestration, enabled impl, no-op stubs)
 - `crates/hotpath-macros/src/lib.rs` - Procedural macro implementations
 - `crates/hotpath/src/lib_on/<subsystem>.rs` (+ same-named subdir) - One module per instrumented subsystem: `functions` (timing/alloc, + `functions/cpu/` for sampling), `channels`, `streams`, `futures`, `rw_locks`, `mutexes`, `sql`, `http`, `io`, `threads`, `tokio_runtime`, `debug`
-- `crates/hotpath/src/metrics_server.rs` + `src/json.rs` - Metrics HTTP server and its `Route` table / JSON types
-- `crates/hotpath/src/mcp_server.rs` - MCP server
 - `crates/hotpath/bin/hotpath/` - TUI binary (`cmd/console/` holds app state, views, HTTP client)
 - `crates/hotpath/bin/hotpath-utils/` - CLI for A/B benchmarks (`compare`) and CI PR comments (`profile-pr`)
 - `crates/hotpath/bin/hotpath-samply/` - CPU sampling wrapper binary

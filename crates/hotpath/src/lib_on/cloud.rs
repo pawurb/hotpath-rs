@@ -57,7 +57,9 @@ const MAX_QUOTED_BODY: usize = 2000;
 const MAX_LISTED_PROBLEMS: usize = 20;
 
 /// `HOTPATH_UPLOAD`: whether the report is uploaded and what fails the job.
-/// Each mode fails on everything the previous one does.
+/// Each mode fails on everything the previous one does. There is deliberately
+/// no "fail on regression but not on error" mode: a gate that passes whenever
+/// the upload fails is a gate that fails open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum UploadMode {
     /// Unset, empty, `0` or `false`.
