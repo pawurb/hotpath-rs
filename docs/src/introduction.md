@@ -148,16 +148,6 @@ hotpath init --agent claude # or --agent codex / --agent opencode
 
 Your agent remains in control: you review and approve edits through its regular permission prompts. Requires `curl` and the `claude`, `codex` or `opencode` CLI on `PATH`.
 
-You can also install the skill directly, without the hotpath CLI:
-
-```bash
-mkdir -p ~/.claude/skills/hotpath_init
-curl -fsSL https://raw.githubusercontent.com/pawurb/hotpath-rs/main/skills/hotpath_init/SKILL.md \
-  -o ~/.claude/skills/hotpath_init/SKILL.md
-```
-
-Then run `/hotpath_init` in a Claude Code session.
-
 ### Manual installation
 
 Add to your `Cargo.toml`:

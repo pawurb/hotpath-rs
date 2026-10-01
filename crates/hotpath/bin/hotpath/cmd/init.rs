@@ -2,11 +2,42 @@ use std::io::ErrorKind;
 use std::process::Command;
 
 const SKILL_URL_BRANCH_TEMPLATE: &str =
-    "https://raw.githubusercontent.com/pawurb/hotpath-rs/init-v{minor}/skills/hotpath_init/SKILL.md";
+    "https://raw.githubusercontent.com/pawurb/hotpath-rs/init-v{minor}/skills/{skill}/SKILL.md";
 const SKILL_URL_TAG_TEMPLATE: &str =
-    "https://raw.githubusercontent.com/pawurb/hotpath-rs/v{version}/skills/hotpath_init/SKILL.md";
+    "https://raw.githubusercontent.com/pawurb/hotpath-rs/v{version}/skills/{skill}/SKILL.md";
 
-const KICKOFF_PROMPT: &str = "Set up hotpath profiling in this repo.";
+/// What an agent session sets up: each one is a skill of `skills/` and the
+/// prompt that starts the session.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Setup {
+    /// `hotpath init`: profiling in the current repo.
+    Profiling,
+    /// `hotpath init-ci`: the hotpath Cloud CI integration.
+    Ci,
+    /// `hotpath init-ci --forks`: the CI integration with the relay workflow
+    /// that also covers pull requests from forks.
+    CiForks,
+}
+
+impl Setup {
+    fn skill(&self) -> &'static str {
+        match self {
+            Self::Profiling => "hotpath_init",
+            Self::Ci => "hotpath_init_ci",
+            Self::CiForks => "hotpath_init_ci_forks",
+        }
+    }
+
+    fn kickoff_prompt(&self) -> &'static str {
+        match self {
+            Self::Profiling => "Set up hotpath profiling in this repo.",
+            Self::Ci => "Set up the hotpath Cloud CI integration in this repo.",
+            Self::CiForks => {
+                "Set up the hotpath Cloud CI integration in this repo, covering pull requests from forks."
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum Agent {
@@ -36,13 +67,13 @@ impl Agent {
     }
 }
 
-pub fn run(agent: Agent) -> Result<(), String> {
-    let branch_url = branch_skill_url();
+pub(crate) fn run(setup: Setup, agent: Agent) -> Result<(), String> {
+    let branch_url = branch_skill_url(setup.skill());
     println!("Downloading setup instructions from {branch_url}");
     let skill = match download_skill(&branch_url) {
         Ok(skill) => skill,
         Err(branch_err) => {
-            let tag_url = tag_skill_url();
+            let tag_url = tag_skill_url(setup.skill());
             println!("Branch download failed, retrying from {tag_url}");
             download_skill(&tag_url).map_err(|tag_err| format!("{branch_err}\n{tag_err}"))?
         }
@@ -60,13 +91,15 @@ pub fn run(agent: Agent) -> Result<(), String> {
             command
                 .arg("--append-system-prompt")
                 .arg(instructions)
-                .arg(KICKOFF_PROMPT);
+                .arg(setup.kickoff_prompt());
         }
         Agent::Codex => {
-            command.arg(inline_prompt(instructions));
+            command.arg(inline_prompt(setup, instructions));
         }
         Agent::OpenCode => {
-            command.arg("--prompt").arg(inline_prompt(instructions));
+            command
+                .arg("--prompt")
+                .arg(inline_prompt(setup, instructions));
         }
     }
 
@@ -88,16 +121,30 @@ pub fn run(agent: Agent) -> Result<(), String> {
     Ok(())
 }
 
-fn inline_prompt(instructions: &str) -> String {
-    format!("{instructions}\n\n{KICKOFF_PROMPT} Follow the instructions above.")
+fn inline_prompt(setup: Setup, instructions: &str) -> String {
+    format!(
+        "{instructions}\n\n{} Follow the instructions above.",
+        setup.kickoff_prompt()
+    )
 }
 
-fn branch_skill_url() -> String {
-    SKILL_URL_BRANCH_TEMPLATE.replace("{minor}", minor_version(env!("CARGO_PKG_VERSION")))
+fn branch_skill_url(skill: &str) -> String {
+    skill_url(
+        SKILL_URL_BRANCH_TEMPLATE,
+        skill,
+        minor_version(env!("CARGO_PKG_VERSION")),
+    )
 }
 
-fn tag_skill_url() -> String {
-    SKILL_URL_TAG_TEMPLATE.replace("{version}", env!("CARGO_PKG_VERSION"))
+fn tag_skill_url(skill: &str) -> String {
+    skill_url(SKILL_URL_TAG_TEMPLATE, skill, env!("CARGO_PKG_VERSION"))
+}
+
+fn skill_url(template: &str, skill: &str, version: &str) -> String {
+    template
+        .replace("{skill}", skill)
+        .replace("{minor}", version)
+        .replace("{version}", version)
 }
 
 fn minor_version(version: &str) -> &str {
@@ -110,7 +157,8 @@ fn download_skill(url: &str) -> Result<String, String> {
         .output()
         .map_err(|e| {
             if e.kind() == ErrorKind::NotFound {
-                "'curl' not found. Install curl to use 'hotpath init'.".to_string()
+                "'curl' not found. Install curl to use 'hotpath init' and 'hotpath init-ci'."
+                    .to_string()
             } else {
                 format!("Failed to run curl: {e}")
             }
@@ -140,7 +188,9 @@ fn strip_frontmatter(skill: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{minor_version, strip_frontmatter, SKILL_URL_BRANCH_TEMPLATE};
+    use crate::cmd::init::{
+        minor_version, skill_url, strip_frontmatter, Setup, SKILL_URL_BRANCH_TEMPLATE,
+    };
 
     #[test]
     fn derives_minor_version() {
@@ -151,10 +201,14 @@ mod tests {
 
     #[test]
     fn branch_url_uses_minor_version() {
-        let url = SKILL_URL_BRANCH_TEMPLATE.replace("{minor}", minor_version("0.21.4"));
+        let url = skill_url(
+            SKILL_URL_BRANCH_TEMPLATE,
+            Setup::Ci.skill(),
+            minor_version("0.21.4"),
+        );
         assert_eq!(
             url,
-            "https://raw.githubusercontent.com/pawurb/hotpath-rs/init-v0.21/skills/hotpath_init/SKILL.md"
+            "https://raw.githubusercontent.com/pawurb/hotpath-rs/init-v0.21/skills/hotpath_init_ci/SKILL.md"
         );
     }
 
