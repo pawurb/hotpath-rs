@@ -12,6 +12,28 @@ The [GitHub Actions integration](ci_integration) compares benchmark results agai
 
 You can define acceptable regression thresholds using a customizable [regression policy](/regression_policy) and set fine-tuned [performance budgets](/performance_budgets). This helps eliminate noisy alerts and ensures that warnings are emitted only when performance changes in a meaningful way.
 
+```toml
+# hotpath/policy.toml (excerpt)
+
+# Flag a function whose allocations grow by 20% or more
+[functions.alloc]
+judged = true
+min_percent_change = 20
+metrics = ["avg", "total"]
+
+# The hot path must never allocate, whatever the baseline did
+[[functions.budgets]]
+match = "my_crate::router::route"
+alloc = { total = "0 B" }
+message = "route() is on the hot path and must not allocate"
+
+# Prevent N+1 calls: at most 5 SQL queries per request, on every route
+[[server.budgets]]
+match = "*"
+timing = { sql_per_request = 5 }
+message = "too many SQL queries per request, check for N+1 calls"
+```
+
 The [`hotpath cloud`](agents_cli) CLI and dedicated [AI skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_cloud/SKILL.md) bring the same feedback loop to coding agents. Agents can analyze benchmark results, identify regressions, and use the profiling data to guide performance optimization:
 
 <img loading="lazy" src="{{#asset-hash images/cloud-agent-diff.webp}}" alt="AI agent summarizing a hotpath Cloud diff">

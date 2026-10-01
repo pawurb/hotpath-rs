@@ -9,7 +9,7 @@ const SKILL_URL_TAG_TEMPLATE: &str =
 /// What an agent session sets up: each one is a skill of `skills/` and the
 /// prompt that starts the session.
 #[derive(Debug, Clone, Copy)]
-pub enum Setup {
+pub(crate) enum Setup {
     /// `hotpath init`: profiling in the current repo.
     Profiling,
     /// `hotpath init-ci`: the hotpath Cloud CI integration.
@@ -67,7 +67,7 @@ impl Agent {
     }
 }
 
-pub fn run(setup: Setup, agent: Agent) -> Result<(), String> {
+pub(crate) fn run(setup: Setup, agent: Agent) -> Result<(), String> {
     let branch_url = branch_skill_url(setup.skill());
     println!("Downloading setup instructions from {branch_url}");
     let skill = match download_skill(&branch_url) {
@@ -188,7 +188,9 @@ fn strip_frontmatter(skill: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{minor_version, skill_url, strip_frontmatter, Setup, SKILL_URL_BRANCH_TEMPLATE};
+    use crate::cmd::init::{
+        minor_version, skill_url, strip_frontmatter, Setup, SKILL_URL_BRANCH_TEMPLATE,
+    };
 
     #[test]
     fn derives_minor_version() {

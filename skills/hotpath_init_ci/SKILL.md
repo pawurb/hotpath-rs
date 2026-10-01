@@ -45,11 +45,18 @@ Never add it to `default`. The uploader is compiled only with the feature, and u
 ### 4. Add the policy file
 
 ```bash
-cargo install hotpath --features cloud   # if `hotpath cloud` is not available
-hotpath cloud init
+mkdir -p hotpath
+curl -fsSL https://hotpath.rs/api/v1/policy/default | jq -j .source > hotpath/policy.toml
 ```
 
-This writes the default policy to `hotpath/policy.toml` at the repository root (no token needed). Every upload must carry a policy file, so commit it. Do not change the defaults unless the user asks; https://hotpath.rs/regression_policy documents every key. After any edit, check it with `hotpath cloud validate-policy`.
+Run it from the repository root. It writes the default policy, with comments, to `hotpath/policy.toml` (no token needed; with `wget`, use `wget -qO- https://hotpath.rs/api/v1/policy/default`). Never overwrite an existing policy file. Every upload must carry a policy file, so commit it. Do not change the defaults unless the user asks; https://hotpath.rs/regression_policy documents every key.
+
+After any edit, validate the file. A valid policy answers `{"valid":true}`, an invalid one HTTP 422 with `problems`, each with its `line` and `message`:
+
+```bash
+jq -Rs '{source: .}' hotpath/policy.toml \
+  | curl -sS -X POST https://hotpath.rs/api/v1/policy/validate -H 'Content-Type: application/json' --data-binary @-
+```
 
 ### 5. Add the workflow
 
@@ -102,7 +109,6 @@ cargo check                                                    # feature off sti
 HOTPATH_BENCHMARK=my_benchmark HOTPATH_OUTPUT_FORMAT=json HOTPATH_OUTPUT_PATH=/tmp/hotpath-report.json \
   cargo run --release --example my_benchmark --features hotpath,hotpath-alloc,hotpath-cloud
 jq '{benchmark: .meta.benchmark, policy: .meta.policy.path}' /tmp/hotpath-report.json
-hotpath cloud validate-policy
 ```
 
 The report must name the benchmark and `hotpath/policy.toml`. Run the benchmark twice and compare the function allocation totals: if they differ, the workload is not fixed, so fix that before relying on the comments.
@@ -119,5 +125,5 @@ Do not commit or push unless the user asks.
 
 - Never enable `hotpath`, `hotpath-alloc` or `hotpath-cloud` by default; profiling stays opt-in.
 - Never put a token or secret in the workflow; the upload needs none.
-- One benchmark per `HOTPATH_BENCHMARK` name. For several benchmarks, add one job each, with its own name; a benchmark can have its own policy in `hotpath/<benchmark>-policy.toml` (`hotpath cloud init --benchmark NAME`).
+- One benchmark per `HOTPATH_BENCHMARK` name. For several benchmarks, add one job each, with its own name; a benchmark can have its own policy in `hotpath/<benchmark>-policy.toml` (fetched the same way as `hotpath/policy.toml`).
 - Keep the edits to the feature, the policy file, the workflow and, if the user agreed, the benchmark program.
