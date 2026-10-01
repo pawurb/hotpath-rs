@@ -216,8 +216,12 @@ fetch-badges:
 
     echo "Badges saved to ${DIR}/"
 
+# Dependency order: each crate is published after every crate it depends on
+# (optional deps included, crates.io must already have them).
 cargo-publish:
+    cargo publish -p hotpath-drain-meta
     cargo publish -p hotpath-macros-meta
     cargo publish -p hotpath-meta
+    cargo publish -p hotpath-drain
     cargo publish -p hotpath-macros
     cargo publish -p hotpath
