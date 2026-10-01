@@ -1,5 +1,5 @@
 //! Shared plumbing of the `hotpath cloud` commands: the token and base URL
-//! from the environment, the bearer `GET` / `POST` (or an anonymous `GET` for
+//! from the environment, the bearer `GET` / `POST` (or an anonymous one for
 //! a public route, which never sends the token) and the JSON output. The
 //! token comes only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of
 //! shell history and `ps`) and is never printed, not even in an error. A 2xx

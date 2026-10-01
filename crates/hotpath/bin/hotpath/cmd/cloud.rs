@@ -223,7 +223,8 @@ Exit codes:
   2  usage error
 A file that is not valid is an answer: the object is printed on stdout with stderr
 empty. An error prints one JSON document on stderr with stdout empty, as for every
-command. Same token and base URL environment as `auth`."
+command. The route is public: no token is needed and HOTPATH_API_TOKEN is never sent.
+Same base URL environment as `auth`."
     )]
     ValidatePolicy(ValidatePolicyArgs),
 
