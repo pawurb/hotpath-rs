@@ -1,21 +1,21 @@
-# `hotpath Cloud` - performance regression feedback for developers and coding agents
-
-`hotpath Cloud` is a backend service for the open-source `hotpath-rs` library. 
+# `hotpath Cloud` - performance feedback for developers and coding agents
 
 > **Note:** hotpath Cloud is currently in closed beta.
 
+`hotpath Cloud` is a backend service for the open-source `hotpath-rs` profiler. It provides an automated feedback loop for performance signals collected from your Rust application, helping both developers and coding agents detect regressions before they are merged.
 
+The [GitHub Actions integration](ci_integration) compares benchmark results against a baseline and posts a PR comment whenever a significant regression or improvement is detected:
 
-hotpath Cloud is performance regression testing for Rust pull requests: it compares the report a pull request produced with the one its base branch produced, judges the difference under a per-repository policy and posts the verdict as a comment on the pull request. This page will document how to set it up; until then, the waitlist below is where to sign up for early access.
+<img loading="lazy" src="{{#asset-hash images/cloud-pr-comment.webp}}" alt="hotpath Cloud pull request comment">
 
-<div class="waitlist-card" id="waitlist">
-  <h2 class="waitlist-card-title"><span class="waitlist-card-brand">hotpath Cloud</span> - every Rust PR gets a performance review</h2>
-  <p>Catch regressions in memory, SQL queries, HTTP calls and concurrency bottlenecks before they reach production. Iterate on reproducible signals, not CI noise.</p>
-  <p><span class="waitlist-card-brand">hotpath Cloud</span> will also provide agents with clear performance constraints and help ensure that AI-built applications stay fast.</p>
-  <img src="{{#asset-hash images/hotpath-team-poc.webp}}" class="waitlist-card-image" alt="Hotpath Team commit timeline comparing duration, memory, HTTP and SQL metrics across commits, flagging a PR that introduced 171 new SQL calls" loading="lazy" width="1672" height="941">
-  <p class="waitlist-cta-note">Launching soon • Early access invitations will be sent to waitlist members first.</p>
-  <div class="waitlist-cta-row">
-    <a href="/auth/github/login" class="waitlist-cta"><svg class="waitlist-cta-icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>Join waitlist with GitHub</a>
-  </div>
-</div>
-<p class="waitlist-building-note">Building in public. Follow development progress on X: <a href="https://x.com/pawelurbanekcom" target="_blank" rel="noopener noreferrer">@pawelurbanekcom</a></p>
+You can define acceptable regression thresholds using a customizable [regression policy](/regression_policy) and set fine-tuned [performance budgets](/performance_budgets). This helps eliminate noisy alerts and ensures that warnings are emitted only when performance changes in a meaningful way.
+
+The [`hotpath cloud`](agents_cli) CLI and dedicated AI skill bring the same feedback loop to coding agents. Agents can analyze benchmark results, identify regressions, and use the profiling data to guide performance optimization:
+
+<img loading="lazy" src="{{#asset-hash images/cloud-agent-diff.webp}}" alt="AI agent summarizing a hotpath Cloud diff">
+
+Benchmark reports are persisted in `hotpath Cloud`, making it easy to share results with your team and compare each report against its baseline:
+
+<img loading="lazy" src="{{#asset-hash images/cloud-dashboard-diff.webp}}" alt="hotpath Cloud dashboard diff page">
+
+[See this diff on hotpath.rs](https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/drain/reports/01a0f476-5b3a-7d0e-901a-7756f28e2414/diff)
