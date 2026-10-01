@@ -16,6 +16,14 @@ pub(crate) struct InitCliArgs {
     pub(crate) agent: String,
 }
 
+#[cfg(any(feature = "tui", feature = "cloud"))]
+impl InitCliArgs {
+    fn run(&self, setup: cmd::init::Setup) -> eyre::Result<()> {
+        let agent = cmd::init::Agent::from_arg(&self.agent).map_err(|e| eyre::eyre!(e))?;
+        cmd::init::run(setup, agent).map_err(|e| eyre::eyre!(e))
+    }
+}
+
 /// Placeholder for `hotpath cloud` in a binary built without the `cloud`
 /// feature: keeps the command visible in `--help` and turns an attempt to
 /// run it into a hint instead of clap's "unrecognized subcommand".
@@ -34,6 +42,10 @@ pub(crate) enum HPSubcommand {
     Console(ConsoleArgs),
     #[command(about = "Configure hotpath in the current repo via an AI agent session")]
     Init(InitCliArgs),
+    #[command(
+        about = "Set up the hotpath Cloud CI integration in the current repo via an AI agent session"
+    )]
+    InitCi(InitCliArgs),
     #[cfg(feature = "cloud")]
     #[command(about = "Query hotpath.rs: authentication status and cloud reports")]
     Cloud(CloudArgs),
@@ -73,10 +85,8 @@ fn main() -> eyre::Result<ExitCode> {
     match root_args.cmd {
         #[cfg(feature = "tui")]
         Some(HPSubcommand::Console(args)) => args.run()?,
-        Some(HPSubcommand::Init(args)) => {
-            let agent = cmd::init::Agent::from_arg(&args.agent).map_err(|e| eyre::eyre!(e))?;
-            cmd::init::run(agent).map_err(|e| eyre::eyre!(e))?;
-        }
+        Some(HPSubcommand::Init(args)) => args.run(cmd::init::Setup::Profiling)?,
+        Some(HPSubcommand::InitCi(args)) => args.run(cmd::init::Setup::Ci)?,
         #[cfg(feature = "cloud")]
         Some(HPSubcommand::Cloud(args)) => return Ok(args.run()),
         #[cfg(not(feature = "cloud"))]
@@ -101,19 +111,28 @@ fn main() -> eyre::Result<ExitCode> {
 fn main() -> std::process::ExitCode {
     let mut args = std::env::args().skip(1);
 
-    match args.next().as_deref() {
-        Some("init") => {
+    let command = args.next();
+    let setup = match command.as_deref() {
+        Some("init") => Some(cmd::init::Setup::Profiling),
+        Some("init-ci") => Some(cmd::init::Setup::Ci),
+        _ => None,
+    };
+
+    match (command.as_deref(), setup) {
+        (Some(command), Some(setup)) => {
             let flag = args.next();
             let agent_arg = match (flag.as_deref(), args.next()) {
                 (Some("--agent"), Some(agent)) => Ok(agent),
                 (Some(flag), None) if flag.starts_with("--agent=") => {
                     Ok(flag["--agent=".len()..].to_string())
                 }
-                _ => Err("Usage: hotpath init --agent <claude|codex|opencode>".to_string()),
+                _ => Err(format!(
+                    "Usage: hotpath {command} --agent <claude|codex|opencode>"
+                )),
             };
             let result = agent_arg
                 .and_then(|agent| cmd::init::Agent::from_arg(&agent))
-                .and_then(cmd::init::run);
+                .and_then(|agent| cmd::init::run(setup, agent));
             match result {
                 Ok(()) => std::process::ExitCode::SUCCESS,
                 Err(e) => {
@@ -122,7 +141,7 @@ fn main() -> std::process::ExitCode {
                 }
             }
         }
-        Some("cloud") => {
+        (Some("cloud"), _) => {
             eprintln!("{CLOUD_FEATURE_HINT}");
             std::process::ExitCode::FAILURE
         }
@@ -133,7 +152,8 @@ fn main() -> std::process::ExitCode {
 Usage: hotpath <COMMAND>
 
 Commands:
-  init --agent <claude|codex|opencode>  Configure hotpath in the current repo via an AI agent session
+  init --agent <claude|codex|opencode>     Configure hotpath in the current repo via an AI agent session
+  init-ci --agent <claude|codex|opencode>  Set up the hotpath Cloud CI integration via an AI agent session
 
 The 'console' command requires building with the 'tui' feature.
 The 'cloud' command requires building with the 'cloud' feature."
