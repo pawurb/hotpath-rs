@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.2] - 2026-10-01
+
+### 🐛 Bug Fixes
+
+- Default policy no auth
+
+- Validate policy no auth
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Cleanup dev docs
+
+- Hotpath Cloud docs, CLI and AI skills
+
+- Release 0.28.2
+
+
 ## [0.28.1] - 2026-10-01
 
 ### 🐛 Bug Fixes
