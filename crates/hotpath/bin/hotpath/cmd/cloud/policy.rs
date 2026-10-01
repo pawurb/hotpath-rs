@@ -8,7 +8,9 @@
 //! parser is the only judge. What the client can tell without it (a file
 //! that is unreadable, not UTF-8, blank, too large or outside the
 //! repository) is reported as a problem of that file and costs no request.
-//! Every argument is validated and the file read before the client is built.
+//! Every argument is validated and the file read before the request. The
+//! route is public, so the request is anonymous: no token is needed and none
+//! is sent.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -80,9 +82,9 @@ impl Candidate {
 pub(crate) fn validate(output: &Output, args: ValidatePolicyArgs) -> Result<ExitCode, CliError> {
     let candidate = candidate(&args)?;
 
-    // A file refused here is reported without a token.
+    // A file refused here costs no request.
     let problems = match candidate.source {
-        Ok(source) => server_problems(&Client::from_env()?, source)?,
+        Ok(source) => server_problems(&Client::anonymous(), source)?,
         Err(unusable) => vec![PolicyProblem {
             line: None,
             message: unusable.to_string(),

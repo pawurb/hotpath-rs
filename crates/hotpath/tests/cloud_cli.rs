@@ -1169,7 +1169,8 @@ mod tests {
         }
     }
 
-    /// A mock of the validation route for exactly this document.
+    /// A mock of the validation route for exactly this document. The route
+    /// is public: a request carrying any `Authorization` header does not match.
     fn mock_validate(
         server: &mut ServerGuard,
         source: &str,
@@ -1178,7 +1179,7 @@ mod tests {
     ) -> mockito::Mock {
         server
             .mock("POST", VALIDATE_PATH)
-            .match_header("authorization", format!("Bearer {TOKEN}").as_str())
+            .match_header("authorization", Matcher::Missing)
             .match_header("content-type", "application/json")
             .match_header("user-agent", Matcher::Regex("^hotpath-cli/[0-9]".into()))
             .match_body(Matcher::Json(serde_json::json!({ "source": source })))
@@ -1207,7 +1208,7 @@ mod tests {
             .write("hotpath/ci-policy.toml", BAD_POLICY.as_bytes())
             .write("hotpath/blank-policy.toml", b" \n\t\n");
 
-        let output = checkout.validate(&server, Some(TOKEN), &[]);
+        let output = checkout.validate(&server, None, &[]);
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
         assert_eq!(
             stdout(&output),
@@ -1230,7 +1231,7 @@ mod tests {
 
         let output = hotpath_in(
             &server,
-            Some(TOKEN),
+            None,
             &["validate-policy"],
             b"",
             Some(&checkout.root),
@@ -1260,7 +1261,7 @@ mod tests {
             .write("config/special.toml", GOOD_POLICY.as_bytes());
 
         // Its own file wins over the shared one.
-        let output = checkout.validate(&server, Some(TOKEN), &["--benchmark", "ci"]);
+        let output = checkout.validate(&server, None, &["--benchmark", "ci"]);
         assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
         assert_eq!(
             json(&stdout(&output)),
@@ -1270,7 +1271,7 @@ mod tests {
         );
 
         // A benchmark without its own file uses the shared one.
-        let output = checkout.validate(&server, Some(TOKEN), &["--benchmark", "nightly"]);
+        let output = checkout.validate(&server, None, &["--benchmark", "nightly"]);
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
         assert_eq!(
             json(&stdout(&output)),
@@ -1280,7 +1281,7 @@ mod tests {
         // `HOTPATH_POLICY_PATH` wins over both, as it does for the run.
         let output = hotpath_in(
             &server,
-            Some(TOKEN),
+            None,
             &["validate-policy", "--benchmark", "ci"],
             b"",
             Some(&checkout.root),
@@ -1307,7 +1308,7 @@ mod tests {
 
         let output = outside.validate(
             &server,
-            Some(TOKEN),
+            None,
             &["--file", file.to_str().unwrap(), "--pretty"],
         );
         assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
@@ -1319,7 +1320,7 @@ mod tests {
 
         let output = hotpath_with_stdin(
             &server,
-            Some(TOKEN),
+            None,
             &["validate-policy", "--file", "-"],
             GOOD_POLICY.as_bytes(),
         );
@@ -1332,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_policy_refuses_unusable_files_without_a_token_or_a_request() {
+    fn validate_policy_refuses_unusable_files_without_a_request() {
         let mut server = Server::new();
         let mock = mock_no_validation(&mut server);
         let checkout = Checkout::new("unusable");
@@ -1412,13 +1413,6 @@ mod tests {
             assert!(found.contains("is outside the repository"), "{found}");
         }
 
-        // A readable file needs the token, which is asked for before any request.
-        checkout.write("hotpath/policy.toml", GOOD_POLICY.as_bytes());
-        let output = checkout.validate(&server, None, &["--benchmark", "nightly"]);
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(stdout(&output), "");
-        assert!(client_error(&output).starts_with("HOTPATH_API_TOKEN is not set"));
-
         mock.assert();
     }
 
@@ -1460,7 +1454,7 @@ mod tests {
             ),
         ];
         for (checkout, args, expected) in cases {
-            let output = checkout.validate(&server, Some(TOKEN), args);
+            let output = checkout.validate(&server, None, args);
             assert_eq!(output.status.code(), Some(1), "{args:?}");
             assert_eq!(stdout(&output), "", "{args:?}");
             let error = client_error(&output);
@@ -1471,10 +1465,10 @@ mod tests {
 
     #[test]
     fn validate_policy_stops_on_any_error_but_a_refused_document() {
-        let unauthorized = error_body(ApiErrorCode::InvalidToken, "The token does not work.");
+        let internal = error_body(ApiErrorCode::Internal, "Something went wrong.");
         // A 422 that is not about the document is not a result either.
         let other_422 = error_body(ApiErrorCode::BadRequest, "The body is not JSON.");
-        for (status, body) in [(401, unauthorized), (422, other_422)] {
+        for (status, body) in [(500, internal), (422, other_422)] {
             let mut server = Server::new();
             let mock = server
                 .mock("POST", VALIDATE_PATH)
@@ -1486,7 +1480,7 @@ mod tests {
             let checkout = Checkout::new(&format!("stops_{status}"));
             checkout.write("hotpath/policy.toml", GOOD_POLICY.as_bytes());
 
-            let output = checkout.validate(&server, Some(TOKEN), &[]);
+            let output = checkout.validate(&server, None, &[]);
             assert_eq!(output.status.code(), Some(1), "{body}");
             assert_eq!(stdout(&output), "", "{body}");
             assert_eq!(json(&stderr(&output)), json(&body));
@@ -1507,7 +1501,7 @@ mod tests {
             &["--benchmark"],
         ];
         for args in cases {
-            let output = checkout.validate(&server, Some(TOKEN), args);
+            let output = checkout.validate(&server, None, args);
             assert_eq!(
                 output.status.code(),
                 Some(2),
