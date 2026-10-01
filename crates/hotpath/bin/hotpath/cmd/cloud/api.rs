@@ -1,5 +1,6 @@
 //! Shared plumbing of the `hotpath cloud` commands: the token and base URL
-//! from the environment, the bearer `GET` / `POST` and the JSON output. The
+//! from the environment, the bearer `GET` / `POST` (or an anonymous `GET` for
+//! a public route, which never sends the token) and the JSON output. The
 //! token comes only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of
 //! shell history and `ps`) and is never printed, not even in an error. A 2xx
 //! body the command only prints passes through as received (`RawBody`), so a
@@ -77,32 +78,43 @@ impl RawBody {
 
 pub(crate) struct Client {
     base_url: String,
-    token: String,
+    /// `None` for an anonymous client: no `Authorization` header is sent.
+    token: Option<String>,
     agent: ureq::Agent,
 }
 
 impl Client {
+    /// A client that authenticates every request with `HOTPATH_API_TOKEN`.
     pub(crate) fn from_env() -> Result<Self, CliError> {
         let token = API_TOKEN.clone().ok_or_else(|| {
             CliError::client(format!(
                 "HOTPATH_API_TOKEN is not set. Create a token at {TOKENS_URL} and export it."
             ))
         })?;
-        let base_url = API_URL.clone();
+        Ok(Self::new(Some(token)))
+    }
+
+    /// A client for public routes: it never reads the token, so none is
+    /// required and none is sent.
+    pub(crate) fn anonymous() -> Self {
+        Self::new(None)
+    }
+
+    fn new(token: Option<String>) -> Self {
         let agent = ureq::Agent::config_builder()
             .timeout_global(Some(TIMEOUT))
             .http_status_as_error(false)
             .user_agent(concat!("hotpath-cli/", env!("CARGO_PKG_VERSION")))
             .build()
             .into();
-        Ok(Self {
-            base_url,
+        Self {
+            base_url: API_URL.clone(),
             token,
             agent,
-        })
+        }
     }
 
-    /// `GET {base_url}{path}` with the bearer token; a 2xx body parses as `T`,
+    /// `GET {base_url}{path}` with the bearer token, if any; a 2xx body parses as `T`,
     /// anything else is the server body as the error (see `CliError::server`).
     pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, CliError> {
         let url = format!("{}{path}", self.base_url);
@@ -120,16 +132,12 @@ impl Client {
     }
 
     fn get_body(&self, url: &str) -> Result<String, CliError> {
-        let resp = self
-            .agent
-            .get(url)
-            .header("Authorization", &self.authorization())
-            .call();
+        let resp = self.authorize(self.agent.get(url)).call();
         self.read_response(url, resp)
     }
 
-    /// `POST {base_url}{path}` with `body` as JSON and the bearer token; the
-    /// answer is handled like `get`'s.
+    /// `POST {base_url}{path}` with `body` as JSON and the bearer token, if
+    /// any; the answer is handled like `get`'s.
     pub(crate) fn post<B: Serialize, T: DeserializeOwned>(
         &self,
         path: &str,
@@ -139,17 +147,19 @@ impl Client {
         let body = serde_json::to_vec(body)
             .map_err(|e| CliError::client(format!("could not serialize the request: {e}")))?;
         let resp = self
-            .agent
-            .post(&url)
-            .header("Authorization", &self.authorization())
+            .authorize(self.agent.post(&url))
             .header("Content-Type", "application/json")
             .send(&body[..]);
         let body = self.read_response(&url, resp)?;
         parse_body(&url, &body)
     }
 
-    fn authorization(&self) -> String {
-        format!("Bearer {}", self.token)
+    /// `request` with the bearer token; unchanged for an anonymous client.
+    fn authorize<B>(&self, request: ureq::RequestBuilder<B>) -> ureq::RequestBuilder<B> {
+        match &self.token {
+            Some(token) => request.header("Authorization", &format!("Bearer {token}")),
+            None => request,
+        }
     }
 
     /// A 2xx body as received, or the failure: the transport error (which

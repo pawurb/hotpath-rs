@@ -7,8 +7,9 @@
 //!
 //! The file is written byte for byte, comments included: they document each
 //! key. An existing file is user configuration and is never replaced without
-//! `--force`, and a symlink is never followed. Every refusal is decided
-//! before the client is built, so it needs no token and costs no request.
+//! `--force`, and a symlink is never followed. The route is public, so the
+//! request is anonymous: no token is needed and none is sent. Every refusal
+//! is decided before the request, so it costs none.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -71,7 +72,7 @@ pub(crate) fn run(output: &Output, args: InitArgs) -> Result<ExitCode, CliError>
         }
     }
 
-    let policy: DefaultPolicy = Client::from_env()?.get(DEFAULT_POLICY_PATH)?;
+    let policy: DefaultPolicy = Client::anonymous().get(DEFAULT_POLICY_PATH)?;
     write(&target, &relative, &policy.source, args.force)?;
 
     output.emit(&WrittenFile {

@@ -1524,10 +1524,12 @@ mod tests {
     const DEFAULT_SOURCE: &str =
         "# hotpath policy \u{2192} starting point\n[functions.timing]\njudged = true\n";
 
+    /// The route is public: a request carrying any `Authorization` header
+    /// does not match.
     fn mock_default_policy(server: &mut ServerGuard, hits: usize) -> mockito::Mock {
         server
             .mock("GET", DEFAULT_POLICY_PATH)
-            .match_header("authorization", format!("Bearer {TOKEN}").as_str())
+            .match_header("authorization", Matcher::Missing)
             .match_header("user-agent", Matcher::Regex("^hotpath-cli/[0-9]".into()))
             .with_status(200)
             .with_header("content-type", "application/json; charset=utf-8")
@@ -1542,7 +1544,8 @@ mod tests {
         let mock = mock_default_policy(&mut server, 4);
         let checkout = Checkout::new("init");
 
-        let output = checkout.init(&server, Some(TOKEN), &[]);
+        // No token needed.
+        let output = checkout.init(&server, None, &[]);
         assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
         assert_eq!(stderr(&output), "");
         assert_eq!(
@@ -1554,8 +1557,7 @@ mod tests {
             Some(DEFAULT_SOURCE)
         );
 
-        // The file is the repository's now: refused without --force, before
-        // the token is even read.
+        // The file is the repository's now: refused without --force.
         checkout.write("hotpath/policy.toml", GOOD_POLICY.as_bytes());
         let output = checkout.init(&server, None, &[]);
         assert_eq!(output.status.code(), Some(1));
@@ -1636,7 +1638,7 @@ mod tests {
         .unwrap();
         let directory = Checkout::new("init_directory");
         std::fs::create_dir_all(directory.root.join("hotpath/policy.toml")).unwrap();
-        let empty = Checkout::new("init_no_token");
+        let empty = Checkout::new("init_unwritten");
 
         let mut cases: Vec<(&Checkout, &[&str], &str)> = vec![
             (&outside, &[], "is not inside a git repository"),
@@ -1674,10 +1676,6 @@ mod tests {
             "the symlink target was written"
         );
 
-        // Nothing to refuse: the token is what is missing, and nothing is written.
-        let output = empty.init(&server, None, &[]);
-        assert_eq!(output.status.code(), Some(1));
-        assert!(client_error(&output).starts_with("HOTPATH_API_TOKEN is not set"));
         assert!(!empty.root.join("hotpath").exists());
         mock.assert();
     }
@@ -1685,10 +1683,10 @@ mod tests {
     #[test]
     fn init_passes_a_server_error_through_and_writes_nothing() {
         let mut server = Server::new();
-        let body = error_body(ApiErrorCode::InvalidToken, "The token does not work.");
+        let body = error_body(ApiErrorCode::Internal, "Something went wrong.");
         let mock = server
             .mock("GET", DEFAULT_POLICY_PATH)
-            .with_status(401)
+            .with_status(500)
             .with_header("content-type", "application/json")
             .with_body(&body)
             .create();
