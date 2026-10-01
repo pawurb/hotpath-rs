@@ -250,7 +250,8 @@ Exit codes:
   1  the file exists (without --force), no git repository, or any error (auth,
      network, unparseable body)
   2  usage error
-Same token and base URL environment as `auth`."
+The route is public: no token is needed and HOTPATH_API_TOKEN is never sent. Same base
+URL environment as `auth`."
     )]
     Init(InitArgs),
 }
