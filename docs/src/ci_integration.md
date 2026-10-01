@@ -22,8 +22,6 @@ hotpath-alloc = ["hotpath/hotpath-alloc"]
 hotpath-cloud = ["hotpath/hotpath-cloud"]
 ```
 
-Like the rest of `hotpath`, the uploader is compiled only when its feature is enabled. At runtime it does nothing unless `HOTPATH_UPLOAD` is set.
-
 Add a policy file. Every uploaded report carries the repository's policy, and an upload without one is refused. `hotpath cloud init` writes the default policy to `hotpath/policy.toml`:
 
 ```bash
@@ -116,7 +114,7 @@ See [configuration](configuration.md) for the variables that shape the report it
 
 ## Pull requests from forks
 
-A job triggered by a pull request from a fork runs the fork's code, so GitHub gives it a read-only token and no OIDC token, whatever the workflow asks for. The benchmark job cannot upload. It writes the report to an artifact instead, and a second workflow, triggered when the first one completes, uploads it from a job that never checks out or runs code from the pull request.
+A job triggered by a pull request from a fork runs the fork's code, so GitHub gives it a read-only token and no OIDC token, so the benchmark job cannot upload. It writes the report to an artifact instead, and a second workflow, triggered when the first one completes, uploads it.
 
 ### The benchmark workflow
 

@@ -144,5 +144,3 @@ A broken budget is listed under "Budgets" in the pull request comment, with the 
 ⛔ my_crate::parser::parse: alloc.avg 1.4 KB, over budget 1.0 KB: parse must stay allocation-light
 ⛔ my_crate::flush: not called
 ```
-
-What cannot be checked is a note, not a broken budget: an entry missing from a report that was cut to its top entries, a byte limit on a report profiled by allocation count, or a percentile the report was not profiled with.

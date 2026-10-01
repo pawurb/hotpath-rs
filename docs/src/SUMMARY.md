@@ -24,7 +24,7 @@
 - [CI integration](./ci_integration.md)
 - [Regression policy](./regression_policy.md)
 - [Performance budgets](./performance_budgets.md)
-- [Agents & CLI](./agents_cli.md)
+- [AI Agents CLI](./agents_cli.md)
 
 # More
 
