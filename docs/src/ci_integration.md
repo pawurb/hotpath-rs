@@ -202,8 +202,8 @@ jobs:
     uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@main
     permissions:
       actions: read # download the artifact of the benchmark run
-      contents: read
       id-token: write # authenticate the upload
+      pull-requests: read # find the pull request the run belongs to
     with:
       benchmark: my_benchmark
       artifact_name: hotpath-report
@@ -211,7 +211,7 @@ jobs:
       # fail_on_regression: true
 ```
 
-[`hotpath-relay.yml`](https://github.com/pawurb/hotpath-rs/blob/main/.github/workflows/hotpath-relay.yml) is a reusable workflow. It runs after a successful benchmark run of a pull request, downloads the artifact, uploads the report and prints the server's response in the step summary. A rejected upload fails the relay job, and a comment that could not be posted is a warning.
+[`hotpath-relay.yml`](https://github.com/pawurb/hotpath-rs/blob/main/.github/workflows/hotpath-relay.yml) is a reusable workflow. It runs after a successful benchmark run of a pull request, downloads the artifact, uploads the report and prints the server's response in the step summary. A rejected upload fails the relay job, and a comment that could not be posted is a warning. The pull request the report belongs to is looked up from the benchmark run's head commit, not read from the report, which the pull request's own code wrote; that lookup is what `pull-requests: read` is for.
 
 | Input | Description |
 |---|---|
@@ -220,7 +220,6 @@ jobs:
 | `report_file` | Name of the JSON report inside the artifact. (default: `report.json`) |
 | `source_root` | Path of the build workspace relative to the repository root, `""` when they are the same. (default: `""`) |
 | `fail_on_regression` | Fail the relay job when the verdict is a regression or a broken budget. (default: `false`) |
-| `upload_url` | Base URL of the server. (default: `https://hotpath.rs`) |
 
 Things to know about `workflow_run`:
 
