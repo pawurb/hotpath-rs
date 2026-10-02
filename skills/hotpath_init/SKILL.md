@@ -145,7 +145,16 @@ Apply `log = true` only if `Debug` is already implemented.
   - Route scoping: with the layer installed, SQL queries (sqlx/diesel) and outbound reqwest requests issued while a handler runs gain a `Route` column next to `Source`, keyed per route, so the same query under two routes appears as two rows - dividing a row's calls by that route's request count surfaces N+1 patterns. Tell the user this is on by default and can be disabled with `HotpathGuardBuilder::route_scope(false)` or `HOTPATH_ROUTE_SCOPE=0`. Caveat: async sqlx sqlite runs statements on its own worker thread, so it gets neither source nor route (PostgreSQL/MySQL sqlx, diesel, and toasty attribute normally).
   - Cap the number of routes shown with `.server_limit(n)` / `HOTPATH_SERVER_LIMIT` (default unlimited). Per-request allocations are not tracked.
 
-### 7. Verify
+### 7. Add the policy file
+
+```bash
+mkdir -p hotpath
+curl -fsSL https://hotpath.rs/api/v1/policy/default | jq -j .source > hotpath/policy.toml
+```
+
+Run it from the repository root. It writes the default regression policy, with comments, to `hotpath/policy.toml` (no token needed; with `wget`, use `wget -qO- https://hotpath.rs/api/v1/policy/default`). Never overwrite an existing policy file. Do not change the defaults unless the user asks; https://hotpath.rs/regression_policy documents every key.
+
+### 8. Verify
 
 ```bash
 cargo check                       # feature off: must still compile, zero overhead
@@ -162,4 +171,4 @@ Also explain to the user that hotpath is safe to keep as a regular (non-optional
 ## Rules
 
 - Never enable the `hotpath` feature by default (`default = []`); profiling must stay opt-in.
-- Keep edits minimal: dependency, main, and a sensible starting set of instrumented functions/primitives. Expand coverage only when the user asks.
+- Keep edits minimal: dependency, main, the policy file, and a sensible starting set of instrumented functions/primitives. Expand coverage only when the user asks.
