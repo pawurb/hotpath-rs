@@ -187,10 +187,10 @@ A key you leave out takes its default value, but **a section you leave out is hi
 
 ## Pull request comment
 
-By default every pull request upload posts or updates a comment with its result. To comment only when something changed, set `comment` at the top of the file, before any table:
+By default every pull request upload posts or updates a comment with its result. To comment only when something changed, set `pr_comment` at the top of the file, before any table:
 
 ```toml
-comment = "changed"
+pr_comment = "on_change"
 
 [functions]
 min_percent_total = 2
@@ -199,9 +199,9 @@ min_percent_total = 2
 | Value | When the comment is posted |
 |---|---|
 | `"always"` | On every pull request upload. The default. |
-| `"changed"` | Only when the upload finds a regression, an improvement or a broken [budget](performance_budgets.md). |
+| `"on_change"` | Only when the upload finds a regression, an improvement or a broken [budget](performance_budgets.md). |
 
-With `"changed"`, a comment the pull request already has is still updated, so an earlier regression never stays up after a fix. An upload the server refuses, or a report it cannot read, always gets a comment explaining why.
+With `"on_change"`, a comment the pull request already has is still updated, so an earlier regression never stays up after a fix. An upload the server refuses, or a report it cannot read, always gets a comment explaining why.
 
 ## Policy file
 
