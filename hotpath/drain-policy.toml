@@ -3,6 +3,8 @@
 # so allocations are deterministic: identical bytes on every run of a commit.
 # Timing stays unjudged, as in the built-in: a shared CI runner is too noisy.
 
+pr_comment = "on_change"
+
 [functions]
 min_percent_total = 0.5
 
