@@ -154,8 +154,8 @@ jobs:
     uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@main
     permissions:
       actions: read # download the artifact of the benchmark run
-      contents: read
       id-token: write # authenticate the upload
+      pull-requests: read # find the pull request the run belongs to
     with:
       benchmark: my_benchmark
       artifact_name: hotpath-report

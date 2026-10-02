@@ -14,8 +14,8 @@ jobs:
     uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@main
     permissions:
       actions: read
-      contents: read
       id-token: write
+      pull-requests: read
     with:
       benchmark: random
       artifact_name: random-report
