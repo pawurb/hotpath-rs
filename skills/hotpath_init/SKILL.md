@@ -27,6 +27,7 @@ hotpath = "0.28"
 hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
 hotpath-prometheus = ["hotpath/hotpath-prometheus"]
+hotpath-cloud = ["hotpath/hotpath-cloud"]
 ```
 
 Enable extra hotpath cargo features on the dependency based on what the project uses:
@@ -43,7 +44,7 @@ Enable extra hotpath cargo features on the dependency based on what the project 
 - `reqwest-0-12` / `reqwest-0-13` - for HTTP request profiling via `hotpath::http!(client)`; pick the feature matching the project's reqwest major version
 - `axum-0-8` - for server-side response time profiling per axum 0.8 route via `hotpath::axum!(router)`
 
-If the crate already has a `[features]` section, merge the entries.
+If the crate already has a `[features]` section, merge the entries. Never add `hotpath-cloud` to `default`: the report uploader is compiled only with the feature, and uploads only when `HOTPATH_UPLOAD` is set.
 
 ### 3. Instrument main
 
