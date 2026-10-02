@@ -260,3 +260,5 @@ Give every benchmark its own `HOTPATH_BENCHMARK` name and its own workflow or jo
 | The comment reads "report not readable" | The report was produced by a `hotpath` version the server no longer reads. Update `hotpath`. |
 | The report is uploaded but no comment appears | The upload line ends with `comment failed: ...`, and the job shows it as a warning. The usual cause is that the App's "Pull requests: write" permission is not approved for the installation. |
 | The relay does not run | The `workflows:` name does not match the benchmark workflow's `name:`, the relay workflow is not on the default branch yet, or the benchmark run failed. |
+| The relay fails before any step runs, naming `pull-requests: read` | The relay job's `permissions:` block does not grant `pull-requests: read`. Add it next to `actions: read` and `id-token: write`. |
+| The relay ends with `no open pull request has head ...` | The pull request got a newer commit, or was closed, before the relay ran. Nothing is uploaded; the run of the newer commit relays its own report. |
