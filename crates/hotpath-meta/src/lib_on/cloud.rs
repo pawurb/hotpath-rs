@@ -12,8 +12,9 @@
 //! under GitHub Actions once more as a `::notice::` / `::warning::` /
 //! `::error::` workflow command on stdout plus a block appended to
 //! `GITHUB_STEP_SUMMARY`. The server owns the text: a rejection prints the
-//! `error` sentence of the `ApiError` body (plus status and request id)
-//! and a failed comment prints `comment.error`; the client branches on
+//! `error` sentence of the `ApiError` body (plus status and request id),
+//! a failed comment prints `comment.error` and a skipped one
+//! `comment.skipped`; the client branches on
 //! `verdict.regressed` and on nothing else the server says. A failure is a
 //! warning under `HOTPATH_META_UPLOAD=enabled` and never changes the exit code;
 //! `HOTPATH_META_UPLOAD=fail-on-error` turns it into an error and `upload` returns
@@ -502,6 +503,8 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             }
             if let Some(error) = &created.comment.error {
                 message.push_str(&format!("; comment failed: {error}"));
+            } else if let Some(reason) = &created.comment.skipped {
+                message.push_str(&format!("; comment skipped: {reason}"));
             }
             message.push_str(&format!("; diff: {}", created.dashboard_url));
             let level = if failing {
@@ -1027,8 +1030,8 @@ mod tests {
         let outcome = uploaded_as(
             UploadCreated {
                 comment: CommentOutcome {
-                    url: None,
                     error: Some("the installation is suspended".into()),
+                    ..CommentOutcome::default()
                 },
                 verdict: verdict(1, 0),
                 ..created()
@@ -1100,8 +1103,8 @@ mod tests {
         let outcome = uploaded_as(
             UploadCreated {
                 comment: CommentOutcome {
-                    url: None,
                     error: Some("approve \"Pull requests: write\" for the installation".into()),
+                    ..CommentOutcome::default()
                 },
                 ..created()
             },
@@ -1118,7 +1121,7 @@ mod tests {
         for comment in [
             CommentOutcome {
                 url: Some("https://github.com/c/1".into()),
-                error: None,
+                ..CommentOutcome::default()
             },
             CommentOutcome::default(),
         ] {
@@ -1133,6 +1136,24 @@ mod tests {
             assert_eq!(r.level, Level::Notice);
             assert!(!r.message.contains("comment"));
         }
+
+        // A skipped comment says why, and is a notice too.
+        let outcome = uploaded_as(
+            UploadCreated {
+                comment: CommentOutcome {
+                    skipped: Some("nothing to report".into()),
+                    ..CommentOutcome::default()
+                },
+                ..created()
+            },
+            None,
+        );
+        let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
+        assert_eq!(r.level, Level::Notice);
+        assert_eq!(
+            r.message,
+            format!("uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0); verdict: no regressions; comment skipped: nothing to report; diff: {DASHBOARD_URL}")
+        );
     }
 
     #[test]

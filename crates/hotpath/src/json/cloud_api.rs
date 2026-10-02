@@ -107,14 +107,19 @@ pub struct ApiError {
 }
 
 /// What happened to the pull request comment, inside the 201 body. `url` set
-/// means posted or updated; `error` set means it failed and says why; neither
-/// means there was nothing to post (a push upload, for instance).
+/// means posted or updated; `error` set means it failed and says why;
+/// `skipped` set means the benchmark chose not to comment and says why (a
+/// pull request upload with nothing to report on a benchmark that only
+/// comments on changes); none means there was nothing to post (a push
+/// upload, for instance).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommentOutcome {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<String>,
 }
 
 /// Body of a successful upload (201, or 200 when the server already had the
