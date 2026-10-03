@@ -9,14 +9,6 @@ bench:
 bench_meta:
     bash scripts/bench_meta.sh
 
-# Run benchmarks comparing two git refs
-compare before after:
-    bash scripts/compare.sh {{before}} {{after}}
-
-# Run benchmarks comparing two git refs (meta profiler)
-compare_meta before after:
-    bash scripts/compare_meta.sh {{before}} {{after}}
-
 # Run all tests
 test_all:
     cargo run -p test-all-features --example all_noop

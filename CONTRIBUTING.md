@@ -26,20 +26,6 @@ just bench_meta
 
 Starts a hotpath TUI for 5 seconds, gathers performance metrics and prints the report on exit. 
 
-To benchmark across git commits first build `hotpath-utils` CLI:
-
-```bash
-cargo build --bin hotpath-utils --features=utils
-```
-
-Now run:
-
-```bash
-just compare_meta main feature_branch
-```
-
-It benchmarks two versions of the library (branch names or commit SHAs are supported) and saves performance reports in `tmp/before.txt` and `tmp/after.txt`. If contributing any performance-related change please include both reports in the PR.
-
 - `HOTPATH_TUI_TAB` - set values from 1 to 6, to open a different TUI tab and execute different codepaths in the benchmark (default `1`)
 - `HOTPATH_BENCH_RELEASE` - set to `true` to run benchmarks with `--release` profile (default `false`)
 - `HOTPATH_TUI_REFRESH_INTERVAL_MS` - configure data refresh interval, lower values will produce more data (default `10`)
@@ -210,7 +196,6 @@ cargo check --features "hotpath,hotpath-alloc-meta,hotpath-meta"
 cargo check --features "hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta"
 cargo check -p hotpath --bin hotpath --features=tui
 cargo check --features='tui,hotpath,hotpath-meta,hotpath-alloc-meta,hotpath-mcp,hotpath-mcp-meta,dev' --bin hotpath
-cargo check -p hotpath --bin hotpath-utils --features=utils
 cargo check -p hotpath --bin hotpath --features=cloud
 ```
 

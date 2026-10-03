@@ -40,7 +40,3 @@ Where things are defined, plus gotchas the code site can't show. The code is the
 
 - `HOTPATH_KEEP_INLINE` is read at macro expansion time; touch the source or `cargo clean` after toggling it.
 - `HOTPATH_USER_METADATA` is parsed in `HotpathGuardBuilder::build` (the builder can add pairs), not a `LazyLock`; it only reaches the final report.
-
-## GitHub CI integration (legacy)
-
-`hotpath-utils profile-pr` (`bin/hotpath-utils/`) is no longer user-documented; the docs cover hotpath Cloud instead.
