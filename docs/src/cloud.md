@@ -46,6 +46,8 @@ Benchmark reports are persisted in `hotpath Cloud`, making it easy to share resu
 
 ## Getting Started
 
+`hotpath Cloud` supports `hotpath` version `0.28` or newer.
+
 ### AI Setup (Recommended)
 
 The quickest way to set up `hotpath Cloud` is to let your own AI coding agent do it. Install the `hotpath` CLI and run `init-ci` inside your project repo:
