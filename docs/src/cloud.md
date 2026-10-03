@@ -1,6 +1,6 @@
 # `hotpath Cloud` - performance feedback for developers and coding agents
 
-> **Note:** hotpath Cloud is currently in closed beta.
+> **Note:** hotpath Cloud is currently in open beta.
 
 `hotpath Cloud` is a backend service for the open-source `hotpath-rs` profiler. It provides an automated feedback loop for performance signals collected from your Rust application, helping both developers and coding agents detect regressions before they are merged.
 

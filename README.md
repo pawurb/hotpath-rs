@@ -197,16 +197,6 @@ Read the [complete guide to profiling Rust applications](https://hotpath.rs/blog
 - [Cargo flamegraph alternatives](https://hotpath.rs/blog/sampling_comparison) - when to use `hotpath` vs sampling profilers like perf and samply
 - [Configuration](https://hotpath.rs/configuration) - explore all config options
 
-## Waitlist
-
-My long-term goal for hotpath-rs is to become the single place to understand all performance signals in a Rust application. From CPU and memory usage to locks, channels, and async execution, all the way up to SQL queries and HTTP/RPC calls.
-
-I'm also building a hosted version that makes profiling reports easier to share, compare, and analyze across pull requests, deployments, and teams.
-
-If that sounds useful, join the waitlist for early access:
-
-https://hotpath.rs/#waitlist
-
 ## Status
 
 This project is under active development. Core public APIs are stable, but implementation details (JSON report formats, TUI/MCP internals, and advanced config options) may change between releases as the project evolves.
