@@ -113,7 +113,6 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
         let mut thread_list: thread_act_array_t = std::ptr::null_mut();
         let mut thread_count: mach_msg_type_number_t = 0;
 
-        // Get list of all threads in the current task
         let kr = task_threads(task, &mut thread_list, &mut thread_count);
         if kr != KERN_SUCCESS {
             return Err(format!("task_threads failed with code: {}", kr));
@@ -188,7 +187,6 @@ unsafe fn get_thread_name(thread: thread_act_t) -> Option<String> {
     // Try to get pthread name via libc
     let mut name_buf = [0i8; 256];
     if libc::pthread_getname_np(pthread, name_buf.as_mut_ptr(), name_buf.len()) == 0 {
-        // Find the null terminator
         let len = name_buf.iter().position(|&c| c == 0).unwrap_or(0);
         if len > 0 {
             let name_bytes: Vec<u8> = name_buf[..len].iter().map(|&c| c as u8).collect();

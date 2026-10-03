@@ -93,8 +93,6 @@ mod tests {
 
     #[test]
     fn merges_numbered_placeholders() {
-        // SQLite-style numbered placeholders collapse to plain `?`, matching
-        // the PostgreSQL `$N` handling.
         assert_eq!(
             normalize("INSERT INTO users (name, age) VALUES (?1, ?2)"),
             "INSERT INTO users (name, age) VALUES (?, ?)",

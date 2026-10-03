@@ -1,18 +1,10 @@
-//! The client contract of the hotpath.rs API: the types and rules a client
-//! branches on, shared by the `hotpath-cloud` upload client
-//! (`lib_on/cloud.rs`), the `hotpath cloud` CLI (`cloud` binary feature) and
-//! the hotpath-backend server, which depends on this crate with the `json`
-//! feature and serializes these types, so the compiler ties what the server
-//! sends to what the clients read.
+//! The client contract of the hotpath.rs API: the types a client branches on,
+//! shared by the `hotpath-cloud` upload client, the `hotpath cloud` CLI and
+//! hotpath-backend, which serializes these types.
 //!
-//! Every body a client only prints (auth status, repository and benchmark
-//! lists, reports, diffs) is owned by hotpath-backend, which may add to it or
-//! reshape it without a hotpath release: the CLI passes it through as
-//! received. A field moves into this contract only when a client starts
-//! reading it.
-//!
-//! Deliberately minimal: the server owns every sentence, the clients print it
-//! and branch only on `ApiError::code` and the fields below.
+//! Bodies a client only prints are owned by hotpath-backend and passed
+//! through as received. A field moves here only when a client starts reading
+//! it.
 
 use std::fmt;
 use std::sync::LazyLock;
@@ -106,12 +98,9 @@ pub struct ApiError {
     pub code: ApiErrorCode,
 }
 
-/// What happened to the pull request comment, inside the 201 body. `url` set
-/// means posted or updated; `error` set means it failed and says why;
-/// `skipped` set means the benchmark chose not to comment and says why (a
-/// pull request upload with nothing to report on a benchmark that only
-/// comments on changes); none means there was nothing to post (a push
-/// upload, for instance).
+/// What happened to the pull request comment. `url`: posted or updated;
+/// `error`: failed; `skipped`: the benchmark chose not to comment; none:
+/// nothing to post (e.g. a push upload).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommentOutcome {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -135,15 +124,10 @@ pub struct UploadCreated {
     /// Defaulted so a server that does not send it yet still parses.
     #[serde(default)]
     pub comment: CommentOutcome,
-    /// The judgement of the uploaded report under the policy it carried
-    /// (`policy_path` names it): the diff against `baseline`, when there is
-    /// one, and the budgets. The same `Verdict` the diff API answers with.
-    /// Required: a body without a verdict must not read as "no regression".
+    /// Judgement under the policy at `policy_path`. Required: a body without
+    /// a verdict must not read as "no regression".
     pub verdict: Verdict,
-    /// The path of the policy file the report was judged under, as the
-    /// stored report names it. Nothing else ever stands in: an upload
-    /// without a policy is refused with a 422 `PolicyRequired`, one whose
-    /// policy is not valid with a 422 `PolicyRejected`.
+    /// Path of the policy file the report was judged under.
     pub policy_path: String,
     /// That file on GitHub, pinned to the measured commit.
     pub policy_url: String,
@@ -156,11 +140,8 @@ pub struct UploadCreated {
 /// bytes of UTF-8.
 pub const POLICY_MAX_BYTES: usize = 65536;
 
-/// Body of `POST /api/v1/policy/validate`: one policy document to check. The
-/// server parses it as it would when a report carries it and stores nothing.
-/// The answer is a 200 (the status alone says the document is a policy) or
-/// `PolicyRejected` (422); neither
-/// echoes the document.
+/// Body of `POST /api/v1/policy/validate`. The answer is a 200 when the
+/// document is a valid policy, or `PolicyRejected` (422).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolicyValidation {
     /// The whole TOML document, as written. At most `POLICY_MAX_BYTES`; blank
@@ -168,11 +149,9 @@ pub struct PolicyValidation {
     pub source: String,
 }
 
-/// Body of `GET /api/v1/policy/default` (200): the release's key defaults as
-/// a starting policy file that lists every metric family. Inside a table a
-/// policy file writes, a key it omits takes its value from here; a family
-/// table it leaves out is not judged at all, so an empty file judges nothing.
-/// Not a document any report carried: those stay in the user's repository.
+/// Body of `GET /api/v1/policy/default` (200): a starting policy file listing
+/// every metric family with the release's key defaults. A key a policy table
+/// omits takes its value from here; an omitted family table is not judged.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefaultPolicy {
     /// The TOML document as written, comments included: they document each
@@ -192,22 +171,13 @@ pub struct PolicyProblem {
     pub message: String,
 }
 
-/// Body of `422` from `POST /api/v1/policy/validate`, and from an upload
-/// whose report carries such a policy, when the document is refused: an
-/// `ApiError` (`error`, `code` = `invalid_policy`) plus every problem found. A
-/// client that only knows `ApiError` still parses it (unknown fields are
-/// ignored); one that knows this type reads `problems`. The problems point
-/// at lines of the submitted document, which itself is not echoed back.
+/// 422 body from `POST /api/v1/policy/validate` or an upload whose policy is
+/// refused: an `ApiError` (`code` = `invalid_policy`) plus every problem
+/// found, so a client that only knows `ApiError` still parses it.
 ///
-/// The server collects all the problems it can in one pass, within what TOML
-/// allows. A syntax error (an unbalanced quote, a bad table header) stops
-/// parsing, so it is the only problem reported: nothing after it can be read
-/// reliably. Once the text parses, structural problems (an unknown key, a
-/// wrong value type, a column name the resource does not have) and range
-/// problems (a percent outside its bounds, an empty `metrics` list, a column
-/// named twice, too many `ignore` patterns) are all reported together, each
-/// with its line when it can be found. So `problems` has one item for a
-/// syntax error and every item otherwise; never assume a single item.
+/// A TOML syntax error stops parsing and is the only problem reported;
+/// otherwise every structural and range problem is reported together. Never
+/// assume a single item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolicyRejected {
     /// One sentence summing up (`The policy has 3 problems.`).
@@ -363,7 +333,6 @@ mod tests {
 
     #[test]
     fn upload_created_requires_the_verdict() {
-        // A body without a verdict, or without the dashboard link, is not a pass.
         let no_verdict = format!(
             r#"{{"id":"r1","repository":"a/b","benchmark":"meta","dashboard_url":"{UPLOAD_DASHBOARD_URL}"}}"#
         );

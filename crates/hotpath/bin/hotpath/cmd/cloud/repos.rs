@@ -1,6 +1,5 @@
 //! `hotpath cloud repos`: prints the `GET /api/v1/repos` body, every
-//! repository the token reaches (with its benchmarks), so an agent can pick
-//! one before naming it in a later command.
+//! repository the token reaches with its benchmarks.
 
 use std::process::ExitCode;
 

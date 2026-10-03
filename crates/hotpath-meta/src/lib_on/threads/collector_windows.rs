@@ -119,7 +119,6 @@ pub(crate) fn collect_thread_metrics() -> Result<Vec<ThreadMetrics>, String> {
         }
 
         loop {
-            // Only process threads from our own process
             if thread_entry.th32_owner_process_id == current_pid {
                 match get_thread_info(thread_entry.th32_thread_id, current_pid) {
                     Ok(metric) => metrics.push(metric),

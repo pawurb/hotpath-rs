@@ -262,8 +262,7 @@ pub mod tests {
         let _ = child.wait();
     }
 
-    // The report is followed by trailing log lines, so we locate the report's
-    // opening brace and read just the first JSON value from that point.
+    // Trailing log lines follow the report, so parse only the first JSON value.
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -298,8 +297,7 @@ pub mod tests {
     }
 
     // The endpoint wrapper samples the real channel length, so it reports the exact
-    // depth (50 messages parked, none received). A forwarder would drain immediately
-    // and would report ~0 here.
+    // depth (50 parked, none received) where a forwarder would report ~0.
     //
     // cargo run -p test-channels-asc --example wrap_asc --features hotpath
     #[test]
@@ -377,7 +375,6 @@ pub mod tests {
         let stdout = run_example("wrap_latency_asc");
         let channels = parse_channels(&stdout);
 
-        // The configured percentiles are echoed at the top of the channels report.
         assert_eq!(channels.percentiles, vec![50.0, 95.0]);
 
         // Channels carry an exact send->receive latency histogram in the JSON report.

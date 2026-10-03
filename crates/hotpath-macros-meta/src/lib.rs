@@ -8,10 +8,9 @@ mod lib_off;
 
 /// Initializes the hotpath profiling system and generates a performance report on program exit.
 ///
-/// This attribute macro should be applied to your program's main (or other entry point) function
-/// to enable profiling. It creates a guard that initializes the background measurement processing
-/// thread and automatically displays a performance summary when the program exits. Additionally
-/// it creates a measurement guard that will be used to measure the wrapper function itself.
+/// Apply to `main` (or another entry point) to enable profiling: starts the background
+/// workers and prints the report when the program exits. The annotated function itself is
+/// also measured.
 ///
 /// For programmatic control over the same options, see
 /// [`HotpathGuardBuilder`](../hotpath_meta/struct.HotpathGuardBuilder.html).
@@ -259,11 +258,7 @@ pub fn skip(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-/// Instruments all functions in a module or impl block with the `measure` profiling macro.
-///
-/// This attribute macro applies the [`measure`](macro@measure) macro to every function
-/// in the annotated module or impl block, providing bulk instrumentation without needing
-/// to annotate each function individually.
+/// Instruments all functions in a module or impl block with [`measure`](macro@measure).
 ///
 /// # Usage
 ///

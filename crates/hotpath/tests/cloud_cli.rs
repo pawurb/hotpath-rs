@@ -293,8 +293,7 @@ mod tests {
 
     #[test]
     fn auth_server_error_passes_through_without_client_hints() {
-        // Status, body: the codes the client used to append advice to, plus
-        // one it does not know. Every body prints as sent, and nothing more.
+        // Status, body: every body prints as sent, with no client hint appended.
         let cases: [(u16, String); 4] = [
             (
                 401,
@@ -545,7 +544,6 @@ mod tests {
         assert_eq!(stderr(&output), "");
         let printed = stdout(&output);
         assert_eq!(printed, format!("{body}\n"));
-        // Nullable fields print as `null`.
         assert!(printed.contains(r#""git_ref":null"#), "{printed}");
         // The policy is named by its path, the document is never returned.
         assert!(

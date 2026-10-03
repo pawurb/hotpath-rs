@@ -170,7 +170,6 @@ pub(crate) enum SubTabHit {
     Io(IoSubTab),
 }
 
-/// Represents which UI component has focus in the Functions tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FunctionsFocus {
     Functions,
@@ -178,7 +177,6 @@ pub(crate) enum FunctionsFocus {
     Inspect,
 }
 
-/// Represents which UI component has focus in the Data Flow tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DataFlowFocus {
     List,
@@ -186,7 +184,6 @@ pub(crate) enum DataFlowFocus {
     Inspect,
 }
 
-/// Represents which UI component has focus in the Debug tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DebugFocus {
     Debug,
@@ -194,7 +191,6 @@ pub(crate) enum DebugFocus {
     Inspect,
 }
 
-/// Represents which UI component has focus in the I/O tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IoFocus {
     List,
@@ -205,15 +201,12 @@ pub(crate) enum IoFocus {
 /// Inspected function log entry for the inspect popup
 #[derive(Debug, Clone)]
 pub(crate) struct InspectedFunctionLog {
-    /// Invocation index
     pub(crate) invocation: u64,
     /// Formatted value (duration or bytes)
     pub(crate) value: String,
-    /// Formatted "ago" string
     pub(crate) ago: String,
     /// Allocation count (only for memory mode)
     pub(crate) alloc_count: Option<u64>,
-    /// Thread ID where the function was executed
     pub(crate) tid: Option<u64>,
     /// Debug representation of the return value (when log = true)
     pub(crate) result: Option<String>,
@@ -682,8 +675,7 @@ impl App {
             terminal.draw(|frame| super::views::render_ui(frame, self))?;
 
             // `recv_timeout` on the wrap receiver routes through the instrumented
-            // endpoint (so latency is tracked) while preserving the old `select!`
-            // semantics: an event is handled, a timeout refreshes the current tab.
+            // endpoint, so latency is tracked; a timeout refreshes the current tab.
             match self.event_rx.recv_timeout(self.refresh_interval) {
                 Ok(AppEvent::Key(key_code)) => self.handle_key_event(key_code),
                 Ok(AppEvent::Mouse(mouse_event)) => self.handle_mouse_event(mouse_event),

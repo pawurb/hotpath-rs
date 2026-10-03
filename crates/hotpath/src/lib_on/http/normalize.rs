@@ -4,9 +4,8 @@
 //! Input is the raw `METHOD host[:port]/path` pre-key built by the middleware
 //! (query string, fragment, and credentials are already absent). The method
 //! and host are left untouched, so numeric hosts like `127.0.0.1` survive; an
-//! explicit port becomes `{port}`, since a port that is not the scheme's
-//! default is most often a test server bound to a free one, and two runs
-//! must key the same endpoint the same way to be comparable.
+//! explicit port becomes `{port}` so a test server bound to a free port keys
+//! the same across runs.
 //!
 //! A segment is treated as an identifier when it is:
 //! - all decimal digits (`/users/123`)

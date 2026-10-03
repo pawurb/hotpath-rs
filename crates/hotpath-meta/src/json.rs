@@ -1,7 +1,5 @@
-//! JSON serializable types for TUI and CLI consumers.
-//!
-//! This module contains all JSON types used by the HTTP server and TUI console.
-//! It is gated behind the `json` feature (implied by `hotpath-meta` and `tui`),
+//! JSON serializable types for the HTTP server, TUI and CLI consumers.
+//! Gated behind the `json` feature (implied by `hotpath-meta` and `tui`),
 //! so consumers can parse reports without the profiler.
 
 pub mod cloud_api;

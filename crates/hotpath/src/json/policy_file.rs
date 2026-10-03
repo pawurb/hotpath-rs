@@ -5,9 +5,8 @@
 //!
 //! Order: the file `HOTPATH_POLICY_PATH` names, then
 //! `hotpath/<benchmark>-policy.toml`, then `hotpath/policy.toml`, then none.
-//! A benchmark without its own file uses the shared one. A file that is not
-//! there is absent and the next one is tried; a file that is there but cannot
-//! be sent is `PolicyLookup::Unusable`, never treated as absent.
+//! A file that is not there is absent and the next one is tried; a file that
+//! is there but cannot be sent is `PolicyLookup::Unusable`, never absent.
 //!
 //! The document is sent as written and never parsed here: the server's
 //! parser is the only judge.

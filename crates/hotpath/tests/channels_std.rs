@@ -247,8 +247,7 @@ pub mod tests {
         let _ = child.wait();
     }
 
-    // The report is followed by trailing log lines, so we locate the report's
-    // opening brace and read just the first JSON value from that point.
+    // Trailing log lines follow the report, so parse only the first JSON value.
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -355,12 +354,9 @@ pub mod tests {
         );
     }
 
-    // A producer racing a consumer on an unbounded channel must never underflow
-    // the depth counter (counting happens before each publish). `run_example` already
-    // asserts the process exited successfully - in debug builds an underflow would
-    // panic the consumer thread and fail that check. Here we additionally assert the
-    // counter never wrapped: a release-build underflow would surface as an absurd
-    // queue length, so `received <= sent` and a bounded `max_queue_size` confirm sanity.
+    // A producer racing a consumer must never underflow the depth counter: debug
+    // builds would panic the consumer (caught by `run_example`), release builds
+    // would wrap to an absurd queue length.
     //
     // cargo run -p test-channels-std --example wrap_concurrent_std --features hotpath
     #[test]

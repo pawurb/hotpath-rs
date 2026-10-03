@@ -12,13 +12,9 @@
 //!         db.statement = "<SQL>", db.operation, db.collection, db.params
 //! ```
 //!
-//! [`HotpathToastyLayer`] observes these and forwards each one to
-//! [`send_sql_event`]. The event is emitted *after* completion with Toasty's
-//! own measured `duration_ms`, so we never time anything ourselves and there
-//! is no start/finish pairing. Like the sqlx layer, this has no dependency on
-//! the instrumented library - it only reads `tracing` event fields - so it
-//! covers every Toasty SQL driver (SQLite, PostgreSQL, MySQL, Turso) and
-//! captures transaction-internal queries too.
+//! [`HotpathToastyLayer`] forwards each one to [`send_sql_event`] using
+//! Toasty's own `duration_ms`, so there is no start/finish pairing. It only
+//! reads `tracing` fields, so it covers every Toasty SQL driver.
 //!
 //! Key-value drivers (DynamoDB) emit `db.operation`/`db.collection` instead
 //! of `db.statement`; those events carry no SQL and are skipped. Failed

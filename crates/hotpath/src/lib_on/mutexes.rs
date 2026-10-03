@@ -19,8 +19,6 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 
 pub(crate) mod wrapper;
 
-// Re-exported to keep the std wrapper reachable at `hotpath::mutexes::*` for downstream code.
-
 static MUTEX_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 fn next_mutex_id() -> u32 {

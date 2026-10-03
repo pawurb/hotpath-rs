@@ -1,7 +1,5 @@
-# Standalone crate, deliberately NOT a workspace member: toasty's sqlite
-# driver (rusqlite -> libsqlite3-sys 0.37) and the workspace's sqlx-sqlite
-# (libsqlite3-sys 0.30) both `links = "sqlite3"`, which cargo forbids in a
-# single resolution graph. Build with:
+# Not a workspace member: toasty's rusqlite and the workspace's sqlx-sqlite pull
+# conflicting libsqlite3-sys versions that both `links = "sqlite3"`. Build with:
 #   cargo run --manifest-path crates/test-toasty/Cargo.toml --example basic --features hotpath
 [package]
 name = "test-toasty"

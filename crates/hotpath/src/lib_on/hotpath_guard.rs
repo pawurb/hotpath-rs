@@ -1207,9 +1207,9 @@ impl Drop for HotpathGuard {
         let upload_enabled = false;
 
         let is_json = matches!(format, Format::Json | Format::JsonPretty);
-        // With the cloud feature on, a JSON report is an upload payload -
-        // complete lists and histograms - whether this process posts it or a
-        // job that has no OIDC token writes it out for a trusted one to post.
+        // With the cloud feature on, a JSON report is an upload payload
+        // (complete lists and histograms), whether this process posts it or a
+        // relay job does.
         #[cfg(feature = "hotpath-cloud")]
         let cloud_report = upload_enabled || is_json;
         #[cfg(not(feature = "hotpath-cloud"))]

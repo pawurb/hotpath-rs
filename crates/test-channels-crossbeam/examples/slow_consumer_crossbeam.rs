@@ -28,7 +28,6 @@ fn main() {
         for i in 1..=50 {
             println!("[Producer] Sending message {}", i);
 
-            // Retry loop with timeout
             let start = std::time::Instant::now();
             loop {
                 match tx.try_send(i) {
@@ -37,7 +36,6 @@ fn main() {
                         panic!("[Producer] Channel disconnected");
                     }
                     Err(crossbeam_channel::TrySendError::Full(_)) => {
-                        // Channel is full, check timeout
                         if start.elapsed() > Duration::from_secs(2) {
                             panic!("[Producer] Send timeout after 2 seconds for message {}", i);
                         }

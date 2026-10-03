@@ -4,10 +4,7 @@
 use futures_util::stream::{self, StreamExt};
 use std::time::Instant;
 
-// Simple single-threaded stress test: wraps a long iterator stream with the
-// `stream!` macro and drains it in a tight loop, so the measured time reflects
-// per-item instrumentation overhead. Compare `--features hotpath` against a
-// plain run.
+// Per-item `stream!` overhead in a tight loop; compare against a run without `--features hotpath`.
 fn main() {
     smol::block_on(async {
         let _guard = hotpath::HotpathGuardBuilder::new("main")

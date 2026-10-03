@@ -1,7 +1,5 @@
 //! `hotpath cloud auth`: the status probe, like `gh auth status`. Prints the
-//! `GET /api/v1/auth` body (the login the token acts as, its name, its
-//! expiry) and exits 1 with the server's error JSON when the token does not
-//! work. Nothing else calls `/auth`.
+//! `GET /api/v1/auth` body and exits 1 when the token does not work.
 
 use std::process::ExitCode;
 

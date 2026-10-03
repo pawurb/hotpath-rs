@@ -17,7 +17,7 @@
 //!
 //! The async (`send`/`recv`) and blocking (`send_blocking`/`recv_blocking`) APIs plus the
 //! `try_*` variants are instrumented. `force_send`, `close`, and the `Receiver`'s `Stream`
-//! impl are NOT wrapped in v1 - users on those paths silently lose instrumentation.
+//! impl are NOT wrapped - users on those paths silently lose instrumentation.
 //!
 //! The wrapper rebuilds the inner channel, so the `channel!` expression must be constructed
 //! inline; endpoints cloned before wrapping are orphaned.

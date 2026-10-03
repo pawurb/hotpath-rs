@@ -24,7 +24,6 @@ pub mod tests {
         let mut json_text = String::new();
         let mut last_error = None;
 
-        // Test /threads endpoint
         for _attempt in 0..30 {
             sleep(Duration::from_millis(1000));
 
@@ -52,11 +51,9 @@ pub mod tests {
             panic!("Failed after 30 retries: {}", error);
         }
 
-        // Parse JSON response (server returns formatted values)
         let threads_response: JsonThreadsList =
             serde_json::from_str(&json_text).expect("Failed to parse threads JSON");
 
-        // Assert we have at least some threads
         assert!(
             threads_response.thread_count > 0,
             "Expected at least 1 thread, got {}",

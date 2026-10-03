@@ -1,15 +1,10 @@
-//! `hotpath cloud init`: writes the server's key defaults
-//! (`GET /api/v1/policy/default`) as a starting policy file of this
-//! repository, so a repository gets the file every upload must carry without
-//! copying one by hand. The document comes from the server on every run, so
-//! the client never carries a copy of the defaults that could drift from the
-//! release that judges.
-//!
-//! The file is written byte for byte, comments included: they document each
-//! key. An existing file is user configuration and is never replaced without
-//! `--force`, and a symlink is never followed. The route is public, so the
-//! request is anonymous: no token is needed and none is sent. Every refusal
-//! is decided before the request, so it costs none.
+//! `hotpath cloud init`: writes the server's default policy
+//! (`GET /api/v1/policy/default`) byte for byte, comments included, as this
+//! repository's policy file. Fetched on every run so the client never carries
+//! a copy of the defaults that could drift. An existing file is never replaced
+//! without `--force`, a symlink is never followed, and every refusal is
+//! decided before the request. The route is public, so the request is
+//! anonymous.
 
 use std::fs::OpenOptions;
 use std::io::Write;

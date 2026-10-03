@@ -1,15 +1,9 @@
 //! Diesel front-end for SQL query profiling.
 //!
-//! Diesel emits nothing through `tracing`, so the `sqlx` layer approach does not
-//! transfer. It instead exposes a first-class callback trait,
-//! [`diesel::connection::Instrumentation`] (stable since Diesel 2.2), which fires
-//! per connection event. [`HotpathDieselInstrumentation`] watches the
-//! `StartQuery`/`FinishQuery` pair, times it with [`Instant`], and forwards each
-//! completed query to [`send_sql_event`] - the same pipeline the `sqlx` layer
-//! feeds, so everything downstream (worker, normalization, report, TUI) is shared.
-//!
-//! Diesel gives no `elapsed` of its own, so we measure the wall-clock span from
-//! `StartQuery` to `FinishQuery` ourselves (includes row streaming). A connection
+//! Diesel emits nothing through `tracing`, so this hooks
+//! [`diesel::connection::Instrumentation`] (Diesel 2.2+) instead. Diesel reports
+//! no `elapsed`, so [`HotpathDieselInstrumentation`] times the
+//! `StartQuery`/`FinishQuery` span itself (includes row streaming). A connection
 //! executes queries serially, so a single `pending` slot is sufficient.
 
 use std::sync::Arc;
@@ -117,8 +111,7 @@ mod tests {
             &*clean_sql("SELECT COUNT(*) FROM t"),
             "SELECT COUNT(*) FROM t"
         );
-        // Only Diesel's final appended suffix is stripped; a `-- binds:` marker
-        // inside the query text is preserved (strip from the right, not the left).
+        // A `-- binds:` marker inside the query text is preserved.
         assert_eq!(
             &*clean_sql("SELECT 1 -- binds: note -- binds: [42]"),
             "SELECT 1 -- binds: note",

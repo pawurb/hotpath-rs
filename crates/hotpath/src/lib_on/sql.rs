@@ -1,15 +1,11 @@
 //! SQL query instrumentation module - tracks query execution durations.
 //!
-//! Unlike the lock subsystems (which key statistics by call site), SQL entries
-//! are keyed by *normalized* query text, so parameter-varied executions of the
-//! same statement merge into a single bucket (see [`normalize`]). Normalization
-//! runs on the background worker thread to keep the hot path light.
+//! Entries are keyed by *normalized* query text (see [`normalize`]), so
+//! parameter-varied executions merge. Normalization runs on the worker thread.
 //!
-//! The write path (worker, events, normalization) is driven by front-ends -
-//! the `sqlx` tracing layer (see [`tracing_layer`]), the Toasty tracing layer
-//! (see [`toasty`]), and the Diesel instrumentation (see [`diesel`]) - so it
-//! is dead when no front-end feature is on; the read path stays compiled so
-//! the report/metrics wiring is feature-uniform.
+//! The write path is driven by front-ends ([`tracing_layer`], [`toasty`],
+//! [`diesel`]), so it is dead when no front-end feature is on; the read path
+//! stays compiled so the report/metrics wiring is feature-uniform.
 #![cfg_attr(
     not(any(feature = "sqlx", feature = "diesel", feature = "toasty")),
     allow(dead_code)

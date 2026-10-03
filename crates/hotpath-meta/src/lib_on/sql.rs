@@ -1,9 +1,7 @@
 //! SQL query instrumentation module - tracks query execution durations.
 //!
-//! Unlike the lock subsystems (which key statistics by call site), SQL entries
-//! are keyed by *normalized* query text, so parameter-varied executions of the
-//! same statement merge into a single bucket (see [`normalize`]). Normalization
-//! runs on the background worker thread to keep the hot path light.
+//! Entries are keyed by *normalized* query text (see [`normalize`]), so
+//! parameter-varied executions merge. Normalization runs on the worker thread.
 //!
 //! The meta crate carries no SQL front-end, so the write path is dead here; the
 //! read path stays compiled so the report/metrics wiring is feature-uniform.

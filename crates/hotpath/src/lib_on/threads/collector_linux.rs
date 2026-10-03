@@ -76,12 +76,11 @@ fn get_thread_info(tid: u64, ticks_per_sec: f64) -> Result<ThreadMetrics, String
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| format!("thread_{}", tid));
 
-    // Read and parse stat file
     let stat_content = fs::read_to_string(&stat_path)
         .map_err(|e| format!("Failed to read {}: {}", stat_path, e))?;
 
-    // Parse stat fields - format: "pid (comm) state field4 field5 ... field14(utime) field15(stime) ..."
-    // Need to handle comm containing spaces/parens by finding last ')'
+    // Format: "pid (comm) state ... utime(14) stime(15) ...". comm may contain
+    // spaces/parens, so split at the last ')'.
     let stat_after_comm = stat_content
         .rfind(')')
         .map(|i| &stat_content[i + 2..]) // Skip ") "
@@ -89,14 +88,11 @@ fn get_thread_info(tid: u64, ticks_per_sec: f64) -> Result<ThreadMetrics, String
 
     let fields: Vec<&str> = stat_after_comm.split_whitespace().collect();
 
-    // Fields after comm: [0]=state, [1]=ppid, ... [11]=utime (index 13-1-1=11), [12]=stime
-    // utime is field 14 in original (1-indexed), after removing pid and comm it's index 11
-    // stime is field 15 in original, after removing pid and comm it's index 12
+    // Fields after comm: [0]=state, [11]=utime, [12]=stime.
     if fields.len() < 13 {
         return Err(format!("stat file has too few fields: {}", fields.len()));
     }
 
-    // Extract thread state (first field after comm)
     let (status, status_code) = state_to_status(fields[0]);
 
     let utime_ticks: u64 = fields[11]

@@ -31,7 +31,6 @@ pub(crate) fn next_future_id() -> u32 {
 
 use std::sync::LazyLock;
 
-/// Thread-safe map from source location to future_id
 static SOURCE_TO_FUTURE_ID: LazyLock<MetaRwLock<HashMap<&'static str, u32>>> =
     LazyLock::new(|| meta_rw_lock!("futures_source_ids", HashMap::new()));
 
@@ -357,7 +356,6 @@ fn placeholder_future_entry(future_id: u32) -> FutureEntry {
     FutureEntry::new(future_id, "", None)
 }
 
-/// Process a future event and update stats.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 fn process_future_event(state: &mut FuturesInternalState, event: FutureEvent) {
     fn add_optional(total: &mut Option<u64>, delta: Option<u64>) {
@@ -521,7 +519,6 @@ where
     }
 }
 
-/// Compare two future stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source).
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn compare_future_stats(a: &FutureEntry, b: &FutureEntry) -> std::cmp::Ordering {

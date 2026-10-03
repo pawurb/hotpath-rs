@@ -1,9 +1,5 @@
-//! `hotpath cloud ...`: the hotpath.rs API client, for coding agents, CI
-//! jobs and people who want structured JSON instead of the dashboard. Every
-//! command prints the server's body as JSON on stdout, every failure as one
-//! JSON document on stderr, and exits with a code a script can branch on
-//! without parsing (see `api`). One file per command
-//! under `cloud/`, shared HTTP / auth plumbing in `cloud/api.rs`.
+//! `hotpath cloud ...`: the hotpath.rs API client. One file per command under
+//! `cloud/`, shared HTTP / auth / output plumbing in `cloud/api.rs`.
 
 mod api;
 mod auth;

@@ -224,10 +224,8 @@ pub mod tests {
         let stdout = run_example("basic_gzip_io", true);
         let io = parse_io(&stdout);
 
-        // Stacked wrappers: the outer one sees plaintext application writes,
-        // the inner one the smaller compressed stream hitting the file. The
-        // fixture is generated JSON, so exact sizes aren't hardcoded here -
-        // the layers are cross-checked against each other instead.
+        // Stacked wrappers: the outer one sees plaintext writes, the inner one the
+        // smaller compressed stream. Sizes are cross-checked, not hardcoded.
         let plain_write = entry(&io, "gzip-plaintext-write");
         assert!(plain_write.type_name.contains("GzEncoder"));
         assert!(plain_write.write.count >= 10);

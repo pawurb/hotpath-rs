@@ -170,10 +170,6 @@ pub(crate) enum OutputDestination {
 }
 
 impl OutputDestination {
-    /// Creates a writer for this destination.
-    ///
-    /// Returns a boxed writer that implements `Write`.
-    /// For `Stdout`, returns a handle to stdout.
     /// For `File`, creates parent directories if needed, then creates or truncates the file.
     pub(crate) fn writer(&self) -> Result<Box<dyn Write>, std::io::Error> {
         match self {
@@ -187,11 +183,8 @@ impl OutputDestination {
         }
     }
 
-    /// Creates an OutputDestination from an optional path.
-    ///
-    /// Environment variable `HOTPATH_OUTPUT_PATH` takes precedence over programmatic config.
-    /// If the path is provided, resolves relative paths against the current working directory.
-    /// If no path is provided, returns Stdout.
+    /// `HOTPATH_OUTPUT_PATH` takes precedence over `path`. Relative paths
+    /// resolve against the cwd; no path means stdout.
     pub(crate) fn from_path(path: Option<PathBuf>) -> Self {
         if let Ok(env_path) = std::env::var("HOTPATH_OUTPUT_PATH") {
             return OutputDestination::File(resolve_output_path(env_path));

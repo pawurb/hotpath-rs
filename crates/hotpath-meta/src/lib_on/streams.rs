@@ -339,7 +339,6 @@ fn flush_stream_buffer(buffer: &mut Vec<StreamEvent>, inner: &Arc<RwLock<Streams
 }
 
 /// Initialize the stream statistics collection system (called on first instrumented stream).
-/// Returns a reference to the global state.
 pub(crate) fn init_streams_state() -> &'static StreamsState {
     STREAMS_STATE.get_or_init(|| {
         crate::lib_on::START_TIME.get_or_init(Instant::now);
@@ -421,7 +420,6 @@ pub trait InstrumentStreamLog {
     ) -> Self::Output;
 }
 
-// Implement InstrumentStream for all Stream types
 impl<S> InstrumentStream for S
 where
     S: futures_core::Stream,
@@ -438,7 +436,6 @@ where
     }
 }
 
-// Implement InstrumentStreamLog for all Stream types with Debug items
 impl<S> InstrumentStreamLog for S
 where
     S: futures_core::Stream,
@@ -534,7 +531,6 @@ macro_rules! stream {
     };
 }
 
-/// Compare two stream stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
 pub(crate) fn compare_stream_stats(a: &StreamStats, b: &StreamStats) -> std::cmp::Ordering {
     let a_has_label = a.label.is_some();

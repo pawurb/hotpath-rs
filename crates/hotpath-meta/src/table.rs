@@ -1,10 +1,6 @@
-//! Minimal ASCII table renderer for the text report.
-//!
-//! Renders the same `+---+---+` / `| a | b |` layout prettytable-rs produced
-//! with its default format (one padding space on each side, a separator line
-//! between every row), so report screenshots and text-parsing tests are
-//! unaffected. Only the features the reports use are implemented: left-aligned
-//! cells, multi-line cells, and bold/colored cells rendered with ANSI escapes.
+//! Minimal ASCII table renderer for the text report: prettytable-rs's default
+//! `+---+` / `| a |` layout, which text-parsing tests depend on. Supports only
+//! left-aligned, multi-line and ANSI-styled cells.
 
 use std::fmt;
 use std::io::{self, Write};

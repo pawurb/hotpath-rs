@@ -1,7 +1,4 @@
-//! Formatted JSON types for MCP server and TUI.
-//!
-//! These types provide human-readable formatting for profiling data,
-//! suitable for both LLM-based tools (MCP) and terminal UI display.
+//! Human-readable formatted JSON types for the MCP server and TUI.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -1143,11 +1140,9 @@ pub struct JsonMeta {
     /// upload URL. Same validation as `HOTPATH_BENCHMARK`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub benchmark: Option<String>,
-    /// The policy file of the checkout the report was measured on, which the
-    /// server judges this report under. Only present with the
-    /// `hotpath-cloud` feature; omitted when the repository has no usable
-    /// policy file. The report is still written then, but hotpath.rs refuses
-    /// to store it: every uploaded report must carry its policy.
+    /// The policy file the server judges this report under. Only present
+    /// with `hotpath-cloud`; omitted when the repository has no usable policy
+    /// file, in which case hotpath.rs refuses the upload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<JsonPolicy>,
 }
@@ -1161,8 +1156,7 @@ pub struct JsonPolicy {
     pub source: String,
     /// The file's path relative to the repository root, with forward
     /// slashes (`hotpath/policy.toml`). Never absolute, never with a `..`
-    /// segment. A policy file outside the repository is never sent. The
-    /// path alone identifies the policy.
+    /// segment.
     pub path: String,
 }
 
@@ -1187,7 +1181,7 @@ pub struct JsonGitInfo {
 /// the discriminator, so supporting a new CI system is a change here only.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct JsonCiInfo {
-    /// "github-actions", later "gitlab-ci", "buildkite", ...
+    /// e.g. "github-actions".
     pub provider: String,
     /// Raw provider event name: "pull_request", "push", "workflow_dispatch",
     /// ... Deliberately a string, not an enum: an event we do not model must
@@ -1210,9 +1204,7 @@ pub struct JsonCiInfo {
     pub repository_id: Option<String>,
 }
 
-/// Grouped rather than left as fields that happen to appear together: a pull
-/// request always has a number and two branch names, so they are present or
-/// absent as a unit.
+/// A pull request's number and branch names, present or absent as a unit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonPullRequest {
     pub number: u64,
@@ -1220,12 +1212,11 @@ pub struct JsonPullRequest {
     /// a baseline falls back to when no report exists for `git.base_sha`.
     pub base_ref: String,
     pub head_ref: String,
-    /// The commit a default `refs/pull/<n>/merge` checkout merged in, and the
-    /// anchor a trusted job compares against `workflow_run.head_sha` when
-    /// relaying a fork's report. Best-effort, unlike the rest: only the event
-    /// payload names it (`GITHUB_SHA` is the merge commit, and there is no
-    /// `GITHUB_HEAD_SHA`), so requiring it would let an unreadable payload
-    /// drop the whole object and take `base_ref` with it.
+    /// The commit a default `refs/pull/<n>/merge` checkout merged in, compared
+    /// against `workflow_run.head_sha` when relaying a fork's report.
+    /// Best-effort: only the event payload names it (`GITHUB_SHA` is the merge
+    /// commit), so it is optional to keep an unreadable payload from dropping
+    /// the whole object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_sha: Option<String>,
 }

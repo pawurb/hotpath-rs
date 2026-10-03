@@ -87,8 +87,7 @@ pub mod tests {
         assert_eq!(outbound.count, 3);
         assert_eq!(outbound.route.as_deref(), Some("GET /profiles/{id}"));
 
-        // The server section reports per-request SQL / HTTP averages from
-        // the counts each completed request carried.
+        // Per-request SQL / HTTP averages from each request's counts.
         let server = report.server.expect("No server section in report");
         let by_route = |route: &str| {
             server

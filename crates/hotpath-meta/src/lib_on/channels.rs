@@ -387,10 +387,8 @@ impl ChannelEntry {
         if count < 2 {
             return None;
         }
-        // Anchor throughput to elapsed observation time since the first message
-        // rather than the first-to-last message span. The span collapses to a
-        // single inter-event gap for sparse channels and yields absurd rates;
-        // dividing by real elapsed time stays bounded and cannot blow up.
+        // Divide by elapsed time since the first message, not the first-to-last
+        // span: the span collapses to one gap for sparse channels.
         let first = self.first_msg_ns?;
         let elapsed_ns = now_ns.checked_sub(first)?;
         if elapsed_ns == 0 {
@@ -422,16 +420,6 @@ impl ChannelEntry {
         self.delay_hist.value_at_percentile(p.clamp(0.0, 100.0))
     }
 
-    /// Current depth is counts-derived (`sent - received`), exact once the channel
-    /// is idle since the counters commute, but it can transiently overshoot when a
-    /// producer batch reaches the worker ahead of the matching consumer batch.
-    ///
-    /// For a single instance the peak comes only from real `len()` snapshots; max
-    /// of those is order-independent, so it stays a true high-water mark, and
-    /// current is clamped to it so `current <= max`. For an aggregated entry
-    /// (`instances > 1`) a single-instance `len()` undercounts when several
-    /// instances hold messages at once, so the peak also tracks the counts-derived
-    /// combined depth and means "peak combined depth" instead.
     /// Counts-derived in-flight depth, net of messages abandoned in fully
     /// torn-down instances. Transiently saturates to zero when an `Abandoned`
     /// batch is drained ahead of its instance's send events; converges once
@@ -442,6 +430,16 @@ impl ChannelEntry {
             .saturating_sub(self.abandoned_count) as usize
     }
 
+    /// Current depth is counts-derived (`sent - received`), exact once the channel
+    /// is idle since the counters commute, but it can transiently overshoot when a
+    /// producer batch reaches the worker ahead of the matching consumer batch.
+    ///
+    /// For a single instance the peak comes only from real `len()` snapshots; max
+    /// of those is order-independent, so it stays a true high-water mark, and
+    /// current is clamped to it so `current <= max`. For an aggregated entry
+    /// (`instances > 1`) a single-instance `len()` undercounts when several
+    /// instances hold messages at once, so the peak also tracks the counts-derived
+    /// combined depth and means "peak combined depth" instead.
     fn record_queue(&mut self, queue_len: usize) {
         let mut max = self.max_queue_size.unwrap_or(0).max(queue_len);
         let depth = self.outstanding_depth();
@@ -965,7 +963,6 @@ macro_rules! channel {
     };
 }
 
-/// Compare two channel stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
 pub(crate) fn compare_channel_entries(a: &ChannelEntry, b: &ChannelEntry) -> std::cmp::Ordering {
     let a_has_label = a.label.is_some();
@@ -1060,8 +1057,7 @@ mod tests {
             },
         );
 
-        // Same tick for both ops: the equal-timestamp case the old `>=` tiebreak could
-        // not resolve. The receive batch arrives first, then the send batch.
+        // Same tick for both ops; the receive batch arrives first, then the send batch.
         let ts = Instant::now();
         process_channel_event(
             &mut state,
@@ -1086,8 +1082,6 @@ mod tests {
 
         let entry = state.stats.get(&id).expect("channel registered");
 
-        // One sent, one received → drained. Depth is counts-derived, so arrival order
-        // (and the equal timestamps) cannot make a stale snapshot win.
         assert_eq!(
             entry.queue_size,
             Some(0),

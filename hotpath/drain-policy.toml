@@ -1,7 +1,5 @@
-# Policy for the `drain` benchmark (`cloud-drain-benchmark.yml`, the
-# `hotpath-drain` `throughput` example). The example runs in lockstep rounds,
-# so allocations are deterministic: identical bytes on every run of a commit.
-# Timing stays unjudged, as in the built-in: a shared CI runner is too noisy.
+# Policy for the `drain` benchmark. Lockstep rounds make allocations deterministic;
+# timing stays unjudged because a shared CI runner is too noisy.
 
 [functions]
 min_percent_total = 0.5

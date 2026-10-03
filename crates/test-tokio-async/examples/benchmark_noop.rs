@@ -3,11 +3,8 @@
 
 use std::time::{Duration, Instant};
 
-// Single-threaded stress test comparing function instrumentation overhead in one run: an
-// uninstrumented baseline (`raw_noop`) and the `#[hotpath::measure]` instrumented version
-// (`instrumented_noop`). Each is hammered in a tight loop, so the delta vs baseline isolates
-// the per-call instrumentation cost. Run with `--features hotpath` (without it the macro is a
-// no-op and both modes are the raw function). Iteration count via `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: `raw_noop` vs `#[hotpath::measure]` `instrumented_noop` in a tight loop.
+// Without `--features hotpath` both modes are raw. Iterations via `HOTPATH_BENCH_RUNS`.
 #[hotpath::main]
 fn main() {
     let runs = bench_runs();

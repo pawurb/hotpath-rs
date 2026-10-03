@@ -50,10 +50,9 @@ fn print_table(table: &Table, writer: &mut dyn Write) {
 }
 
 /// Stops the worker and moves its entries out for the final report. Every
-/// `shutdown_*` below has the same shape: once the completion signal arrives
-/// nothing writes to the map any more, so the entries (and the hdr histograms
-/// they carry) are taken rather than cloned - the live metrics path sees an
-/// empty section from here on, which only matters during process exit.
+/// `shutdown_*` below takes the entries rather than cloning them: nothing
+/// writes to the map after the completion signal, and the live metrics path
+/// seeing an empty section only matters during process exit.
 pub(crate) fn shutdown_channels() -> Vec<ChannelEntry> {
     crate::channels::stop_channel_events();
     CHANNELS_STATE

@@ -1,5 +1,5 @@
-// Exports the compiler version (report `meta.rustc`) and the Cargo profile
-// (Prometheus `hotpath_build_info`); the crate's only build-script jobs.
+// Exports the rustc version (report `meta.rustc`) and the Cargo profile
+// (Prometheus `hotpath_build_info`).
 fn main() {
     println!("cargo:rerun-if-env-changed=RUSTC");
     println!("cargo:rerun-if-env-changed=RUSTUP_TOOLCHAIN");

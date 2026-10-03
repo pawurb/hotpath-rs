@@ -257,7 +257,6 @@ pin_project! {
 }
 
 impl<F: Future> InstrumentedFutureLog<F> {
-    /// Create a new instrumented future with logging.
     pub(crate) fn new(
         inner: F,
         location: &'static str,

@@ -17,8 +17,7 @@ use tracing_subscriber::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // One line: hook hotpath into the tracing pipeline. From here every sqlx
-    // query (including transaction-internal ones) is captured.
+    // From here every sqlx query (including transaction-internal ones) is captured.
     tracing_subscriber::registry()
         .with(hotpath::sqlx_tracing_layer())
         .init();

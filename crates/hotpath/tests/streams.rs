@@ -4,8 +4,7 @@ pub mod tests {
 
     use hotpath::json::{JsonReport, JsonStreamsList};
 
-    // The report is followed by trailing log lines, so we locate the report's
-    // opening brace and read just the first JSON value from that point.
+    // Trailing log lines follow the report, so parse only the first JSON value.
     fn parse_streams(stdout: &str) -> JsonStreamsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -150,7 +149,6 @@ pub mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        // All streams should be in closed state after completion
         let closed_count = stdout.matches("| closed").count();
         assert!(
             closed_count >= 3,

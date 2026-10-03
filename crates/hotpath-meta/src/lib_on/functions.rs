@@ -427,14 +427,11 @@ pub(crate) fn raw_routes(routes: &RouteStatsMap) -> Vec<RawRouteFunction> {
     raw
 }
 
-/// Raw timing snapshot entry for the Prometheus exporter - numeric fields
-/// only, both bucket projections pre-computed worker-side (native at
-/// `crate::prometheus_server::NATIVE_SCHEMA`, classic on
-/// `crate::prometheus_server::FAST_LADDER_NS`) so no histogram crosses the
-/// channel. Classic counts come straight from the hdr histogram, not from the
-/// coarser native buckets, so boundary-adjacent observations stay in the
-/// correct `le` bucket. `total_duration_ns` covers only sampled calls,
-/// matching the histograms' population.
+/// Raw timing snapshot entry for the Prometheus exporter, with bucket
+/// projections pre-computed worker-side so no histogram crosses the channel.
+/// Classic counts come from the hdr histogram, not the coarser native
+/// buckets, so boundary-adjacent observations stay in the correct `le` bucket.
+/// `total_duration_ns` covers only sampled calls.
 #[cfg(feature = "hotpath-prometheus-meta")]
 #[derive(Debug)]
 pub(crate) struct RawFunctionTiming {

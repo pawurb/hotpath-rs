@@ -1,18 +1,9 @@
-//! Shared plumbing of the `hotpath cloud` commands: the token and base URL
-//! from the environment, the bearer `GET` / `POST` (or an anonymous one for
-//! a public route, which never sends the token) and the JSON output. The
-//! token comes only from `HOTPATH_API_TOKEN` (never a flag, so it stays out of
-//! shell history and `ps`) and is never printed, not even in an error. A 2xx
-//! body the command only prints passes through as received (`RawBody`), so a
-//! field this client does not know yet still reaches the caller; only the
-//! parts a command branches on are typed (`hotpath::json::cloud_api`). Every
-//! failure is one JSON document on stderr (`CliError`): a non-2xx server body
-//! exactly as received - the client adds no hints, whatever the server says is
-//! the whole advice - or `{"error": "..."}` built here when there is no such
-//! body (token unset, network failure, unreadable body). Exit codes: 0 ok, 1 error
-//! (any non-2xx, network failure, invalid argument value), 2 clap usage error
-//! (clap's own, not remapped); `diff` also exits 1 when its body is not a
-//! comparison without regressions (see `diff.rs`).
+//! Shared plumbing of the `hotpath cloud` commands: token, HTTP client and
+//! JSON output. The token comes only from `HOTPATH_API_TOKEN` (never a flag,
+//! so it stays out of shell history and `ps`) and is never printed. A 2xx body
+//! a command only prints passes through as received (`RawBody`), so unknown
+//! fields still reach the caller. Every failure is one JSON document on stderr
+//! (`CliError`). Exit codes: 0 ok, 1 error, 2 clap usage error.
 
 use std::io::Write;
 use std::path::PathBuf;

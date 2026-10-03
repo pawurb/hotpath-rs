@@ -17,8 +17,8 @@
 //!
 //! The sync (`send`/`recv` + timeouts) and async (`send_async`/`recv_async`) APIs are
 //! instrumented. The `Stream`/`Sink` adapters (`rx.stream()`, `rx.into_stream()`, the
-//! `Sender` `Sink` impl) and `send_deadline`/`recv_deadline`/`drain` are NOT wrapped in
-//! v1 - users on those paths silently lose instrumentation.
+//! `Sender` `Sink` impl) and `send_deadline`/`recv_deadline`/`drain` are NOT wrapped -
+//! users on those paths silently lose instrumentation.
 //!
 //! The wrapper rebuilds the inner channel, so the `channel!` expression must be
 //! constructed inline; endpoints cloned before wrapping are orphaned.
