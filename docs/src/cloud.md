@@ -4,7 +4,7 @@
 
 `hotpath Cloud` is a backend service for the open-source `hotpath-rs` profiler. It provides an automated feedback loop for performance signals collected from your Rust application, helping both developers and coding agents detect regressions before they are merged.
 
-To get started, log in at [hotpath.rs/app](https://hotpath.rs/app). The hotpath-rs GitHub App asks for minimal permissions: **no access to your code**, only write access to pull requests to post comments. The only data it gets from your CI is the benchmark reports your workflow uploads. See [privacy policy](terms.md) for details.
+To get started, log in at <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a>. The hotpath-rs GitHub App asks for minimal permissions: **no access to your code**, only write access to pull requests to post comments. The only data it gets from your CI is the benchmark reports your workflow uploads. See [privacy policy](terms.md) for details.
 
 The [GitHub Actions integration](ci_integration) compares benchmark results against a baseline and posts a PR comment whenever a significant regression or improvement is detected:
 
@@ -42,7 +42,7 @@ Benchmark reports are persisted in `hotpath Cloud`, making it easy to share resu
 
 <img loading="lazy" src="{{#asset-hash images/cloud-dashboard-diff.webp}}" alt="hotpath Cloud dashboard diff page">
 
-[See this diff on hotpath.rs](https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/drain/reports/01a0f476-5b3a-7d0e-901a-7756f28e2414/diff)
+<a href="https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/drain/reports/01a0f476-5b3a-7d0e-901a-7756f28e2414/diff" target="_blank" rel="noopener noreferrer">See this diff on hotpath.rs</a>
 
 ## Getting Started
 

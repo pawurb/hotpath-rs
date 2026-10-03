@@ -12,7 +12,7 @@ Give your agent the [hotpath_cloud agent skill](https://github.com/pawurb/hotpat
 cargo install hotpath --features cloud
 ```
 
-Create a personal API token at [hotpath.rs/app/tokens](https://hotpath.rs/app/tokens) and export it:
+Create a personal API token at <a href="https://hotpath.rs/app/tokens" target="_blank" rel="noopener noreferrer">hotpath.rs/app/tokens</a> and export it:
 
 ```bash
 export HOTPATH_API_TOKEN=...
@@ -29,7 +29,7 @@ hotpath cloud auth --pretty
 }
 ```
 
-The token gives the CLI access to the same repositories as your account on hotpath.rs: the ones your GitHub user can see that have the hotpath GitHub App installed. They are listed on [hotpath.rs/app](https://hotpath.rs/app), where you can also add more.
+The token gives the CLI access to the same repositories as your account on hotpath.rs: the ones your GitHub user can see that have the hotpath GitHub App installed. They are listed on <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a>, where you can also add more.
 
 ## CLI commands
 

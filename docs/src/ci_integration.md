@@ -8,7 +8,7 @@ What counts as a regression is customizable with a [regression policy](regressio
 
 ## Setup
 
-Log in at [hotpath.rs/app](https://hotpath.rs/app) and install the hotpath GitHub App on the repository from the dashboard. The App has no access to your code, only write access to pull requests to post comments.
+Log in at <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a> and install the hotpath GitHub App on the repository from the dashboard. The App has no access to your code, only write access to pull requests to post comments.
 
 Add the `hotpath-cloud` feature next to the profiling features you use:
 
@@ -266,7 +266,7 @@ Give every benchmark its own `HOTPATH_BENCHMARK` name and its own workflow or jo
 | `upload skipped: not in GitHub Actions or missing ...` | The job has no OIDC token: `id-token: write` is missing, or the pull request comes from a fork. |
 | `upload failed: the report carries no policy file` | The repository has no `hotpath/policy.toml` or `hotpath/<benchmark>-policy.toml`. Run `hotpath cloud init` and commit the file. |
 | `upload failed: hotpath/policy.toml is not a valid policy: ...` | The policy file does not parse. `hotpath cloud validate-policy` shows the problem and its line. |
-| `upload failed: the hotpath GitHub App is not installed on ... (HTTP 403)` | The GitHub App is not installed on the repository. Install it, or add the repository to the installation, from [hotpath.rs/app](https://hotpath.rs/app). |
+| `upload failed: the hotpath GitHub App is not installed on ... (HTTP 403)` | The GitHub App is not installed on the repository. Install it, or add the repository to the installation, from <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a>. |
 | `upload failed: ... (HTTP 429)` | The repository is over its upload quota. |
 | The comment reads "no baseline yet" | The base branch has no report in this series. It appears after the first push to the default branch with the workflow in place. |
 | The comment reads "report not readable" | The report was produced by a `hotpath` version the server no longer reads. Update `hotpath`. |
