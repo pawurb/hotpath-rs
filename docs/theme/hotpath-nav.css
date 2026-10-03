@@ -114,11 +114,6 @@
     outline-offset: -2px;
 }
 
-.building-note {
-    margin: 0.75rem 0 0 0;
-    opacity: 0.75;
-}
-
 /* Site footer - markup lives in the shared index.hbs, so its styles belong
    here (loaded by both the docs and blog books) */
 .site-footer {

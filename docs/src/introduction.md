@@ -121,8 +121,6 @@ or use the live TUI dashboard to monitor real-time performance and async data fl
 - **MCP server for AI agents** - query profiling data in real time.
 - **Zero cost when disabled** - fully feature-gated.
 
-<p class="building-note">Building in public. Follow development progress on X: <a href="https://x.com/pawelurbanekcom" target="_blank" rel="noopener noreferrer">@pawelurbanekcom</a></p>
-
 ## Getting Started
 
 ### AI Setup (Recommended)
