@@ -1,4 +1,4 @@
-# `hotpath Cloud` - performance feedback for developers and coding agents
+# hotpath Cloud - performance feedback for developers and coding agents
 
 > **Note:** hotpath Cloud is currently in open beta.
 
