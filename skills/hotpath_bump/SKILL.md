@@ -1,6 +1,6 @@
 ---
 name: hotpath_bump
-description: Bump the hotpath version number across the workspace and related files. Updates the versions of all six published crates (drain included) in Cargo.toml files (exact patch version) and version references in the backend middleware, hotpath_init skill, and README (major.minor only). Use when the user wants to bump, bump the version, or release a new hotpath version.
+description: Bump the hotpath version number across the workspace and related files. Updates the versions of all six published crates (drain included) in Cargo.toml files (exact patch version), version references in the backend middleware, hotpath_init skill, and README (major.minor only), and the relay workflow release tag pins (exact `vX.Y.Z` tag). Use when the user wants to bump, bump the version, or release a new hotpath version.
 allowed-tools: Bash, Read, Edit, Grep, Glob
 ---
 
@@ -8,10 +8,11 @@ allowed-tools: Bash, Read, Edit, Grep, Glob
 
 Bump the hotpath version number in every place it appears. The user provides the new version (e.g. `0.25.0`); if only `major.minor` is given, assume patch `0`.
 
-Two formats are used:
+Three formats are used:
 
 - **Exact version** (`X.Y.Z`, e.g. `0.25.0`) - all Cargo.toml entries
-- **Major.minor only** (`X.Y`, e.g. `0.25`) - all other references
+- **Major.minor only** (`X.Y`, e.g. `0.25`) - crate version references
+- **Release tag** (`vX.Y.Z`, e.g. `v0.25.0`) - `hotpath-relay.yml` pins
 
 ## 1. Cargo.toml files - exact version `X.Y.Z`
 
@@ -42,19 +43,34 @@ All six crates always share the same version; never bump one without the others.
 - `../hotpath-backend/src/config/middleware.rs` (separate repo, sibling directory):
 
   ```rust
-  const TEMPLATE_VARS: &[(&str, &str)] = &[("{{HOTPATH_VERSION}}", "X.Y")];
+  ("{{HOTPATH_VERSION}}", "X.Y"),
   ```
 
 - `skills/hotpath_init/SKILL.md` - every version occurrence (`hotpath = "X.Y"`, `hotpath = { version = "X.Y", ... }`)
 - `README.md` - every version occurrence (`cargo install hotpath --version '^X.Y'`, `hotpath = "X.Y"`)
 
-## 3. Verify
+## 3. Relay release tag - `vX.Y.Z`
+
+Adopters pin the reusable relay workflow to the release tag, so these point at the tag this release creates:
+
+- `../hotpath-backend/src/config/middleware.rs`:
+
+  ```rust
+  ("{{HOTPATH_RELEASE_TAG}}", "vX.Y.Z"),
+  ```
+
+- `skills/hotpath_init_ci_forks/SKILL.md` - every `vX.Y.Z` occurrence (the `hotpath-relay.yml@vX.Y.Z` pin and the pinning instructions)
+- `.github/workflows/hotpath-relay.yml` - the `hotpath-relay.yml@vX.Y.Z` pin in the usage comment at the top
+
+Leave `.github/workflows/cloud-random-benchmark-relay.yml` on `@main`: it tests the relay on the default branch.
+
+## 4. Verify
 
 Search for stragglers with the old version, excluding lockfiles, target dirs, and third-party code:
 
 ```bash
 rg -n 'OLD_X\.OLD_Y' Cargo.toml README.md skills/ crates/hotpath/Cargo.toml crates/hotpath-macros/Cargo.toml crates/hotpath-meta/Cargo.toml crates/hotpath-macros-meta/Cargo.toml crates/hotpath-drain/Cargo.toml crates/hotpath-drain-meta/Cargo.toml
-rg -n 'OLD_X\.OLD_Y' ../hotpath-backend/src/config/middleware.rs
+rg -n 'OLD_X\.OLD_Y' ../hotpath-backend/src/config/middleware.rs .github/workflows/hotpath-relay.yml
 ```
 
 Ignore matches that are not hotpath version references (other dependencies may coincidentally share the number). Then run `cargo check` so `Cargo.lock` picks up the new versions.
