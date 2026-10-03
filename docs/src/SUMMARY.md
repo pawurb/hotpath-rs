@@ -18,7 +18,7 @@
 - [Tokio Runtime](./tokio_runtime.md)
 - [Debug & Metrics](./debug.md)
 
-# hotpath Cloud [BETA]
+# 🔥 hotpath Cloud [BETA]
 
 - [Intro](./cloud.md)
 - [CI integration](./ci_integration.md)
