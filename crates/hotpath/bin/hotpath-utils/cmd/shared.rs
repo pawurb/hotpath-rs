@@ -9,6 +9,8 @@ use hotpath::{
 use std::fmt;
 use std::time::Duration;
 
+pub const DEPRECATION_NOTE: &str = "hotpath-utils is deprecated and will be removed in a future release. Use hotpath cloud instead: https://hotpath.rs/cloud";
+
 #[derive(Debug, Clone)]
 pub enum MetricDiff {
     CallsCount(u64, u64),  // (before, after)

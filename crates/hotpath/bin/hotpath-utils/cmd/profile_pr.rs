@@ -2,7 +2,7 @@ mod comment;
 
 use crate::cmd::shared::{
     build_functions_table, build_threads_table, compare_reports, format_threads_globals,
-    JsonReportDiff,
+    JsonReportDiff, DEPRECATION_NOTE,
 };
 use clap::Parser;
 use comment::upsert_pr_comment;
@@ -121,6 +121,7 @@ fn format_diff_markdown(
     benchmark_id: Option<&str>,
 ) -> String {
     let mut markdown = String::new();
+    markdown.push_str(&format!("> [!WARNING]\n> {}\n\n", DEPRECATION_NOTE));
 
     let base_branch = env::var("GITHUB_BASE_REF")
         .ok()

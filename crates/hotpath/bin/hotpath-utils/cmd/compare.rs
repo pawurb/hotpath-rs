@@ -7,7 +7,7 @@ use std::io::IsTerminal;
 
 use crate::cmd::shared::{
     build_functions_table, build_threads_table, compare_reports, format_threads_globals,
-    JsonReportDiff,
+    JsonReportDiff, DEPRECATION_NOTE,
 };
 
 fn use_colors() -> bool {
@@ -31,6 +31,8 @@ pub struct CompareArgs {
 
 impl CompareArgs {
     pub fn run(&self) -> Result<()> {
+        eprintln!("Warning: {}\n", DEPRECATION_NOTE);
+
         let before_raw = fs::read_to_string(&self.before_json_path)
             .map_err(|e| eyre::eyre!("Failed to read before JSON: {}", e))?;
         let after_raw = fs::read_to_string(&self.after_json_path)
