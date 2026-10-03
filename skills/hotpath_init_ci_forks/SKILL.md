@@ -183,7 +183,7 @@ The report must name the benchmark and `hotpath/policy.toml`: this is the file t
 
 ### 8. Tell the user what is left
 
-- Install the [hotpath-rs GitHub App](https://github.com/apps/hotpath-rs) on the repository. It needs no access to the code, only pull request write access to post the comment.
+- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). It needs no access to the code, only pull request write access to post the comment.
 - Commit both workflows and merge them to the default branch. The first push to the default branch uploads the **baseline**, and the relay only runs once it is on the default branch. Until the baseline exists, pull request comments read "no baseline yet".
 - From then on, every pull request, forks included, gets a performance comment. The `hotpath_cloud` skill and `hotpath cloud diff` read the same verdict as JSON.
 

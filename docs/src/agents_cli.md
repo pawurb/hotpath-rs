@@ -29,7 +29,7 @@ hotpath cloud auth --pretty
 }
 ```
 
-The token gives the CLI access to the same repositories as your account on hotpath.rs: the ones your GitHub user can see that have the [hotpath-rs GitHub App](https://github.com/apps/hotpath-rs) installed. 
+The token gives the CLI access to the same repositories as your account on hotpath.rs: the ones your GitHub user can see that have the hotpath GitHub App installed. They are listed on [hotpath.rs/app](https://hotpath.rs/app), where you can also add more.
 
 ## CLI commands
 
