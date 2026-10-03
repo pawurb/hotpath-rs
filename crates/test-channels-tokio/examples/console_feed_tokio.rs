@@ -251,7 +251,7 @@ async fn main() {
     tokio::spawn(async move {
         while let Some(msg) = rx_slow.recv().await {
             println!("Slow consumer processing: {:?}", msg);
-            sleep(Duration::from_millis(800)).await; // Much slower than producer!
+            sleep(Duration::from_millis(800)).await;
         }
     });
 
@@ -259,7 +259,6 @@ async fn main() {
     tokio::spawn(async move {
         for burst_num in 0..10 {
             println!("Burst #{} starting!", burst_num + 1);
-            // Send burst of 15 messages
             for i in 0..15 {
                 if tx_burst.send(burst_num * 1000 + i).await.is_err() {
                     return;

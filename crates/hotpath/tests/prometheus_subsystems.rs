@@ -109,10 +109,8 @@ pub mod tests {
             .spawn()
             .expect("Failed to spawn command");
 
-        // The example serves exactly 3 GET /profiles/{id} requests; waiting
-        // for the final scoped count keeps the assertions below off the
-        // transient mid-sweep states (sql/http attribution and request
-        // completion arrive through different worker queues).
+        // Wait for all 3 GET /profiles/{id} requests: sql/http attribution and request
+        // completion arrive through different worker queues.
         let mut scrape = None;
         for _attempt in 0..80 {
             sleep(Duration::from_millis(750));

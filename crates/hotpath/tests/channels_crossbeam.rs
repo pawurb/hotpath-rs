@@ -78,7 +78,6 @@ pub mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        // Check that all three channels have "closed" state
         assert!(
             stdout.contains("closed-sender"),
             "Expected closed-sender channel in output"
@@ -283,8 +282,7 @@ pub mod tests {
         let _ = child.wait();
     }
 
-    // The report is followed by trailing log lines, so we locate the report's
-    // opening brace and read just the first JSON value from that point.
+    // Trailing log lines follow the report, so parse only the first JSON value.
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -319,9 +317,7 @@ pub mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        // The example emits a JSON report; assert the endpoint wrapper reported the
-        // exact queue depth (50 messages parked, none received). A forwarder
-        // drains immediately and would report ~0 here.
+        // Exact queue depth (50 parked, none received); a forwarder would report ~0.
         let channels = parse_channels(&stdout);
 
         let entry = channels
@@ -452,7 +448,6 @@ pub mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let channels = parse_channels(&stdout);
 
-        // The configured percentiles are echoed at the top of the channels report.
         assert_eq!(channels.percentiles, vec![50.0, 95.0]);
 
         // Channels carry an exact send->receive latency histogram in the JSON report.

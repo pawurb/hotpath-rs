@@ -1,7 +1,6 @@
 //! `hotpath cloud benchmarks --repo owner/name`: prints the
-//! `GET /api/v1/repos/{owner}/{name}/benchmarks` body for one repository.
-//! The body's `repository` is whatever the server calls it now and is
-//! printed as is, even when it differs from the name requested.
+//! `GET /api/v1/repos/{owner}/{name}/benchmarks` body. Its `repository` may
+//! differ from the name requested.
 
 use std::process::ExitCode;
 

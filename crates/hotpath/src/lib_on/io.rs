@@ -345,12 +345,10 @@ fn process_io_event(state: &mut IoInternalState, event: IoEvent) {
     }
 }
 
-/// Entries are keyed by creation site and concrete type, so wrappers created
-/// repeatedly at one `io!` call (e.g. per accepted connection in a server)
-/// share a single accumulating entry and state stays bounded by the number of
-/// call sites rather than the number of values ever wrapped. The site key
-/// includes the column (`file:line:column`), so two invocations on one
-/// physical line do not alias; the displayed source stays `file:line`.
+/// `(site key, type)`: wrappers created repeatedly at one `io!` call (e.g.
+/// per accepted connection) share one entry, so state stays bounded by call
+/// sites. The site key includes the column so same-line invocations do not
+/// alias.
 type IoSourceKey = (&'static str, &'static str);
 
 static IO_SOURCE_IDS: OnceLock<StdRwLock<HashMap<IoSourceKey, u32>>> = OnceLock::new();

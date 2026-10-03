@@ -72,17 +72,11 @@ impl Default for AxumLayer {
 /// Events sent to the background server statistics collection thread.
 #[derive(Debug)]
 pub(crate) enum ServerEvent {
-    /// Emitted when the response head is produced for a request. `route` is
-    /// `METHOD template` when the router matched a route; otherwise it is
-    /// `METHOD raw-path` and `matched` is `false`, which makes the worker
-    /// collapse error responses into the `<unmatched>` bucket and normalize
-    /// id-like segments of successful ones. `timestamp_ns` is the
-    /// completion time in ns since profiler start. `calls` holds the SQL
-    /// queries and outbound HTTP requests issued under the request's route
-    /// scope, `None` when the request had no scope (unmatched route, route
-    /// scoping disabled, or the route interner cap was hit); `alloc` the
-    /// bytes and allocations made under that scope, `None` on the same
-    /// condition.
+    /// Emitted when the response head is produced. `route` is
+    /// `METHOD template` when matched, else `METHOD raw-path` with `matched`
+    /// false. `timestamp_ns` is ns since profiler start. `calls` / `alloc`
+    /// cover the request's route scope, `None` when it had none (unmatched
+    /// route, route scoping disabled, or the route interner cap was hit).
     Completed {
         route: Arc<str>,
         matched: bool,
@@ -100,9 +94,7 @@ pub(crate) struct ServerEntry {
     pub(crate) id: u32,
     pub(crate) route: String,
     pub(crate) count: u64,
-    /// Responses with a 4xx status.
     pub(crate) status_4xx: u64,
-    /// Responses with a 5xx status.
     pub(crate) status_5xx: u64,
     pub(crate) total_nanos: u64,
     /// Completed requests that carried a route scope; the denominator of

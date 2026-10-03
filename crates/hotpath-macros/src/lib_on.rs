@@ -37,10 +37,7 @@ impl Format {
 
 /// Initializes the hotpath profiling system and generates a performance report on program exit.
 ///
-/// This attribute macro should be applied to your program's main (or other entry point) function to enable profiling.
-/// It creates a guard that initializes the background measurement processing thread and
-/// automatically displays a performance summary when the program exits.
-/// Additionally it creates a measurement guard that will be used to measure the wrapper function itself.
+/// Apply to `main` (or another entry point). The annotated function itself is also measured.
 ///
 /// # Parameters
 ///
@@ -148,7 +145,6 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let sig = &input.sig;
     let block = &input.block;
 
-    // Defaults
     let mut percentiles: Vec<f64> = vec![95.0];
     let mut format = Format::Table;
     let mut global_limit: Option<usize> = None;
@@ -456,23 +452,10 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     output.into()
 }
 
-/// Instruments a function to send performance measurements to the hotpath profiler.
+/// Instruments a function to measure execution time or memory allocations.
 ///
-/// This attribute macro wraps functions with profiling code that measures execution time
-/// or memory allocations (depending on enabled feature flags). The measurements are sent
-/// to a background processing thread for aggregation.
-///
-/// # Behavior
-///
-/// The macro automatically detects whether the function is sync or async and instruments
-/// it appropriately. Measurements include:
-///
-/// * **Time profiling** (default): Execution duration using high-precision timers
-/// * **Allocation profiling**: Memory allocations when allocation features are enabled
-///   - `hotpath-alloc` - Total bytes allocated
-///   - `hotpath-alloc` - Total allocation count
-///
-/// When the `hotpath` feature is disabled, this macro compiles to zero overhead (no instrumentation).
+/// Detects sync vs async automatically. Measures time by default, or bytes and
+/// allocation count with `hotpath-alloc`.
 ///
 /// # Parameters
 ///
@@ -708,9 +691,8 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Instruments an async function to track its lifecycle as a Future.
 ///
-/// This attribute macro wraps async functions with the `future!` macro, enabling
-/// tracking of poll counts, state transitions (pending/ready/cancelled), and
-/// optionally logging the result value.
+/// Wraps the body with the `future!` macro to track poll counts and state
+/// transitions (pending/ready/cancelled).
 ///
 /// # Parameters
 ///
@@ -761,7 +743,6 @@ pub fn future_fn_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    // Ensure the function is async
     if sig.asyncness.is_none() {
         return syn::Error::new_spanned(
             sig.fn_token,
@@ -771,7 +752,6 @@ pub fn future_fn_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    // Parse optional `log = true` attribute
     let mut log_result = false;
 
     if !attr.is_empty() {
@@ -808,7 +788,6 @@ pub fn future_fn_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    // Generate the wrapped body using the future! macro pattern
     let wrapped_body = if log_result {
         quote! {
             {
@@ -876,11 +855,7 @@ pub fn skip_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
-/// Instruments all functions in a module or impl block with the `measure` profiling macro.
-///
-/// This attribute macro applies the [`measure`](macro@measure) macro to every function
-/// in the annotated module or impl block, providing bulk instrumentation without needing
-/// to annotate each function individually.
+/// Instruments all functions in a module or impl block with [`measure`](macro@measure).
 ///
 /// # Usage
 ///
@@ -984,7 +959,6 @@ fn has_hotpath_skip_or_measure(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| {
         let path = attr.path();
 
-        // Check for #[hotpath::skip]
         if path.segments.len() == 2
             && path.segments[0].ident == "hotpath"
             && path.segments[1].ident == "skip"
@@ -992,7 +966,6 @@ fn has_hotpath_skip_or_measure(attrs: &[syn::Attribute]) -> bool {
             return true;
         }
 
-        // Check for #[hotpath::measure]
         if path.segments.len() == 2
             && path.segments[0].ident == "hotpath"
             && path.segments[1].ident == "measure"

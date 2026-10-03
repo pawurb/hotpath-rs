@@ -3,11 +3,8 @@
 
 use std::time::{Duration, Instant};
 
-// Single-threaded stress test comparing channel instrumentation overhead in one run: an
-// uninstrumented baseline (raw channel, no macro) and the instrumented channel. Each is
-// hammered in a tight uncontended send/recv loop, so the delta vs baseline isolates
-// per-send/recv instrumentation cost. Run with `--features hotpath` (without it both
-// modes are the raw channel). Iteration count via `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: raw vs instrumented channel in a tight uncontended send/recv loop.
+// Without `--features hotpath` both modes are raw. Iterations via `HOTPATH_BENCH_RUNS`.
 fn main() {
     smol::block_on(async {
         let _guard = hotpath::HotpathGuardBuilder::new("main")

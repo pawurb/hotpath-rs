@@ -139,7 +139,6 @@ fn main() {
         smol::spawn(async move {
             for i in 0..200 {
                 if tx_slow.try_send(format!("MSG-{}", i)).is_err() {
-                    // Channel full, wait a bit
                     Timer::after(Duration::from_millis(10)).await;
                     if tx_slow.try_send(format!("MSG-{}", i)).is_err() {
                         break;
@@ -154,7 +153,7 @@ fn main() {
         smol::spawn(async move {
             while let Some(msg) = rx_slow.next().await {
                 println!("Slow consumer processing: {}", msg);
-                Timer::after(Duration::from_millis(800)).await; // Much slower than producer!
+                Timer::after(Duration::from_millis(800)).await;
             }
         })
         .detach();
@@ -163,10 +162,8 @@ fn main() {
         smol::spawn(async move {
             for burst_num in 0..10 {
                 println!("Burst #{} starting!", burst_num + 1);
-                // Send burst of 15 messages
                 for i in 0..15 {
                     if tx_burst.try_send(burst_num * 1000 + i).is_err() {
-                        // Channel full, wait and retry
                         Timer::after(Duration::from_millis(50)).await;
                         if tx_burst.try_send(burst_num * 1000 + i).is_err() {
                             return;

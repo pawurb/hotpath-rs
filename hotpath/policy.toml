@@ -1,7 +1,5 @@
-# Shared policy: judges every benchmark without its own
-# `hotpath/<benchmark>-policy.toml` (`meta`). Pins the judged
-# families of the built-in default so a server-side default change does not
-# shift how this repository is judged.
+# Shared policy for benchmarks without their own `hotpath/<benchmark>-policy.toml`.
+# Pins the built-in default so a server-side default change does not shift judging.
 
 [functions]
 # `drain_into` bytes in `meta` follow the consumer buffer's peak doubling,

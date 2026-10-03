@@ -1,5 +1,4 @@
-//! This module provides real-time thread monitoring capabilities, collecting
-//! CPU usage statistics for all threads in the current process.
+//! Thread monitoring: CPU usage statistics for all threads in the current process.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, OnceLock};
@@ -40,16 +39,13 @@ pub(crate) fn thread_metrics_with_percentage(
     metrics
 }
 
-/// Internal state for thread monitoring
 #[allow(dead_code)]
 struct ThreadsState {
     /// Last sampled metrics for CPU percentage calculation
     previous_metrics: HashMap<u64, ThreadMetrics>,
     /// Current metrics snapshot (live threads only)
     current_metrics: Vec<ThreadMetrics>,
-    /// Timestamp of last sample
     last_sample_time: Instant,
-    /// Sample interval
     sample_interval: Duration,
     /// Start time for elapsed calculation
     start_time: Instant,
@@ -71,8 +67,6 @@ static THREADS_INTERVAL_MS: LazyLock<u64> = LazyLock::new(|| {
         .unwrap_or(250)
 });
 
-// Initialize thread monitoring worker
-// Call it unless you use channel!, stream!, or #[hotpath::main] macro elsewhere in the code
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn init_threads_monitoring() {
     THREADS_STATE.get_or_init(|| {

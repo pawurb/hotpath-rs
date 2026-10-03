@@ -1,7 +1,4 @@
-//! Thread ID utilities for capturing OS-level thread identifiers.
-//!
-//! This module provides cross-platform functions to retrieve the current thread's
-//! OS-level thread ID (TID), which is useful for debugging and profiling.
+//! OS-level thread ID (TID) of the current thread.
 
 use std::cell::Cell;
 
@@ -9,16 +6,8 @@ thread_local! {
     static CACHED_TID: Cell<u64> = const { Cell::new(0) };
 }
 
-/// Return the OS thread ID (TID) as u64.
-///
-/// # Platform Support
-///
-/// - **Linux**: Uses `syscall(SYS_gettid)` to get the kernel thread ID
-/// - **macOS**: Uses `pthread_self()` + `pthread_mach_thread_np()` to get the Mach thread ID
-///
-/// # Panics
-///
-/// This function will fail to compile on unsupported platforms.
+/// OS thread ID, cached per thread. Kernel TID on Linux, Mach thread ID on
+/// macOS, Win32 thread ID on Windows, 0 elsewhere.
 #[inline]
 pub(crate) fn current_tid() -> u64 {
     CACHED_TID.with(|cached| {
@@ -51,7 +40,6 @@ fn current_tid_uncached() -> u64 {
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
-        // current_tid() is only implemented for Linux, macOS and Windows
         0
     }
 }

@@ -110,7 +110,6 @@ fn main() {
     thread::spawn(move || {
         for i in 0..200 {
             if tx_slow.try_send(format!("MSG-{}", i)).is_err() {
-                // Channel full, wait a bit
                 thread::sleep(Duration::from_millis(10));
                 if tx_slow.try_send(format!("MSG-{}", i)).is_err() {
                     break;
@@ -124,7 +123,7 @@ fn main() {
     thread::spawn(move || {
         while let Ok(msg) = rx_slow.recv() {
             println!("Slow consumer processing: {}", msg);
-            thread::sleep(Duration::from_millis(800)); // Much slower than producer!
+            thread::sleep(Duration::from_millis(800));
         }
     });
 
@@ -132,10 +131,8 @@ fn main() {
     thread::spawn(move || {
         for burst_num in 0..10 {
             println!("Burst #{} starting!", burst_num + 1);
-            // Send burst of 15 messages
             for i in 0..15 {
                 if tx_burst.try_send(burst_num * 1000 + i).is_err() {
-                    // Channel full, wait and retry
                     thread::sleep(Duration::from_millis(50));
                     if tx_burst.try_send(burst_num * 1000 + i).is_err() {
                         return;

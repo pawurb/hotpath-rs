@@ -4,21 +4,15 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
-// Multi-threaded stress test comparing function instrumentation overhead in one run: an
-// uninstrumented baseline (`raw_alloc`) and the `#[hotpath::measure]` instrumented version
-// (`instrumented_alloc`). Each is hammered across `HOTPATH_ALLOC_NUM_THREADS` threads, so the
-// delta vs baseline isolates the per-call instrumentation cost. Run with
-// `--features hotpath,hotpath-alloc`. Iteration count via `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: `raw_alloc` vs `#[hotpath::measure]` `instrumented_alloc` across
+// `HOTPATH_ALLOC_NUM_THREADS` threads. Iterations via `HOTPATH_BENCH_RUNS`.
 fn main() {
     let num_threads = num_threads();
     let runs_per_thread = bench_runs();
     let total = runs_per_thread * num_threads as u64;
 
-    // Warm the global allocator arenas and CPU caches so neither mode eats one-time
-    // startup cost. Both bodies run, but the guard isn't built yet so `#[measure]` is
-    // inert here and these calls are discarded from the report. Without this the
-    // first-timed mode looks slower than the second, which can make the instrumented
-    // run appear faster than the raw baseline.
+    // Warm allocator arenas and CPU caches before the guard exists (`#[measure]` is inert,
+    // calls stay out of the report); otherwise the first-timed mode looks slower.
     bench(num_threads, runs_per_thread, raw_alloc);
     bench(num_threads, runs_per_thread, instrumented_alloc);
 

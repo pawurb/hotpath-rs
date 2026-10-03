@@ -4,9 +4,7 @@
 use hotpath::future;
 use std::time::Instant;
 
-// Simple single-threaded stress test: wraps a trivial ready future with the
-// `future!` macro in a tight loop, so the measured time reflects per-future
-// instrumentation overhead. Compare `--features hotpath` against a plain run.
+// Per-future `future!` overhead in a tight loop; compare against a run without `--features hotpath`.
 #[tokio::main]
 async fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")

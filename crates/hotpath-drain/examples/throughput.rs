@@ -2,13 +2,9 @@
 //! events in total into a shared registry while a single consumer thread
 //! sweeps the queues, then drains what is left at shutdown.
 //!
-//! Producers and consumer run in lockstep rounds: each producer pushes
-//! `BATCH` events, every thread meets at a barrier, the consumer sweeps once,
-//! and a second barrier releases the producers for the next round. Sweep
-//! count, events per sweep and the batch vector's capacity are therefore
-//! fixed by the constants below rather than by thread scheduling, so two runs
-//! of this benchmark differ only in timing. Changing the constants invalidates
-//! comparability with previously uploaded reports.
+//! Producers and consumer run in lockstep rounds, so sweep counts and
+//! allocations are fixed by the constants below rather than by scheduling.
+//! Changing the constants breaks comparability with previously uploaded reports.
 //!
 //! Run with:
 //!   cargo run -p hotpath-drain --example throughput --release

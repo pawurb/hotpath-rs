@@ -9,7 +9,7 @@
 //! keeps the counter non-negative - the channel's send->recv edge orders a producer's
 //! `+1` ahead of the consumer's matching `-1`, so a fast consumer can never decrement a
 //! slot that has not yet been counted. The snapshot stays exact even under concurrent
-//! producers - more accurate than a library-provided racy length snapshot.
+//! producers.
 //!
 //! The inner channel carries `(msg_id, send_ts, T)`. Monotonic `msg_id` pairs a send
 //! with its matching receive under multiple producers. `send_ts` is stamped before

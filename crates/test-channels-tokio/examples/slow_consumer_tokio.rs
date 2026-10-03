@@ -28,7 +28,6 @@ async fn main() {
         for i in 1..=50 {
             println!("[Producer] Sending message {}", i);
 
-            // Retry loop with timeout
             let start = std::time::Instant::now();
             loop {
                 match tx.try_send(i) {
@@ -37,7 +36,6 @@ async fn main() {
                         panic!("[Producer] Channel disconnected");
                     }
                     Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                        // Channel is full, check timeout
                         if start.elapsed() > Duration::from_secs(3) {
                             panic!("[Producer] Send timeout after 3 seconds for message {}", i);
                         }

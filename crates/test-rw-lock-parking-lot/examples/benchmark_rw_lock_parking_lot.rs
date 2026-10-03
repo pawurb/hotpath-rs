@@ -3,11 +3,8 @@
 
 use std::time::{Duration, Instant};
 
-// Single-threaded stress test comparing RwLock instrumentation overhead in one run: an
-// uninstrumented baseline (raw lock) and the `hotpath::rw_lock!` instrumented version, each
-// run through a write loop followed by a read loop. The delta vs baseline isolates the
-// per-lock instrumentation cost. Run with `--features hotpath` (without it the macro is a
-// no-op and both modes are the raw lock). Iteration count via `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: raw lock vs `hotpath::rw_lock!`, a write loop then a read loop.
+// Without `--features hotpath` both modes are raw. Iterations via `HOTPATH_BENCH_RUNS`.
 fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
         .sections(vec![hotpath::Section::RwLocks])

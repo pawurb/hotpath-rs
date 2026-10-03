@@ -347,7 +347,6 @@ fn flush_stream_buffer(
 }
 
 /// Initialize the stream statistics collection system (called on first instrumented stream).
-/// Returns a reference to the global state.
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure)]
 pub(crate) fn init_streams_state() -> &'static StreamsState {
     STREAMS_STATE.get_or_init(|| {
@@ -433,7 +432,6 @@ pub trait InstrumentStreamLog {
     ) -> Self::Output;
 }
 
-// Implement InstrumentStream for all Stream types
 impl<S> InstrumentStream for S
 where
     S: futures_core::Stream,
@@ -450,7 +448,6 @@ where
     }
 }
 
-// Implement InstrumentStreamLog for all Stream types with Debug items
 impl<S> InstrumentStreamLog for S
 where
     S: futures_core::Stream,
@@ -546,7 +543,6 @@ macro_rules! stream {
     };
 }
 
-/// Compare two stream stats for sorting.
 /// Custom labels come first (sorted alphabetically), then auto-generated labels (sorted by source and iter).
 #[cfg_attr(feature = "hotpath-meta", hotpath_meta::measure(log = true))]
 pub(crate) fn compare_stream_stats(a: &StreamStats, b: &StreamStats) -> std::cmp::Ordering {

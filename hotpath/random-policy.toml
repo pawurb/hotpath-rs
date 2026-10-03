@@ -1,9 +1,5 @@
-# Policy for the `random` benchmark (`cloud-random-benchmark.yml`, the
-# `test-axum` `benchmark_random` example). It exists to check PR comments:
-# every resource draws `fast` or `slow` (3x the work) on each run, so two runs
-# differ by +200% or -67% wherever a draw changed. Every family the example
-# produces is judged, with the built-in bars, so each draw shows in the comment
-# and the verdict.
+# Policy for the `random` benchmark, used to exercise PR comments: each resource
+# randomly draws `fast` or `slow` (3x the work) per run, and every family is judged.
 
 [functions]
 min_percent_total = 0.5

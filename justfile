@@ -1,6 +1,3 @@
-# Just configuration for hotpath-rs
-
-# Default recipe
 default:
     @just --list
 
@@ -73,12 +70,8 @@ test_all:
     cargo test --features hotpath --test cloud_json_file -- --nocapture --test-threads=1
     cargo test --features hotpath --test cloud_upload_guard -- --nocapture --test-threads=1
 
+# Scrape with `docker compose up -d prometheus grafana`; on native Linux add HOTPATH_PROMETHEUS_HOST=0.0.0.0.
 # Run the TUI in demo mode with the Prometheus exporter on port 6772.
-# Scrape it with `docker compose up -d prometheus grafana`:
-# Grafana http://localhost:3009 (dashboard auto-provisioned), Prometheus http://localhost:9099.
-# On native Linux add HOTPATH_PROMETHEUS_HOST=0.0.0.0 so the Prometheus
-# container can reach the exporter through the Docker bridge gateway; the auth
-# token (matched by docker/prometheus.yml) keeps the exporter protected there.
 demo:
     cargo run --bin hotpath --features tui,hotpath,hotpath-alloc,hotpath-prometheus,demo,dev,hotpath-meta,hotpath-alloc-meta,hotpath-prometheus-meta -- console
 
@@ -162,29 +155,22 @@ prometheus:
 prometheus-legacy:
     open "http://localhost:9098" 2>/dev/null || xdg-open "http://localhost:9098"
 
-# Open the Grafana dashboard fed by the native-histogram Prometheus scraping
-# the hotpath-meta exporter (port 6782). Start the stack with
-# `docker compose up -d prometheus-meta grafana`; the meta exporter itself
-# starts from any run built with the hotpath-prometheus-meta feature.
+# Open the Grafana dashboard fed by the native-histogram Prometheus scraping the hotpath-meta exporter.
 grafana-meta:
     open "http://localhost:3009/d/hotpath-functions-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-functions-meta"
 
-# Open the Grafana dashboard fed by the legacy (classic buckets only)
-# Prometheus scraping the hotpath-meta exporter.
+# Open the Grafana dashboard fed by the legacy Prometheus scraping the hotpath-meta exporter.
 grafana-legacy-meta:
     open "http://localhost:3009/d/hotpath-functions-legacy-meta" 2>/dev/null || xdg-open "http://localhost:3009/d/hotpath-functions-legacy-meta"
 
-# Open the native-histogram Prometheus UI scraping the hotpath-meta exporter
-# (started with `docker compose up -d prometheus-meta`).
+# Open the native-histogram Prometheus UI scraping the hotpath-meta exporter.
 prometheus-meta:
     open "http://localhost:9097" 2>/dev/null || xdg-open "http://localhost:9097"
 
-# Open the legacy Prometheus 2.x UI scraping the hotpath-meta exporter
-# (started with `docker compose up -d prometheus-legacy-meta`).
+# Open the legacy Prometheus 2.x UI scraping the hotpath-meta exporter.
 prometheus-legacy-meta:
     open "http://localhost:9096" 2>/dev/null || xdg-open "http://localhost:9096"
 
-# The TSDB lives in the containers' writable layer, so recreating them clears it.
 # Wipe the gathered Prometheus data (native-histogram and legacy instances).
 clean-prometheus:
     docker compose rm -sf prometheus prometheus-legacy
@@ -196,7 +182,6 @@ clean-prometheus-meta:
     docker compose up -d prometheus-meta prometheus-legacy-meta
 
 # Serve the mdbook docs locally with live reload (http://localhost:3000).
-# The production server + deploy live in the private hotpath-backend repo.
 docs:
     cd docs && mdbook serve --open
 
@@ -216,8 +201,7 @@ fetch-badges:
 
     echo "Badges saved to ${DIR}/"
 
-# Dependency order: each crate is published after every crate it depends on
-# (optional deps included, crates.io must already have them).
+# Publish in dependency order (optional deps included).
 cargo-publish:
     cargo publish -p hotpath-drain-meta
     cargo publish -p hotpath-macros-meta

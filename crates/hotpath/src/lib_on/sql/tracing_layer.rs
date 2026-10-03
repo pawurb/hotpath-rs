@@ -9,18 +9,11 @@
 //!         elapsed = <Duration>, elapsed_secs = <f64>
 //! ```
 //!
-//! This field schema is identical across sqlx 0.8 and 0.9, and the layer has no
-//! sqlx dependency of its own - it only reads `tracing` event fields - so a
-//! single layer works for both versions.
-//!
-//! [`HotpathSqlLayer`] observes these and forwards each one to
-//! [`send_sql_event`]. Because the event is emitted *after* completion with
-//! sqlx's own measured `elapsed`, we never time anything ourselves and there is
-//! no start/finish pairing.
-//!
-//! Unlike a pool wrapper, this captures transaction-internal and
-//! acquired-connection queries too (logging is at the statement level) and
-//! requires zero application type changes - the pool stays a `sqlx::SqlitePool`.
+//! The schema is identical across sqlx 0.8 and 0.9 and the layer only reads
+//! `tracing` fields, so one layer serves both. [`HotpathSqlLayer`] forwards
+//! each event to [`send_sql_event`] using sqlx's own `elapsed`, so there is no
+//! start/finish pairing. Unlike a pool wrapper, this also captures
+//! transaction-internal and acquired-connection queries.
 
 use std::sync::Arc;
 

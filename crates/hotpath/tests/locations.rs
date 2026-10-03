@@ -143,12 +143,8 @@ mod tests {
             "future source must stay file:line"
         );
 
-        // meta: environment info plus a source_root that maps relative
-        // location files to repo-relative paths. The child runs from this
-        // test's working directory (the crate dir), but source_root must
-        // reflect the build workspace root - the repo root here - not the
-        // runtime directory, so joining source_root and location.file yields
-        // a path that exists.
+        // source_root resolves against the build workspace root (the repo root here),
+        // not the child's cwd (the crate dir).
         let meta = report.meta;
         assert!(!meta.rustc.is_empty(), "rustc version");
         assert!(meta.os.contains('-'), "os is <os>-<arch>: {}", meta.os);

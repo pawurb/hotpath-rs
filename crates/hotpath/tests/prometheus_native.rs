@@ -225,7 +225,6 @@ pub mod tests {
                 );
             }
 
-            // sanity: counter family decodes with the expected call count
             let calls = families
                 .iter()
                 .find(|f| f.name.as_deref() == Some("hotpath_function_calls_total"))

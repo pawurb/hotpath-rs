@@ -341,7 +341,6 @@ pub mod tests {
             "Expected at least one debug entry in report"
         );
 
-        // Check gauge entries
         let gauge_entries: Vec<_> = entries
             .iter()
             .filter(|e| e["entry_type"].as_str() == Some("gauge"))
@@ -361,7 +360,6 @@ pub mod tests {
             gauge_keys
         );
 
-        // Check queue_size has the right update count (set + inc + dec = 3)
         let queue_size = gauge_entries
             .iter()
             .find(|e| e["expression"].as_str() == Some("queue_size"))
@@ -376,7 +374,6 @@ pub mod tests {
             "Expected queue_size value to be 12 (set 10, inc 5, dec 3)"
         );
 
-        // Check val entries
         let val_keys: Vec<&str> = entries
             .iter()
             .filter(|e| e["entry_type"].as_str() == Some("val"))
@@ -393,7 +390,6 @@ pub mod tests {
             val_keys
         );
 
-        // Check dbg entries
         let dbg_entries: Vec<_> = entries
             .iter()
             .filter(|e| e["entry_type"].as_str() == Some("dbg"))
@@ -403,7 +399,6 @@ pub mod tests {
             "Expected at least one dbg entry in report"
         );
 
-        // All entries should have non-empty source and log_count >= 1
         for entry in entries {
             assert!(
                 !entry["source"].as_str().unwrap_or("").is_empty(),

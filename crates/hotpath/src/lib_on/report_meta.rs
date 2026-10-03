@@ -80,25 +80,18 @@ fn checkout_git_root() -> Option<PathBuf> {
 }
 
 /// Where the policy file is looked up: the checkout's git root, else the git
-/// root above the working directory. The checkout is verified against the
-/// source locations the instrumentation registered, which a report may have
-/// none of (a guard built by hand around SQL, HTTP, server or thread
-/// profiling) or none that the working directory leads to (a nested
-/// workspace started from the repository root). That is a reason to withhold
-/// source links and the commit identity, not the policy: a run inside a
-/// repository is judged under that repository's policy file.
+/// root above the working directory. An unverified checkout (no registered
+/// source locations, or a nested workspace started from the repository root)
+/// withholds source links and the commit identity, not the policy.
 #[cfg(feature = "hotpath-cloud")]
 fn policy_root(checkout_git_root: Option<PathBuf>) -> Option<PathBuf> {
     checkout_git_root.or_else(|| find_git_root(&std::env::current_dir().ok()?))
 }
 
 /// The policy file of the checkout, as written; the client never parses it.
-/// Without one, a file that is there but cannot be sent included, the report
-/// is still written but its upload is refused: by `cloud::upload` before
-/// anything is sent, and by the server for a report posted by other means.
-/// A missing file is reported here only on a CI run that does not upload
-/// itself (the benchmark job of a relay), so that job's log says why the
-/// relay will fail; an upload run reports it once, as its outcome.
+/// Without one the report is still written but its upload is refused. A
+/// missing file is reported here only on a CI run that does not upload itself
+/// (a relay's benchmark job); an upload run reports it as its outcome.
 #[cfg(feature = "hotpath-cloud")]
 fn checkout_policy(
     git_root: Option<&Path>,
@@ -222,7 +215,7 @@ fn resolve_checkout() -> Option<ResolvedCheckout> {
     })
 }
 
-/// Whole seconds, so the wire value stays `2026-08-27T10:15:42Z` as before.
+/// Whole seconds, so the wire value is `2026-08-27T10:15:42Z`.
 fn now_whole_seconds() -> OffsetDateTime {
     let now = OffsetDateTime::now_utc();
     now.replace_nanosecond(0).unwrap_or(now)

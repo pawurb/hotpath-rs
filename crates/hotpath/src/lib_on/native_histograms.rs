@@ -253,10 +253,8 @@ mod tests {
 
     #[test]
     fn boundary_exact_value_lands_in_its_bucket() {
-        // The regression from deriving classic counts out of native buckets: a
-        // 250ns observation sits in the native bucket ending at ~260.7ns, so a
-        // native-derived le="250ns" bucket reported 0. Direct hdr counting
-        // must report 1.
+        // A 250ns observation sits in the native bucket ending at ~260.7ns, so
+        // a native-derived le="250ns" bucket would report 0.
         let mut hist = Histogram::<u64>::new_with_bounds(1, 1_000_000_000_000, 3).unwrap();
         hist.record(250).unwrap();
         assert_eq!(cumulative_bucket_counts(&hist, &[250, 1_000]), vec![1, 1]);

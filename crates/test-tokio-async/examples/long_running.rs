@@ -134,7 +134,6 @@ async fn slow_async_allocator() -> Vec<Vec<u64>> {
 async fn cross_thread_worker() -> u64 {
     let mut total = 0u64;
 
-    // Many yield points to maximize chance of thread migration
     for i in 0..20 {
         tokio::task::yield_now().await;
         tokio::task::yield_now().await;
@@ -152,11 +151,9 @@ async fn heavy_async_work() -> Vec<u64> {
     let mut results = Vec::new();
 
     for _ in 0..10 {
-        // CPU work
         let data: Vec<u64> = (0..100).map(|x| x * 2).collect();
         results.extend(data.iter().take(5));
 
-        // Multiple yields per iteration
         tokio::task::yield_now().await;
         tokio::task::yield_now().await;
         sleep(Duration::from_micros(1)).await;
@@ -183,24 +180,16 @@ fn process_data(arrays: Vec<Vec<u64>>) -> u64 {
     total_sum
 }
 
-// ============================================================================
-// Thread State Simulation Functions
-// These functions demonstrate various thread states visible in the TUI
-// ============================================================================
-
 /// Thread that waits on a mutex - shows "Sleeping" state while waiting for lock
 fn mutex_contention_worker(mutex: Arc<Mutex<u64>>, id: u32) {
     std::thread::Builder::new()
         .name(format!("mutex-worker-{}", id))
         .spawn(move || {
             for _ in 0..100 {
-                // Acquire lock and hold it briefly
                 let mut guard = mutex.lock().unwrap();
                 *guard = guard.wrapping_add(1);
-                // Do some work while holding the lock
                 std::thread::sleep(Duration::from_millis(50));
                 drop(guard);
-                // Small gap before next acquisition
                 std::thread::sleep(Duration::from_millis(10));
             }
         })
@@ -211,20 +200,15 @@ fn mutex_contention_worker(mutex: Arc<Mutex<u64>>, id: u32) {
 fn parked_thread_worker(unpark_signal: Arc<(Mutex<bool>, Condvar)>) {
     std::thread::Builder::new()
         .name("parked-thread".into())
-        .spawn(move || {
-            loop {
-                // Park the thread - it will show as "Sleeping" state
-                std::thread::park();
+        .spawn(move || loop {
+            std::thread::park();
 
-                // Check if we should exit
-                let (lock, _) = &*unpark_signal;
-                if *lock.lock().unwrap() {
-                    break;
-                }
-
-                // Do a tiny bit of work then park again
-                std::hint::black_box(42u64);
+            let (lock, _) = &*unpark_signal;
+            if *lock.lock().unwrap() {
+                break;
             }
+
+            std::hint::black_box(42u64);
         })
         .expect("Failed to spawn parked thread");
 }
@@ -236,14 +220,12 @@ fn condvar_waiter_worker(condvar_pair: Arc<(Mutex<bool>, Condvar)>, id: u32) {
         .spawn(move || {
             let (lock, cvar) = &*condvar_pair;
             for _ in 0..50 {
-                // Wait on condvar - thread will be in "Sleeping" state
                 let mut ready = lock.lock().unwrap();
                 while !*ready {
                     ready = cvar.wait(ready).unwrap();
                 }
                 *ready = false;
 
-                // Do some work
                 std::hint::black_box(123u64);
                 std::thread::sleep(Duration::from_millis(20));
             }
@@ -275,11 +257,9 @@ fn cpu_intensive_worker(stop_flag: Arc<Mutex<bool>>) {
         .spawn(move || {
             let mut counter = 0u64;
             loop {
-                // Check stop flag periodically
                 if counter.is_multiple_of(1_000_000) && *stop_flag.lock().unwrap() {
                     break;
                 }
-                // CPU-intensive work - should show as "Running"
                 counter = counter.wrapping_add(1);
                 std::hint::black_box(counter);
             }
@@ -302,7 +282,6 @@ fn blocking_io_worker(stop_flag: Arc<Mutex<bool>>) {
                     break;
                 }
 
-                // Write to file (may briefly show as blocked during I/O)
                 let data: Vec<u8> = (0..4096).map(|x| (x % 256) as u8).collect();
                 if std::fs::write(&file_path, &data).is_ok() {
                     // Sync to disk - more likely to show blocked state
@@ -311,7 +290,6 @@ fn blocking_io_worker(stop_flag: Arc<Mutex<bool>>) {
                     }
                 }
 
-                // Read back
                 let _ = std::fs::read(&file_path);
 
                 if i % 10 == 0 {
@@ -319,7 +297,6 @@ fn blocking_io_worker(stop_flag: Arc<Mutex<bool>>) {
                 }
             }
 
-            // Cleanup
             let _ = std::fs::remove_file(&file_path);
         })
         .expect("Failed to spawn blocking I/O thread");
@@ -354,10 +331,6 @@ fn alternating_state_worker(stop_flag: Arc<Mutex<bool>>) {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting 60-second profiling test...");
     println!("Spawning threads with various states for TUI demonstration...");
-
-    // =========================================================================
-    // Spawn thread state demonstration threads
-    // =========================================================================
 
     // Shared mutex for contention demo - multiple threads will compete for this
     let contended_mutex = Arc::new(Mutex::new(0u64));
@@ -415,11 +388,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let slow_stream = hotpath::stream!(stream::iter(0u64..), label = "slow_status_stream");
 
-    // Pin the streams for consumption
     let mut fast_stream = Box::pin(fast_stream);
     let mut slow_stream = Box::pin(slow_stream);
 
-    // Spawn fast channel consumer
     let fast_consumer = tokio::spawn(async move {
         let mut count = 0u64;
         while let Some(value) = fast_rx.recv().await {
@@ -430,7 +401,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Spawn slow channel consumer
     let slow_consumer = std::thread::spawn(move || {
         while let Some(msg) = slow_rx.blocking_recv() {
             std::hint::black_box(msg.len());
@@ -454,30 +424,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut rng = rand::thread_rng();
 
-        // Send data to fast channel frequently
         let _ = fast_tx.send(rng.gen()).await;
 
-        // Send data to slow channel occasionally
         if iteration % 5 == 0 {
             let _ = slow_tx
                 .send(format!("Event at iteration {}", iteration))
                 .await;
         }
 
-        // Consume from fast stream frequently
         if let Some(value) = fast_stream.next().await {
             std::hint::black_box(value);
         }
 
-        // Consume from slow stream occasionally
         if iteration % 7 == 0 {
             if let Some(value) = slow_stream.next().await {
                 std::hint::black_box(value);
             }
         }
 
-        // Call allocator functions which now randomly allocate 1-10 arrays each
-        // Run some sync functions on separate threads to show different TIDs
+        // Sync allocators run on blocking threads to show different TIDs
         let data1_task = tokio::task::spawn_blocking(fast_sync_allocator);
         let data2_task = tokio::task::spawn_blocking(medium_sync_allocator);
 
@@ -499,7 +464,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = data5_task.await;
         }
 
-        // Call #[future_fn] instrumented functions
         let future_data = future_fn_allocator().await;
         std::hint::black_box(&future_data);
 
@@ -508,8 +472,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::hint::black_box(logged_result);
         }
 
-        // Inline future! macro examples - instrument ad-hoc async blocks
-        // Basic inline future with logging
+        // Inline future! on ad-hoc async blocks
         let inline_result = future!(
             async {
                 sleep(Duration::from_micros(rng.gen_range(10..30))).await;
@@ -520,7 +483,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
         std::hint::black_box(inline_result);
 
-        // Another inline future with logging enabled
         if iteration % 5 == 0 {
             let logged_inline = future!(
                 async {
@@ -537,8 +499,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::hint::black_box(logged_inline);
         }
 
-        // Call cross-thread async functions (may migrate between worker threads)
-        // Spawn them as separate tasks to increase migration likelihood
+        // Spawned as separate tasks to increase thread migration likelihood
         let cross1 = tokio::spawn(cross_thread_worker());
         let cross2 = tokio::spawn(cross_thread_worker());
         let cross3 = tokio::spawn(heavy_async_work());
@@ -572,16 +533,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Close channels
     drop(fast_tx);
     drop(slow_tx);
 
-    // Wait for consumers to finish
     let _ = fast_consumer.await;
 
     slow_consumer.join().unwrap();
 
-    // Signal demo threads to stop
     println!("Signaling demo threads to stop...");
     *cpu_stop_flag.lock().unwrap() = true;
     *io_stop_flag.lock().unwrap() = true;
@@ -592,8 +550,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (lock, _) = &*parked_signal;
         *lock.lock().unwrap() = true;
     }
-    // Note: The parked thread and other demo threads will eventually exit
-    // We don't join them here to avoid blocking the main thread
+    // Demo threads are not joined, to avoid blocking the main thread
 
     // Give threads a moment to clean up
     std::thread::sleep(Duration::from_millis(100));

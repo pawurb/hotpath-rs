@@ -1,34 +1,19 @@
 //! Uploads the JSON report to hotpath.rs from GitHub Actions, authenticated
-//! with the job's OIDC token. Enabled at runtime by `HOTPATH_UPLOAD` (`UploadMode`); the
-//! benchmark name comes from `HOTPATH_BENCHMARK` (default `default`, validated
-//! by `json::cloud_api::validate_benchmark_name` - invalid names skip the upload). The target
-//! base URL is `https://hotpath.rs` unless `HOTPATH_API_URL` overrides it.
+//! with the job's OIDC token. Configured by `HOTPATH_UPLOAD` (`UploadMode`),
+//! `HOTPATH_BENCHMARK` (default `default`; an invalid name skips the upload),
+//! `HOTPATH_API_URL` (default `https://hotpath.rs`) and
+//! `HOTPATH_UPLOAD_RESPONSE_PATH` (response body written for custom rules).
 //!
 //! Runs synchronously from the guard's `Drop`, after the runtime may already
 //! be gone, so it never spawns tasks.
 //!
-//! Every run ends in one `Outcome`, rendered by `render` into one line at one
-//! level and emitted by `emit`: always to stderr as `hotpath: <message>`, and
-//! under GitHub Actions once more as a `::notice::` / `::warning::` /
-//! `::error::` workflow command on stdout plus a block appended to
-//! `GITHUB_STEP_SUMMARY`. The server owns the text: a rejection prints the
-//! `error` sentence of the `ApiError` body (plus status and request id),
-//! a failed comment prints `comment.error` and a skipped one
-//! `comment.skipped`; the client branches on
-//! `verdict.regressed` and on nothing else the server says. A failure is a
-//! warning under `HOTPATH_UPLOAD=enabled` and never changes the exit code;
-//! `HOTPATH_UPLOAD=fail-on-error` turns it into an error and `upload` returns
-//! `true`, on which the guard exits 1 once the local report is written. Skips
-//! never fail, whatever the mode.
-//!
-//! The response carries the server's verdict on the report, judged under the
-//! policy the report carried, which the step summary links. A report without
-//! a policy is never sent: the upload fails before a token is minted. An
-//! upload whose policy is not valid is refused like any other rejected upload.
-//! `HOTPATH_UPLOAD=fail-on-regression` also turns a regressed verdict into an
-//! error through the same exit path, and `HOTPATH_UPLOAD_RESPONSE_PATH` writes
-//! the response body to a file for custom rules. A failed or skipped upload
-//! leaves no response file.
+//! Every run ends in one `Outcome`, rendered into one line at one level: to
+//! stderr, and under GitHub Actions also as a workflow command plus a
+//! `GITHUB_STEP_SUMMARY` block. The server owns the message text; the client
+//! branches only on `verdict.regressed`. A failed upload exits 1 from
+//! `fail-on-error` up, a regressed verdict only under `fail-on-regression`,
+//! both once the local report is written; skips never fail. A report without
+//! a policy fails before a token is minted.
 //!
 //! No retries yet: a retry is only safe once the server insert is idempotent
 //! per run, otherwise a timed-out upload that was in fact stored would be
@@ -131,8 +116,7 @@ pub(crate) fn benchmark_name() -> Result<String, String> {
     if name.is_empty() {
         return Ok("default".to_string());
     }
-    // Fails fast before a token is minted and the report serialized; the
-    // server enforces the same rule.
+    // Fails fast before a token is minted and the report serialized.
     validate_benchmark_name(&name)
         .map_err(|rule| format!("invalid HOTPATH_BENCHMARK {name:?}: {rule}"))?;
     Ok(name)
@@ -248,8 +232,7 @@ fn run(report: &JsonReport) -> Outcome {
         Ok(name) => name,
         Err(msg) => return Outcome::Skipped(msg),
     };
-    // Refused before a token is minted; the server refuses it too
-    // (`ApiErrorCode::PolicyRequired`), for a payload built by other means.
+    // Refused before a token is minted.
     if report.meta.policy.is_none() {
         return Outcome::Failed {
             message: missing_policy_message(Some(&benchmark)),
@@ -575,8 +558,7 @@ pub(crate) fn escape_annotation(message: &str) -> String {
         .replace('\n', "%0A")
 }
 
-/// Workflow commands are read from stdout, the human line goes to stderr as
-/// before.
+/// Workflow commands are read from stdout, the human line goes to stderr.
 fn emit(rendered: Rendered, env: &Env) {
     eprintln!("hotpath: {}", rendered.message);
     if env.actions {
@@ -786,7 +768,6 @@ mod tests {
             Outcome::Uploaded { .. }
         ));
 
-        // A body without a verdict is never a pass.
         let no_verdict = r#"{"id":"r1","repository":"a/b","benchmark":"meta","dashboard_url":"https://hotpath.rs/d"}"#;
         assert_eq!(
             interpret(201, None, no_verdict.into()),
@@ -811,7 +792,6 @@ mod tests {
             }
         );
 
-        // A success status whose body cannot be read is a failure that says "probably stored".
         assert_eq!(
             interpret(201, Some("abc".into()), r#"{"id":"r1","repo"#.into()),
             Outcome::Failed {

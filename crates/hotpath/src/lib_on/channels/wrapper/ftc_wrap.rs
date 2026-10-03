@@ -10,8 +10,7 @@
 //! the consumer's matching `-1`. Pushes never park (`poll_ready` does the waiting), so no
 //! cancellation guard is needed. Exact for a single producer; with concurrent cloned
 //! senders another sender's pre-push `+1` can land in a snapshot, so depth and high-water
-//! marks may transiently read one higher per in-flight send - same tradeoff as the tokio
-//! wrapper.
+//! marks may transiently read one higher per in-flight send.
 //!
 //! The inner channel carries `(msg_id, send_ts, T)`. Monotonic `msg_id` pairs a send with
 //! its matching receive under multiple producers; `send_ts` is stamped before publishing,

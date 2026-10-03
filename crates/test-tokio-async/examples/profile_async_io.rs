@@ -17,7 +17,7 @@ use futures_util::future::join_all;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-const FILE_SIZE: usize = 1000 * 1024 * 1024; // 10 MB
+const FILE_SIZE: usize = 1000 * 1024 * 1024;
 const CHUNK_SIZE: usize = 8 * 1024; // 8 KB
 const NUM_FILES: usize = 5;
 

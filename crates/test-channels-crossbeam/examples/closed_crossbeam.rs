@@ -32,7 +32,6 @@ fn main() {
         Err(_) => println!("[Closed Sender] Channel closed"),
     }
 
-    // Drop receiver immediately
     drop(rx2);
 
     // Try to send to closed receiver
@@ -41,7 +40,6 @@ fn main() {
         Err(_) => println!("[Closed Receiver] Channel closed"),
     }
 
-    // Drop unbounded sender
     drop(tx3);
 
     // Try to receive from closed unbounded

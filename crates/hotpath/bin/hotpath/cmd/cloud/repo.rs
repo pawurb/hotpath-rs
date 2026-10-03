@@ -1,8 +1,5 @@
-//! The `--repo owner/name` and `--benchmark NAME` values of the `hotpath
-//! cloud` commands that target one repository or benchmark, validated before
-//! they are put in a request path. `--repo` follows GitHub's own character
-//! set; there is no fallback to the git remote: the caller names the
-//! repository, `hotpath cloud repos` lists the choices.
+//! `--repo owner/name` and `--benchmark NAME` values, validated before they
+//! go into a request path. `--repo` has no fallback to the git remote.
 
 use hotpath::json::cloud_api::validate_benchmark_name;
 

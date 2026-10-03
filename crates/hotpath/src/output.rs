@@ -285,13 +285,9 @@ pub fn shorten_function_name(function_name: &str) -> String {
     }
 }
 
-/// A single log entry for a function invocation.
-///
-/// - For timing mode: `value` is duration in nanoseconds, `alloc_count` is None
-/// - For alloc mode with valid data: `value` is bytes allocated, `alloc_count` is allocation count
-/// - For alloc mode with invalid data: `value` and `alloc_count` are None (cross-thread or unsupported async)
-/// - `tid` is None if cross-thread execution was detected
-/// - `result` contains the Debug representation of the return value when `log = true`
+/// A single log entry for a function invocation. In alloc mode `value` and
+/// `alloc_count` are None when the data is invalid (cross-thread or
+/// unsupported async).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub(crate) struct FunctionLog {

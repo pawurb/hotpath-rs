@@ -3,11 +3,8 @@
 
 use std::time::{Duration, Instant};
 
-// Single-threaded stress test comparing mutex instrumentation overhead in one run: an
-// uninstrumented baseline (raw mutex) and the `hotpath::mutex!` instrumented version. Each
-// is hammered in a tight uncontended lock loop, so the delta vs baseline isolates the
-// per-lock instrumentation cost. Run with `--features hotpath` (without it the macro is a
-// no-op and both modes are the raw mutex). Iteration count via `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: raw mutex vs `hotpath::mutex!` in a tight uncontended lock loop.
+// Without `--features hotpath` both modes are raw. Iterations via `HOTPATH_BENCH_RUNS`.
 fn main() {
     let _guard = hotpath::HotpathGuardBuilder::new("main")
         .sections(vec![hotpath::Section::Mutexes])

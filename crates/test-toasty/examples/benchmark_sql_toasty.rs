@@ -5,13 +5,8 @@ use hotpath::{HotpathGuardBuilder, Section};
 use std::time::{Duration, Instant};
 use tracing_subscriber::prelude::*;
 
-// Single-threaded stress test comparing Toasty SQL instrumentation overhead in one run:
-// an uninstrumented baseline (no tracing subscriber installed) and the
-// `hotpath::toasty_tracing_layer()` instrumented version, each hammering the same point
-// lookup against an in-memory SQLite database. The delta vs baseline isolates the
-// per-query cost of tracing dispatch, normalization keying, and event enqueue. Run with
-// `--features hotpath` (without it the layer is a no-op). Iteration count via
-// `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: no tracing subscriber vs `hotpath::toasty_tracing_layer()`, both running
+// the same in-memory SQLite point lookup. Iterations via `HOTPATH_BENCH_RUNS`.
 
 #[derive(Debug, toasty::Model)]
 struct User {

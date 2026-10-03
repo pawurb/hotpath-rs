@@ -1,16 +1,10 @@
-//! `hotpath cloud validate-policy`: asks the server whether one policy file
-//! parses as a policy, before a run is judged under it. Without `--file` the
-//! file is the one `hotpath::json::policy_file::lookup` picks, the lookup the
-//! upload uses, so this command never approves a file the upload would not
-//! send.
-//!
-//! The document is sent as written and never parsed here: the server's
-//! parser is the only judge. What the client can tell without it (a file
-//! that is unreadable, not UTF-8, blank, too large or outside the
-//! repository) is reported as a problem of that file and costs no request.
-//! Every argument is validated and the file read before the request. The
-//! route is public, so the request is anonymous: no token is needed and none
-//! is sent.
+//! `hotpath cloud validate-policy`: asks the server whether a policy file
+//! parses. Without `--file` the file is the one
+//! `hotpath::json::policy_file::lookup` picks, the same lookup the upload uses.
+//! The document is sent as written and never parsed here: the server's parser
+//! is the only judge. Local problems (unreadable, not UTF-8, blank, too large,
+//! outside the repository) are reported without a request. The route is
+//! public, so the request is anonymous.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -82,7 +76,6 @@ impl Candidate {
 pub(crate) fn validate(output: &Output, args: ValidatePolicyArgs) -> Result<ExitCode, CliError> {
     let candidate = candidate(&args)?;
 
-    // A file refused here costs no request.
     let problems = match candidate.source {
         Ok(source) => server_problems(&Client::anonymous(), source)?,
         Err(unusable) => vec![PolicyProblem {
@@ -151,10 +144,9 @@ fn not_a_repository(cwd: &Path) -> String {
     )
 }
 
-/// What the server finds wrong with `source`, nothing when it is a policy.
-/// The 200 alone says it is: its body is not read.
-/// A refused document is an answer about that file; anything else the server
-/// or the network does is a failure of the command.
+/// What the server finds wrong with `source`, empty when it is a policy (the
+/// 200 body is not read). Only an `InvalidPolicy` rejection is an answer;
+/// anything else is a command failure.
 fn server_problems(client: &Client, source: String) -> Result<Vec<PolicyProblem>, CliError> {
     match client.post::<_, IgnoredAny>(VALIDATE_PATH, &PolicyValidation { source }) {
         Ok(_) => Ok(Vec::new()),

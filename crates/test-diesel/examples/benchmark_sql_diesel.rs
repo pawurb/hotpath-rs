@@ -6,14 +6,9 @@ use diesel::sql_types::Integer;
 use hotpath::{HotpathGuardBuilder, Section};
 use std::time::{Duration, Instant};
 
-// Single-threaded stress test comparing Diesel SQL instrumentation overhead in one run:
-// an uninstrumented baseline (connection established before the instrumentation install,
-// so it keeps diesel's default noop instrumentation) and the
-// `hotpath::instrument_diesel_sql()` instrumented version, each hammering the same point
-// lookup against its own in-memory SQLite database. The delta vs baseline isolates the
-// per-query cost of the instrumentation callback, normalization keying, and event
-// enqueue. Run with `--features hotpath` (without it the install is a no-op). Iteration
-// count via `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: a connection established before `hotpath::instrument_diesel_sql()`
+// (keeps diesel's noop instrumentation) vs one established after, both running the same
+// in-memory SQLite point lookup. Iterations via `HOTPATH_BENCH_RUNS`.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runs = bench_runs();
 

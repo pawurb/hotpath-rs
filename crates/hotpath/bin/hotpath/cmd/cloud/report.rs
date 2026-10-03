@@ -1,11 +1,7 @@
-//! `hotpath cloud report`: one stored report of a repository's benchmark,
-//! selected by pull request, commit or id, with or without its payload. Also
-//! the polling primitive of the agent loop: "has CI uploaded a report for my
-//! commit yet" is exit 0 here instead of exit 1 with the server's `not_found`.
-//!
-//! Every argument is validated before the client is built, so a bad value is
-//! reported without a token and never costs a request. The selector is shared
-//! with `diff` (`selector.rs`).
+//! `hotpath cloud report`: one stored report, selected by pull request, commit
+//! or id (`selector.rs`), with or without its payload. Also the agent loop's
+//! polling primitive: "has CI uploaded a report for my commit yet" is exit 0
+//! here instead of exit 1 with the server's `not_found`.
 
 use std::process::ExitCode;
 

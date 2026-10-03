@@ -12,8 +12,7 @@ pub mod tests {
         }
     }
 
-    // The report is followed by trailing log lines, so we locate the report's
-    // opening brace and read just the first JSON value from that point.
+    // Trailing log lines follow the report, so parse only the first JSON value.
     fn parse_channels(stdout: &str) -> JsonChannelsList {
         let json_start = stdout.find('{').expect("No JSON report in output");
         let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
@@ -68,9 +67,8 @@ pub mod tests {
         assert_eq!(entry.received_count, 10, "summed across instances");
         assert_eq!(entry.iter, 0, "aggregated entries carry no iter suffix");
 
-        // Rate sanity: throughput is total count over elapsed time since the
-        // call site's first message. That window is at most the report's total
-        // elapsed time, so the rate is bounded below by count / total elapsed.
+        // The rate window is at most the report's total elapsed time, so the rate
+        // is bounded below by count / total elapsed.
         let rate = entry
             .sent_per_sec
             .expect("aggregated entry must report a rate");
@@ -632,12 +630,9 @@ pub mod tests {
         );
     }
 
-    // A producer racing a consumer on an unbounded channel must never underflow
-    // the depth counter (counting happens before each publish). `run_example` already
-    // asserts the process exited successfully - in debug builds an underflow would
-    // panic the consumer task and fail that check. Here we additionally assert the
-    // counter never wrapped: a release-build underflow would surface as an absurd
-    // queue length, so `received <= sent` and a bounded `max_queue_size` confirm sanity.
+    // A producer racing a consumer must never underflow the depth counter: debug
+    // builds would panic the consumer (caught by `run_example`), release builds
+    // would wrap to an absurd queue length.
     //
     // cargo run -p test-channels-tokio --example wrap_concurrent_tokio --features hotpath
     #[test]
@@ -684,11 +679,9 @@ pub mod tests {
         );
     }
 
-    // Weak senders: the example asserts the downgrade/upgrade lifecycle in-process
-    // (upgrade fails after all strong senders drop, wrapper counts match the
-    // receiver-side counts); here we assert the report sees the upgraded sender's
-    // traffic and exactly one Closed transition (state is terminal-closed, counters
-    // intact).
+    // Weak senders: the example asserts the downgrade/upgrade lifecycle in-process;
+    // here the report must see the upgraded sender's traffic and exactly one Closed
+    // transition.
     //
     // cargo run -p test-channels-tokio --example weak_tokio --features hotpath
     #[test]

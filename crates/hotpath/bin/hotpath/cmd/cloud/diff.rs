@@ -1,26 +1,14 @@
-//! `hotpath cloud diff`: one stored report against the baseline the server
-//! recorded for it at upload, judged under the benchmark's current policy,
-//! the same judgement the PR comment shows but as structured JSON. The head
-//! is picked like `report` picks a report (`selector.rs`). Sections carry
-//! only the PR comment's findings, each row cut to the cells that explain
-//! it, unless `--full` asks for every row, every cell and the column legend
-//! (`rows=all`), and `budgets.findings` only the broken budgets.
-//! `--advisory` is the step between: the same cut, with the findings of the
-//! unjudged families listed too.
+//! `hotpath cloud diff`: one stored report against its upload-time baseline,
+//! judged under the benchmark's current policy, as JSON. The head is picked
+//! like `report` (`selector.rs`). Without flags only the PR comment's findings
+//! are sent; `--full` (`rows=all`) asks for every row and cell, `--advisory`
+//! also lists the unjudged families' findings.
 //!
-//! The policy's budgets are judged on the head alone, so the verdict is a
-//! field of the body, not of the comparison, and covers both. Exit 0 means
-//! exactly "judged and nothing failed" (`verdict.judged && !verdict.regressed`).
-//! Exit 1 is everything else: a regression, a broken budget, nothing judged
-//! (an unreadable head, or no comparable baseline under a policy without
-//! budgets) and every error. A missing or unreadable baseline does not fail a
-//! report whose budgets hold. Which kind of failure it was is in the output,
-//! not the code: a server answer prints the diff body on stdout, as received,
-//! with stderr empty, as on exit 0, while an error prints one JSON document on
-//! stderr with stdout empty. The exit code is read from the body's top-level
-//! `verdict` (`DiffVerdict`), never from the HTTP status, which is 200 for
-//! every result. The rest of the body is the server's to shape: this client
-//! prints it without reading it.
+//! Exit 0 means exactly "judged and nothing failed"
+//! (`verdict.judged && !verdict.regressed`), exit 1 is everything else. A
+//! missing or unreadable baseline does not fail a report whose budgets hold.
+//! The exit code is read from the body's top-level `verdict` (`DiffVerdict`),
+//! never from the HTTP status, which is 200 for every result.
 
 use std::process::ExitCode;
 

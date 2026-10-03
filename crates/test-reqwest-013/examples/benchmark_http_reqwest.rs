@@ -8,14 +8,9 @@ use std::time::{Duration, Instant};
 // enabled, raw reqwest::Client otherwise - same written type either way.
 type Client = hotpath::wrap::reqwest::Client;
 
-// Single-threaded stress test comparing HTTP client instrumentation overhead in one run:
-// an uninstrumented baseline (raw reqwest client) and the `hotpath::http!` wrapped
-// version, each hammering the same endpoint on a local tiny_http server over a kept-alive
-// loopback connection. The delta vs baseline isolates the per-request cost of the
-// middleware hop, endpoint normalization, and event enqueue. Run with
-// `--features hotpath` (without it the macro is a no-op and both modes are the raw
-// client). The full loopback round trip dominates each op, so deltas below ~1µs are
-// within run-to-run noise. Iteration count via `HOTPATH_BENCH_RUNS`.
+// Overhead benchmark: raw reqwest client vs `hotpath::http!` wrapped, both hitting a local
+// tiny_http server over kept-alive loopback. The round trip dominates, so deltas below ~1µs
+// are noise. Iterations via `HOTPATH_BENCH_RUNS`.
 
 fn start_server() -> u16 {
     let server = tiny_http::Server::http("127.0.0.1:0").expect("bind test server");

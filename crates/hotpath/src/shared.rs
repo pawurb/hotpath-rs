@@ -181,9 +181,7 @@ impl SectionsMode {
     }
 }
 
-/// Output format for profiling reports.
-///
-/// This enum specifies how profiling results should be displayed when the program exits.
+/// Output format for the profiling report printed when the program exits.
 ///
 /// # Variants
 ///
