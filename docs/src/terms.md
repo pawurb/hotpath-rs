@@ -8,8 +8,6 @@ Individual users' personally identifiable data stored on our servers consists of
 
 Reports of a repository marked as public on the dashboard are readable by anyone with the link, without logging in. Reports of any other repository are readable only by GitHub users with push access to it.
 
-If you choose to join the waitlist, we collect your GitHub login and email address to manage the hotpath Cloud waitlist and notify you about the launch.
-
 Network access logs with IP addresses of the website visitors are stored for maintenance purposes. They are permanently removed after 30 days.
 
 Web connections to the application servers are encrypted via SSL, which means that all data in transit is encrypted. The backend database uses encrypted storage.
