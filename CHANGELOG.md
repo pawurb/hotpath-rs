@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.3] - 2026-10-03
+
+### 🚀 Features
+
+- Add skipped reason to cloud upload CommentOutcome
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Update init skill
+
+- Update relay workflow
+
+- Deprecate hotpath-utils
+
+- Release 0.28.3
+
+
 ## [0.28.2] - 2026-10-01
 
 ### 🐛 Bug Fixes
