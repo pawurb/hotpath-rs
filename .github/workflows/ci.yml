@@ -66,9 +66,6 @@ jobs:
       - name: Check meta TUI build
         run: |
           cargo check --features='tui,hotpath,hotpath-meta,hotpath-alloc-meta,hotpath-mcp,hotpath-mcp-meta,dev' --bin hotpath
-      - name: Check utils build
-        run: |
-          cargo check -p hotpath --bin hotpath-utils --features=utils
       - name: Check cloud CLI build
         run: |
           cargo check -p hotpath --bin hotpath --features=cloud
@@ -78,9 +75,6 @@ jobs:
       - name: Compile tests (tui only)
         run: |
           cargo test -p hotpath --features tui --no-run
-      - name: Compile tests (utils only)
-        run: |
-          cargo test -p hotpath --features utils --no-run
       - name: Run CLI tests
         run: |
           cargo test -p hotpath --bin hotpath --features=tui
