@@ -4,7 +4,7 @@
 
 `hotpath Cloud` is a backend service for the open-source `hotpath-rs` profiler. It provides an automated feedback loop for performance signals collected from your Rust application, helping both developers and coding agents detect regressions before they are merged.
 
-The [hotpath-rs GitHub App](https://github.com/apps/hotpath-rs) asks for minimal permissions: **no access to your code**, only write access to pull requests to post comments. The only data it gets from your CI is the benchmark reports your workflow uploads. See [privacy policy](terms.md) for details.
+To get started, log in at [hotpath.rs/app](https://hotpath.rs/app). The hotpath-rs GitHub App asks for minimal permissions: **no access to your code**, only write access to pull requests to post comments. The only data it gets from your CI is the benchmark reports your workflow uploads. See [privacy policy](terms.md) for details.
 
 The [GitHub Actions integration](ci_integration) compares benchmark results against a baseline and posts a PR comment whenever a significant regression or improvement is detected:
 
