@@ -297,10 +297,16 @@ pub(crate) fn get_threads_raw() -> Option<ThreadsRaw> {
     #[cfg(feature = "hotpath-alloc")]
     {
         use crate::lib_on::functions::alloc::core::{
-            get_registered_thread_stats, get_thread_alloc_stats, is_orphaned_tid,
+            get_registered_thread_name, get_registered_thread_stats, get_thread_alloc_stats,
+            is_orphaned_tid,
         };
 
         for m in &mut current_metrics {
+            // A sample can catch a thread before std names it, and a short
+            // run may never resample it - the registry name is authoritative.
+            if let Some(name) = get_registered_thread_name(m.os_tid) {
+                m.name = name;
+            }
             if let Some((alloc, dealloc)) = get_thread_alloc_stats(m.os_tid) {
                 m.alloc_bytes = Some(alloc);
                 m.dealloc_bytes = Some(dealloc);
