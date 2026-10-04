@@ -1,0 +1,37 @@
+name: Cloud limit benchmark
+
+on:
+  pull_request:
+
+# Uploads a tiny report to 10 separate series to check the per-repo benchmark
+# limit: uploads past the limit should be refused with the limit message.
+jobs:
+  benchmark:
+    name: cloud limit benchmark (${{ matrix.benchmark }})
+    # Fork pull requests get no `id-token: write`, so there is nothing to upload.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        benchmark: [test1, test2, test3, test4, test5, test6, test7, test8, test9, test10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run limit benchmark and upload report
+        env:
+          HOTPATH_UPLOAD: fail-on-error
+          HOTPATH_BENCHMARK: ${{ matrix.benchmark }}
+          HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
+          HOTPATH_EXCLUDE_WRAPPER: "true"
+          HOTPATH_OUTPUT_FORMAT: none
+        run: |
+          set -o pipefail
+          cargo run -q --release -p test-alloc --example benchmark_limit \
+            --features hotpath,hotpath-alloc,hotpath-cloud 2>&1 | tee run.log
+          grep -q '^hotpath: uploaded report ' run.log
