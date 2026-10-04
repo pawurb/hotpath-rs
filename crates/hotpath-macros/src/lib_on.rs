@@ -479,8 +479,10 @@ pub fn unique_label_impl(input: TokenStream) -> TokenStream {
 /// every other byte, `_` included, becomes `_xx` hex, so the encoding stays
 /// injective. `<scope>` hashes the crate being compiled, so the same label in
 /// two crates of one dependency graph never clashes at link time. A package's
-/// lib and bin share `CARGO_CRATE_NAME`, hence `CARGO_BIN_NAME`; outside
-/// Cargo the scope is empty and only the per-crate check remains.
+/// lib can share `CARGO_CRATE_NAME` with its bin (told apart by
+/// `CARGO_BIN_NAME`) or a same-named integration test (`CARGO_TARGET_TMPDIR`
+/// is only set for those and benches). Doctests still share the lib's scope.
+/// Outside Cargo the scope is empty and only the per-crate check remains.
 fn unique_label_static(kind: &str, label: &LitStr) -> proc_macro2::TokenStream {
     use std::fmt::Write;
 
@@ -499,7 +501,12 @@ fn unique_label_static(kind: &str, label: &LitStr) -> proc_macro2::TokenStream {
     }
 
     let mut scope = Vec::new();
-    for var in ["CARGO_CRATE_NAME", "CARGO_PKG_VERSION", "CARGO_BIN_NAME"] {
+    for var in [
+        "CARGO_CRATE_NAME",
+        "CARGO_PKG_VERSION",
+        "CARGO_BIN_NAME",
+        "CARGO_TARGET_TMPDIR",
+    ] {
         scope.extend(std::env::var(var).unwrap_or_default().into_bytes());
         scope.push(0);
     }

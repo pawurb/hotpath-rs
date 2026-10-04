@@ -52,4 +52,22 @@ mod tests {
     fn test_same_label_in_lib_and_bin_of_one_package_links() {
         run_dep_target(&["--bin", "test-cdylib-dep"]);
     }
+
+    // cargo test -p test-cdylib-dep --features hotpath --test test_cdylib_dep
+    #[test]
+    fn test_same_label_in_lib_and_same_named_integration_test_links() {
+        let output = Command::new("cargo")
+            .args([
+                "test",
+                "-p",
+                "test-cdylib-dep",
+                "--features",
+                "hotpath",
+                "--test",
+                "test_cdylib_dep",
+            ])
+            .output()
+            .expect("Failed to execute cargo test");
+        assert_success(output, "test_cdylib_dep integration test");
+    }
 }
