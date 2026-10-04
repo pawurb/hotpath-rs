@@ -450,7 +450,11 @@ pub fn unique_label_impl(input: TokenStream) -> TokenStream {
 /// two crates of one dependency graph never clashes at link time. A package's
 /// lib can share `CARGO_CRATE_NAME` with its bin (told apart by
 /// `CARGO_BIN_NAME`) or a same-named integration test (`CARGO_TARGET_TMPDIR`
-/// is only set for those and benches). Doctests still share the lib's scope.
+/// is only set for those and benches). `CARGO_PKG_NAME` separates packages
+/// that declare the same lib name. Doctests still share the lib's scope, and
+/// the same package and version from two sources (registry and git) still
+/// collide: the only discriminator, the manifest dir, is an absolute path that
+/// would make shipped symbol names depend on the build machine.
 /// Outside Cargo the scope is empty and only the per-crate check remains.
 /// The `meta` prefix keeps these symbols apart from the ones `hotpath` emits,
 /// so a meta label never clashes with a user label.
@@ -474,6 +478,7 @@ fn unique_label_static(kind: &str, label: &LitStr) -> proc_macro2::TokenStream {
     let mut scope = Vec::new();
     for var in [
         "CARGO_CRATE_NAME",
+        "CARGO_PKG_NAME",
         "CARGO_PKG_VERSION",
         "CARGO_BIN_NAME",
         "CARGO_TARGET_TMPDIR",
