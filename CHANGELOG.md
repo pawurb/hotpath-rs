@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.4] - 2026-10-04
+
+### 🐛 Bug Fixes
+
+- Unique name logic crash
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.28.4
+
+
 ## [0.28.3] - 2026-10-03
 
 ### 🚀 Features
