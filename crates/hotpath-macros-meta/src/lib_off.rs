@@ -24,3 +24,8 @@ pub fn skip_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn measure_all_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
+
+/// No-op version of `hotpath_meta::__unique_label!` when profiling is disabled.
+pub fn unique_label_impl(_input: TokenStream) -> TokenStream {
+    TokenStream::new()
+}

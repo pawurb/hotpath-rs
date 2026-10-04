@@ -421,6 +421,84 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// Encoded labels longer than this are cut and get a hash of the full label
+/// appended, so distinct long labels never share a symbol.
+const UNIQUE_LABEL_MAX_LEN: usize = 64;
+
+pub fn unique_label_impl(input: TokenStream) -> TokenStream {
+    let parser = |input: syn::parse::ParseStream| {
+        let kind: syn::Ident = input.parse()?;
+        input.parse::<syn::Token![,]>()?;
+        let label: LitStr = input.parse()?;
+        Ok((kind, label))
+    };
+    match parser.parse(input) {
+        Ok((kind, label)) => unique_label_static(&kind.to_string(), &label).into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+/// One-byte static exported as `__hotpath_meta_unique_<kind>_<label>_<scope>`, so
+/// a repeated `(kind, label)` pair within one crate defines the symbol twice
+/// and rustc fails codegen at the second call site.
+///
+/// A cdylib lists the exported symbols of every upstream rlib in its linker
+/// export list (GNU ld / lld version script, MSVC `.def`), which only accepts
+/// plain C identifiers. ASCII alphanumerics of the label pass through and
+/// every other byte, `_` included, becomes `_xx` hex, so the encoding stays
+/// injective. `<scope>` hashes the crate being compiled, so the same label in
+/// two crates of one dependency graph never clashes at link time. A package's
+/// lib can share `CARGO_CRATE_NAME` with its bin (told apart by
+/// `CARGO_BIN_NAME`) or a same-named integration test (`CARGO_TARGET_TMPDIR`
+/// is only set for those and benches). Doctests still share the lib's scope.
+/// Outside Cargo the scope is empty and only the per-crate check remains.
+/// The `meta` prefix keeps these symbols apart from the ones `hotpath` emits,
+/// so a meta label never clashes with a user label.
+fn unique_label_static(kind: &str, label: &LitStr) -> proc_macro2::TokenStream {
+    use std::fmt::Write;
+
+    let value = label.value();
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            encoded.push(byte as char);
+        } else {
+            let _ = write!(encoded, "_{byte:02x}");
+        }
+    }
+    if encoded.len() > UNIQUE_LABEL_MAX_LEN {
+        encoded.truncate(UNIQUE_LABEL_MAX_LEN);
+        let _ = write!(encoded, "_h{:016x}", fnv1a(value.as_bytes()));
+    }
+
+    let mut scope = Vec::new();
+    for var in [
+        "CARGO_CRATE_NAME",
+        "CARGO_PKG_VERSION",
+        "CARGO_BIN_NAME",
+        "CARGO_TARGET_TMPDIR",
+    ] {
+        scope.extend(std::env::var(var).unwrap_or_default().into_bytes());
+        scope.push(0);
+    }
+
+    let symbol = format!(
+        "__hotpath_meta_unique_{kind}_{encoded}_{:016x}",
+        fnv1a(&scope)
+    );
+    let ident = syn::Ident::new("__HOTPATH_UNIQUE_LABEL", label.span());
+    quote_spanned! { label.span() =>
+        #[unsafe(export_name = #symbol)]
+        static #ident: u8 = 0;
+    }
+}
+
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, &byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
 /// Instruments a function to measure execution time or memory allocations.
 ///
 /// Detects sync vs async automatically. Measures time by default, or bytes and
@@ -558,7 +636,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     // sharing one label would silently merge; the `function` kind check (shared
     // with `measure_block!`) turns that into a build error.
     let unique_label_check = match &label {
-        Some(lit) => quote! { hotpath_meta::__unique_label!(function, #lit); },
+        Some(lit) => unique_label_static("function", lit),
         None => quote! {},
     };
 
