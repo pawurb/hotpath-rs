@@ -421,6 +421,75 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// Longer encoded labels are cut and suffixed with a hash of the full label.
+const UNIQUE_LABEL_MAX_LEN: usize = 64;
+
+pub fn unique_label_impl(input: TokenStream) -> TokenStream {
+    let parser = |input: syn::parse::ParseStream| {
+        let kind: syn::Ident = input.parse()?;
+        input.parse::<syn::Token![,]>()?;
+        let label: LitStr = input.parse()?;
+        Ok((kind, label))
+    };
+    match parser.parse(input) {
+        Ok((kind, label)) => unique_label_static(&kind.to_string(), &label).into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+/// Exports a one-byte static as `__hotpath_meta_unique_<kind>_<label>_<scope>`;
+/// a repeated pair in one crate defines the symbol twice. The name must be a
+/// plain C identifier because cdylibs list upstream exported symbols in the
+/// linker version script / `.def` file, so non-alphanumeric bytes become `_xx`.
+/// `<scope>` keeps other crates (and a package's bin and same-named integration
+/// test) from clashing. Doctests share the lib's scope, and the manifest dir is
+/// left out as it would leak build paths into symbol names.
+fn unique_label_static(kind: &str, label: &LitStr) -> proc_macro2::TokenStream {
+    use std::fmt::Write;
+
+    let value = label.value();
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            encoded.push(byte as char);
+        } else {
+            let _ = write!(encoded, "_{byte:02x}");
+        }
+    }
+    if encoded.len() > UNIQUE_LABEL_MAX_LEN {
+        encoded.truncate(UNIQUE_LABEL_MAX_LEN);
+        let _ = write!(encoded, "_h{:016x}", fnv1a(value.as_bytes()));
+    }
+
+    let mut scope = Vec::new();
+    for var in [
+        "CARGO_CRATE_NAME",
+        "CARGO_PKG_NAME",
+        "CARGO_PKG_VERSION",
+        "CARGO_BIN_NAME",
+        "CARGO_TARGET_TMPDIR",
+    ] {
+        scope.extend(std::env::var(var).unwrap_or_default().into_bytes());
+        scope.push(0);
+    }
+
+    let symbol = format!(
+        "__hotpath_meta_unique_{kind}_{encoded}_{:016x}",
+        fnv1a(&scope)
+    );
+    let ident = syn::Ident::new("__HOTPATH_UNIQUE_LABEL", label.span());
+    quote_spanned! { label.span() =>
+        #[unsafe(export_name = #symbol)]
+        static #ident: u8 = 0;
+    }
+}
+
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, &byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
 /// Instruments a function to measure execution time or memory allocations.
 ///
 /// Detects sync vs async automatically. Measures time by default, or bytes and
@@ -558,7 +627,7 @@ pub fn measure_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     // sharing one label would silently merge; the `function` kind check (shared
     // with `measure_block!`) turns that into a build error.
     let unique_label_check = match &label {
-        Some(lit) => quote! { hotpath_meta::__unique_label!(function, #lit); },
+        Some(lit) => unique_label_static("function", lit),
         None => quote! {},
     };
 

@@ -1,0 +1,18 @@
+[package]
+name = "test-cdylib"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Tests for cdylib builds linking literal hotpath labels."
+
+[lib]
+# Like a PyO3 extension module.
+crate-type = ["cdylib"]
+
+[dependencies]
+hotpath = { path = "../hotpath" }
+test-cdylib-dep = { path = "../test-cdylib-dep" }
+
+[features]
+default = []
+hotpath = ["hotpath/hotpath", "test-cdylib-dep/hotpath"]

@@ -4332,6 +4332,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cdylib"
+version = "0.0.0"
+dependencies = [
+ "hotpath",
+ "test-cdylib-dep",
+]
+
+[[package]]
+name = "test-cdylib-dep"
+version = "0.0.0"
+dependencies = [
+ "hotpath",
+]
+
+[[package]]
 name = "test-channels-asc"
 version = "0.0.0"
 dependencies = [

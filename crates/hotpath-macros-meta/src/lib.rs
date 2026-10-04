@@ -310,3 +310,19 @@ pub fn measure_all(attr: TokenStream, item: TokenStream) -> TokenStream {
         lib_off::measure_all_impl(attr, item)
     }
 }
+
+/// Fails the build when two call sites of one kind share a literal label within
+/// a crate, with ``symbol `__hotpath_meta_unique_<kind>_<label>_<hash>` is
+/// already defined``. Only codegen reports it, not `cargo check` or clippy.
+#[doc(hidden)]
+#[proc_macro]
+pub fn __unique_label(input: TokenStream) -> TokenStream {
+    #[cfg(feature = "hotpath-meta")]
+    {
+        lib_on::unique_label_impl(input)
+    }
+    #[cfg(not(feature = "hotpath-meta"))]
+    {
+        lib_off::unique_label_impl(input)
+    }
+}

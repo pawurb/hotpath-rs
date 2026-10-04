@@ -28,7 +28,7 @@ Where things are defined, plus gotchas the code site can't show. The code is the
 
 ## Macros
 
-- Label uniqueness (`__unique_label!` in `lib_on.rs`) is a link-time symbol clash, so only `cargo build`/`test`/`run` catch duplicates, not `cargo check` or clippy. Fixtures: `test-all-features` `duplicate_labels_*` examples, `tests/unique_labels.rs`.
+- Label uniqueness (`__unique_label!` proc macro in `hotpath-macros/src/lib_on.rs`, re-exported by hotpath) is a link-time symbol clash, scoped per crate, so only `cargo build`/`test`/`run` catch duplicates, not `cargo check` or clippy. Fixtures: `test-all-features` `duplicate_labels_*` examples, `tests/unique_labels.rs`. Symbols must stay plain C identifiers or cdylib links break: `tests/cdylib.rs`.
 - `#[measure]` on a bare impl method needs `impl_type = "Type"` for `hotpath-cpu` attribution (see `architecture.md`).
 - `channel!` on bounded std `sync_channel` / `futures_channel::mpsc` needs `capacity = N`, otherwise it panics at runtime.
 - `channel!` / `stream!` / `io!` aggregate per call site by default; `iter = true` gives per-instance rows and grows profiler state with instance churn.

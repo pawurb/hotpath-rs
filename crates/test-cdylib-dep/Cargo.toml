@@ -1,0 +1,13 @@
+[package]
+name = "test-cdylib-dep"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Library dependency of test-cdylib using literal labels."
+
+[dependencies]
+hotpath = { path = "../hotpath" }
+
+[features]
+default = []
+hotpath = ["hotpath/hotpath"]

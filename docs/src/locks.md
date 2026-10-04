@@ -68,7 +68,7 @@ let lock = hotpath::mutex!(std::sync::Mutex::new(0u64), label = "counter");
 *lock.lock().unwrap() += 1;
 ```
 
-The `label` parameter is optional; without it the lock is identified by `file:line`. Literal labels must be unique per lock kind within a crate (one label may name both a mutex and an rw_lock): a repeated one fails `cargo build`/`test`/`run` with ``symbol `hotpath: duplicate mutex label "counter"` is already defined`` (`cargo check` does not report it). Labels passed as runtime expressions are not checked.
+The `label` parameter is optional; without it the lock is identified by `file:line`. Literal labels must be unique per lock kind within a crate (one label may name both a mutex and an rw_lock): a repeated one fails `cargo build`/`test`/`run` with ``symbol `__hotpath_unique_mutex_counter_<crate hash>` is already defined`` (`cargo check` does not report it). Labels passed as runtime expressions are not checked.
 
 ### Supported Mutex libraries
 

@@ -35,9 +35,8 @@ mod tests {
     fn test_duplicate_channel_label_fails_build() {
         let stderr = build_fixture("duplicate_labels_channel");
         assert!(
-            stderr.contains(
-                "symbol `hotpath: duplicate channel label \"shared\"` is already defined"
-            ),
+            stderr.contains("symbol `__hotpath_unique_channel_shared_")
+                && stderr.contains("is already defined"),
             "unexpected build error:\n{stderr}"
         );
         assert!(
@@ -51,9 +50,8 @@ mod tests {
     fn test_measure_and_measure_block_share_function_namespace() {
         let stderr = build_fixture("duplicate_labels_function");
         assert!(
-            stderr.contains(
-                "symbol `hotpath: duplicate function label \"shared\"` is already defined"
-            ),
+            stderr.contains("symbol `__hotpath_unique_function_shared_")
+                && stderr.contains("is already defined"),
             "unexpected build error:\n{stderr}"
         );
     }
