@@ -108,6 +108,24 @@
     box-shadow: 0 2px 10px rgba(255, 180, 84, 0.35);
 }
 
+/* Cloud: the primary product entry point. Flame-gradient label so it reads
+   as more than a plain link. */
+.hp-cloud-label {
+    font-weight: 700;
+    background: linear-gradient(90deg, #ff6b3d, #ffb454 55%, #ffd88a);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    transition: filter 0.15s ease;
+}
+
+.hp-navlink-cloud:hover .hp-cloud-label,
+.hp-navlink-cloud.active .hp-cloud-label {
+    filter: drop-shadow(0 0 6px rgba(255, 140, 60, 0.55));
+}
+
+
 .hp-brand:focus-visible,
 .hp-navlink:focus-visible {
     outline: 2px solid var(--hp-ember);
