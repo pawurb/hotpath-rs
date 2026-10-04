@@ -27,23 +27,29 @@ mod tests {
         assert_success(output, "cdylib build");
     }
 
-    // cargo run -p test-cdylib-dep --example cross_crate_labels --features hotpath
-    #[test]
-    fn test_same_label_in_two_crates_links() {
+    /// Runs a `test-cdylib-dep` target that repeats the library's `"parse"`
+    /// label and checks it printed the summed result.
+    fn run_dep_target(target: &[&str]) {
         let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-cdylib-dep",
-                "--example",
-                "cross_crate_labels",
-                "--features",
-                "hotpath",
-            ])
+            .args(["run", "-p", "test-cdylib-dep"])
+            .args(target)
+            .args(["--features", "hotpath"])
             .output()
             .expect("Failed to execute cargo run");
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-        assert_success(output, "cross_crate_labels example");
+        assert_success(output, &target.join(" "));
         assert!(stdout.contains("total: 21"), "unexpected output:\n{stdout}");
+    }
+
+    // cargo run -p test-cdylib-dep --example cross_crate_labels --features hotpath
+    #[test]
+    fn test_same_label_in_two_crates_links() {
+        run_dep_target(&["--example", "cross_crate_labels"]);
+    }
+
+    // cargo run -p test-cdylib-dep --bin test-cdylib-dep --features hotpath
+    #[test]
+    fn test_same_label_in_lib_and_bin_of_one_package_links() {
+        run_dep_target(&["--bin", "test-cdylib-dep"]);
     }
 }

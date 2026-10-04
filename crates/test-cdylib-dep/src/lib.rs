@@ -1,4 +1,5 @@
-//! Literal labels with characters that are not valid in a linker symbol list,
+//! Literal labels with characters that are not valid in a linker symbol list
+//! or longer than its length cap,
 //! plus `"parse"`, which `test-cdylib` reuses to cover the same label in two
 //! crates of one dependency graph.
 
@@ -22,10 +23,18 @@ pub fn path() -> u32 {
     std::hint::black_box(4)
 }
 
+// Longer than the symbol's label cap, so it is cut and hashed.
+#[hotpath::measure(
+    label = "a_label_long_enough_to_exceed_the_symbol_length_cap_of_hotpath_unique_labels"
+)]
+pub fn long() -> u32 {
+    std::hint::black_box(0)
+}
+
 pub fn parse() -> u32 {
     hotpath::measure_block!("parse", std::hint::black_box(5))
 }
 
 pub fn run() -> u32 {
-    spaced() + quoted() + unicode() + path() + parse()
+    spaced() + quoted() + unicode() + path() + long() + parse()
 }
