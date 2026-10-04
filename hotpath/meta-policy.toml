@@ -1,0 +1,23 @@
+# Policy for the `meta` benchmark: hotpath profiling a copy of itself.
+
+[functions]
+ignore = ["hotpath_drain::EventQueue::drain_into"]
+min_percent_total = 0.5
+
+[[functions.budgets]]
+match = "hotpath::prometheus_server::handle_request"
+alloc = { avg = "51 B", total = "2040 B" }
+timing = { "p99.9" = "10 ms" }
+calls = { min = 40 }
+
+[functions.alloc]
+judged = true
+min_percent_change = 2
+metrics = ["avg", "total"]
+min_calls = 1
+
+[functions.timing]
+judged = false
+min_percent_change = 50
+metrics = ["avg", "total"]
+min_calls = 1
