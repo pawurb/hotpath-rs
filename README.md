@@ -1,9 +1,9 @@
 # <img src="media/hotpath-logo2.png" alt="hotpath-rs logo" width="80px" align="left"> hotpath - Rust Performance, CPU & Memory Profiler
 [![GH Actions](https://github.com/pawurb/hotpath/actions/workflows/ci.yml/badge.svg)](https://github.com/pawurb/hotpath/actions) [![Latest Version](https://img.shields.io/crates/v/hotpath.svg)](https://crates.io/crates/hotpath) [![Downloads](https://img.shields.io/crates/d/hotpath?cacheSeconds=86400)](https://crates.io/crates/hotpath) [![Sponsor](https://img.shields.io/badge/Sponsor-hotpath--rs-6f42c1)](https://hotpath.rs/sponsorship)
 
-hotpath-rs is an easy-to-configure Rust performance profiler that shows exactly where your code spends time, burns CPU, and allocates memory. 
+A simple Rust profiler that shows exactly why your code is slow.
 
-It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, HTTP calls, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup. Built-in support for Prometheus metrics and Grafana dashboards.
+Performance feedback for developers and coding agents. Profile CPU, memory, async execution, SQL and HTTP calls, I/O streams, lock contention and channels. Built-in support for Prometheus metrics and Grafana dashboards.
 
 Try the TUI demo via SSH - no installation required:
 
@@ -12,16 +12,25 @@ ssh demo.hotpath.rs
 ```
 
 Or let your own AI agent configure profiling in a repo:
+
 ```
 cargo install hotpath
-hotpath init --agent claude 
+hotpath init --agent claude # or --agent codex / --agent opencode
 ```
+
+[hotpath-rs](https://hotpath.rs) is an easy-to-configure Rust performance profiling toolkit that shows exactly where your code spends time, burns CPU, and allocates memory.
+
+It helps you distinguish between functions that are slow because they wait on I/O and those that are CPU-intensive. Instrument functions, channels, futures, streams, SQL queries, HTTP calls, and byte-level I/O to find bottlenecks and focus optimizations where they matter most. Get actionable insights into time, memory, and async data flow with minimal setup.
 
 Explore the full documentation at [hotpath.rs](https://hotpath.rs). See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 You can use it to produce one-off performance (timing, memory or CPU) reports:
 
 ![hotpath alloc report](media/hotpath-alloc-report2.png)
+
+correlate all performance signals in Grafana with minimal profiling overhead:
+
+![Grafana dashboard built on hotpath-rs Prometheus metrics showing slowest SQL queries, per-function allocations and requests by route](docs/src/images/grafana-dashboard.png)
 
 inspect throughput and latency of network, file or compression I/O streams:
 
@@ -59,7 +68,7 @@ https://github.com/user-attachments/assets/2e890417-2b43-4b1b-8657-a5ef3b458153
 
 ### AI Setup (Recommended)
 
-The quickest way to set up hotpath is to let an AI coding agent do it. Install the `hotpath` CLI and run `init` inside your project:
+The quickest way to set up hotpath is to let your own AI coding agent do it. Install the `hotpath` CLI and run `init` inside your project repo:
 
 ```bash
 cargo install hotpath --version '^0.28'
