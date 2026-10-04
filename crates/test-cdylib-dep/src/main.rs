@@ -1,5 +1,4 @@
-//! A binary target of the same package as the `test-cdylib-dep` library; both
-//! compile under one `CARGO_CRATE_NAME` and both use the label `"parse"`.
+//! Same package and `CARGO_CRATE_NAME` as the library, reusing `"parse"`.
 //!
 //! Run with:
 //!   cargo run -p test-cdylib-dep --bin test-cdylib-dep --features hotpath

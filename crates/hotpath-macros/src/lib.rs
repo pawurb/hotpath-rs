@@ -309,22 +309,9 @@ pub fn measure_all(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-/// Rejects two call sites of one resource kind sharing the same literal label
-/// at build time: `__unique_label!(channel, "foo")`. Used by
-/// `#[measure(label = ...)]` and the literal-label arms of `measure_block!`,
-/// `channel!`, `stream!`, `future!`, `io!`, `mutex!` and `rw_lock!`.
-///
-/// Each literal label expands to a one-byte static exported under a symbol
-/// that encodes the kind, the label and the crate being compiled, so a
-/// repeated pair fails codegen with
-/// ``symbol `__hotpath_unique_channel_foo_<crate hash>` is already defined``,
-/// pointing at the second call site. The same label on different kinds, or in
-/// different crates, is fine. Runtime label expressions never reach this
-/// macro and stay unchecked.
-///
-/// Only codegen sees the clash: `cargo build`/`test`/`run` report it,
-/// `cargo check`, clippy and rust-analyzer do not. A binary dead-strips the
-/// static; a cdylib keeps it as one exported byte per label.
+/// Fails the build when two call sites of one kind share a literal label within
+/// a crate, with ``symbol `__hotpath_unique_<kind>_<label>_<hash>` is already
+/// defined``. Only codegen reports it, not `cargo check` or clippy.
 #[doc(hidden)]
 #[proc_macro]
 pub fn __unique_label(input: TokenStream) -> TokenStream {

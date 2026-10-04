@@ -27,8 +27,6 @@ mod tests {
         assert_success(output, "cdylib build");
     }
 
-    /// Runs a `test-cdylib-dep` target that repeats the library's `"parse"`
-    /// label and checks it printed the summed result.
     fn run_dep_target(target: &[&str]) {
         let output = Command::new("cargo")
             .args(["run", "-p", "test-cdylib-dep"])

@@ -452,8 +452,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     output.into()
 }
 
-/// Encoded labels longer than this are cut and get a hash of the full label
-/// appended, so distinct long labels never share a symbol.
+/// Longer encoded labels are cut and suffixed with a hash of the full label.
 const UNIQUE_LABEL_MAX_LEN: usize = 64;
 
 pub fn unique_label_impl(input: TokenStream) -> TokenStream {
@@ -469,24 +468,13 @@ pub fn unique_label_impl(input: TokenStream) -> TokenStream {
     }
 }
 
-/// One-byte static exported as `__hotpath_unique_<kind>_<label>_<scope>`, so
-/// a repeated `(kind, label)` pair within one crate defines the symbol twice
-/// and rustc fails codegen at the second call site.
-///
-/// A cdylib lists the exported symbols of every upstream rlib in its linker
-/// export list (GNU ld / lld version script, MSVC `.def`), which only accepts
-/// plain C identifiers. ASCII alphanumerics of the label pass through and
-/// every other byte, `_` included, becomes `_xx` hex, so the encoding stays
-/// injective. `<scope>` hashes the crate being compiled, so the same label in
-/// two crates of one dependency graph never clashes at link time. A package's
-/// lib can share `CARGO_CRATE_NAME` with its bin (told apart by
-/// `CARGO_BIN_NAME`) or a same-named integration test (`CARGO_TARGET_TMPDIR`
-/// is only set for those and benches). `CARGO_PKG_NAME` separates packages
-/// that declare the same lib name. Doctests still share the lib's scope, and
-/// the same package and version from two sources (registry and git) still
-/// collide: the only discriminator, the manifest dir, is an absolute path that
-/// would make shipped symbol names depend on the build machine.
-/// Outside Cargo the scope is empty and only the per-crate check remains.
+/// Exports a one-byte static as `__hotpath_unique_<kind>_<label>_<scope>`; a
+/// repeated pair in one crate defines the symbol twice. The name must be a
+/// plain C identifier because cdylibs list upstream exported symbols in the
+/// linker version script / `.def` file, so non-alphanumeric bytes become `_xx`.
+/// `<scope>` keeps other crates (and a package's bin and same-named integration
+/// test) from clashing. Doctests share the lib's scope, and the manifest dir is
+/// left out as it would leak build paths into symbol names.
 fn unique_label_static(kind: &str, label: &LitStr) -> proc_macro2::TokenStream {
     use std::fmt::Write;
 

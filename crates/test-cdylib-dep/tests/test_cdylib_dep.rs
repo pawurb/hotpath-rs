@@ -1,6 +1,5 @@
-//! An integration test named after its own package, so it compiles under the
-//! library's `CARGO_CRATE_NAME` without `CARGO_BIN_NAME`, and repeats the
-//! library's `"parse"` label.
+//! Named after its package, so it shares the library's `CARGO_CRATE_NAME`;
+//! reuses `"parse"`.
 //!
 //! Run with:
 //!   cargo test -p test-cdylib-dep --features hotpath --test test_cdylib_dep

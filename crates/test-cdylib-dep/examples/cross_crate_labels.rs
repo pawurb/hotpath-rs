@@ -1,5 +1,4 @@
-//! A plain binary that uses the literal label `"parse"`, which the
-//! `test-cdylib-dep` library it links also uses.
+//! Reuses the `"parse"` label of the linked `test-cdylib-dep` library.
 //!
 //! Run with:
 //!   cargo run -p test-cdylib-dep --example cross_crate_labels --features hotpath
