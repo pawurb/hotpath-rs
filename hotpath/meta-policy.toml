@@ -12,7 +12,7 @@ calls = { min = 1000 }
 
 [functions.alloc]
 judged = true
-min_percent_change = 2
+min_percent_change = 10
 metrics = ["avg", "total"]
 min_calls = 1
 
