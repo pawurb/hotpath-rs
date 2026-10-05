@@ -928,4 +928,52 @@ pub mod tests {
             );
         }
     }
+
+    // cargo run -p test-tokio-async --example early_returns --features hotpath
+    #[test]
+    fn test_report_footer_hint() {
+        const HINT: &str = "Prevent performance regressions in CI";
+        let run = |env: &[(&str, &str)]| {
+            let output = Command::new("cargo")
+                .args([
+                    "run",
+                    "-p",
+                    "test-tokio-async",
+                    "--example",
+                    "early_returns",
+                    "--features",
+                    "hotpath",
+                ])
+                .env("HOTPATH_REPORT", "functions-timing")
+                .env_remove("HOTPATH_DISABLE_HINTS")
+                .env_remove("HOTPATH_API_TOKEN")
+                .env_remove("HOTPATH_OUTPUT_FORMAT")
+                .env_remove("HOTPATH_OUTPUT_PATH")
+                .env_remove("HOTPATH_UPLOAD")
+                .envs(env.iter().copied())
+                .output()
+                .expect("Failed to execute command");
+            assert!(
+                output.status.success(),
+                "Process did not exit successfully.\n\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8_lossy(&output.stdout).into_owned()
+        };
+
+        let stdout = run(&[]);
+        assert!(stdout.contains(HINT), "Expected hint\n\nGot:\n{stdout}");
+
+        for env in [
+            ("HOTPATH_DISABLE_HINTS", "1"),
+            ("HOTPATH_API_TOKEN", "token"),
+            ("HOTPATH_OUTPUT_FORMAT", "json"),
+        ] {
+            let stdout = run(&[env]);
+            assert!(
+                !stdout.contains(HINT),
+                "Unexpected hint with {env:?}\n\nGot:\n{stdout}"
+            );
+        }
+    }
 }

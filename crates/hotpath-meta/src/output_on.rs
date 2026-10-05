@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 pub(crate) fn write_report_header<W: Write + ?Sized>(
@@ -37,6 +38,38 @@ pub(crate) fn write_report_header<W: Write + ?Sized>(
         elapsed, sections_str, label_str, sampling_str,
     );
     let _ = writeln!(writer);
+}
+
+/// `HOTPATH_META_DISABLE_HINTS=1` hides the hint line under the table report.
+static DISABLE_HINTS: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("HOTPATH_META_DISABLE_HINTS")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true"))
+        .unwrap_or(false)
+});
+
+/// A set `HOTPATH_META_API_TOKEN` marks an existing hotpath.rs user, who
+/// needs no cloud hint.
+static HAS_API_TOKEN: LazyLock<bool> =
+    LazyLock::new(|| std::env::var("HOTPATH_META_API_TOKEN").is_ok_and(|v| !v.trim().is_empty()));
+
+/// Hint line closing a table report written to stdout. Skipped for file
+/// output, when the report is uploaded to hotpath.rs, or a token is set.
+pub(crate) fn write_report_footer<W: Write + ?Sized>(
+    writer: &mut W,
+    output: &OutputDestination,
+    upload_enabled: bool,
+) {
+    if *DISABLE_HINTS
+        || upload_enabled
+        || *HAS_API_TOKEN
+        || !matches!(output, OutputDestination::Stdout)
+    {
+        return;
+    }
+    let _ = writeln!(
+        writer,
+        "└─ Prevent performance regressions in CI → https://hotpath.rs/cloud"
+    );
 }
 
 pub(crate) fn write_user_metadata_table<W: Write>(

@@ -176,7 +176,7 @@ use crate::metrics_server::METRICS_SERVER_PORT;
 use crate::output::{FunctionLog, FunctionLogsList};
 use crate::output_on::{
     display_functions_table_to, display_no_measurements_message_to, resolve_output_path,
-    write_report_header, write_user_metadata_table, OutputDestination,
+    write_report_footer, write_report_header, write_user_metadata_table, OutputDestination,
 };
 
 #[cfg(feature = "hotpath-prometheus")]
@@ -1710,6 +1710,10 @@ impl Drop for HotpathGuard {
                         }
                     }
                 }
+            }
+
+            if matches!(format, Format::Table) {
+                write_report_footer(&mut writer, &output, upload_enabled);
             }
         }
 
