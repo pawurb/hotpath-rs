@@ -4,6 +4,10 @@
 //! between runs and a diff of two reports isolates timing changes. Changing the
 //! constants below invalidates comparability with previously uploaded reports.
 //!
+//! An in-process axum server (`hotpath::axum!`) backed by an instrumented
+//! Diesel SQLite connection is called through an instrumented ureq agent, so
+//! the SQL, HTTP, server and per-route function sections hold data too.
+//!
 //! With `hotpath-prometheus` on, the exporter is scraped too, in both the text
 //! and protobuf encodings, so the meta report covers every way a live session
 //! reads data out of the profiler.
@@ -12,9 +16,14 @@
 //!   cargo run --release -p test-all-features --example benchmark_meta --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta,hotpath-prometheus
 
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use axum::extract::{Path, State};
+use axum::routing::get;
+use axum::Router;
+use diesel::prelude::*;
+use diesel::sql_types::Integer;
 use futures::StreamExt;
 
 const SYNC_RUNS: u64 = 1_250_000;
@@ -30,9 +39,11 @@ const IO_RUNS: u64 = 375_000;
 const DEBUG_RUNS: u64 = 62_500;
 const THREAD_COUNT: usize = 4;
 const THREAD_RUNS: u64 = 250_000;
+const WEB_REQUESTS: u64 = 2_000;
+const WEB_ITEMS: i32 = 100;
 const METRICS_REQUESTS: u64 = 120;
 #[cfg(feature = "hotpath-prometheus")]
-const PROMETHEUS_REQUESTS: u64 = 40;
+const PROMETHEUS_REQUESTS: u64 = 1_000;
 
 #[hotpath::measure]
 fn sync_noop(v: u64) -> u64 {
@@ -63,6 +74,99 @@ impl Accumulator {
 
     fn add(&mut self, v: u64) {
         self.total = self.total.wrapping_add(v);
+    }
+}
+
+#[derive(Clone)]
+struct WebState {
+    conn: Arc<Mutex<SqliteConnection>>,
+}
+
+#[hotpath::measure]
+fn load_item(conn: &mut SqliteConnection, id: i32) -> usize {
+    diesel::sql_query("SELECT id, name FROM items WHERE id = ?")
+        .bind::<Integer, _>(id)
+        .execute(conn)
+        .expect("load_item")
+}
+
+#[hotpath::measure]
+fn count_items(conn: &mut SqliteConnection) -> usize {
+    diesel::sql_query("SELECT COUNT(*) FROM items")
+        .execute(conn)
+        .expect("count_items")
+}
+
+async fn get_item(State(state): State<WebState>, Path(id): Path<i32>) -> String {
+    let rows = load_item(&mut state.conn.lock().expect("poisoned"), id);
+    format!("item {id}: {rows}")
+}
+
+// Two queries under one route, so the server section reports 2 SQL/req here.
+async fn get_summary(State(state): State<WebState>, Path(id): Path<i32>) -> String {
+    let mut conn = state.conn.lock().expect("poisoned");
+    let rows = load_item(&mut conn, id);
+    let total = count_items(&mut conn);
+    format!("item {id}: {rows} of {total}")
+}
+
+/// Serves the instrumented router on a fresh port and returns its base URL.
+async fn start_web_server() -> String {
+    hotpath::instrument_diesel_sql();
+    let mut conn = SqliteConnection::establish(":memory:").expect("sqlite");
+    diesel::sql_query("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        .execute(&mut conn)
+        .expect("create table");
+    diesel::sql_query(
+        "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ?) \
+         INSERT INTO items (id, name) SELECT x, 'item-' || x FROM c",
+    )
+    .bind::<Integer, _>(WEB_ITEMS)
+    .execute(&mut conn)
+    .expect("seed items");
+
+    let router = hotpath::axum!(Router::new()
+        .route("/items/{id}", get(get_item))
+        .route("/summaries/{id}", get(get_summary))
+        .with_state(WebState {
+            conn: Arc::new(Mutex::new(conn)),
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("local addr").port();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.expect("axum server");
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
+/// Every tenth request hits a missing route, so the HTTP and server sections
+/// carry 404s next to the successful requests.
+fn call_web_server(base: &str) {
+    let agent: ureq::Agent = hotpath::http!(ureq::Agent::config_builder())
+        .build()
+        .new_agent();
+    for i in 0..WEB_REQUESTS {
+        let id = (i % WEB_ITEMS as u64) as i32 + 1;
+        match i % 10 {
+            9 => {
+                let result = agent.get(format!("{base}/missing/{id}")).call();
+                assert!(matches!(result, Err(ureq::Error::StatusCode(404))));
+            }
+            n if n % 2 == 0 => {
+                agent
+                    .get(format!("{base}/items/{id}"))
+                    .call()
+                    .expect("items request");
+            }
+            _ => {
+                agent
+                    .get(format!("{base}/summaries/{id}"))
+                    .call()
+                    .expect("summaries request");
+            }
+        }
     }
 }
 
@@ -286,6 +390,16 @@ async fn main() {
             std::hint::black_box(h.join().expect("worker panicked"));
         }
     });
+
+    // The blocking ureq client runs off the runtime so the axum server keeps
+    // every worker it needs.
+    let base = start_web_server().await;
+    phase_async("web", WEB_REQUESTS, async move {
+        tokio::task::spawn_blocking(move || call_web_server(&base))
+            .await
+            .expect("web client panicked");
+    })
+    .await;
 
     // Drives the metrics server and the worker snapshot round trip that the TUI
     // exercises in a live session.

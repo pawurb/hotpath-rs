@@ -4306,9 +4306,13 @@ dependencies = [
 name = "test-all-features"
 version = "0.0.0"
 dependencies = [
+ "axum",
+ "diesel",
  "futures",
  "hotpath",
+ "libsqlite3-sys",
  "tokio",
+ "ureq",
 ]
 
 [[package]]
