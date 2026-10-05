@@ -1,7 +1,5 @@
 # Agents CLI: let AI coding agents fix Rust performance regressions
 
-> **Note:** hotpath Cloud is currently in open beta.
-
 `hotpath cloud` is the command line client of the `hotpath Cloud` API. It gives a coding agent, a script or a CI step the same judgement the pull request comment shows, as JSON: which report was compared with which baseline, under which policy, what regressed, which budgets broke, and the verdict. An agent can push a change, wait for the benchmark, read the verdict and fix what regressed, without opening the dashboard.
 
 Give your agent the [hotpath_cloud agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_cloud/SKILL.md): it teaches the agent how to use these commands, wait for a benchmark, read the verdict and fix what regressed.
