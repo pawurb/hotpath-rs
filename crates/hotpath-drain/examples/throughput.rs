@@ -25,13 +25,16 @@ const BATCH: u64 = 12_500;
 const EVENTS_PER_PRODUCER: u64 = ROUNDS * BATCH;
 const TOTAL_EVENTS: u64 = PRODUCERS as u64 * EVENTS_PER_PRODUCER;
 
-/// One event; the payload is a `Box` so the consumer's drop and the
-/// producer's allocation are both visible under allocation profiling.
+/// One event, stored inline: it owns no heap memory, so the only allocations
+/// left under profiling are the queue's own chunk storage.
 struct Event {
     producer: usize,
     seq: u64,
-    payload: Box<[u8; 16]>,
+    payload: [u8; 8],
 }
+
+// The policy's `push` budget is sized for 24 B slots.
+const _: () = assert!(size_of::<Event>() == 24);
 
 static REGISTRY: EventQueueRegistry<Event> = EventQueueRegistry::new();
 
@@ -62,7 +65,7 @@ fn produce(producer: usize, lockstep: &Lockstep) {
             let event = Event {
                 producer,
                 seq: round * BATCH + i,
-                payload: Box::new([i as u8; 16]),
+                payload: [i as u8; 8],
             };
             let _ = PRODUCER.try_with(|p| p.push(event));
         }
