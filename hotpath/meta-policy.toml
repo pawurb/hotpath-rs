@@ -6,9 +6,9 @@ min_percent_total = 0.5
 
 [[functions.budgets]]
 match = "hotpath::prometheus_server::handle_request"
-alloc = { avg = "51 B", total = "2040 B" }
+alloc = { avg = "51 B", total = "51000 B" }
 timing = { "p99.9" = "10 ms" }
-calls = { min = 40 }
+calls = { min = 1000 }
 
 [functions.alloc]
 judged = true
