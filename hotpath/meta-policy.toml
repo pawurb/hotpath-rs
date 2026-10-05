@@ -21,3 +21,83 @@ judged = false
 min_percent_change = 50
 metrics = ["avg", "total"]
 min_calls = 1
+
+[[functions.budgets]]
+match = "budget_limit_test_01"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_02"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_03"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_04"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_05"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_06"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_07"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_08"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_09"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_10"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_11"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_12"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_13"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_14"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_15"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_16"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_17"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_18"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_19"
+calls = { min = 0 }
+
+[[functions.budgets]]
+match = "budget_limit_test_20"
+calls = { min = 0 }
