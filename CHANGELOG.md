@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.5] - 2026-10-06
+
+### 🐛 Bug Fixes
+
+- Thread naming race
+
+- Add demo features
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Add meta benchmark policy and budgets
+
+- Keep drain benchmark events inline
+
+- Update meta benchmark
+
+- Adjust meta policy
+
+- Add hotpath Cloud hint
+
+- Release 0.28.5
+
+
 ## [0.28.4] - 2026-10-04
 
 ### 🐛 Bug Fixes
