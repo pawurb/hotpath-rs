@@ -151,7 +151,7 @@ on:
 
 jobs:
   relay:
-    uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@v0.28.4
+    uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@v0.28.5
     permissions:
       actions: read # download the artifact of the benchmark run
       id-token: write # authenticate the upload
@@ -162,7 +162,7 @@ jobs:
       report_file: report.json
 ```
 
-Pin the relay to the release tag of the `hotpath` version the benchmark builds with, never `@main`. If the repository pins its actions by commit hash, use the commit the tag points to (`git ls-remote https://github.com/pawurb/hotpath-rs refs/tags/v0.28.4`) with the tag in the comment: `@<commit sha> # v0.28.4`.
+Pin the relay to the release tag of the `hotpath` version the benchmark builds with, never `@main`. If the repository pins its actions by commit hash, use the commit the tag points to (`git ls-remote https://github.com/pawurb/hotpath-rs refs/tags/v0.28.5`) with the tag in the comment: `@<commit sha> # v0.28.5`.
 
 Add `fail_on_regression: true` under `with:` only if the user wants a regression or a broken budget to fail the relay run. Tell the user:
 
