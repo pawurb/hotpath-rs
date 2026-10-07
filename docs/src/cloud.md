@@ -1,5 +1,7 @@
 # hotpath Cloud - Performance regression feedback for developers and AI agents
 
+<img src="{{#asset-hash images/hotpath-cloud-ferris.webp}}" alt="hotpath Cloud mascot, an angry crab on fire sitting on a cloud" class="ferris-img">
+
 `hotpath Cloud` turns `hotpath-rs` profiling data into automated PR performance checks. It analyzes performance signals and helps developers and coding agents detect meaningful regressions before they are merged.
 
 **Open beta:** free to use. Public repositories will remain free after beta. See [Pricing](#pricing).
