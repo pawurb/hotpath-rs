@@ -1,6 +1,6 @@
 # A simple Rust profiler that shows exactly why your code is slow
 
-<h2 class="hero-subtitle"><b>Performance feedback for developers and coding agents.</b> Profile CPU, memory, async execution, SQL and HTTP calls, I/O streams, lock contention and channels. Built-in support for Prometheus metrics and Grafana dashboards.</h2>
+<h2 class="hero-subtitle"><b>Performance feedback for developers and coding agents.</b> Find CPU, memory, async, SQL, I/O and contention bottlenecks with a single Rust profiler. Export metrics to Prometheus and Grafana when you need production monitoring.</h2>
 
 <div class="hero-badges">
   <a href="https://github.com/pawurb/hotpath-rs" target="_blank" rel="noopener noreferrer"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a>
@@ -86,6 +86,10 @@ You can use it to produce one-off performance (timing, memory or CPU) reports:
 correlate all performance signals in Grafana with minimal profiling overhead:
 
 <img loading="lazy" src="{{#asset-hash images/grafana-dashboard.png}}" alt="Grafana dashboard built on hotpath-rs Prometheus metrics showing slowest SQL queries, per-function allocations and requests by route">
+
+detect performance regressions with a simple [CI integration](/cloud) that compares every pull request against a baseline and comments when performance changes significantly:
+
+<img loading="lazy" src="{{#asset-hash images/cloud-pr-comment.webp}}" alt="hotpath Cloud pull request comment showing wall time, allocation and RSS changes against the main branch">
 
 inspect throughput and latency of network, file or compression I/O streams:
 

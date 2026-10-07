@@ -3,7 +3,7 @@
 
 A simple Rust profiler that shows exactly why your code is slow.
 
-Performance feedback for developers and coding agents. Profile CPU, memory, async execution, SQL and HTTP calls, I/O streams, lock contention and channels. Built-in support for Prometheus metrics and Grafana dashboards.
+Performance feedback for developers and coding agents. Find CPU, memory, async, SQL, I/O and contention bottlenecks with a single Rust profiler. Export metrics to Prometheus and Grafana when you need production monitoring.
 
 Try the TUI demo via SSH - no installation required:
 
@@ -31,6 +31,10 @@ You can use it to produce one-off performance (timing, memory or CPU) reports:
 correlate all performance signals in Grafana with minimal profiling overhead:
 
 ![Grafana dashboard built on hotpath-rs Prometheus metrics showing slowest SQL queries, per-function allocations and requests by route](docs/src/images/grafana-dashboard.png)
+
+detect performance regressions with a simple [CI integration](https://hotpath.rs/cloud) that compares every pull request against a baseline and comments when performance changes significantly:
+
+![hotpath Cloud pull request comment showing wall time, allocation and RSS changes against the main branch](docs/src/images/cloud-pr-comment.webp)
 
 inspect throughput and latency of network, file or compression I/O streams:
 
