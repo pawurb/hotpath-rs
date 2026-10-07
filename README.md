@@ -32,7 +32,7 @@ correlate all performance signals in Grafana with minimal profiling overhead:
 
 ![Grafana dashboard built on hotpath-rs Prometheus metrics showing slowest SQL queries, per-function allocations and requests by route](docs/src/images/grafana-dashboard.png)
 
-detect performance regressions with a simple [CI integration](https://hotpath.rs/cloud) that compares every pull request against a baseline and comments when performance changes significantly:
+catch performance regressions on every pull request with a simple [CI integration](https://hotpath.rs/cloud):
 
 ![hotpath Cloud pull request comment showing wall time, allocation and RSS changes against the main branch](docs/src/images/cloud-pr-comment.webp)
 
