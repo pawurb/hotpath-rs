@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.6] - 2026-10-08
+
+### 🚀 Features
+
+- Adjust to new CI regression fail setting
+
+- Adjust regression CI checks logic
+
+- Add hotpath init-grafana cmd
+
+
+### 🐛 Bug Fixes
+
+- Exclude uniq location registry alloc (#681)
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Release 0.28.6
+
+
 ## [0.28.5] - 2026-10-06
 
 ### 🐛 Bug Fixes
