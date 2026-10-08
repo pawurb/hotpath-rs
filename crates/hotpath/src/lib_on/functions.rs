@@ -151,6 +151,7 @@ fn build_measurement_guard_async_with_bridge(
     MeasurementGuardAsync,
     Option<std::sync::Arc<AsyncAllocBridge>>,
 ) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let skipped = !wrapper && !is_focused(measurement_name);
     let alloc_bridge = make_alloc_bridge(skipped);
 
@@ -197,6 +198,7 @@ fn build_measurement_guard_async_with_log_bridge(
     MeasurementGuardAsyncWithLog,
     Option<std::sync::Arc<AsyncAllocBridge>>,
 ) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let skipped = !wrapper && !is_focused(measurement_name);
     let alloc_bridge = make_alloc_bridge(skipped);
 
