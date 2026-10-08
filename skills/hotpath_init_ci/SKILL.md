@@ -100,7 +100,7 @@ jobs:
 - Add any setup the benchmark needs (system packages, a database service) as steps before the benchmark, copied from the repository's existing CI.
 - `HOTPATH_UPLOAD: fail-on-error` fails the job when the upload fails.
 - The response file exists only after an accepted upload, so `test -s` fails the job when no report was stored (a missing feature, a skipped upload). Keep its path absolute.
-- A regression never fails the job. If the user wants a regression or a broken budget to fail the pull request's `hotpath / <benchmark>` check, add `fail_ci_on_regression = true` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it. To block merges on it, they make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
+- A regression never fails the job. If the user wants a regression or a broken budget to fail the pull request's `hotpath / <benchmark>` check, add `pr_check = "fail_on_regression"` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it. To block merges on it, they make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
 - The workflow needs no secret: the upload authenticates with the job's OIDC token.
 
 ### 6. Verify locally

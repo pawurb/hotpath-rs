@@ -203,21 +203,22 @@ With `"on_change"`, a comment the pull request already has is still updated, so 
 
 ## Pull request check
 
-Every judged pull request upload also posts a `hotpath / <benchmark>` check on the pull request's head commit. By default a regression leaves it neutral, so it never blocks merging. To fail it on a regression or a broken [budget](performance_budgets.md), set `fail_ci_on_regression` at the top of the file:
+A pull request upload can also post a `hotpath / <benchmark>` check on the pull request's head commit. It is off by default: the comment is the whole report. Set `pr_check` at the top of the file to turn it on:
 
 ```toml
-fail_ci_on_regression = true
+pr_check = "fail_on_regression"
 
 [functions]
 min_percent_total = 2
 ```
 
-| Verdict | Check |
+| `pr_check` | Check |
 |---|---|
-| No regressions | success |
-| Regression or broken budget, `fail_ci_on_regression = true` | failure |
-| Regression or broken budget, `fail_ci_on_regression = false` (the default) | neutral |
-| Nothing judged (no baseline yet and no budgets) | neutral |
+| `"off"` (the default) | None. |
+| `"report"` | Shows the verdict and never blocks merging: a regression or a broken [budget](performance_budgets.md) is neutral. |
+| `"fail_on_regression"` | Fails on a regression or a broken [budget](performance_budgets.md). |
+
+With the check on, no regressions is a success, and nothing judged (no baseline yet and no budgets) is neutral in both modes.
 
 An upload the server refuses gets no check. A re-run posts a new check, and GitHub shows the latest. Put the key in `hotpath/<benchmark>-policy.toml` to fail on regressions of one benchmark only. To block merging, make the check required, see [CI integration](ci_integration.md#failing-the-job).
 

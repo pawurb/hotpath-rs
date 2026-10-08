@@ -46,7 +46,7 @@ const MAX_LISTED_PROBLEMS: usize = 20;
 /// `HOTPATH_META_UPLOAD`: whether the report is uploaded and whether a failed
 /// upload fails the job. A regression never does: the pull request's
 /// `hotpath / <benchmark>` check run fails when the policy sets
-/// `fail_ci_on_regression`.
+/// `pr_check = "fail_on_regression"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum UploadMode {
     /// Unset, empty, `0` or `false`.

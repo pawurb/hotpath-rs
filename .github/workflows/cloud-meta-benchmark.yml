@@ -11,7 +11,7 @@ on:
 #
 # Pushes and pull requests upload in process with the job's OIDC token, and a
 # failed upload fails the job. A regression fails the pull request's
-# `hotpath / meta` check run (`fail_ci_on_regression` in
+# `hotpath / meta` check run (`pr_check` in
 # `hotpath/meta-policy.toml`), not the job. The job is skipped for fork pull
 # requests.
 jobs:

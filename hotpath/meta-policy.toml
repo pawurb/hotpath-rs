@@ -1,7 +1,7 @@
 # Policy for the `meta` benchmark: hotpath profiling a copy of itself.
 
 # A regression or a broken budget fails the pull request's check run.
-fail_ci_on_regression = true
+pr_check = "fail_on_regression"
 
 [functions]
 ignore = ["hotpath_drain::EventQueue::drain_into"]

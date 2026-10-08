@@ -31,8 +31,7 @@ jobs:
       # / `::error::` annotation plus a step summary block, and with
       # `fail-on-error` a failed upload exits 1. The response file exists only
       # after an accepted upload, so `test -s` also fails a skipped one. No
-      # `fail_ci_on_regression` in its policy: this benchmark regresses by
-      # design.
+      # `pr_check` in its policy: this benchmark regresses by design.
       - name: Run random benchmark and upload report
         env:
           HOTPATH_UPLOAD: fail-on-error

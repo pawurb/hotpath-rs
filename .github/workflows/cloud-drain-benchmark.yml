@@ -10,7 +10,7 @@ on:
 # the queue's own hot paths (`push`, `sweep`, `drain_into`). Same shape as
 # `cloud-meta-benchmark.yml`, uploaded to the separate `drain` series. A
 # regression fails the pull request's `hotpath / drain` check run
-# (`fail_ci_on_regression` in `hotpath/drain-policy.toml`), not the job.
+# (`pr_check` in `hotpath/drain-policy.toml`), not the job.
 jobs:
   benchmark:
     name: cloud drain benchmark
