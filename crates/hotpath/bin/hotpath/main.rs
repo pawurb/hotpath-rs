@@ -70,6 +70,10 @@ pub(crate) enum HPSubcommand {
         about = "Set up the hotpath Cloud CI integration in the current repo via an AI agent session"
     )]
     InitCi(InitCiCliArgs),
+    #[command(
+        about = "Set up a Grafana dashboard for the hotpath Prometheus metrics via an AI agent session"
+    )]
+    InitGrafana(InitCliArgs),
     #[cfg(feature = "cloud")]
     #[command(about = "Query hotpath.rs: authentication status and cloud reports")]
     Cloud(CloudArgs),
@@ -111,6 +115,7 @@ fn main() -> eyre::Result<ExitCode> {
         Some(HPSubcommand::Console(args)) => args.run()?,
         Some(HPSubcommand::Init(args)) => args.run(cmd::init::Setup::Profiling)?,
         Some(HPSubcommand::InitCi(args)) => args.run()?,
+        Some(HPSubcommand::InitGrafana(args)) => args.run(cmd::init::Setup::Grafana)?,
         #[cfg(feature = "cloud")]
         Some(HPSubcommand::Cloud(args)) => return Ok(args.run()),
         #[cfg(not(feature = "cloud"))]
@@ -136,7 +141,7 @@ fn main() -> std::process::ExitCode {
     let mut args = std::env::args().skip(1);
 
     match args.next().as_deref() {
-        Some(command @ ("init" | "init-ci")) => {
+        Some(command @ ("init" | "init-ci" | "init-grafana")) => {
             let result = parse_init_args(command, args)
                 .and_then(|(setup, agent)| cmd::init::run(setup, agent));
             match result {
@@ -161,6 +166,8 @@ Commands:
   init --agent <claude|codex|opencode>     Configure hotpath in the current repo via an AI agent session
   init-ci --agent <claude|codex|opencode> [--forks]
                                            Set up the hotpath Cloud CI integration via an AI agent session
+  init-grafana --agent <claude|codex|opencode>
+                                           Set up a Grafana dashboard for the hotpath Prometheus metrics via an AI agent session
 
 The 'console' command requires building with the 'tui' feature.
 The 'cloud' command requires building with the 'cloud' feature."
@@ -170,7 +177,7 @@ The 'cloud' command requires building with the 'cloud' feature."
     }
 }
 
-/// `init` and `init-ci` arguments without clap: `--agent NAME` or
+/// `init`, `init-ci` and `init-grafana` arguments without clap: `--agent NAME` or
 /// `--agent=NAME`, plus `--forks` for `init-ci`.
 #[cfg(not(any(feature = "tui", feature = "cloud")))]
 fn parse_init_args(
@@ -197,6 +204,7 @@ fn parse_init_args(
     let setup = match (command, forks) {
         ("init-ci", true) => cmd::init::Setup::CiForks,
         ("init-ci", false) => cmd::init::Setup::Ci,
+        ("init-grafana", _) => cmd::init::Setup::Grafana,
         _ => cmd::init::Setup::Profiling,
     };
     Ok((setup, agent))

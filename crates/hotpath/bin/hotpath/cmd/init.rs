@@ -17,6 +17,8 @@ pub(crate) enum Setup {
     /// `hotpath init-ci --forks`: the CI integration with the relay workflow
     /// that also covers pull requests from forks.
     CiForks,
+    /// `hotpath init-grafana`: a Grafana dashboard on the Prometheus metrics.
+    Grafana,
 }
 
 impl Setup {
@@ -25,6 +27,7 @@ impl Setup {
             Self::Profiling => "hotpath_init",
             Self::Ci => "hotpath_init_ci",
             Self::CiForks => "hotpath_init_ci_forks",
+            Self::Grafana => "hotpath_init_grafana",
         }
     }
 
@@ -35,6 +38,7 @@ impl Setup {
             Self::CiForks => {
                 "Set up the hotpath Cloud CI integration in this repo, covering pull requests from forks."
             }
+            Self::Grafana => "Set up a hotpath Grafana dashboard for this repo.",
         }
     }
 }
@@ -157,8 +161,7 @@ fn download_skill(url: &str) -> Result<String, String> {
         .output()
         .map_err(|e| {
             if e.kind() == ErrorKind::NotFound {
-                "'curl' not found. Install curl to use 'hotpath init' and 'hotpath init-ci'."
-                    .to_string()
+                "'curl' not found. Install curl to use the 'hotpath init' commands.".to_string()
             } else {
                 format!("Failed to run curl: {e}")
             }
