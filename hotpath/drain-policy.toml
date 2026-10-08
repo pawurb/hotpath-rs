@@ -1,6 +1,9 @@
 # Policy for the `drain` benchmark. Lockstep rounds make allocations deterministic;
 # timing stays unjudged because a shared CI runner is too noisy.
 
+# A regression or a broken budget fails the `hotpath / drain` check.
+fail_ci_on_regression = true
+
 [functions]
 min_percent_total = 0.5
 

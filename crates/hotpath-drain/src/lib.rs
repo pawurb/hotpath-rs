@@ -173,6 +173,8 @@ impl<M> EventProducer<M> {
         hotpath_meta::measure(impl_type = "EventProducer")
     )]
     pub fn push(&self, m: M) {
+        // Deliberate regression to demo the failing hotpath check, do not merge.
+        std::hint::black_box(Box::new([0u8; 64]));
         let tail = self.tail.get();
         let i = self.len.get();
         // SAFETY: `tail` is the producer-owned live tail chunk (the consumer
