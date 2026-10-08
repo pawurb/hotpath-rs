@@ -33,7 +33,7 @@ Reference: https://hotpath.rs/prometheus_grafana (every metric, label and env va
 | sqlx / diesel / toasty SQL layer | SQL |
 | `hotpath::http!(client)` | Outbound HTTP |
 | `hotpath-alloc` feature | Memory |
-| `#[hotpath::measure]` / `#[hotpath::measure_all]` | Functions, profiling overhead |
+| `#[hotpath::measure]` / `#[hotpath::measure_all]` / `hotpath::measure_block!` | Functions, profiling overhead |
 | `hotpath::channel!` | Channels |
 | `hotpath::rw_lock!` / `hotpath::mutex!` | Locks |
 | `hotpath::tokio_runtime!()` | Tokio runtime |
@@ -187,24 +187,24 @@ sort_desc(topk(10,
 
 #### Channels
 
-Every channel query groups by `source`, `label` and `iter`, the labels that identify one channel: `label` is empty for channels created without one, so grouping by it alone would merge unrelated call sites. Use `{{label}} {{source}}` as the legend.
+Every channel query groups by `source`, `label`, `iter` and `payload`, the labels that identify one channel: `label` is empty for channels created without one, so grouping by it alone would merge unrelated call sites, and a generic helper can create channels of several payload types at one call site. Use `{{label}} {{source}} {{payload}}` as the legend.
 
 Max queue size since start; the capacity is in the `type` label. A queue at capacity means consumers are not keeping up.
 
 ```promql
-sort_desc(topk(10, max by (source, label, iter, type) (hotpath_channel_max_queue_size)))
+sort_desc(topk(10, max by (source, label, iter, type, payload) (hotpath_channel_max_queue_size)))
 ```
 
 Throughput, messages received per second:
 
 ```promql
-sort_desc(topk(10, sum by (source, label, iter, type) (rate(hotpath_channel_received_total[$__range]))))
+sort_desc(topk(10, sum by (source, label, iter, type, payload) (rate(hotpath_channel_received_total[$__range]))))
 ```
 
 p95 send-to-receive latency:
 
 ```promql
-sort_desc(topk(10, histogram_quantile(0.95, sum by (source, label, iter, type) (increase(hotpath_channel_delay_seconds[$__range])))))
+sort_desc(topk(10, histogram_quantile(0.95, sum by (source, label, iter, type, payload) (increase(hotpath_channel_delay_seconds[$__range])))))
 ```
 
 #### Locks
@@ -227,7 +227,7 @@ sum by (worker) (increase(hotpath_tokio_worker_parks_total[$__range]))
 sum by (worker) (increase(hotpath_tokio_worker_polls_total[$__range]))
 sum by (worker) (increase(hotpath_tokio_worker_steals_total[$__range]))
 sum by (worker) (increase(hotpath_tokio_worker_busy_seconds_total[$__range]))
-sum by (worker) (rate(hotpath_tokio_worker_busy_seconds_total[$__range]))
+100 * sum by (worker) (rate(hotpath_tokio_worker_busy_seconds_total[$__range]))
 sum by (worker) (hotpath_tokio_worker_local_queue_depth)
 sum by (worker) (increase(hotpath_tokio_worker_busy_seconds_total[$__range]))
   / (sum by (worker) (increase(hotpath_tokio_worker_polls_total[$__range])) > 0)
