@@ -44,14 +44,17 @@ hotpath-alloc = ["hotpath/hotpath-alloc"]
 hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 ```
 
-Run the app with the feature and check that metrics come out:
+Start the app with the feature **in the background** (a server never exits, so a foreground `cargo run` would block the check), give it some traffic, scrape the endpoint, then stop it:
 
 ```bash
-cargo run --features='hotpath,hotpath-alloc,hotpath-prometheus'
+cargo run --features='hotpath,hotpath-alloc,hotpath-prometheus' > /tmp/hotpath-app.log 2>&1 &
+APP_PID=$!
+# wait until the endpoint answers (the first build can take minutes), exercise the app, then:
 curl -s http://127.0.0.1:6772/metrics | grep -v '^#' | cut -d'{' -f1 | sort -u
+kill $APP_PID
 ```
 
-The second command lists the metric families the app actually emits; families with no data are omitted from the scrape. Use that list to confirm step 1. If the app cannot be started locally (it needs a database, secrets, ...), ask the user to run it or rely on the code inspection alone.
+The `curl` lists the metric families the app actually emits; families with no data are omitted from the scrape. Use that list to confirm step 1. If the app cannot be started locally (it needs a database, secrets, ...), ask the user to run it or rely on the code inspection alone.
 
 The endpoint listens on `127.0.0.1:6772`. Configure it with env vars, not code:
 
@@ -210,36 +213,36 @@ sort_desc(topk(10,
 
 #### Channels
 
+Every channel query groups by `source`, `label` and `iter`, the labels that identify one channel: `label` is empty for channels created without one, so grouping by it alone would merge unrelated call sites. Use `{{label}} {{source}}` as the legend.
+
 Max queue size since start; the capacity is in the `type` label. A queue at capacity means consumers are not keeping up.
 
 ```promql
-sort_desc(topk(10, max by (label, type) (hotpath_channel_max_queue_size)))
+sort_desc(topk(10, max by (source, label, iter, type) (hotpath_channel_max_queue_size)))
 ```
 
 Throughput, messages received per second:
 
 ```promql
-sort_desc(topk(10, sum by (label, type) (rate(hotpath_channel_received_total[$__range]))))
+sort_desc(topk(10, sum by (source, label, iter, type) (rate(hotpath_channel_received_total[$__range]))))
 ```
 
 p95 send-to-receive latency:
 
 ```promql
-sort_desc(topk(10, histogram_quantile(0.95, sum by (label, type) (increase(hotpath_channel_delay_seconds[$__range])))))
+sort_desc(topk(10, histogram_quantile(0.95, sum by (source, label, iter, type) (increase(hotpath_channel_delay_seconds[$__range])))))
 ```
-
-`label` is empty for channels created without one; use `{{label}} {{source}}` as the legend, or group by `source` as well.
 
 #### Locks
 
-p95 wait time (contention) and p95 hold time per RwLock and side:
+p95 wait time (contention) and p95 hold time per RwLock and side, grouped by the call-site labels like the channels (legend `{{label}} {{source}} {{op}}`):
 
 ```promql
-sort_desc(topk(10, histogram_quantile(0.95, sum by (label, op) (increase(hotpath_rwlock_wait_seconds[$__range])))))
-sort_desc(topk(10, histogram_quantile(0.95, sum by (label, op) (increase(hotpath_rwlock_acquire_seconds[$__range])))))
+sort_desc(topk(10, histogram_quantile(0.95, sum by (source, label, iter, op) (increase(hotpath_rwlock_wait_seconds[$__range])))))
+sort_desc(topk(10, histogram_quantile(0.95, sum by (source, label, iter, op) (increase(hotpath_rwlock_acquire_seconds[$__range])))))
 ```
 
-For mutexes use `hotpath_mutex_wait_seconds` and `hotpath_mutex_acquire_seconds`, without `op`.
+For mutexes use `hotpath_mutex_wait_seconds` and `hotpath_mutex_acquire_seconds`, grouped by `(source, label, iter)`.
 
 #### Tokio runtime
 
@@ -267,11 +270,13 @@ sort_desc(topk(10, hotpath_thread_cpu_percent_max))
 sort_desc(topk(10, hotpath_thread_alloc_bytes_total))
 ```
 
-Memory retention per thread, as a time series; a line that keeps rising under steady load points to a thread holding memory:
+Retained bytes per thread (allocated minus deallocated since start), as a time series; a line that keeps rising under steady load points to a thread holding memory:
 
 ```promql
-rate(hotpath_thread_alloc_bytes_total[$__rate_interval]) - rate(hotpath_thread_dealloc_bytes_total[$__rate_interval])
+hotpath_thread_alloc_bytes_total - hotpath_thread_dealloc_bytes_total
 ```
+
+Memory freed on another thread than the one that allocated it (e.g. buffers handed through a channel) makes one thread drift up and the other down, so read a rising line together with the process-level `hotpath_alloc_bytes_total - hotpath_dealloc_bytes_total`.
 
 Legend `{{name}}`. Unnamed threads show up as `thread_N`; suggest `std::thread::Builder::name` for the important ones.
 
