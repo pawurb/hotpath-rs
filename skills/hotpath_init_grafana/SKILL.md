@@ -24,12 +24,12 @@ Reference: https://hotpath.rs/prometheus_grafana (every metric, label and env va
 
 ### 1. Inspect the project
 
-- Check whether hotpath is already set up: a `hotpath` dependency, `#[hotpath::main]` (or `HotpathGuardBuilder`) and instrumented code. If it is not, set it up first by following the `hotpath_init` skill (https://raw.githubusercontent.com/pawurb/hotpath-rs/main/skills/hotpath_init/SKILL.md), then continue here.
+- Check whether hotpath is already set up: a `hotpath` dependency, `#[hotpath::main]` (or `HotpathGuardBuilder`) and instrumented code. If it is not, stop and tell the user to set up profiling first with `hotpath init` (https://hotpath.rs/introduction); do not instrument the project as part of this skill.
 - Record which subsystems the project instruments. They decide which dashboard rows to build:
 
 | Instrumentation in the code | Dashboard row |
 |---|---|
-| `hotpath::axum!(router)` | Routes, and every per-route panel |
+| `hotpath::axum!(router)` or `.layer(hotpath::AxumLayer::new())` | Routes, and every per-route panel |
 | sqlx / diesel / toasty SQL layer | SQL |
 | `hotpath::http!(client)` | Outbound HTTP |
 | `hotpath-alloc` feature | Memory |
