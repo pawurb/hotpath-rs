@@ -217,10 +217,11 @@ min_percent_total = 2
 | `"off"` (the default) | None. |
 | `"report"` | Shows the verdict and never blocks merging: a regression or a broken [budget](performance_budgets.md) is neutral. |
 | `"fail_on_regression"` | Fails on a regression or a broken [budget](performance_budgets.md). |
+| `"failures_only"` | Posted only to fail on a regression or a broken [budget](performance_budgets.md), nothing otherwise. The least noise. |
 
-With the check on, no regressions is a success, and nothing judged (no baseline yet and no budgets) is neutral in both modes.
+Where a check is posted, no regressions is a success, and nothing judged (no baseline yet and no budgets) is neutral. A `"failures_only"` check cannot be made required: a clean pull request never gets one, so GitHub would wait for it. A clean re-run on the same commit also leaves an earlier failure in place; a new push clears it.
 
-An upload the server refuses gets no check. A re-run posts a new check, and GitHub shows the latest. Put the key in `hotpath/<benchmark>-policy.toml` to fail on regressions of one benchmark only. To block merging, make the check required, see [CI integration](ci_integration.md#failing-the-job).
+An upload the server refuses gets no check. A re-run posts a new check, and GitHub shows the latest. Put the key in `hotpath/<benchmark>-policy.toml` to fail on regressions of one benchmark only. To block merging, use `"fail_on_regression"` and make the check required, see [CI integration](ci_integration.md#failing-the-job).
 
 ## Policy file
 
