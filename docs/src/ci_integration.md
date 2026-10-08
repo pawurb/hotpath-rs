@@ -68,8 +68,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run benchmark and upload report
         env:
-          # A failed upload fails pushes only, so hotpath.rs being down never blocks a pull request.
-          HOTPATH_UPLOAD: ${{ github.event_name == 'push' && 'fail-on-error' || 'enabled' }}
+          HOTPATH_UPLOAD: fail-on-error
           HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
           HOTPATH_BENCHMARK: my_benchmark
           HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
@@ -77,14 +76,12 @@ jobs:
         run: |
           cargo run -q --release --example my_benchmark \
             --features hotpath,hotpath-alloc,hotpath-cloud
-      - name: Check the baseline was uploaded
-        if: github.event_name == 'push'
-        run: test -s upload.json
+          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
 ```
 
 Pushes to the default branch upload the **baseline** that pull requests are compared against. 
 
-The response file is written only when the server accepted the report, and removed when the upload was skipped or failed, so `test -s` fails the push job when no baseline was stored. Keep its path absolute: a relative one resolves against the working directory of the benchmark program. Give every uploading program its own file.
+The response file is written only when the server accepted the report, and removed when the upload was skipped or failed, so `test -s` fails the job when no report was stored. Keep its path absolute: a relative one resolves against the working directory of the benchmark program. Give every uploading program its own file.
 
 ### Failing the job
 

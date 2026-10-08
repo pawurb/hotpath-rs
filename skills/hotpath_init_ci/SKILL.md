@@ -86,8 +86,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run benchmark and upload report
         env:
-          # A failed upload fails pushes only, so hotpath.rs being down never blocks a pull request.
-          HOTPATH_UPLOAD: ${{ github.event_name == 'push' && 'fail-on-error' || 'enabled' }}
+          HOTPATH_UPLOAD: fail-on-error
           HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
           HOTPATH_BENCHMARK: my_benchmark
           HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
@@ -95,14 +94,12 @@ jobs:
         run: |
           cargo run -q --release --example my_benchmark \
             --features hotpath,hotpath-alloc,hotpath-cloud
-      - name: Check the baseline was uploaded
-        if: github.event_name == 'push'
-        run: test -s upload.json
+          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
 ```
 
 - Add any setup the benchmark needs (system packages, a database service) as steps before the benchmark, copied from the repository's existing CI.
-- A failed upload fails the push job (`fail-on-error`) and is only a warning on pull requests (`enabled`), so hotpath.rs being down never blocks a pull request.
-- The response file exists only after an accepted upload, so `test -s` fails the push job when no baseline was stored (a missing feature, a skipped upload). Keep its path absolute.
+- `HOTPATH_UPLOAD: fail-on-error` fails the job when the upload fails.
+- The response file exists only after an accepted upload, so `test -s` fails the job when no report was stored (a missing feature, a skipped upload). Keep its path absolute.
 - A regression never fails the job. If the user wants a regression or a broken budget to fail the pull request's `hotpath / <benchmark>` check, add `fail_ci_on_regression = true` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it. To block merges on it, they make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
 - The workflow needs no secret: the upload authenticates with the job's OIDC token.
 
