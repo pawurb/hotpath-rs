@@ -53,12 +53,6 @@ on:
           the same. Prefixes relative paths in source links.
         default: ""
         type: string
-      fail_on_regression:
-        description: >-
-          Fail the job when the server's verdict on the report is a regression
-          or a broken budget. A report nothing could be judged on never fails.
-        default: false
-        type: boolean
 
 jobs:
   relay:
@@ -176,16 +170,4 @@ jobs:
           comment_error=$(jq -r '.comment.error // empty' response.json 2>/dev/null | tr '\r\n' '  ' || true)
           if [ -n "$comment_error" ]; then
             echo "::warning::hotpath.rs comment failed: $comment_error"
-          fi
-
-      # The verdict is the one the pull request comment shows, judged under the
-      # policy the report carried. A body without one is not a pass.
-      - name: Fail on a regression
-        if: inputs.fail_on_regression && steps.pr.outputs.number
-        run: |
-          set -euo pipefail
-          if ! jq -e '.verdict.regressed == false' response.json > /dev/null; then
-            summary=$(jq -r '"\(.verdict.regressions) regressions, \(.verdict.budgets_broken) budgets broken"' response.json 2>/dev/null || echo "no verdict in the response")
-            echo "::error::hotpath.rs found a regression: $summary"
-            exit 1
           fi

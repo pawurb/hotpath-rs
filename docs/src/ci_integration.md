@@ -1,12 +1,12 @@
 # CI integration: benchmark Rust pull requests in GitHub Actions
 
-`hotpath Cloud` reviews the performance of every pull request. Your CI job runs a benchmark with `hotpath` profiling enabled and uploads the report. hotpath.rs compares it with the report of the base branch and posts the result as a comment on the pull request.
+`hotpath Cloud` reviews the performance of every pull request. Your CI job runs a benchmark with `hotpath` profiling enabled and uploads the report. hotpath.rs compares it with the report of the base branch and posts the result as a comment and a `hotpath / <benchmark>` check on the pull request.
 
 What counts as a regression is customizable with a [regression policy](regression_policy.md) and [performance budgets](performance_budgets.md).
 
 ## Setup
 
-Log in at <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a> and install the hotpath GitHub App on the repository from the dashboard. The App has no access to your code, only write access to pull requests to post comments.
+Log in at <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a> and install the hotpath GitHub App on the repository from the dashboard. The App has no access to your code, only write access to pull requests to post comments, and to checks to report the result of each benchmark.
 
 Add the `hotpath-cloud` feature next to the profiling features you use:
 
@@ -68,40 +68,44 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run benchmark and upload report
         env:
-          HOTPATH_UPLOAD: fail-on-error
+          # A failed upload fails pushes only, so hotpath.rs being down never blocks a pull request.
+          HOTPATH_UPLOAD: ${{ github.event_name == 'push' && 'fail-on-error' || 'enabled' }}
+          HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
           HOTPATH_BENCHMARK: my_benchmark
           HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_OUTPUT_FORMAT: none
         run: |
-          set -o pipefail
           cargo run -q --release --example my_benchmark \
-            --features hotpath,hotpath-alloc,hotpath-cloud 2>&1 | tee run.log
-          grep -q '^hotpath: uploaded report ' run.log
+            --features hotpath,hotpath-alloc,hotpath-cloud
+      - name: Check the baseline was uploaded
+        if: github.event_name == 'push'
+        run: test -s upload.json
 ```
 
 Pushes to the default branch upload the **baseline** that pull requests are compared against. 
 
-The `grep` fails the step when no upload line was printed, for example when the upload was skipped. Drop it if a skipped upload should pass.
+The response file is written only when the server accepted the report, and removed when the upload was skipped or failed, so `test -s` fails the push job when no baseline was stored. Keep its path absolute: a relative one resolves against the working directory of the benchmark program. Give every uploading program its own file.
 
 ### Failing the job
 
-`HOTPATH_UPLOAD` decides what fails the job. Each mode fails on everything the one before it does:
+`HOTPATH_UPLOAD` decides whether a failed upload fails the job:
 
-| `HOTPATH_UPLOAD` | Upload fails | Regression or broken budget |
-|---|---|---|
-| `enabled` (or `1`, `true`) | warning | warning |
-| `fail-on-error` | job fails | warning |
-| `fail-on-regression` | job fails | job fails |
+| `HOTPATH_UPLOAD` | Upload fails |
+|---|---|
+| `enabled` (or `1`, `true`) | warning |
+| `fail-on-error` | job fails |
 
-A skipped upload (not in GitHub Actions, no OIDC token, invalid benchmark name, the program panicked) never fails the job. A report nothing could be judged on (no baseline yet and no budgets) is not a regression.
+A skipped upload (not in GitHub Actions, no OIDC token, invalid benchmark name, the program panicked) never fails the job. A regression or a broken budget never fails the job either: it is a warning in the job log, and it fails the pull request's `hotpath / <benchmark>` check when the policy sets [`fail_ci_on_regression = true`](regression_policy.md#pull-request-check).
+
+To block merging a pull request with a regression, make `hotpath / <benchmark>` a required check in the branch protection rules. A required check also blocks merges while hotpath.rs is unavailable, since no check is posted then.
 
 ### Environment variables
 
 | Variable | Description |
 |---|---|
-| `HOTPATH_UPLOAD` | Upload the report when the run ends, and decide what fails the job: `enabled`, `fail-on-error` or `fail-on-regression` (see above). Unset, `0` or `false` uploads nothing. An unknown value uploads as `enabled` with a warning. (default: off) |
+| `HOTPATH_UPLOAD` | Upload the report when the run ends, and decide whether a failed upload fails the job: `enabled` or `fail-on-error` (see above). Unset, `0` or `false` uploads nothing. An unknown value uploads as `enabled` with a warning. (default: off) |
 | `HOTPATH_BENCHMARK` | Name of the benchmark series, 1 to 64 characters from `[A-Za-z0-9._-]`. Reports are compared within one series, and every series gets a pull request comment of its own. An invalid name skips the upload. (default: `default`) |
-| `HOTPATH_UPLOAD_RESPONSE_PATH` | File the server's response is written to as JSON. (default: not written) |
+| `HOTPATH_UPLOAD_RESPONSE_PATH` | File the server's response is written to as JSON when the report is accepted. A skipped or failed upload removes it. (default: not written) |
 | `HOTPATH_POLICY_PATH` | Policy file to upload instead of `hotpath/<benchmark>-policy.toml` or `hotpath/policy.toml`. Relative to the working directory, and inside the repository. (default: not set) |
 | `HOTPATH_USER_METADATA` | Comma-separated `key=value` pairs stored with the report and shown on its page, e.g. `runner=linux-x64,profile=release`. |
 | `HOTPATH_SOURCE_ROOT` | Path of the build workspace relative to the repository root, for source links in the comment. Derived from the checkout when unset. |
@@ -142,14 +146,14 @@ jobs:
       - name: Run benchmark and upload report
         env:
           HOTPATH_UPLOAD: fail-on-error
+          HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
           HOTPATH_BENCHMARK: my_benchmark
           HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_OUTPUT_FORMAT: none
         run: |
-          set -o pipefail
           cargo run -q --release --example my_benchmark \
-            --features hotpath,hotpath-alloc,hotpath-cloud 2>&1 | tee run.log
-          grep -q '^hotpath: uploaded report ' run.log
+            --features hotpath,hotpath-alloc,hotpath-cloud
+          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
 
   report:
     name: benchmark (pull request)
@@ -206,7 +210,6 @@ jobs:
       benchmark: my_benchmark
       artifact_name: hotpath-report
       report_file: report.json
-      # fail_on_regression: true
 ```
 
 [`hotpath-relay.yml`](https://github.com/pawurb/hotpath-rs/blob/main/.github/workflows/hotpath-relay.yml) is a reusable workflow. It runs after a successful benchmark run of a pull request, downloads the artifact, uploads the report and prints the server's response in the step summary. A rejected upload fails the relay job, and a comment that could not be posted is a warning. The pull request the report belongs to is looked up from the benchmark run's head commit, not read from the report, which the pull request's own code wrote; that lookup is what `pull-requests: read` is for.
@@ -229,13 +232,12 @@ Repositories that pin actions by commit hash should use the commit the tag point
 | `artifact_name` | Name of the artifact the benchmark job uploaded. (default: `hotpath-report`) |
 | `report_file` | Name of the JSON report inside the artifact. (default: `report.json`) |
 | `source_root` | Path of the build workspace relative to the repository root, `""` when they are the same. (default: `""`) |
-| `fail_on_regression` | Fail the relay job when the verdict is a regression or a broken budget. (default: `false`) |
 
 Things to know about `workflow_run`:
 
 - It runs the copy of the relay workflow that is on the **default branch**. Changes to it do nothing until they are merged.
 - It matches the benchmark workflow by **name**. Rename that workflow and the relay stops firing, without an error.
-- Its jobs are **not checks on the pull request**. With `fail_on_regression: true` a regression fails the relay run, which shows in the Actions tab and in the pull request comment, not among the pull request's checks.
+- Its jobs are **not checks on the pull request**. The `hotpath / <benchmark>` check the server posts is, so a regression shows among the pull request's checks of fork pull requests too.
 
 A pull request is judged under the policy file of its own branch, and that includes pull requests from forks. Review changes to `hotpath/*.toml` like changes to CI configuration.
 
@@ -268,5 +270,5 @@ Give every benchmark its own `HOTPATH_BENCHMARK` name and its own workflow or jo
 | `upload failed: ... (HTTP 429)` | The repository is over its upload quota. |
 | The comment reads "no baseline yet" | The base branch has no report in this series. It appears after the first push to the default branch with the workflow in place. |
 | The comment reads "report not readable" | The report was produced by a `hotpath` version the server no longer reads. Update `hotpath`. |
-| The report is uploaded but no comment appears | The upload line ends with `comment failed: ...`, and the job shows it as a warning. The usual cause is that the App's "Pull requests: write" permission is not approved for the installation. Approve it in the installation settings on GitHub (your account or organization settings, under Applications). |
+| The report is uploaded but no comment or check appears | The upload line ends with `comment failed: ...`, and the job shows it as a warning. The usual cause is that the App's "Pull requests: write" or "Checks: write" permission is not approved for the installation. Approve it in the installation settings on GitHub (your account or organization settings, under Applications). |
 | The relay does not run | The `workflows:` name does not match the benchmark workflow's `name:`, the relay workflow is not on the default branch yet, or the benchmark run failed. |

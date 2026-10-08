@@ -8,7 +8,9 @@ on:
 # Transport-layer benchmark: the `hotpath-drain` `throughput` example runs
 # several producer threads against one consumer while `hotpath-meta` profiles
 # the queue's own hot paths (`push`, `sweep`, `drain_into`). Same shape as
-# `cloud-meta-benchmark.yml`, uploaded to the separate `drain` series.
+# `cloud-meta-benchmark.yml`, uploaded to the separate `drain` series. A
+# regression fails the pull request's `hotpath / drain` check run
+# (`fail_ci_on_regression` in `hotpath/drain-policy.toml`), not the job.
 jobs:
   benchmark:
     name: cloud drain benchmark
@@ -25,13 +27,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run drain benchmark and upload report
         env:
-          HOTPATH_META_UPLOAD: fail-on-regression
+          HOTPATH_META_UPLOAD: fail-on-error
+          HOTPATH_META_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload-response.json
           HOTPATH_META_BENCHMARK: drain
           HOTPATH_META_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_META_EXCLUDE_WRAPPER: "true"
           HOTPATH_META_OUTPUT_FORMAT: none
         run: |
-          set -o pipefail
           cargo run -q --release -p hotpath-drain --example throughput \
-            --features hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta 2>&1 | tee run.log
-          grep -q '^hotpath-meta: uploaded report ' run.log
+            --features hotpath-meta,hotpath-alloc-meta,hotpath-cloud-meta
+          test -s "$HOTPATH_META_UPLOAD_RESPONSE_PATH"

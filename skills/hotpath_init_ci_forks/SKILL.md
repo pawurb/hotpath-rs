@@ -93,14 +93,14 @@ jobs:
       - name: Run benchmark and upload report
         env:
           HOTPATH_UPLOAD: fail-on-error
+          HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
           HOTPATH_BENCHMARK: my_benchmark
           HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_OUTPUT_FORMAT: none
         run: |
-          set -o pipefail
           cargo run -q --release --example my_benchmark \
-            --features hotpath,hotpath-alloc,hotpath-cloud 2>&1 | tee run.log
-          grep -q '^hotpath: uploaded report ' run.log
+            --features hotpath,hotpath-alloc,hotpath-cloud
+          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
 
   report:
     name: hotpath benchmark (pull request)
@@ -164,11 +164,13 @@ jobs:
 
 Pin the relay to the release tag of the `hotpath` version the benchmark builds with, never `@main`. If the repository pins its actions by commit hash, use the commit the tag points to (`git ls-remote https://github.com/pawurb/hotpath-rs refs/tags/v0.28.5`) with the tag in the comment: `@<commit sha> # v0.28.5`.
 
-Add `fail_on_regression: true` under `with:` only if the user wants a regression or a broken budget to fail the relay run. Tell the user:
+- A regression never fails the job. If the user wants a regression or a broken budget to fail the pull request's `hotpath / <benchmark>` check, add `fail_ci_on_regression = true` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it. To block merges on it, they make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
+
+Tell the user:
 
 - `workflow_run` runs the relay from the **default branch** only, so it does nothing until it is merged.
 - Renaming the benchmark workflow silently stops the relay.
-- The relay run is not a check on the pull request; its result shows in the Actions tab and in the pull request comment.
+- The relay run is not a check on the pull request; the server posts the `hotpath / <benchmark>` check on fork pull requests too.
 
 ### 7. Verify locally
 
@@ -183,7 +185,7 @@ The report must name the benchmark and `hotpath/policy.toml`: this is the file t
 
 ### 8. Tell the user what is left
 
-- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). It needs no access to the code, only pull request write access to post the comment.
+- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). It needs no access to the code, only pull request write access to post the comment and checks write access to post the `hotpath / <benchmark>` check.
 - Commit both workflows and merge them to the default branch. The first push to the default branch uploads the **baseline**, and the relay only runs once it is on the default branch. Until the baseline exists, pull request comments read "no baseline yet".
 - From then on, every pull request, forks included, gets a performance comment. The `hotpath_cloud` skill and `hotpath cloud diff` read the same verdict as JSON.
 
