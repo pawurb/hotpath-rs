@@ -2,7 +2,7 @@
 # timing stays unjudged because a shared CI runner is too noisy.
 
 # A regression or a broken budget fails the pull request's check run.
-fail_ci_on_regression = true
+pr_check = "fail_on_regression"
 
 [functions]
 min_percent_total = 0.5
