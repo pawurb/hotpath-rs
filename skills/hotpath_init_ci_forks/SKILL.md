@@ -151,7 +151,7 @@ on:
 
 jobs:
   relay:
-    uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@v0.28.5
+    uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@v0.28.6
     permissions:
       actions: read # download the artifact of the benchmark run
       id-token: write # authenticate the upload
@@ -162,7 +162,7 @@ jobs:
       report_file: report.json
 ```
 
-Pin the relay to the release tag of the `hotpath` version the benchmark builds with, never `@main`. If the repository pins its actions by commit hash, use the commit the tag points to (`git ls-remote https://github.com/pawurb/hotpath-rs refs/tags/v0.28.5`) with the tag in the comment: `@<commit sha> # v0.28.5`.
+Pin the relay to the release tag of the `hotpath` version the benchmark builds with, never `@main`. If the repository pins its actions by commit hash, use the commit the tag points to (`git ls-remote https://github.com/pawurb/hotpath-rs refs/tags/v0.28.6`) with the tag in the comment: `@<commit sha> # v0.28.6`.
 
 - A regression never fails the job. If the user wants a regression or a broken budget to fail the pull request's `hotpath / <benchmark>` check, add `pr_check = "fail_on_regression"` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it; `pr_check = "failures_only"` posts the check only when it fails, the least noise, but then it cannot be made required. To block merges, they use `"fail_on_regression"` and make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
 
