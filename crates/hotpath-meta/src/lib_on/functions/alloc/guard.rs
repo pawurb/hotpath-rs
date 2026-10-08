@@ -95,8 +95,6 @@ fn send_alloc_measurement(
     wrapper: bool,
     tid: Option<u64>,
 ) {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-
     crate::functions::alloc::state::send_alloc_measurement(
         name,
         bytes_total,
@@ -120,8 +118,6 @@ fn send_alloc_measurement_with_log(
     tid: Option<u64>,
     result_log: Option<String>,
 ) {
-    let _suspend = crate::lib_on::SuspendAllocTracking::new();
-
     crate::functions::alloc::state::send_alloc_measurement_with_log(
         name,
         bytes_total,
@@ -173,6 +169,7 @@ impl MeasurementGuardSync {
 
     #[inline]
     fn build(name: &'static str, wrapper: bool, skipped: bool, caller_scoped: bool) -> Self {
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         if !skipped {
             push_alloc_stack();
         }
@@ -198,6 +195,7 @@ impl Drop for MeasurementGuardSync {
             return;
         }
 
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         let end = Instant::now();
         let duration_ns = self
             .start
@@ -263,6 +261,7 @@ impl Drop for MeasurementGuardAsync {
             return;
         }
 
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         let end = Instant::now();
         let duration_ns = self
             .start
@@ -301,6 +300,7 @@ impl MeasurementGuardSyncWithLog {
     /// source attribution (skipped for wrapper guards).
     #[inline]
     pub(crate) fn new_caller_scoped(name: &'static str, wrapper: bool, skipped: bool) -> Self {
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         let caller_scoped = !wrapper && !skipped;
         if !skipped {
             push_alloc_stack();
@@ -327,6 +327,7 @@ impl MeasurementGuardSyncWithLog {
             return;
         }
 
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         let end = Instant::now();
         let duration_ns = self
             .start
@@ -365,6 +366,7 @@ impl Drop for MeasurementGuardSyncWithLog {
             return;
         }
 
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         let end = Instant::now();
         let duration_ns = self
             .start
@@ -432,6 +434,7 @@ impl MeasurementGuardAsyncWithLog {
             return;
         }
 
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         let end = Instant::now();
         let duration_ns = self
             .start
@@ -463,6 +466,7 @@ impl Drop for MeasurementGuardAsyncWithLog {
             return;
         }
 
+        let _suspend = crate::lib_on::SuspendAllocTracking::new();
         let end = Instant::now();
         let duration_ns = self
             .start
