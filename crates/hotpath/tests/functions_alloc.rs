@@ -556,4 +556,58 @@ pub mod tests {
             "expected realloc_work to count both the initial alloc and the realloc'd size, got {realloc_work_bytes} B"
         );
     }
+
+    // cargo run -p test-alloc --example first_call_registration --features hotpath,hotpath-alloc
+    #[test]
+    fn test_first_call_registration_not_billed_to_caller() {
+        use hotpath::json::JsonReport;
+
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-alloc",
+                "--example",
+                "first_call_registration",
+                "--features",
+                "hotpath,hotpath-alloc",
+            ])
+            .env("HOTPATH_REPORT", "functions-alloc")
+            .env("HOTPATH_OUTPUT_FORMAT", "json")
+            .env("HOTPATH_METRICS_SERVER_OFF", "true")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json_start = stdout.find('{').expect("No JSON report in output");
+        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
+            .into_iter::<JsonReport>()
+            .next()
+            .expect("No JSON value in output")
+            .expect("Failed to parse JSON report");
+
+        let alloc = report
+            .functions_alloc
+            .expect("Expected functions_alloc in report");
+
+        let outer = alloc
+            .data
+            .iter()
+            .find(|f| f.name == "first_call_registration::outer")
+            .expect("Expected outer in alloc data");
+        assert_eq!(outer.calls, 10);
+
+        let outer_bytes =
+            hotpath::parse_bytes(&outer.total).expect("Failed to parse total bytes for outer");
+        assert_eq!(
+            outer_bytes, 0,
+            "expected outer to report 0 B, got {outer_bytes} B"
+        );
+    }
 }

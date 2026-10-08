@@ -355,6 +355,7 @@ static CPU_LABEL_ALIASES: OnceLock<RwLock<HashMap<&'static str, &'static str>>> 
 
 #[doc(hidden)]
 pub fn register_cpu_label_alias(label: &'static str, symbol: &'static str) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let map = CPU_LABEL_ALIASES.get_or_init(|| RwLock::new(HashMap::new()));
     if let Ok(mut w) = map.write() {
         w.entry(label).or_insert(symbol);

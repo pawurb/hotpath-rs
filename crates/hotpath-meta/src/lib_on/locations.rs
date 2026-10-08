@@ -24,6 +24,7 @@ static LOCATIONS: OnceLock<RwLock<HashMap<&'static str, &'static Location>>> = O
 /// site registered first.
 #[doc(hidden)]
 pub fn register_location(name: &'static str, location: &'static Location) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let map = LOCATIONS.get_or_init(|| RwLock::new(HashMap::new()));
     if let Ok(mut w) = map.write() {
         w.entry(name).or_insert(location);
@@ -38,6 +39,7 @@ pub(crate) fn register_caller_location(
     key: &'static str,
     caller: &'static std::panic::Location<'static>,
 ) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let map = LOCATIONS.get_or_init(|| RwLock::new(HashMap::new()));
     if let Ok(mut w) = map.write() {
         w.entry(key).or_insert_with(|| {
