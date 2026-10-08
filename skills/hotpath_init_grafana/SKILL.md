@@ -1,6 +1,6 @@
 ---
 name: hotpath_init_grafana
-description: Set up a Grafana dashboard for a Rust project profiled with hotpath. Enables the hotpath-prometheus feature, configures the Prometheus scrape job and builds a dashboard JSON with context-aware panels (SQL and HTTP time per route, N+1 detection, memory and time per request, channel queues, lock contention, Tokio workers, per-thread CPU and allocations, profiling overhead) limited to what the project instruments. Use when the user wants Grafana or Prometheus dashboards for hotpath metrics.
+description: Build a Grafana dashboard JSON for a Rust project profiled with hotpath. Writes the dashboard file with context-aware panels (SQL and HTTP time per route, N+1 detection, memory and time per request, channel queues, lock contention, Tokio workers, per-thread CPU and allocations, profiling overhead) limited to what the project instruments. Only builds the dashboard: does not configure Prometheus, Grafana or the hotpath metrics endpoint. Use when the user wants a Grafana dashboard for hotpath metrics.
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
@@ -8,7 +8,15 @@ allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 
 Build a [Grafana](https://grafana.com) dashboard on top of the metrics that [hotpath](https://hotpath.rs) exposes through its Prometheus endpoint. The dashboard is organized in performance layers: SQL queries and outbound HTTP calls attributed to the axum route that issued them, memory and time per request, then channels, locks, the Tokio runtime and threads. Each panel answers a concrete question instead of plotting raw series.
 
-This skill assumes Grafana and Prometheus are already running and connected. It does not install or operate them.
+## Scope
+
+This skill only builds the dashboard JSON file. It does not configure Prometheus, Grafana or the app's metrics endpoint: no scrape jobs, data sources, auth tokens, Grafana API imports or Prometheus restarts. Those setups differ between projects (local, docker-compose, Kubernetes, Grafana Cloud, ...) and are owned by whoever runs the infrastructure, so the skill assumes they are already in place:
+
+- the app runs with the `hotpath-prometheus` feature and exposes `/metrics`;
+- Prometheus scrapes it with native histograms enabled;
+- Grafana has that Prometheus as a data source.
+
+If any of these is missing, point the user to https://hotpath.rs/prometheus_grafana and continue with the dashboard; do not edit Prometheus or Grafana config, and do not change `Cargo.toml` features or deployment env vars.
 
 Reference: https://hotpath.rs/prometheus_grafana (every metric, label and env var), https://hotpath.rs/blog/rust-performance-grafana (the reasoning behind each panel).
 
@@ -33,53 +41,19 @@ Reference: https://hotpath.rs/prometheus_grafana (every metric, label and env va
 
 - Skip any row whose instrumentation is missing; an empty panel is noise. Mention the skipped rows to the user with the macro that would enable them, but do not add instrumentation unless they ask.
 
-### 2. Enable the Prometheus endpoint
+### 2. Check the emitted metrics (optional)
 
-In the crate's `Cargo.toml`, next to the existing hotpath features (never in `default`):
-
-```toml
-[features]
-hotpath = ["hotpath/hotpath"]
-hotpath-alloc = ["hotpath/hotpath-alloc"]
-hotpath-prometheus = ["hotpath/hotpath-prometheus"]
-```
-
-Start the app with the feature **in the background** (a server never exits, so a foreground `cargo run` would block the check), give it some traffic, scrape the endpoint, then stop it:
+If the app's metrics endpoint is already reachable (default `http://127.0.0.1:6772/metrics`), list the metric families it emits to confirm step 1. Families with no data are omitted from the scrape:
 
 ```bash
-cargo run --features='hotpath,hotpath-alloc,hotpath-prometheus' > /tmp/hotpath-app.log 2>&1 &
-APP_PID=$!
-# wait until the endpoint answers (the first build can take minutes), exercise the app, then:
 curl -s http://127.0.0.1:6772/metrics | grep -v '^#' | cut -d'{' -f1 | sort -u
-kill $APP_PID
 ```
 
-The `curl` lists the metric families the app actually emits; families with no data are omitted from the scrape. Use that list to confirm step 1. If the app cannot be started locally (it needs a database, secrets, ...), ask the user to run it or rely on the code inspection alone.
+Do not start the app or change its configuration for this; when the endpoint is not reachable, rely on the code inspection alone.
 
-The endpoint listens on `127.0.0.1:6772`. Configure it with env vars, not code:
+Every query below assumes **native histograms**: `histogram_sum()`, `histogram_count()` and `histogram_quantile()` on the bare metric name. If the user says their Prometheus stores classic histograms, rewrite every histogram query to the classic form: `histogram_quantile(q, sum by (x, le) (increase(<metric>_bucket[...])))`, `histogram_sum(increase(<metric>[...]))` becomes `increase(<metric>_sum[...])` and `histogram_count(...)` becomes `increase(<metric>_count[...])`.
 
-- `HOTPATH_PROMETHEUS_PORT` / `HOTPATH_PROMETHEUS_HOST` - set the host to `0.0.0.0` when Prometheus runs in a container or on another machine.
-- `HOTPATH_PROMETHEUS_AUTH_TOKEN` - required in the `Authorization` header (bare or `Bearer`-prefixed). Recommend it whenever the endpoint is reachable beyond localhost.
-
-### 3. Configure the Prometheus scrape job
-
-Find the existing Prometheus config (`prometheus.yml`, a docker-compose service, a Helm values file, ...) and ask the user where it lives when it is not in the repository. Add a job:
-
-```yaml
-scrape_configs:
-  - job_name: hotpath
-    scrape_native_histograms: true
-    # authorization:
-    #   credentials: <HOTPATH_PROMETHEUS_AUTH_TOKEN>
-    static_configs:
-      - targets: ["127.0.0.1:6772"]
-```
-
-Every query below assumes **native histograms**: `histogram_sum()`, `histogram_count()` and `histogram_quantile()` on the bare metric name. Prometheus 3.x accepts `scrape_native_histograms: true` per job; Prometheus 2.x needs the `--enable-feature=native-histograms` flag instead. If the user cannot enable native histograms, rewrite every histogram query to the classic form: `histogram_quantile(q, sum by (x, le) (increase(<metric>_bucket[...])))`, `histogram_sum(increase(<metric>[...]))` becomes `increase(<metric>_sum[...])` and `histogram_count(...)` becomes `increase(<metric>_count[...])`.
-
-Never restart or reload a running Prometheus without asking.
-
-### 4. Build the dashboard
+### 3. Build the dashboard
 
 Write the dashboard as Grafana JSON to `grafana/hotpath-dashboard.json` (or next to the project's existing dashboards). Requirements:
 
@@ -304,35 +278,20 @@ sort_desc(
 
 Functions listed here are candidates for removing `#[hotpath::measure]` or enabling time sampling (https://hotpath.rs/profiling_overhead).
 
-### 5. Validate the queries
+### 4. Validate the dashboard
 
-When a Prometheus URL is reachable and already scrapes the app, run each panel query through the HTTP API with `$__range` replaced by a concrete window (e.g. `1h`) and the variables by their defaults, and fix any query that returns an error:
+Check the file is valid JSON with `jq . grafana/hotpath-dashboard.json`. If the user gives a Prometheus URL that already scrapes the app, run each panel query through its HTTP API, read-only, with `$__range` replaced by a concrete window (e.g. `1h`) and the variables by their defaults, and fix any query that returns an error:
 
 ```bash
 curl -sG http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=<promql>'
 ```
 
-An empty `result` is fine when the app has not served that kind of traffic yet; a `"status":"error"` is not. Check the JSON itself with `jq . grafana/hotpath-dashboard.json`.
+An empty `result` is fine when the app has not served that kind of traffic yet; a `"status":"error"` is not.
 
-### 6. Import the dashboard
-
-Ask the user how they want it imported:
-
-- **Manually**: Grafana UI, Dashboards, New, Import, upload `grafana/hotpath-dashboard.json`, pick the Prometheus data source.
-- **Through the API**: with a Grafana URL and a service account token (Editor role) from the user, wrap the dashboard and post it. Never write the token to a file in the repository.
-
-```bash
-jq '{dashboard: (. + {id: null}), overwrite: true}' grafana/hotpath-dashboard.json \
-  | curl -sS -X POST "$GRAFANA_URL/api/dashboards/db" \
-      -H "Authorization: Bearer $GRAFANA_TOKEN" -H 'Content-Type: application/json' --data-binary @-
-```
-
-- **Provisioning**: if the project already provisions Grafana dashboards from files, put the JSON where the existing provider reads it.
-
-### 7. Summarize
+### 5. Summarize
 
 Tell the user:
 
+- where the dashboard file is, and that they import it themselves (Grafana UI: Dashboards, New, Import) or through their own provisioning;
 - which rows the dashboard contains, and which were skipped with the instrumentation that would enable them;
-- the cargo features and env vars the app needs in production (`hotpath,hotpath-prometheus`, plus `hotpath-alloc` for the memory row) and that the endpoint should be protected with `HOTPATH_PROMETHEUS_AUTH_TOKEN` or kept on localhost;
 - how to read the first panels to look at: SQL queries per request above ~5 is an N+1 candidate, a channel at max capacity is a bottleneck, a non-empty profiling overhead panel means some instrumentation costs more than it is worth.
