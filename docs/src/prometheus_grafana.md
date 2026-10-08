@@ -4,6 +4,17 @@ The `hotpath-prometheus` feature exposes every profiling subsystem as Prometheus
 
 <img loading="lazy" src="{{#asset-hash images/grafana-dashboard.png}}" alt="Grafana dashboard built on hotpath-rs Prometheus metrics showing slowest SQL queries, per-function allocations and requests by route">
 
+## AI setup
+
+The quickest way to build a Grafana dashboard for your app is to let your own AI coding agent do it. Install the `hotpath` CLI and run `init-grafana` inside your project repo:
+
+```bash
+cargo install hotpath --version '^{{HOTPATH_VERSION}}'
+hotpath init-grafana --agent claude # or --agent codex / --agent opencode
+```
+
+`hotpath init-grafana` downloads the [hotpath_init_grafana agent skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_init_grafana/SKILL.md) from GitHub and starts your installed Claude Code, Codex or OpenCode with it as setup instructions. The agent builds a dashboard JSON file with panels for the subsystems your app instruments: SQL and HTTP time per route, N+1 detection, memory and time per request, channel queues, lock contention, Tokio workers, per-thread CPU and profiling overhead. It only writes the dashboard: configure the metrics endpoint and Prometheus scrape job as described below, then import the file into Grafana.
+
 ## Configure prometheus metrics endpoint
 
 Add `hotpath-prometheus` feature forwarding:
