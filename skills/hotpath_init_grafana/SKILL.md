@@ -18,7 +18,7 @@ This skill only builds the dashboard JSON file. It does not configure Prometheus
 
 If any of these is missing, point the user to https://hotpath.rs/prometheus_grafana and continue with the dashboard; do not edit Prometheus or Grafana config, and do not change `Cargo.toml` features or deployment env vars.
 
-Reference: https://hotpath.rs/prometheus_grafana (every metric, label and env var), https://hotpath.rs/blog/rust-performance-grafana (the reasoning behind each panel).
+Reference: https://hotpath.rs/prometheus_grafana (every metric, label and env var).
 
 ## Steps
 
