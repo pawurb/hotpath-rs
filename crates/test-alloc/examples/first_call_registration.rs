@@ -1,12 +1,15 @@
-//! `outer` allocates nothing but first-calls measured callees, whose
-//! location registration grows the registry inside its scope. It must
-//! still report 0 B.
+//! `outer` first-calls measured callees, whose location registration grows
+//! the registry inside its scope. Only the allocations made by the measured
+//! code itself may be reported: 50 B per `outer` call, 32 B per `callee_a`
+//! call and nothing for the other callees.
 //!
 //! Run with:
 //!   cargo run -p test-alloc --example first_call_registration --features hotpath,hotpath-alloc
 
 #[hotpath::measure]
 fn callee_a(x: u64) -> u64 {
+    let buf = vec![0u8; 32];
+    std::hint::black_box(&buf);
     std::hint::black_box(x + 1)
 }
 
@@ -27,6 +30,8 @@ fn callee_d(x: u64) -> u64 {
 
 #[hotpath::measure]
 fn outer(x: u64) -> u64 {
+    let buf = vec![0u8; 50];
+    std::hint::black_box(&buf);
     callee_d(callee_c(callee_b(callee_a(x))))
 }
 

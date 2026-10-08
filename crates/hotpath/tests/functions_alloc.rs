@@ -559,7 +559,7 @@ pub mod tests {
 
     // cargo run -p test-alloc --example first_call_registration --features hotpath,hotpath-alloc
     #[test]
-    fn test_first_call_registration_not_billed_to_caller() {
+    fn test_first_call_registration_reports_only_measured_allocs() {
         use hotpath::json::JsonReport;
 
         let output = Command::new("cargo")
@@ -596,18 +596,25 @@ pub mod tests {
             .functions_alloc
             .expect("Expected functions_alloc in report");
 
-        let outer = alloc
-            .data
-            .iter()
-            .find(|f| f.name == "first_call_registration::outer")
-            .expect("Expected outer in alloc data");
-        assert_eq!(outer.calls, 10);
+        let assert_total = |name: &str, expected: u64| {
+            let entry = alloc
+                .data
+                .iter()
+                .find(|f| f.name == format!("first_call_registration::{name}"))
+                .unwrap_or_else(|| panic!("Expected {name} in alloc data"));
+            assert_eq!(entry.calls, 10, "{name}: expected 10 calls");
+            let bytes = hotpath::parse_bytes(&entry.total)
+                .unwrap_or_else(|| panic!("Failed to parse total for {name}: {}", entry.total));
+            assert_eq!(
+                bytes, expected,
+                "{name}: expected {expected} B, got {bytes} B"
+            );
+        };
 
-        let outer_bytes =
-            hotpath::parse_bytes(&outer.total).expect("Failed to parse total bytes for outer");
-        assert_eq!(
-            outer_bytes, 0,
-            "expected outer to report 0 B, got {outer_bytes} B"
-        );
+        assert_total("outer", 500);
+        assert_total("callee_a", 320);
+        assert_total("callee_b", 0);
+        assert_total("callee_c", 0);
+        assert_total("callee_d", 0);
     }
 }
