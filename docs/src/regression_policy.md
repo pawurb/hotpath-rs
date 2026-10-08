@@ -201,6 +201,26 @@ min_percent_total = 2
 
 With `"on_change"`, a comment the pull request already has is still updated, so an earlier regression never stays up after a fix. An upload the server refuses, or a report it cannot read, always gets a comment explaining why.
 
+## Pull request check
+
+Every judged pull request upload also posts a `hotpath / <benchmark>` check on the pull request's head commit. By default a regression leaves it neutral, so it never blocks merging. To fail it on a regression or a broken [budget](performance_budgets.md), set `fail_ci_on_regression` at the top of the file:
+
+```toml
+fail_ci_on_regression = true
+
+[functions]
+min_percent_total = 2
+```
+
+| Verdict | Check |
+|---|---|
+| No regressions | success |
+| Regression or broken budget, `fail_ci_on_regression = true` | failure |
+| Regression or broken budget, `fail_ci_on_regression = false` (the default) | neutral |
+| Nothing judged (no baseline yet and no budgets) | neutral |
+
+An upload the server refuses gets no check. A re-run posts a new check, and GitHub shows the latest. Put the key in `hotpath/<benchmark>-policy.toml` to fail on regressions of one benchmark only. To block merging, make the check required, see [CI integration](ci_integration.md#failing-the-job).
+
 ## Policy file
 
 The upload takes the first policy file it finds:

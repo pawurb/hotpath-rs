@@ -29,23 +29,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # The uploader reports its own outcome: one `::notice::` / `::warning::`
       # / `::error::` annotation plus a step summary block, and with
-      # `fail-on-error` a failed upload exits 1. The grep is a second guard
-      # that also covers a silently missing upload line. Not
-      # `fail-on-regression`: this benchmark regresses by design. The response
-      # body goes to a file for the next step instead.
+      # `fail-on-error` a failed upload exits 1. The response file exists only
+      # after an accepted upload, so `test -s` also fails a skipped one. No
+      # `fail_ci_on_regression` in its policy: this benchmark regresses by
+      # design.
       - name: Run random benchmark and upload report
         env:
           HOTPATH_UPLOAD: fail-on-error
-          HOTPATH_UPLOAD_RESPONSE_PATH: upload-response.json
+          HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload-response.json
           HOTPATH_BENCHMARK: random
           HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_EXCLUDE_WRAPPER: "true"
           HOTPATH_OUTPUT_FORMAT: none
         run: |
-          set -o pipefail
           cargo run -q --release -p test-axum --example benchmark_random \
-            --features hotpath,hotpath-alloc,hotpath-cloud 2>&1 | tee run.log
-          grep -q '^hotpath: uploaded report ' run.log
+            --features hotpath,hotpath-alloc,hotpath-cloud
+          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
       # The file exists only when the report was uploaded: a failed or skipped
       # upload has no verdict.
       - name: Print the verdict

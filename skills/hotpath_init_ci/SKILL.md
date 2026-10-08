@@ -87,19 +87,20 @@ jobs:
       - name: Run benchmark and upload report
         env:
           HOTPATH_UPLOAD: fail-on-error
+          HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
           HOTPATH_BENCHMARK: my_benchmark
           HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
           HOTPATH_OUTPUT_FORMAT: none
         run: |
-          set -o pipefail
           cargo run -q --release --example my_benchmark \
-            --features hotpath,hotpath-alloc,hotpath-cloud 2>&1 | tee run.log
-          grep -q '^hotpath: uploaded report ' run.log
+            --features hotpath,hotpath-alloc,hotpath-cloud
+          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
 ```
 
 - Add any setup the benchmark needs (system packages, a database service) as steps before the benchmark, copied from the repository's existing CI.
-- `HOTPATH_UPLOAD: fail-on-error` fails the job when the upload fails. Use `fail-on-regression` only if the user wants a regression or a broken budget to fail the job too.
-- The `grep` fails the step when no upload happened at all (a missing feature, a skipped upload).
+- `HOTPATH_UPLOAD: fail-on-error` fails the job when the upload fails.
+- The response file exists only after an accepted upload, so `test -s` fails the job when no report was stored (a missing feature, a skipped upload). Keep its path absolute.
+- A regression never fails the job. If the user wants a regression or a broken budget to fail the pull request's `hotpath / <benchmark>` check, add `fail_ci_on_regression = true` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it. To block merges on it, they make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
 - The workflow needs no secret: the upload authenticates with the job's OIDC token.
 
 ### 6. Verify locally
@@ -115,7 +116,7 @@ The report must name the benchmark and `hotpath/policy.toml`. Run the benchmark 
 
 ### 7. Tell the user what is left
 
-- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). It needs no access to the code, only pull request write access to post the comment.
+- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). It needs no access to the code, only pull request write access to post the comment and checks write access to post the `hotpath / <benchmark>` check.
 - Commit the changes and merge them to the default branch. The first push to the default branch uploads the **baseline**; until then, pull request comments read "no baseline yet".
 - From then on, every pull request gets a performance comment. The `hotpath_cloud` skill and `hotpath cloud diff` read the same verdict as JSON.
 

@@ -10,10 +10,11 @@
 //! Every run ends in one `Outcome`, rendered into one line at one level: to
 //! stderr, and under GitHub Actions also as a workflow command plus a
 //! `GITHUB_STEP_SUMMARY` block. The server owns the message text; the client
-//! branches only on `verdict.regressed`. A failed upload exits 1 from
-//! `fail-on-error` up, a regressed verdict only under `fail-on-regression`,
-//! both once the local report is written; skips never fail. A report without
-//! a policy fails before a token is minted.
+//! branches only on `verdict.regressed`, which is a warning and never fails
+//! the job: the server fails the pull request's check run instead when the
+//! policy asks for it. A failed upload exits 1 under `fail-on-error`, once
+//! the local report is written; skips never fail. A report without a policy
+//! fails before a token is minted.
 //!
 //! No retries yet: a retry is only safe once the server insert is idempotent
 //! per run, otherwise a timed-out upload that was in fact stored would be
@@ -42,10 +43,10 @@ const MAX_QUOTED_BODY: usize = 2000;
 /// has the whole body.
 const MAX_LISTED_PROBLEMS: usize = 20;
 
-/// `HOTPATH_META_UPLOAD`: whether the report is uploaded and what fails the job.
-/// Each mode fails on everything the previous one does. There is deliberately
-/// no "fail on regression but not on error" mode: a gate that passes whenever
-/// the upload fails is a gate that fails open.
+/// `HOTPATH_META_UPLOAD`: whether the report is uploaded and whether a failed
+/// upload fails the job. A regression never does: the pull request's
+/// `hotpath / <benchmark>` check run fails when the policy sets
+/// `fail_ci_on_regression`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum UploadMode {
     /// Unset, empty, `0` or `false`.
@@ -55,8 +56,6 @@ pub(crate) enum UploadMode {
     Enabled,
     /// `fail-on-error`: a failed upload is an `::error::` and exits 1.
     FailOnError,
-    /// `fail-on-regression`: a regressed verdict exits 1 too.
-    FailOnRegression,
 }
 
 impl UploadMode {
@@ -65,7 +64,6 @@ impl UploadMode {
             "" | "0" | "false" => Some(UploadMode::Off),
             "enabled" | "1" | "true" => Some(UploadMode::Enabled),
             "fail-on-error" => Some(UploadMode::FailOnError),
-            "fail-on-regression" => Some(UploadMode::FailOnRegression),
             _ => None,
         }
     }
@@ -78,7 +76,7 @@ pub(crate) static UPLOAD: LazyLock<UploadMode> = LazyLock::new(|| {
     UploadMode::parse(&value).unwrap_or_else(|| {
         eprintln!(
             "hotpath-meta: unknown HOTPATH_META_UPLOAD {value:?}, uploading as \"enabled\"; \
-             expected enabled, fail-on-error or fail-on-regression"
+             expected enabled or fail-on-error"
         );
         UploadMode::Enabled
     })
@@ -196,8 +194,7 @@ impl Env {
 }
 
 /// Returns `true` when the caller must exit 1: a failed upload under
-/// `fail-on-error`, or a regressed verdict under `fail-on-regression`.
-/// The response file is written first, so it is there in both cases.
+/// `fail-on-error`. The response file is updated first.
 pub(crate) fn upload(report: &JsonReport) -> bool {
     let outcome = run(report);
     let env = Env::from_process();
@@ -480,19 +477,13 @@ pub(crate) fn render(outcome: &Outcome, env: &Env, benchmark: Option<&str>) -> R
             );
             let verdict = &created.verdict;
             message.push_str(&format!("; verdict: {}", verdict_summary(verdict)));
-            let failing = verdict.regressed && env.mode >= UploadMode::FailOnRegression;
-            if failing {
-                message.push_str(", failing the job (HOTPATH_META_UPLOAD=fail-on-regression)");
-            }
             if let Some(error) = &created.comment.error {
                 message.push_str(&format!("; comment failed: {error}"));
             } else if let Some(reason) = &created.comment.skipped {
                 message.push_str(&format!("; comment skipped: {reason}"));
             }
             message.push_str(&format!("; diff: {}", created.dashboard_url));
-            let level = if failing {
-                Level::Error
-            } else if verdict.regressed || created.comment.error.is_some() {
+            let level = if verdict.regressed || created.comment.error.is_some() {
                 Level::Warning
             } else {
                 Level::Notice
@@ -684,10 +675,6 @@ mod tests {
         assert_eq!(
             UploadMode::parse("fail-on-error"),
             Some(UploadMode::FailOnError)
-        );
-        assert_eq!(
-            UploadMode::parse("Fail-On-Regression"),
-            Some(UploadMode::FailOnRegression)
         );
         assert_eq!(UploadMode::parse("strict"), None);
     }
@@ -945,19 +932,8 @@ mod tests {
         let prefix =
             "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
 
-        // The switch on: an error, on which `upload` returns `true`.
-        let r = render(
-            &uploaded(verdict(2, 1)),
-            &env(true, UploadMode::FailOnRegression),
-            Some("meta"),
-        );
-        assert_eq!(r.level, Level::Error);
-        assert_eq!(
-            r.message,
-            format!("{prefix}; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_META_UPLOAD=fail-on-regression); diff: {DASHBOARD_URL}")
-        );
-
-        // Below fail-on-regression: a warning.
+        // A regression is a warning in every mode: the check run fails it,
+        // never the job.
         for mode in [UploadMode::Enabled, UploadMode::FailOnError] {
             let r = render(&uploaded(verdict(1, 0)), &env(true, mode), Some("meta"));
             assert_eq!(r.level, Level::Warning);
@@ -970,13 +946,13 @@ mod tests {
         // Broken budgets alone are a regression.
         let r = render(
             &uploaded(verdict(0, 2)),
-            &env(true, UploadMode::FailOnRegression),
+            &env(true, UploadMode::FailOnError),
             Some("meta"),
         );
-        assert_eq!(r.level, Level::Error);
+        assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
-            format!("{prefix}; verdict: 2 budgets broken, failing the job (HOTPATH_META_UPLOAD=fail-on-regression); diff: {DASHBOARD_URL}")
+            format!("{prefix}; verdict: 2 budgets broken; diff: {DASHBOARD_URL}")
         );
 
         // Nothing judged never fails, and neither does a clean verdict.
@@ -986,7 +962,7 @@ mod tests {
         };
         let r = render(
             &uploaded(not_judged),
-            &env(true, UploadMode::FailOnRegression),
+            &env(true, UploadMode::FailOnError),
             Some("meta"),
         );
         assert_eq!(r.level, Level::Notice);
@@ -997,7 +973,7 @@ mod tests {
         assert_eq!(
             render(
                 &uploaded(verdict(0, 0)),
-                &env(true, UploadMode::FailOnRegression),
+                &env(true, UploadMode::FailOnError),
                 Some("meta")
             )
             .level,
@@ -1020,17 +996,7 @@ mod tests {
         );
         let prefix =
             "uploaded report r1 (repository pawurb/hotpath-rs, benchmark meta, baseline r0)";
-        let r = render(
-            &outcome,
-            &env(true, UploadMode::FailOnRegression),
-            Some("meta"),
-        );
-        assert_eq!(r.level, Level::Error);
-        assert_eq!(
-            r.message,
-            format!("{prefix}; verdict: 1 regression, failing the job (HOTPATH_META_UPLOAD=fail-on-regression); comment failed: the installation is suspended; diff: {DASHBOARD_URL}")
-        );
-        let r = render(&outcome, &env(true, UploadMode::Enabled), Some("meta"));
+        let r = render(&outcome, &env(true, UploadMode::FailOnError), Some("meta"));
         assert_eq!(r.level, Level::Warning);
         assert_eq!(
             r.message,
@@ -1189,16 +1155,6 @@ mod tests {
         );
         assert_eq!(
             render(&outcome, &env(false, UploadMode::FailOnError), Some("meta")).level,
-            Level::Error
-        );
-        // Failing on a regression includes failing on a failed upload.
-        assert_eq!(
-            render(
-                &outcome,
-                &env(true, UploadMode::FailOnRegression),
-                Some("meta")
-            )
-            .level,
             Level::Error
         );
 

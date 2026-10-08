@@ -98,18 +98,17 @@ mod tests {
     }
 
     #[test]
-    fn regressed_verdict_fails_the_job_when_asked() {
+    fn regressed_verdict_never_fails_the_job() {
         let dir = scratch_dir("regressed");
         let (server, upload) = mock_server(201, REGRESSED_BODY);
 
-        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-regression")]);
+        // The server fails the pull request's check run; the job passes.
+        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-error")]);
         let stderr = String::from_utf8_lossy(&output.stderr);
         upload.assert();
-        assert_eq!(output.status.code(), Some(1), "stderr:\n{stderr}");
+        assert!(output.status.success(), "stderr:\n{stderr}");
         assert!(
-            stderr.contains(
-                "; verdict: 2 regressions, 1 budget broken, failing the job (HOTPATH_UPLOAD=fail-on-regression)"
-            ),
+            stderr.contains("; verdict: 2 regressions, 1 budget broken; diff: "),
             "stderr:\n{stderr}"
         );
         assert_local_report(&dir);
@@ -117,26 +116,17 @@ mod tests {
             std::fs::read(dir.join("response.json")).expect("response file was not written");
         assert_eq!(response, REGRESSED_BODY.as_bytes());
 
-        // Below fail-on-regression the same answer is a warning and the job passes.
-        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-error")]);
-        assert!(
-            output.status.success(),
-            "stderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(dir.join("response.json").exists());
-
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn failed_upload_fails_under_fail_on_regression() {
+    fn failed_upload_fails_under_fail_on_error() {
         let dir = scratch_dir("failed");
         let stale = dir.join("response.json");
         std::fs::write(&stale, REGRESSED_BODY).unwrap();
         let (server, upload) = mock_server(500, r#"{"error":"database error","code":"internal"}"#);
 
-        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-regression")]);
+        let output = run_upload(&server, &dir, &[("HOTPATH_UPLOAD", "fail-on-error")]);
         let stderr = String::from_utf8_lossy(&output.stderr);
         upload.assert();
         assert_eq!(output.status.code(), Some(1), "stderr:\n{stderr}");
