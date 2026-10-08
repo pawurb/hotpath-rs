@@ -151,6 +151,7 @@ fn build_measurement_guard_async_with_bridge(
     MeasurementGuardAsync,
     Option<std::sync::Arc<AsyncAllocBridge>>,
 ) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let skipped = !wrapper && !is_focused(measurement_name);
     let alloc_bridge = make_alloc_bridge(skipped);
 
@@ -197,6 +198,7 @@ fn build_measurement_guard_async_with_log_bridge(
     MeasurementGuardAsyncWithLog,
     Option<std::sync::Arc<AsyncAllocBridge>>,
 ) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let skipped = !wrapper && !is_focused(measurement_name);
     let alloc_bridge = make_alloc_bridge(skipped);
 
@@ -401,6 +403,7 @@ static CPU_LABEL_ALIASES: OnceLock<crate::lib_on::MetaRwLock<HashMap<&'static st
 
 #[doc(hidden)]
 pub fn register_cpu_label_alias(label: &'static str, symbol: &'static str) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     let map = CPU_LABEL_ALIASES
         .get_or_init(|| crate::lib_on::meta_rw_lock!("cpu_label_aliases", HashMap::new()));
     if let Ok(mut w) = map.write() {

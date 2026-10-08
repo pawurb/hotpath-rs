@@ -556,4 +556,65 @@ pub mod tests {
             "expected realloc_work to count both the initial alloc and the realloc'd size, got {realloc_work_bytes} B"
         );
     }
+
+    // cargo run -p test-alloc --example first_call_registration --features hotpath,hotpath-alloc
+    #[test]
+    fn test_first_call_registration_reports_only_measured_allocs() {
+        use hotpath::json::JsonReport;
+
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-alloc",
+                "--example",
+                "first_call_registration",
+                "--features",
+                "hotpath,hotpath-alloc",
+            ])
+            .env("HOTPATH_REPORT", "functions-alloc")
+            .env("HOTPATH_OUTPUT_FORMAT", "json")
+            .env("HOTPATH_METRICS_SERVER_OFF", "true")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json_start = stdout.find('{').expect("No JSON report in output");
+        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
+            .into_iter::<JsonReport>()
+            .next()
+            .expect("No JSON value in output")
+            .expect("Failed to parse JSON report");
+
+        let alloc = report
+            .functions_alloc
+            .expect("Expected functions_alloc in report");
+
+        let assert_total = |name: &str, expected: u64| {
+            let entry = alloc
+                .data
+                .iter()
+                .find(|f| f.name == format!("first_call_registration::{name}"))
+                .unwrap_or_else(|| panic!("Expected {name} in alloc data"));
+            assert_eq!(entry.calls, 10, "{name}: expected 10 calls");
+            let bytes = hotpath::parse_bytes(&entry.total)
+                .unwrap_or_else(|| panic!("Failed to parse total for {name}: {}", entry.total));
+            assert_eq!(
+                bytes, expected,
+                "{name}: expected {expected} B, got {bytes} B"
+            );
+        };
+
+        assert_total("outer", 500);
+        assert_total("callee_a", 320);
+        assert_total("callee_b", 0);
+        assert_total("callee_c", 0);
+        assert_total("callee_d", 0);
+    }
 }

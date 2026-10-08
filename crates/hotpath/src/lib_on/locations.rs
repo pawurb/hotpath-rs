@@ -32,6 +32,7 @@ fn locations() -> &'static LocationsMap {
 /// entry, and its location is whichever site registered first.
 #[doc(hidden)]
 pub fn register_location(name: &'static str, location: &'static Location) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     if let Ok(mut w) = locations().write() {
         w.entry(name).or_insert(location);
     }
@@ -45,6 +46,7 @@ pub(crate) fn register_caller_location(
     key: &'static str,
     caller: &'static std::panic::Location<'static>,
 ) {
+    let _suspend = crate::lib_on::SuspendAllocTracking::new();
     if let Ok(mut w) = locations().write() {
         w.entry(key).or_insert_with(|| {
             &*Box::leak(Box::new(Location {
