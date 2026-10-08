@@ -6,7 +6,7 @@
 
 **Open beta:** free to use. Public repositories will remain free after beta. See [Pricing](#pricing).
 
-To get started, log in at <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a>. The hotpath-rs GitHub App asks for minimal permissions: **no access to your code**, only write access to pull requests to post comments. The only data it gets from your CI is the benchmark reports your workflow uploads. 
+To get started, log in at <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a>. The hotpath-rs GitHub App asks for minimal permissions: **no access to your code**, only pull request write access to post comments, and checks to report status of each benchmark. The only data it gets from your CI is the benchmark reports your workflow uploads. 
 
 The [GitHub Actions integration](ci_integration) compares benchmark results against a baseline and posts a PR comment whenever a significant regression or improvement is detected:
 
