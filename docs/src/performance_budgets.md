@@ -4,7 +4,11 @@ A performance budget is a hard limit on one function, query, route or other prof
 
 Budgets live in the same file as the [regression policy](regression_policy.md) rules, `hotpath/policy.toml`. A broken budget fails the verdict like a regression.
 
-## Functions
+## Rules
+
+One `[[<resource>.budgets]]` table per rule, under the resource it limits.
+
+### Functions
 
 Allocations, timing and call count of [instrumented functions](functions.md).
 
@@ -19,7 +23,7 @@ message = "parse must stay allocation-light"
 
 `alloc` takes bytes and `timing` durations, for `avg`, `total` and percentiles. `match` is the function name.
 
-## SQL queries
+### SQL queries
 
 Timing and execution count of [SQL queries](sql_tracing.md).
 
@@ -32,7 +36,7 @@ count = { max = 100 }
 
 `match` runs against `query | route | source`, so a pattern on the query alone, ending with `*`, matches it wherever it ran.
 
-## HTTP requests
+### HTTP requests
 
 Timing, errors and request count of [outbound HTTP requests](http_tracing.md).
 
@@ -45,7 +49,7 @@ count = { max = 20 }
 
 `match` runs against `endpoint | route | source`.
 
-## Server routes
+### Server routes
 
 Allocations, response time and downstream calls of each [served route](axum_tracing.md).
 
@@ -58,7 +62,7 @@ timing = { p95 = "50 ms", status_5xx = 0, sql_per_request = 1 }
 
 `timing` takes `avg`, `total` and percentiles as durations, `status_4xx` and `status_5xx` as counts, `sql_per_request` and `http_per_request` as numbers. `alloc` takes `avg`, `total` and percentiles as bytes, `bytes_per_request` and `allocs_per_request` as numbers. `match` is the route as `METHOD template`.
 
-## Mutexes
+### Mutexes
 
 Wait and hold time of [mutexes](locks.md).
 
@@ -70,7 +74,7 @@ timing = { wait_avg = "100 us", acquire_avg = "1 ms" }
 
 `match` is the lock's label.
 
-## RwLocks
+### RwLocks
 
 Wait and hold time of [read-write locks](locks.md), for reads and writes.
 
@@ -82,7 +86,7 @@ timing = { read_wait_avg = "50 us", write_acquire_avg = "1 ms" }
 
 `match` is the lock's label. `count` is reads and writes together.
 
-## Channels
+### Channels
 
 Delay, backlog and throughput of [channels](data_flow.md).
 
@@ -95,7 +99,7 @@ sent_count = { min = 10000 }
 
 `sent_per_sec` and `received_per_sec` are **minimums**: the channel must move at least that many messages per second. The rest are maximums. The count is `sent_count`.
 
-## I/O
+### I/O
 
 Latency, throughput and errors of [I/O streams](io_tracing.md).
 
@@ -109,15 +113,23 @@ flow = { avg = "5 ms", errors = 0, bytes_per_sec = "10 MB" }
 
 ## Options
 
+### Rule keys
+
 Every rule takes:
 
 | Key | Meaning |
 |---|---|
 | `match` | The entry the rule applies to. `*` matches any run of characters, and the pattern must match the whole name. Every entry it matches is checked on its own. |
 | `calls` / `count` / `sent_count` | `{ min, max }` on how many times the entry ran: `calls` for functions, `sent_count` for channels, `count` for the rest. |
-| `alloc`, `timing`, `flow` | Limits on the resource's metrics, as in the sections above. |
+| `alloc`, `timing`, `flow` | Limits on the resource's metrics, as in [Rules](#rules). |
 | `message` | Optional text shown next to a broken rule in the comment, up to 256 bytes. |
 | `fail_check` | Whether a broken rule fails the [pull request check](regression_policy.md#pull-request-check). `true` by default; `false` reports the rule without failing the check. |
+
+**Every rule checks that its entry ran.** Without a `min`, the count must be at least 1, so a `match` with a typo or a renamed function breaks the budget instead of passing silently. Write `calls = { min = 0 }` for an entry that may not run.
+
+`ignore`, `judged`, `min_percent_change`, `min_calls` and `min_percent_total` do not apply to budgets: a rule names its entry explicitly. A resource takes up to 64 rules.
+
+### Units
 
 Values carry their unit:
 
@@ -130,10 +142,6 @@ Values carry their unit:
 | per-request numbers | a number: `1`, `2.5` |
 
 A percentile name with a dot is quoted: `timing = { "p99.9" = "5 ms" }`.
-
-**Every rule checks that its entry ran.** Without a `min`, the count must be at least 1, so a `match` with a typo or a renamed function breaks the budget instead of passing silently. Write `calls = { min = 0 }` for an entry that may not run.
-
-`ignore`, `judged`, `min_percent_change`, `min_calls` and `min_percent_total` do not apply to budgets: a rule names its entry explicitly. A resource takes up to 64 rules.
 
 ## Broken budgets
 

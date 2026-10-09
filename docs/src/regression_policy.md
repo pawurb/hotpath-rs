@@ -2,46 +2,85 @@
 
 The regression policy is a TOML file in your repository, `hotpath/policy.toml`, that decides which changes between a pull request and its baseline count as regressions. For every profiled resource it sets how large a change must be to matter, which metrics decide, and which entries to ignore. For hard limits that hold whatever the baseline did, add [performance budgets](performance_budgets.md) to the same file.
 
-`hotpath cloud init` writes the default policy, which lists every section below:
+## Policy file
+
+### Creating one
+
+`hotpath cloud init` writes a starting policy to `hotpath/policy.toml`:
 
 ```bash
 cargo install hotpath --features cloud
 hotpath cloud init
 ```
 
-## Functions timing
+The starting file turns on the [pull request check](#pull-request-check) and lists the two [function sections](#functions-timing). To compare SQL queries, routes, locks or any other resource, add its section from [Sections](#sections): a section the file leaves out is not compared.
 
-Execution time of [instrumented functions](functions.md). Timing on a shared CI runner varies from run to run, so the default lists it without judging it.
+### Which file a run uses
+
+The upload takes the first policy file it finds:
+
+1. the file `HOTPATH_POLICY_PATH` names
+2. `hotpath/<benchmark>-policy.toml`, a benchmark's own policy
+3. `hotpath/policy.toml`, shared by every benchmark without its own
+
+An upload without a policy file is refused. A pull request is judged under the policy of its own branch, so review changes to `hotpath/*.toml` like changes to CI configuration.
+
+### Validating
+
+Check a file before you push with `hotpath cloud validate-policy`. A refused file lists its problems with their line:
+
+```json
+{
+  "path": "hotpath/policy.toml",
+  "valid": false,
+  "problems": [
+    {
+      "line": 3,
+      "message": "unknown field `min_chnage`, expected one of `judged`, `fail_check`, `min_percent_change`, `metrics`, `min_calls`"
+    }
+  ]
+}
+```
+
+An upload with an invalid policy is refused, and the pull request comment says why.
+
+## Sections
+
+A section is one table per resource and metric family, such as `[functions.alloc]`. Each block below shows the built-in values, which a key you leave out takes; the `ignore` patterns are examples. **A section you leave out is hidden everywhere**: it is not compared, not shown on the comparison page and not in the comment.
+
+### Functions timing
+
+Execution time of [instrumented functions](functions.md). Timing on a shared CI runner varies from run to run, so it is listed without being judged.
 
 ```toml
 [functions.timing]
 judged = false
 min_percent_change = 50
 metrics = ["avg", "total"]
-min_calls = 10
+min_calls = 1
 ```
 
 Metrics: `avg` and `total` time per function, percentiles such as `p95`.
 
-## Functions allocations
+### Functions allocations
 
 Memory allocated by instrumented functions, from builds with the `hotpath-alloc` feature. A fixed workload allocates the same amount on every run, so even small changes are real.
 
 ```toml
 [functions]
 ignore = ["my_crate::test_support::*"]
-min_percent_total = 0.5
+min_percent_total = 2
 
 [functions.alloc]
 judged = true
 min_percent_change = 20
 metrics = ["avg", "total"]
-min_calls = 0
+min_calls = 1
 ```
 
 Metrics: `avg` and `total` allocated per function, percentiles such as `p95`. `ignore` matches the function name, and the `[functions]` keys apply to both function sections.
 
-## SQL queries
+### SQL queries
 
 Execution time of [SQL queries](sql_tracing.md), one row per query, route and source function.
 
@@ -59,7 +98,7 @@ min_calls = 0
 
 Metrics: `avg`, `total`, percentiles. `ignore` matches `query | route | source`, so `SELECT * FROM sessions*` matches the query wherever it ran.
 
-## HTTP requests
+### HTTP requests
 
 Duration and errors of [outbound HTTP requests](http_tracing.md), one row per endpoint, route and source function.
 
@@ -67,13 +106,13 @@ Duration and errors of [outbound HTTP requests](http_tracing.md), one row per en
 [http.timing]
 judged = false
 min_percent_change = 50
-metrics = ["avg", "total", "errors"]
+metrics = ["avg", "total"]
 min_calls = 0
 ```
 
 Metrics: `avg`, `total`, percentiles, `errors`.
 
-## Server timing
+### Server timing
 
 Response time, errors and downstream calls of each [served route](axum_tracing.md).
 
@@ -85,13 +124,13 @@ min_percent_total = 0.5
 [server.timing]
 judged = true
 min_percent_change = 50
-metrics = ["avg", "total", "status_5xx", "sql_per_request"]
+metrics = ["avg", "total"]
 min_calls = 0
 ```
 
 Metrics: `avg`, `total`, percentiles, `status_4xx`, `status_5xx`, `sql_per_request`, `http_per_request`. `ignore` matches the route, e.g. `GET /users/{id}`.
 
-## Server allocations
+### Server allocations
 
 Memory allocated while serving each route, from builds with the `hotpath-alloc` feature.
 
@@ -105,7 +144,7 @@ min_calls = 0
 
 Metrics: `avg`, `total`, percentiles, `bytes_per_request`, `allocs_per_request`.
 
-## Mutexes
+### Mutexes
 
 Contention on [mutexes](locks.md): how long callers wait for the lock and how long it is held.
 
@@ -119,7 +158,7 @@ min_calls = 0
 
 Metrics: `wait_avg`, `acquire_avg`, percentiles such as `wait_p95`. `ignore` matches the lock's label.
 
-## RwLocks
+### RwLocks
 
 Contention on [read-write locks](locks.md), with reads and writes measured apart.
 
@@ -133,7 +172,7 @@ min_calls = 0
 
 Metrics: the four averages above, percentiles such as `read_wait_p95`. `ignore` matches the lock's label.
 
-## Channels
+### Channels
 
 Delay, backlog and throughput of [channels](data_flow.md).
 
@@ -147,7 +186,7 @@ min_calls = 0
 
 Metrics: `delay_avg`, percentiles such as `delay_p95`, `max_queue_size`, `sent_per_sec`, `received_per_sec`. For the two rates a drop is the regression. `ignore` matches the channel's label.
 
-## I/O
+### I/O
 
 Latency, throughput and errors of [I/O streams](io_tracing.md), one row per stream and operation.
 
@@ -163,6 +202,8 @@ Metrics: `avg`, `total`, percentiles, `errors`, `bytes_per_sec` (a drop is the r
 
 ## Options
 
+### Section keys
+
 Every section takes the same five keys:
 
 | Key | Meaning |
@@ -173,6 +214,10 @@ Every section takes the same five keys:
 | `metrics` | The metrics that are judged. A row regresses when any of them crosses `min_percent_change` in its worse direction. |
 | `min_calls` | Rows with fewer calls than this on both sides are not judged. |
 
+Percentiles are written the way hotpath names them (`p95`, `p99.9`), and a report has only the ones it was profiled with (`p95` by default, set with `percentiles` on [`#[hotpath::main]`](functions.md)).
+
+### Resource keys
+
 The resource tables (`[functions]`, `[sql]`, `[http]`, `[server]`, `[mutexes]`, `[rw_locks]`, `[channels]`, `[io]`) take:
 
 | Key | Meaning |
@@ -180,11 +225,9 @@ The resource tables (`[functions]`, `[sql]`, `[http]`, `[server]`, `[mutexes]`, 
 | `ignore` | Patterns of entries that are never judged. `*` matches any run of characters, and a pattern must match the whole name. |
 | `min_percent_total` | Rows below this share of the run, in percent, are skipped as noise. Only `functions`, `sql`, `http` and `server` have it. |
 
-Percentiles are written the way hotpath names them (`p95`, `p99.9`), and a report has only the ones it was profiled with (`p95` by default, set with `percentiles` on [`#[hotpath::main]`](functions.md)).
+## Pull request feedback
 
-A key you leave out takes its default value, but **a section you leave out is hidden everywhere**: it is not compared, not shown on the comparison page and not in the comment. Start from the file `hotpath cloud init` writes and edit it, rather than writing a short file.
-
-## Pull request comment
+### Pull request comment
 
 By default every pull request upload posts or updates a comment with its result. To comment only when something changed, set `pr_comment` at the top of the file, before any table:
 
@@ -202,9 +245,9 @@ min_percent_total = 2
 
 With `"on_change"`, a comment the pull request already has is still updated, so an earlier regression never stays up after a fix. An upload the server refuses, or a report it cannot read, always gets a comment explaining why.
 
-## Pull request check
+### Pull request check
 
-A pull request upload can also post a `hotpath / <benchmark>` check on the pull request's head commit. It is off by default: the comment is the whole report. Set `pr_check` at the top of the file to turn it on:
+A pull request upload can also post a `hotpath / <benchmark>` check on the pull request's head commit. Set `pr_check` at the top of the file to choose when; the file `hotpath cloud init` writes sets `"fail"`:
 
 ```toml
 pr_check = "fail"
@@ -221,7 +264,7 @@ fail_check = true
 
 | `pr_check` | Check |
 |---|---|
-| `"off"` (the default) | None. |
+| `"off"` | None, the comment is the whole report. The value when the key is left out. |
 | `"report"` | A dry run that never fails: findings that would fail the check are marked "would fail the check" in the comment, and the check is neutral. |
 | `"fail"` | Fails on a finding from a `fail_check` block. Any other regression or broken budget is neutral. |
 | `"failures_only"` | Like `"fail"`, but posted only when it fails, nothing otherwise. The least noise. |
@@ -229,28 +272,3 @@ fail_check = true
 Where a check is posted, a clean result is a success, and nothing judged (no baseline yet and no budgets) is neutral. The comment marks each finding that fails the check. A `"failures_only"` check cannot be made required: a clean pull request never gets one, so GitHub would wait for it. A clean re-run on the same commit also leaves an earlier failure in place; a new push clears it.
 
 An upload the server refuses gets no check. A re-run posts a new check, and GitHub shows the latest. Put the key in `hotpath/<benchmark>-policy.toml` to use the check for one benchmark only. To block merging, use `"fail"` and make the check required, see [CI integration](ci_integration.md#failing-the-job).
-
-## Policy file
-
-The upload takes the first policy file it finds:
-
-1. the file `HOTPATH_POLICY_PATH` names
-2. `hotpath/<benchmark>-policy.toml`, a benchmark's own policy
-3. `hotpath/policy.toml`, shared by every benchmark without its own
-
-An upload without a policy file is refused. A pull request is judged under the policy of its own branch, so review changes to `hotpath/*.toml` like changes to CI configuration.
-
-Check a file before you push with `hotpath cloud validate-policy`. A refused file lists its problems with their line:
-
-```json
-{
-  "path": "hotpath/policy.toml",
-  "valid": false,
-  "problems": [
-    {
-      "line": 3,
-      "message": "unknown field `min_chnage`, expected one of `judged`, `min_percent_change`, `metrics`, `min_calls`"
-    }
-  ]
-}
-```
