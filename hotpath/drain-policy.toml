@@ -1,5 +1,5 @@
 # Policy for the `drain` benchmark. Lockstep rounds make allocations deterministic;
-# timing stays unjudged because a shared CI runner is too noisy.
+# timing stays unjudged because shared CI runners are too noisy.
 
 # A broken budget or an allocation regression fails the pull request's check run.
 pr_check = "fail"
