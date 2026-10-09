@@ -18,7 +18,7 @@ message = "push allocates more per event than a fresh chunk per fill"
 [functions.alloc]
 judged = true
 # Deterministic, so any regression past the bar is real.
-fail_check = true
+fail_checks = true
 min_percent_change = 2
 metrics = ["avg", "total"]
 min_calls = 0
