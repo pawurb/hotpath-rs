@@ -1,7 +1,8 @@
 # Policy for the `meta` benchmark: hotpath profiling a copy of itself.
 
-# A regression or a broken budget fails the pull request's check run.
-pr_check = "fail_on_regression"
+# A broken budget fails the pull request's check run. Allocation regressions are
+# reported without failing it: profiling a copy of itself is not lockstep.
+pr_check = "fail"
 
 [functions]
 ignore = ["hotpath_drain::EventQueue::drain_into"]

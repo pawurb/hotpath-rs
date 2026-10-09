@@ -117,6 +117,7 @@ Every rule takes:
 | `calls` / `count` / `sent_count` | `{ min, max }` on how many times the entry ran: `calls` for functions, `sent_count` for channels, `count` for the rest. |
 | `alloc`, `timing`, `flow` | Limits on the resource's metrics, as in the sections above. |
 | `message` | Optional text shown next to a broken rule in the comment, up to 256 bytes. |
+| `fail_check` | Whether a broken rule fails the [pull request check](regression_policy.md#pull-request-check). `true` by default; `false` reports the rule without failing the check. |
 
 Values carry their unit:
 
@@ -136,9 +137,9 @@ A percentile name with a dot is quoted: `timing = { "p99.9" = "5 ms" }`.
 
 ## Broken budgets
 
-A broken budget is listed under "Budgets" in the pull request comment, with the value, the limit and the rule's `message`, and the heading counts it:
+A broken budget is listed under "Budgets" in the pull request comment, with the value, the limit and the rule's `message`, and the heading counts it. Under `pr_check = "fail"` a rule with `fail_check` (the default) says it fails the check:
 
 ```
-⛔ my_crate::parser::parse: alloc.avg 1.4 KB, over budget 1.0 KB: parse must stay allocation-light
-⛔ my_crate::flush: not called
+⛔ my_crate::parser::parse: alloc.avg 1.4 KB, over budget 1.0 KB: parse must stay allocation-light · fails the check
+⛔ my_crate::flush: not called · fails the check
 ```

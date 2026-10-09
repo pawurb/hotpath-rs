@@ -163,11 +163,12 @@ Metrics: `avg`, `total`, percentiles, `errors`, `bytes_per_sec` (a drop is the r
 
 ## Options
 
-Every section takes the same four keys:
+Every section takes the same five keys:
 
 | Key | Meaning |
 |---|---|
 | `judged` | Whether the section decides the verdict and reaches the pull request comment. `false` keeps it on the comparison page as context. |
+| `fail_check` | Whether a regression of this section fails the [pull request check](#pull-request-check). `false` by default: a relative change can be noise, so it is reported without failing anything. Needs `judged = true`. |
 | `min_percent_change` | The smallest change, in percent and in either direction, that counts, from `0` to `1000`. |
 | `metrics` | The metrics that are judged. A row regresses when any of them crosses `min_percent_change` in its worse direction. |
 | `min_calls` | Rows with fewer calls than this on both sides are not judged. |
@@ -206,22 +207,28 @@ With `"on_change"`, a comment the pull request already has is still updated, so 
 A pull request upload can also post a `hotpath / <benchmark>` check on the pull request's head commit. It is off by default: the comment is the whole report. Set `pr_check` at the top of the file to turn it on:
 
 ```toml
-pr_check = "fail_on_regression"
+pr_check = "fail"
 
 [functions]
 min_percent_total = 2
+
+[functions.alloc]
+judged = true
+fail_check = true
 ```
+
+`pr_check` decides whether the check can fail; `fail_check` on each block decides what fails it. **The check fails only when `pr_check` is `"fail"` or `"failures_only"` and a finding comes from a block with `fail_check = true`.** A broken [budget](performance_budgets.md) rule has `fail_check = true` unless it says otherwise; a section has `fail_check = false` unless it opts in, like `[functions.alloc]` above.
 
 | `pr_check` | Check |
 |---|---|
 | `"off"` (the default) | None. |
-| `"report"` | Shows the verdict and never blocks merging: a regression or a broken [budget](performance_budgets.md) is neutral. |
-| `"fail_on_regression"` | Fails on a regression or a broken [budget](performance_budgets.md). |
-| `"failures_only"` | Posted only to fail on a regression or a broken [budget](performance_budgets.md), nothing otherwise. The least noise. |
+| `"report"` | A dry run that never fails: findings that would fail the check are marked "would fail the check" in the comment, and the check is neutral. |
+| `"fail"` | Fails on a finding from a `fail_check` block. Any other regression or broken budget is neutral. |
+| `"failures_only"` | Like `"fail"`, but posted only when it fails, nothing otherwise. The least noise. |
 
-Where a check is posted, no regressions is a success, and nothing judged (no baseline yet and no budgets) is neutral. A `"failures_only"` check cannot be made required: a clean pull request never gets one, so GitHub would wait for it. A clean re-run on the same commit also leaves an earlier failure in place; a new push clears it.
+Where a check is posted, a clean result is a success, and nothing judged (no baseline yet and no budgets) is neutral. The comment marks each finding that fails the check. A `"failures_only"` check cannot be made required: a clean pull request never gets one, so GitHub would wait for it. A clean re-run on the same commit also leaves an earlier failure in place; a new push clears it.
 
-An upload the server refuses gets no check. A re-run posts a new check, and GitHub shows the latest. Put the key in `hotpath/<benchmark>-policy.toml` to fail on regressions of one benchmark only. To block merging, use `"fail_on_regression"` and make the check required, see [CI integration](ci_integration.md#failing-the-job).
+An upload the server refuses gets no check. A re-run posts a new check, and GitHub shows the latest. Put the key in `hotpath/<benchmark>-policy.toml` to use the check for one benchmark only. To block merging, use `"fail"` and make the check required, see [CI integration](ci_integration.md#failing-the-job).
 
 ## Policy file
 

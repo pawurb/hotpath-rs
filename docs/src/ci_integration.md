@@ -92,7 +92,7 @@ The response file is written only when the server accepted the report, and remov
 | `enabled` (or `1`, `true`) | warning |
 | `fail-on-error` | job fails |
 
-A skipped upload (not in GitHub Actions, no OIDC token, invalid benchmark name, the program panicked) never fails the job. A regression or a broken budget never fails the job either: it is a warning in the job log, and it fails the pull request's `hotpath / <benchmark>` check when the policy sets [`pr_check = "fail_on_regression"`](regression_policy.md#pull-request-check).
+A skipped upload (not in GitHub Actions, no OIDC token, invalid benchmark name, the program panicked) never fails the job. A regression or a broken budget never fails the job either: it is a warning in the job log. The pull request's `hotpath / <benchmark>` check fails when the policy sets [`pr_check = "fail"`](regression_policy.md#pull-request-check) and the finding comes from a block with `fail_check = true`: every budget rule by default, a policy section only when it opts in.
 
 To block merging a pull request with a regression, make `hotpath / <benchmark>` a required check in the branch protection rules. A required check also blocks merges while hotpath.rs is unavailable, since no check is posted then.
 
