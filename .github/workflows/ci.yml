@@ -225,7 +225,7 @@ jobs:
     timeout-minutes: 18
     services:
       postgres:
-        image: postgres:17
+        image: public.ecr.aws/docker/library/postgres:17
         env:
           POSTGRES_USER: hotpath
           POSTGRES_PASSWORD: hotpath
@@ -238,7 +238,7 @@ jobs:
           --health-timeout 2s
           --health-retries 15
       redis:
-        image: redis:7
+        image: public.ecr.aws/docker/library/redis:7
         ports:
           - 6390:6379
         options: >-
