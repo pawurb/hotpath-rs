@@ -24,7 +24,7 @@ metrics = ["avg", "total"]
 min_calls = 0
 
 [functions.timing]
-judged = false
+fail_check = true
 min_percent_change = 50
 metrics = ["avg", "total"]
 min_calls = 10
