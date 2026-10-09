@@ -67,7 +67,7 @@
 </head>
 
 <body>
-    <div id="mdbook-help-container">
+    <nav id="mdbook-help-container" role="none">
         <div id="mdbook-help-popup">
             <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
             <div>
@@ -79,7 +79,7 @@
                 <p>Press <kbd>Esc</kbd> to hide this help</p>
             </div>
         </div>
-    </div>
+    </nav>
     <div id="mdbook-body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
@@ -145,7 +145,7 @@
             <div class="page">
                 {{> header}}
                 <div id="mdbook-menu-bar-hover-placeholder"></div>
-                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                <nav id="mdbook-menu-bar" class="menu-bar sticky" role="none">
                     <div class="left-buttons">
                         <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor"
                             title="Toggle Table of Contents" aria-label="Toggle Table of Contents"
@@ -203,7 +203,7 @@
                         {{/if}}
 
                     </div>
-                </div>
+                </nav>
 
                 {{#if search_enabled}}
                 <div id="mdbook-search-wrapper" class="hidden">
