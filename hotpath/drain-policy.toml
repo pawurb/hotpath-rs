@@ -28,3 +28,6 @@ judged = false
 min_percent_change = 50
 metrics = ["avg", "total"]
 min_calls = 10
+
+[sql]
+timing = { metrics = ["avg"], fail_check = true }
