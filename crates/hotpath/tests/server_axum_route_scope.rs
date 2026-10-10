@@ -3,46 +3,26 @@
 //!
 //! These run the `test-axum` `route_scope` example as a subprocess and assert
 //! on the JSON report printed when the guard drops.
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use hotpath::json::JsonReport;
-    use std::process::Command;
 
-    fn run_example_raw(route_scope: Option<&str>, format: Option<&str>) -> String {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            "test-axum",
-            "--example",
-            "route_scope",
-            "--features",
-            "hotpath",
-        ]);
-        if let Some(format) = format {
-            cmd.env("HOTPATH_OUTPUT_FORMAT", format);
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
+
+    fn example(route_scope: Option<&str>) -> Example {
+        let example = Example::new("test-axum", "route_scope");
+        match route_scope {
+            Some(value) => example.env("HOTPATH_ROUTE_SCOPE", value),
+            None => example,
         }
-        if let Some(value) = route_scope {
-            cmd.env("HOTPATH_ROUTE_SCOPE", value);
-        }
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr),
-        );
-        String::from_utf8_lossy(&output.stdout).into_owned()
     }
 
     fn run_example(route_scope: Option<&str>) -> JsonReport {
-        let stdout = run_example_raw(route_scope, Some("json"));
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
+        example(route_scope).json().report()
     }
 
     const LOOKUP: &str = "SELECT id, name FROM users WHERE id = ?";
@@ -116,13 +96,8 @@ pub mod tests {
 
     #[test]
     fn test_route_scope_server_table_columns() {
-        let stdout = run_example_raw(None, None);
-        for expected in ["SQL/req", "HTTP/req", "GET /profiles/{id}"] {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        let stdout = example(None).stdout();
+        assert_contains_all(&stdout, &["SQL/req", "HTTP/req", "GET /profiles/{id}"]);
         let profiles = stdout
             .lines()
             .find(|l| l.contains("GET /profiles/{id}"))

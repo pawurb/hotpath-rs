@@ -1,7 +1,11 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
-    use hotpath::json::JsonReport;
     use std::process::Command;
+
+    use crate::common::example::Example;
 
     /// Builds one of the `duplicate_labels_*` fixture examples with its body
     /// enabled and returns rustc's stderr; the fixture is expected to fail
@@ -59,31 +63,7 @@ mod tests {
     // cargo run -p test-all-features --example unique_labels --features hotpath
     #[test]
     fn test_same_label_across_kinds_is_allowed() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-all-features",
-                "--example",
-                "unique_labels",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute cargo run");
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
+        let report = Example::new("test-all-features", "unique_labels").report();
 
         // The literal arms hand the label on to the runtime unchanged.
         let channels = report.channels.expect("No channels section");

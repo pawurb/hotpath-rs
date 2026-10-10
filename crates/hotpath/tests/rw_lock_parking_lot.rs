@@ -1,91 +1,55 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(test)]
 pub mod tests {
-    use std::process::Command;
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
+
+    fn example() -> Example {
+        Example::new("test-rw-lock-parking-lot", "basic_rw_lock_parking_lot")
+    }
 
     // cargo run -p test-rw-lock-parking-lot --example basic_rw_lock_parking_lot --features hotpath
     #[test]
     fn test_basic_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-rw-lock-parking-lot",
-                "--example",
-                "basic_rw_lock_parking_lot",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example().stdout();
 
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
+        assert_contains_all(
+            &stdout,
+            &[
+                "parking_lot RwLock example completed!",
+                "rw_locks",
+                "counter",
+                "Reads",
+                "Writes",
+                "Wait avg",
+                "Acq avg",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let all_expected = [
-            "parking_lot RwLock example completed!",
-            "rw_locks",
-            "counter",
-            "Reads",
-            "Writes",
-            "Wait avg",
-            "Acq avg",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-rw-lock-parking-lot --example basic_rw_lock_parking_lot --features hotpath (json)
     #[test]
     fn test_json_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-rw-lock-parking-lot",
-                "--example",
-                "basic_rw_lock_parking_lot",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example().json().stdout();
 
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
+        assert_contains_all(
+            &stdout,
+            &[
+                "\"rw_locks\"",
+                "\"label\":\"counter\"",
+                "\"read_count\":6",
+                "\"write_count\":3",
+                "\"read_wait_avg\"",
+                "\"write_wait_avg\"",
+                "\"read_acquire_avg\"",
+                "\"write_acquire_avg\"",
+                "\"read_wait_percentiles\"",
+                "\"write_wait_percentiles\"",
+                "\"read_acquire_percentiles\"",
+                "\"write_acquire_percentiles\"",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let all_expected = [
-            "\"rw_locks\"",
-            "\"label\":\"counter\"",
-            "\"read_count\":6",
-            "\"write_count\":3",
-            "\"read_wait_avg\"",
-            "\"write_wait_avg\"",
-            "\"read_acquire_avg\"",
-            "\"write_acquire_avg\"",
-            "\"read_wait_percentiles\"",
-            "\"write_wait_percentiles\"",
-            "\"read_acquire_percentiles\"",
-            "\"write_acquire_percentiles\"",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 }

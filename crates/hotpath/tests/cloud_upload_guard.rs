@@ -1,3 +1,6 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
     //! The upload's verdict as a CI guard, against a mock hotpath.rs that also
@@ -6,10 +9,12 @@ mod tests {
     //! cargo test --features hotpath --test cloud_upload_guard -- --nocapture --test-threads=1
 
     use std::path::{Path, PathBuf};
-    use std::process::{Command, Output};
+    use std::process::Output;
 
     use hotpath::json::JsonReport;
     use mockito::{Matcher, Server, ServerGuard};
+
+    use crate::common::example::Example;
 
     /// With a field this client does not know, which the response file keeps.
     const REGRESSED_BODY: &str = r#"{"id":"r1","new_field":{"z":1,"a":2},"repository":"pawurb/hotpath-rs","benchmark":"guard-test","baseline":"r0","comment":{"url":"https://github.com/c/1"},"verdict":{"judged":true,"regressed":true,"regressions":2,"improvements":0,"budgets_broken":1},"policy_path":"hotpath/policy.toml","policy_url":"https://github.com/pawurb/hotpath-rs/blob/3f1c000000000000000000000000000000000000/hotpath/policy.toml","dashboard_url":"https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/guard-test/reports/r1/diff"}"#;
@@ -52,42 +57,31 @@ mod tests {
         dir: &Path,
         env: &[(&str, &str)],
     ) -> Output {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "--manifest-path",
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"),
-            "-p",
-            "test-all-features",
-            "--example",
-            "basic_all_features",
-            "--features",
-            "hotpath,hotpath-cloud",
-        ])
-        .env("HOTPATH_REPORT", "functions-timing")
-        .env("HOTPATH_OUTPUT_FORMAT", "json")
-        .env("HOTPATH_OUTPUT_PATH", dir.join("report.json"))
-        .env("HOTPATH_BENCHMARK", "guard-test")
-        .env("HOTPATH_UPLOAD", "1")
-        .env("HOTPATH_API_URL", server.url())
-        .env("HOTPATH_UPLOAD_RESPONSE_PATH", dir.join("response.json"))
-        .env(
-            "ACTIONS_ID_TOKEN_REQUEST_URL",
-            format!("{}/token", server.url()),
-        )
-        .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
-        .env_remove("HOTPATH_POLICY_PATH")
-        .env_remove("HOTPATH_SOURCE_ROOT")
-        // Under Actions the child would annotate and summarize the test's own job.
-        .env_remove("GITHUB_ACTIONS")
-        .env_remove("GITHUB_STEP_SUMMARY");
-        if let Some(cwd) = cwd {
-            cmd.current_dir(cwd);
-        }
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-        cmd.output().expect("Failed to execute command")
+        let run = Example::new("test-all-features", "basic_all_features")
+            .manifest_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"))
+            .features("hotpath,hotpath-cloud")
+            .env("HOTPATH_REPORT", "functions-timing")
+            .json()
+            .env("HOTPATH_OUTPUT_PATH", dir.join("report.json"))
+            .env("HOTPATH_BENCHMARK", "guard-test")
+            .env("HOTPATH_UPLOAD", "1")
+            .env("HOTPATH_API_URL", server.url())
+            .env("HOTPATH_UPLOAD_RESPONSE_PATH", dir.join("response.json"))
+            .env(
+                "ACTIONS_ID_TOKEN_REQUEST_URL",
+                format!("{}/token", server.url()),
+            )
+            .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
+            .env_remove("HOTPATH_POLICY_PATH")
+            .env_remove("HOTPATH_SOURCE_ROOT")
+            // Under Actions the child would annotate and summarize the test's own job.
+            .env_remove("GITHUB_ACTIONS")
+            .env_remove("GITHUB_STEP_SUMMARY");
+        let run = match cwd {
+            Some(cwd) => run.current_dir(cwd),
+            None => run,
+        };
+        run.envs(env).output()
     }
 
     fn assert_local_report(dir: &Path) {

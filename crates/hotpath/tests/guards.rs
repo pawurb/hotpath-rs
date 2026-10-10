@@ -1,32 +1,23 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(test)]
 pub mod tests {
     use serde_json::Value;
-    use std::process::Command;
+
+    use crate::common::example::Example;
+
+    fn example(features: &str) -> Example {
+        Example::new("test-smol-async", "all_guards").features(features)
+    }
 
     fn run_all_guards_json(features: &str, report: &str) -> Value {
-        let output = Command::new("cargo")
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
+        let stdout = example(features)
+            .json()
             .env("HOTPATH_REPORT", report)
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
-            .args([
-                "run",
-                "-p",
-                "test-smol-async",
-                "--example",
-                "all_guards",
-                "--features",
-                features,
-            ])
-            .output()
-            .expect("Failed to execute command");
+            .stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
         serde_json::from_str(stdout.lines().last().expect("No JSON output line"))
             .expect("Failed to parse JSON report")
     }
@@ -88,25 +79,9 @@ pub mod tests {
     // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-smol-async --example all_guards --features hotpath,hotpath-alloc
     #[test]
     fn test_measure_impl_guards_example_runs() {
-        let output = Command::new("cargo")
+        example("hotpath,hotpath-alloc")
             .env("HOTPATH_OUTPUT_FORMAT", "none")
-            .args([
-                "run",
-                "-p",
-                "test-smol-async",
-                "--example",
-                "all_guards",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+            .stdout();
     }
 
     // HOTPATH_OUTPUT_FORMAT=json HOTPATH_REPORT=functions-timing,futures cargo run -p test-smol-async --example all_guards --features hotpath

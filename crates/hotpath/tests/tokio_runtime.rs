@@ -1,59 +1,27 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use std::process::Command;
+    use crate::common::example::{poll_endpoint, Example};
 
     // HOTPATH_METRICS_PORT=6783 TEST_SLEEP_MS=5000 cargo run -p test-tokio-async --example tokio_runtime --features hotpath
     #[test]
     fn test_tokio_runtime_endpoint() {
         use hotpath::json::JsonRuntimeSnapshot;
-        use std::{thread::sleep, time::Duration};
+        use std::time::Duration;
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "tokio_runtime",
-                "--features",
-                "hotpath",
-            ])
+        let _running = Example::new("test-tokio-async", "tokio_runtime")
             .env("HOTPATH_METRICS_PORT", "6783")
             .env("TEST_SLEEP_MS", "5000")
-            .spawn()
-            .expect("Failed to spawn command");
+            .spawn();
 
-        let mut json_text = String::new();
-        let mut last_error = None;
-
-        for _attempt in 0..12 {
-            sleep(Duration::from_millis(750));
-
-            match ureq::get("http://localhost:6783/tokio_runtime").call() {
-                Ok(mut response) => {
-                    json_text = response
-                        .body_mut()
-                        .read_to_string()
-                        .expect("Failed to read response body");
-                    last_error = None;
-                    if json_text.contains("num_workers") && !json_text.contains("\"num_workers\":0")
-                    {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    last_error = Some(format!("Request error: {}", e));
-                }
-            }
-        }
-
-        if let Some(error) = last_error {
-            let _ = child.kill();
-            panic!(
-                "Failed to connect to /tokio_runtime after 12 retries: {}",
-                error
-            );
-        }
+        let json_text = poll_endpoint(
+            "http://localhost:6783/tokio_runtime",
+            12,
+            Duration::from_millis(750),
+            |body| body.contains("num_workers") && !body.contains("\"num_workers\":0"),
+        );
 
         let snapshot: JsonRuntimeSnapshot =
             serde_json::from_str(&json_text).expect("Failed to parse runtime JSON");
@@ -68,9 +36,6 @@ pub mod tests {
             snapshot.num_workers,
             "Workers array length should match num_workers"
         );
-
-        let _ = child.kill();
-        let _ = child.wait();
     }
 
     // HOTPATH_METRICS_PORT=6784 TEST_SLEEP_SECONDS=5 cargo run -p test-tokio-async --example basic --features hotpath
@@ -78,20 +43,10 @@ pub mod tests {
     fn test_tokio_runtime_404_without_init() {
         use std::{thread::sleep, time::Duration};
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath",
-            ])
+        let _running = Example::new("test-tokio-async", "basic")
             .env("HOTPATH_METRICS_PORT", "6784")
             .env("TEST_SLEEP_SECONDS", "5")
-            .spawn()
-            .expect("Failed to spawn command");
+            .spawn();
 
         let agent = ureq::Agent::new_with_config(
             ureq::Agent::config_builder()
@@ -126,8 +81,5 @@ pub mod tests {
             "Expected guidance about tokio_runtime!(), got: {}",
             body
         );
-
-        let _ = child.kill();
-        let _ = child.wait();
     }
 }

@@ -1,268 +1,115 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(test)]
 pub mod tests {
     use std::process::Command;
 
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
+
+    fn example(name: &str) -> Example {
+        Example::new("test-tokio-async", name).env("HOTPATH_REPORT", "functions-timing")
+    }
+
     // cargo run -p test-tokio-async --example basic --features hotpath
     #[test]
     fn test_basic_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("basic").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "custom_block",
+                "basic::sync_function",
+                "basic::async_function",
+                "p95",
+                "total",
+                "percent_total",
+            ],
         );
-
-        let all_expected = [
-            "custom_block",
-            "basic::sync_function",
-            "basic::async_function",
-            "p95",
-            "total",
-            "percent_total",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-tokio-async --example early_returns --features hotpath
     #[test]
     fn test_early_returns_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "early_returns",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("early_returns").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "early_returns::early_return",
+                "early_returns::propagates_error",
+                "early_returns::normal_path",
+            ],
         );
-
-        let all_expected = [
-            "early_returns::early_return",
-            "early_returns::propagates_error",
-            "early_returns::normal_path",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-tokio-async --example main_empty --features hotpath
     #[test]
     fn test_main_empty_params() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "main_empty",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("main_empty").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &["main_empty::example_function", "main_empty::main"],
         );
-
-        let expected = ["main_empty::example_function", "main_empty::main"];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        for expected in expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-tokio-async --example main_attrs_below --features hotpath
     #[test]
     fn test_main_keeps_attrs_below() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "main_attrs_below",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("main_attrs_below").json().stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let expected = "main_attrs_below::example_function";
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.contains(expected),
-            "Expected:\n{expected}\n\nGot:\n{stdout}",
-        );
+        assert_contains_all(&stdout, &["main_attrs_below::example_function"]);
     }
 
     // cargo run -p test-tokio-async --example main_percentiles --features hotpath
     #[test]
     fn test_main_percentiles_param() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "main_percentiles",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("main_percentiles").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "main_percentiles::example_function",
+                "P50",
+                "P90",
+                "P99",
+                "Function",
+            ],
         );
-
-        let all_expected = [
-            "main_percentiles::example_function",
-            "P50",
-            "P90",
-            "P99",
-            "Function",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-tokio-async --example main_format --features hotpath
     #[test]
     fn test_main_format_param() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "main_format",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("main_format").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "main_format::example_function",
+                "\"profiling_mode\"",
+                "\"calls\"",
+            ],
         );
-
-        let all_expected = [
-            "main_format::example_function",
-            "\"profiling_mode\"",
-            "\"calls\"",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-tokio-async --example main_percentiles_format --features hotpath
     #[test]
     fn test_main_percentiles_format_params() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "main_percentiles_format",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("main_percentiles_format").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "main_percentiles_format::example_function",
+                "\"profiling_mode\"",
+                "\"p75\"",
+                "\"p95\"",
+            ],
         );
-
-        let all_expected = [
-            "main_percentiles_format::example_function",
-            "\"profiling_mode\"",
-            "\"p75\"",
-            "\"p95\"",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-all-features --example basic_all_features --all-features
@@ -289,16 +136,9 @@ pub mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let all_expected = ["i ran"];
-
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(&stdout, &["i ran"]);
     }
 
     // cargo run -p test-tokio-async --example no_op_block
@@ -323,73 +163,34 @@ pub mod tests {
     // cargo run -p test-tokio-async --example custom_guard --features hotpath
     #[test]
     fn test_custom_guard_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "custom_guard",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
-
-        let expected_content = [
-            "custom_guard::main",
-            "custom_guard::sync_function",
-            "custom_guard::async_function",
-            "custom_block",
-        ];
+        let output = example("custom_guard").output();
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(
+            &stdout,
+            &[
+                "custom_guard::main",
+                "custom_guard::sync_function",
+                "custom_guard::async_function",
+                "custom_block",
+            ],
+        );
     }
 
     // cargo run -p test-tokio-async --example measure_all_mod --features hotpath
     #[test]
     fn test_measure_all_mod_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "measure_all_mod",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("measure_all_mod").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "measured_module::sync_function_one",
+                "measured_module::async_function_one",
+                "measure_all_mod::main",
+                "| measured_module::async_function_one | 50    |",
+            ],
         );
-
-        let expected_content = [
-            "measured_module::sync_function_one",
-            "measured_module::async_function_one",
-            "measure_all_mod::main",
-            "| measured_module::async_function_one | 50    |",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
 
         let not_expected_content = [
             "measured_module::sync_function_two",
@@ -407,44 +208,21 @@ pub mod tests {
     // cargo run -p test-tokio-async --example measure_all_impl --features hotpath
     #[test]
     fn test_measure_all_impl_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "measure_all_impl",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("measure_all_impl").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "Calculator::new",
+                "measure_all_impl::add",
+                "Calculator::multiply",
+                "Calculator::async_increment",
+                "Calculator::async_decrement",
+                "Calculator::get_value",
+                "measure_all_impl::main",
+                "measure_all_impl::add",
+            ],
         );
-
-        let expected_content = [
-            "Calculator::new",
-            "measure_all_impl::add",
-            "Calculator::multiply",
-            "Calculator::async_increment",
-            "Calculator::async_decrement",
-            "Calculator::get_value",
-            "measure_all_impl::main",
-            "measure_all_impl::add",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo check -p test-tokio-async --example measure_all_impl_return_closure --features hotpath
@@ -474,153 +252,59 @@ pub mod tests {
     // cargo run -p test-tokio-async --example main_timeout --features hotpath
     #[test]
     fn test_main_timeout_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "main_timeout",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
+        let stdout = example("main_timeout")
             .env("HOTPATH_SHUTDOWN_MS", "1000")
-            .output()
-            .expect("Failed to execute command");
+            .stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "main_timeout::first_function",
+                "main_timeout::second_function",
+                "loop_block",
+                "main_timeout::main",
+            ],
         );
-
-        let expected_content = [
-            "main_timeout::first_function",
-            "main_timeout::second_function",
-            "loop_block",
-            "main_timeout::main",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-tokio-async --example guard_timeout --features hotpath
     #[test]
     fn test_guard_timeout_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "guard_timeout",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("guard_timeout").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "guard_timeout::first_function",
+                "guard_timeout::second_function",
+                "loop_block",
+            ],
         );
-
-        let expected_content = [
-            "guard_timeout::first_function",
-            "guard_timeout::second_function",
-            "loop_block",
-        ];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-tokio-async --example guard_timeout_functions --features hotpath
     #[test]
     fn test_guard_timeout_functions_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "guard_timeout_functions",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("guard_timeout_functions").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let expected_content = ["guard_timeout_functions::looping_function"];
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(&stdout, &["guard_timeout_functions::looping_function"]);
     }
 
     // HOTPATH_EXCLUDE_WRAPPER=1 cargo run -p test-tokio-async --example basic --features hotpath
     #[test]
     fn test_exclude_wrapper_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
+        let stdout = example("basic")
             .env("HOTPATH_EXCLUDE_WRAPPER", "1")
-            .output()
-            .expect("Failed to execute command");
+            .stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "basic::sync_function",
+                "basic::async_function",
+                "custom_block",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let expected_content = [
-            "basic::sync_function",
-            "basic::async_function",
-            "custom_block",
-        ];
-
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
 
         assert!(
             !stdout.contains("\"name\":\"basic::main\""),
@@ -633,22 +317,11 @@ pub mod tests {
     fn test_disable_http_server() {
         use std::{thread::sleep, time::Duration};
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
+        let _running = example("basic")
             .env("HOTPATH_METRICS_PORT", "6776")
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
             .env("TEST_SLEEP_SECONDS", "5")
-            .spawn()
-            .expect("Failed to spawn command");
+            .spawn();
 
         sleep(Duration::from_secs(2));
 
@@ -658,9 +331,6 @@ pub mod tests {
             result.is_err(),
             "HTTP request should have failed when HOTPATH_METRICS_SERVER_OFF=true"
         );
-
-        let _ = child.kill();
-        let _ = child.wait();
     }
 
     // cargo run -p test-tokio-async --example functions_file_output --features hotpath
@@ -676,25 +346,7 @@ pub mod tests {
             fs::remove_file(output_path).ok();
         }
 
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "functions_file_output",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        example("functions_file_output").stdout();
 
         assert!(
             Path::new(output_path).exists(),
@@ -704,18 +356,14 @@ pub mod tests {
 
         let file_content = fs::read_to_string(output_path).expect("Failed to read output file");
 
-        let expected_content = [
-            "functions_file_output::example_function",
-            "\"profiling_mode\"",
-            "\"calls\"",
-        ];
-
-        for expected in expected_content {
-            assert!(
-                file_content.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{file_content}",
-            );
-        }
+        assert_contains_all(
+            &file_content,
+            &[
+                "functions_file_output::example_function",
+                "\"profiling_mode\"",
+                "\"calls\"",
+            ],
+        );
 
         fs::remove_file(output_path).ok();
     }
@@ -723,28 +371,9 @@ pub mod tests {
     // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-tokio-async --example basic --features hotpath
     #[test]
     fn test_format_none_suppresses_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
+        let stdout = example("basic")
             .env("HOTPATH_OUTPUT_FORMAT", "none")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+            .stdout();
 
         assert!(
             stdout.contains("custom_block output"),
@@ -783,26 +412,9 @@ pub mod tests {
             fs::remove_file(env_override_path).ok();
         }
 
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "functions_file_output",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
+        example("functions_file_output")
             .env("HOTPATH_OUTPUT_PATH", env_override_path)
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+            .stdout();
 
         assert!(
             Path::new(env_override_path).exists(),
@@ -822,42 +434,19 @@ pub mod tests {
     // HOTPATH_OUTPUT_FORMAT=table HOTPATH_FOCUS=basic cargo run -p test-tokio-async --example basic --features hotpath
     #[test]
     fn test_focus_substring_filter() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
+        let stdout = example("basic")
             .env("HOTPATH_OUTPUT_FORMAT", "table")
             .env("HOTPATH_FOCUS", "basic")
-            .output()
-            .expect("Failed to execute command");
+            .stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "basic::sync_function",
+                "basic::async_function",
+                "basic::main",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let expected_content = [
-            "basic::sync_function",
-            "basic::async_function",
-            "basic::main",
-        ];
-
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
 
         assert!(
             !stdout.contains("| custom_block"),
@@ -868,29 +457,10 @@ pub mod tests {
     // HOTPATH_OUTPUT_FORMAT=table HOTPATH_FOCUS='/(custom)/' cargo run -p test-tokio-async --example basic --features hotpath
     #[test]
     fn test_focus_regex_filter() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
+        let stdout = example("basic")
             .env("HOTPATH_OUTPUT_FORMAT", "table")
             .env("HOTPATH_FOCUS", "/(custom)/")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+            .stdout();
 
         assert!(
             stdout.contains("| custom_block"),
@@ -915,36 +485,9 @@ pub mod tests {
     // cargo run -p test-tokio-async --example measure_label --features hotpath
     #[test]
     fn test_measure_label_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "measure_label",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_REPORT", "functions-timing")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("measure_label").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let expected_content = ["| sync_labeled", "| async_labeled"];
-
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(&stdout, &["| sync_labeled", "| async_labeled"]);
 
         let not_expected = [
             "measure_label::sync_function",
@@ -966,31 +509,14 @@ pub mod tests {
     fn test_report_footer_hint() {
         const HINT: &str = "Prevent performance regressions in CI";
         let run = |env: &[(&str, &str)]| {
-            let output = Command::new("cargo")
-                .args([
-                    "run",
-                    "-p",
-                    "test-tokio-async",
-                    "--example",
-                    "early_returns",
-                    "--features",
-                    "hotpath",
-                ])
-                .env("HOTPATH_REPORT", "functions-timing")
+            example("early_returns")
                 .env_remove("HOTPATH_DISABLE_HINTS")
                 .env_remove("HOTPATH_API_TOKEN")
                 .env_remove("HOTPATH_OUTPUT_FORMAT")
                 .env_remove("HOTPATH_OUTPUT_PATH")
                 .env_remove("HOTPATH_UPLOAD")
-                .envs(env.iter().copied())
-                .output()
-                .expect("Failed to execute command");
-            assert!(
-                output.status.success(),
-                "Process did not exit successfully.\n\nstderr:\n{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            String::from_utf8_lossy(&output.stdout).into_owned()
+                .envs(env)
+                .stdout()
         };
 
         let stdout = run(&[]);

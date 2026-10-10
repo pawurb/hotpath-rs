@@ -4,58 +4,21 @@
 //! compose file (`docker compose up -d redis`, host port 6390). Skips locally
 //! when nothing listens there; on CI the redis service is mandatory, so a
 //! missing server fails instead.
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use hotpath::json::JsonReport;
-    use std::process::Command;
-
-    fn redis_available() -> bool {
-        let addr = "127.0.0.1:6390".parse().unwrap();
-        let timeout = std::time::Duration::from_millis(500);
-        std::net::TcpStream::connect_timeout(&addr, timeout).is_ok()
-    }
+    use crate::common::example::Example;
+    use crate::common::service::REDIS;
 
     #[test]
     fn test_redis_json_output() {
-        if !redis_available() {
-            assert!(
-                std::env::var_os("CI").is_none(),
-                "no Redis on localhost:6390 - the CI redis service is required"
-            );
-            eprintln!(
-                "skipping test_redis_json_output: no Redis on localhost:6390 \
-                 (start it with `docker compose up -d redis`)"
-            );
+        if REDIS.skip_if_unavailable("test_redis_json_output") {
             return;
         }
 
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-io",
-                "--example",
-                "basic_redis_io",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
-            .output()
-            .expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
+        let report = Example::new("test-io", "basic_redis_io").json().report();
         let io = report.io.expect("No io section in report");
 
         let redis = io

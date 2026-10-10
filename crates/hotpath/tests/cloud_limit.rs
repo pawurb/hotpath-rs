@@ -1,8 +1,11 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
-    use std::process::Command;
-
     use hotpath::json::{JsonFunctionsCpu, JsonReport};
+
+    use crate::common::example::Example;
 
     fn run_example(
         package: &str,
@@ -11,42 +14,19 @@ mod tests {
         upload: bool,
         env: &[(&str, &str)],
     ) -> JsonReport {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            package,
-            "--example",
-            example,
-            "--features",
-            features,
-        ])
-        .env("HOTPATH_OUTPUT_FORMAT", "json")
-        .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
-        .env_remove("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
-        .env_remove("HOTPATH_LIMIT")
-        .env_remove("HOTPATH_FUNCTIONS_LIMIT");
-        if upload {
-            cmd.env("HOTPATH_UPLOAD", "1");
+        let run = Example::new(package, example)
+            .features(features)
+            .json()
+            .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
+            .env_remove("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+            .env_remove("HOTPATH_LIMIT")
+            .env_remove("HOTPATH_FUNCTIONS_LIMIT");
+        let run = if upload {
+            run.env("HOTPATH_UPLOAD", "1")
         } else {
-            cmd.env_remove("HOTPATH_UPLOAD");
-        }
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
+            run.env_remove("HOTPATH_UPLOAD")
+        };
+        run.envs(env).report()
     }
 
     // cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-alloc,hotpath-cloud

@@ -4,74 +4,47 @@
 //! reports. The blocking ureq agent feeds the same `hp-http` worker as the
 //! reqwest front-ends through a ureq `Middleware` impl, so the assertions
 //! mirror `http_reqwest.rs`.
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use hotpath::json::JsonReport;
-    use std::process::Command;
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
+    use crate::common::report::parse_report;
 
-    fn run_example(example: &str, format: Option<&str>) -> String {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            "test-ureq",
-            "--example",
-            example,
-            "--features",
-            "hotpath",
-        ]);
-        if let Some(fmt) = format {
-            cmd.env("HOTPATH_OUTPUT_FORMAT", fmt);
-        }
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr),
-        );
-        String::from_utf8_lossy(&output.stdout).into_owned()
-    }
-
-    fn parse_report(stdout: &str) -> JsonReport {
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
+    fn example(name: &str) -> Example {
+        Example::new("test-ureq", name)
     }
 
     #[test]
     fn test_http_table_ureq() {
-        let stdout = run_example("basic", None);
+        let stdout = example("basic").stdout();
 
-        let all_expected = [
-            "HTTP example completed",
-            "http - HTTP request execution time statistics.",
-            // 2 user fetches + 404 + connection refused + labeled agent = 5.
-            "Total calls: 5",
-            // Two ids and a query string merge into one normalized bucket.
-            "/users/{id}",
-            "/stats",
-            "/health",
-            // Labeled agent prefixes its bucket keys.
-            "ext: GET",
-            // Sync instrumented methods attribute their requests.
-            "Data::fetch_user",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(
+            &stdout,
+            &[
+                "HTTP example completed",
+                "http - HTTP request execution time statistics.",
+                // 2 user fetches + 404 + connection refused + labeled agent = 5.
+                "Total calls: 5",
+                // Two ids and a query string merge into one normalized bucket.
+                "/users/{id}",
+                "/stats",
+                "/health",
+                // Labeled agent prefixes its bucket keys.
+                "ext: GET",
+                // Sync instrumented methods attribute their requests.
+                "Data::fetch_user",
+            ],
+        );
     }
 
     #[test]
     fn test_http_json_ureq() {
-        let stdout = run_example("basic", Some("json"));
-        let http = parse_report(&stdout)
+        let http = example("basic")
+            .json()
+            .report()
             .http
             .expect("No http section in report");
 
@@ -122,8 +95,9 @@ pub mod tests {
     // and a nested measured call attributes to the innermost function.
     #[test]
     fn test_http_sources_ureq() {
-        let stdout = run_example("sources", Some("json"));
-        let http = parse_report(&stdout)
+        let http = example("sources")
+            .json()
+            .report()
             .http
             .expect("No http section in report");
 
@@ -157,7 +131,7 @@ pub mod tests {
     // and the enclosing instrumented function.
     #[test]
     fn test_http_manual_middleware_ureq() {
-        let stdout = run_example("manual_middleware", Some("json"));
+        let stdout = example("manual_middleware").json().stdout();
         assert!(stdout.contains("HTTP manual middleware example completed"));
         let http = parse_report(&stdout)
             .http

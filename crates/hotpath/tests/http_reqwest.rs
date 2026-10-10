@@ -4,36 +4,15 @@
 //! subprocesses and assert on their reports. Both generations feed the same
 //! `hp-http` worker through generation-specific `Middleware` impls, so the
 //! assertions are identical; only the wrapped reqwest version differs.
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use std::process::Command;
-
-    fn run_example(package: &str, example: &str, format: Option<&str>) -> String {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            package,
-            "--example",
-            example,
-            "--features",
-            "hotpath",
-        ]);
-        if let Some(fmt) = format {
-            cmd.env("HOTPATH_OUTPUT_FORMAT", fmt);
-        }
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr),
-        );
-        String::from_utf8_lossy(&output.stdout).into_owned()
-    }
+    use crate::common::example::Example;
 
     fn assert_table_output(package: &str) {
-        let stdout = run_example(package, "basic", None);
+        let stdout = Example::new(package, "basic").stdout();
 
         let all_expected = [
             "HTTP example completed",
@@ -56,15 +35,7 @@ pub mod tests {
     }
 
     fn assert_json_report(package: &str) {
-        use hotpath::json::JsonReport;
-
-        let stdout = run_example(package, "basic", Some("json"));
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
+        let report = Example::new(package, "basic").json().report();
         let http = report.http.expect("No http section in report");
 
         assert_eq!(http.total_calls, 5);
@@ -110,7 +81,7 @@ pub mod tests {
     // json/query/form on 0.13) against the wrapped client. Fails to compile if
     // the hotpath crate stops forwarding the reqwest-middleware feature flags.
     fn assert_gated_methods(package: &str) {
-        let stdout = run_example(package, "gated_methods", None);
+        let stdout = Example::new(package, "gated_methods").stdout();
         assert!(
             stdout.contains("Gated methods example completed"),
             "[{package}] Expected completion marker, got:\n{stdout}",
@@ -121,15 +92,7 @@ pub mod tests {
     // per-source entries; a request outside any measured scope has no source,
     // and a nested measured call attributes to the innermost function.
     fn assert_sources_report(package: &str) {
-        use hotpath::json::JsonReport;
-
-        let stdout = run_example(package, "sources", Some("json"));
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
+        let report = Example::new(package, "sources").json().report();
         let http = report.http.expect("No http section in report");
 
         let users: Vec<_> = http

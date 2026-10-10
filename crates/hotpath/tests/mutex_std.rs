@@ -1,90 +1,54 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(test)]
 pub mod tests {
-    use std::process::Command;
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
+
+    fn example(name: &str) -> Example {
+        Example::new("test-mutex-std", name)
+    }
 
     // cargo run -p test-mutex-std --example basic_mutex_std --features hotpath
     #[test]
     fn test_basic_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-mutex-std",
-                "--example",
-                "basic_mutex_std",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("basic_mutex_std").stdout();
 
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
+        assert_contains_all(
+            &stdout,
+            &[
+                "Std Mutex example completed!",
+                "mutexes",
+                "counter",
+                "Locks",
+                "Wait avg",
+                "Acq avg",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let all_expected = [
-            "Std Mutex example completed!",
-            "mutexes",
-            "counter",
-            "Locks",
-            "Wait avg",
-            "Acq avg",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-mutex-std --example basic_mutex_std --features hotpath (json)
     #[test]
     fn test_json_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-mutex-std",
-                "--example",
-                "basic_mutex_std",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("basic_mutex_std").json().stdout();
 
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
+        assert_contains_all(
+            &stdout,
+            &[
+                "\"mutexes\"",
+                "\"label\":\"counter\"",
+                // The deprecated wrap constructor registers via Location::caller();
+                // its auto label must keep the file:line form (the line must not be
+                // eaten by the registration key's column strip).
+                "\"label\":\"examples/basic_mutex_std.rs:",
+                "\"count\":6",
+                "\"wait_avg\"",
+                "\"acquire_avg\"",
+                "\"wait_percentiles\"",
+                "\"acquire_percentiles\"",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let all_expected = [
-            "\"mutexes\"",
-            "\"label\":\"counter\"",
-            // The deprecated wrap constructor registers via Location::caller();
-            // its auto label must keep the file:line form (the line must not be
-            // eaten by the registration key's column strip).
-            "\"label\":\"examples/basic_mutex_std.rs:",
-            "\"count\":6",
-            "\"wait_avg\"",
-            "\"acquire_avg\"",
-            "\"wait_percentiles\"",
-            "\"acquire_percentiles\"",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // Locks recorded on a thread whose event queue drains ahead of the queue
@@ -92,33 +56,8 @@ pub mod tests {
     // cargo run -p test-mutex-std --example created_ordering --features hotpath (json)
     #[test]
     fn test_created_ordering_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-mutex-std",
-                "--example",
-                "created_ordering",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("created_ordering").json().stdout();
 
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let all_expected = ["\"label\":\"target\"", "\"count\":100"];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(&stdout, &["\"label\":\"target\"", "\"count\":100"]);
     }
 }

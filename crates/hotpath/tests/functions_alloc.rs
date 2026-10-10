@@ -1,47 +1,38 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use std::process::Command;
+    use crate::common::assert_contains_all;
+    use crate::common::example::{poll_endpoint, Example};
+
+    fn example_of(package: &str, name: &str) -> Example {
+        Example::new(package, name)
+            .features("hotpath,hotpath-alloc")
+            .env("HOTPATH_REPORT", "functions-alloc")
+    }
+
+    fn example(name: &str) -> Example {
+        example_of("test-tokio-async", name)
+    }
 
     // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
     #[test]
     fn test_basic_alloc_output() {
         for _ in 0..2 {
-            let output = Command::new("cargo")
-                .args([
-                    "run",
-                    "-p",
-                    "test-tokio-async",
-                    "--example",
-                    "basic",
-                    "--features",
-                    "hotpath,hotpath-alloc",
-                ])
-                .env("HOTPATH_REPORT", "functions-alloc")
-                .output()
-                .expect("Failed to execute command");
+            let stdout = example("basic").stdout();
 
-            assert!(
-                output.status.success(),
-                "Process did not exit successfully.\n\nstderr:\n{}",
-                String::from_utf8_lossy(&output.stderr)
+            assert_contains_all(
+                &stdout,
+                &[
+                    "custom_block",
+                    "basic::sync_function",
+                    "basic::async_function",
+                    "p95",
+                    "total",
+                    "percent_total",
+                ],
             );
-
-            let all_expected = [
-                "custom_block",
-                "basic::sync_function",
-                "basic::async_function",
-                "p95",
-                "total",
-                "percent_total",
-            ];
-
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for expected in all_expected {
-                assert!(
-                    stdout.contains(expected),
-                    "Expected:\n{expected}\n\nGot:\n{stdout}",
-                );
-            }
         }
     }
 
@@ -49,68 +40,26 @@ pub mod tests {
     #[test]
     fn test_early_returns_alloc_output() {
         for _ in 0..2 {
-            let output = Command::new("cargo")
-                .args([
-                    "run",
-                    "-p",
-                    "test-tokio-async",
-                    "--example",
-                    "early_returns",
-                    "--features",
-                    "hotpath,hotpath-alloc",
-                ])
-                .env("HOTPATH_REPORT", "functions-alloc")
-                .output()
-                .expect("Failed to execute command");
+            let stdout = example("early_returns").stdout();
 
-            assert!(
-                output.status.success(),
-                "Process did not exit successfully.\n\nstderr:\n{}",
-                String::from_utf8_lossy(&output.stderr)
+            assert_contains_all(
+                &stdout,
+                &[
+                    "early_returns::early_return",
+                    "early_returns::propagates_error",
+                    "early_returns::normal_path",
+                ],
             );
-
-            let all_expected = [
-                "early_returns::early_return",
-                "early_returns::propagates_error",
-                "early_returns::normal_path",
-            ];
-
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for expected in all_expected {
-                assert!(
-                    stdout.contains(expected),
-                    "Expected:\n{expected}\n\nGot:\n{stdout}",
-                );
-            }
         }
     }
 
     // cargo run -p test-smol-async --example basic_smol --features hotpath,hotpath-alloc -- --nocapture
     #[test]
     fn test_async_smol_alloc_profiling_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-smol-async",
-                "--example",
-                "basic_smol",
-                "--features",
-                "hotpath,hotpath-alloc",
-                "--",
-                "--nocapture",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example_of("test-smol-async", "basic_smol")
+            .args(&["--nocapture"])
+            .stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
             stdout.contains("basic_smol::main"),
             "Expected basic_smol::main in output\n\nGot:\n{stdout}",
@@ -120,41 +69,17 @@ pub mod tests {
     // cargo run -p test-tokio-async --example limit --features hotpath,hotpath-alloc
     #[test]
     fn test_limit_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "limit",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example("limit").stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &[
+                "(3/4)",
+                "limit::main",
+                "measured_module::function_one",
+                "measured_module::function_two",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let expected_content = [
-            "(3/4)",
-            "limit::main",
-            "measured_module::function_one",
-            "measured_module::function_two",
-        ];
-
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
 
         let not_expected_content = ["limit::function_three", "N/A*"];
 
@@ -177,23 +102,13 @@ pub mod tests {
         ];
 
         for (features, alloc_cumulative) in test_cases {
-            let mut cmd = Command::new("cargo");
-            cmd.args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "multithread_alloc",
-                "--features",
-                features,
-            ]);
-            cmd.env("HOTPATH_REPORT", "functions-alloc");
+            let mut run = example("multithread_alloc").features(features);
 
             if let Some(val) = alloc_cumulative {
-                cmd.env("HOTPATH_ALLOC_CUMULATIVE", val);
+                run = run.env("HOTPATH_ALLOC_CUMULATIVE", val);
             }
 
-            let output = cmd.output().expect("Failed to execute command");
+            let output = run.output();
 
             let env_info = alloc_cumulative
                 .map(|v| format!("HOTPATH_ALLOC_CUMULATIVE={}", v))
@@ -213,26 +128,12 @@ pub mod tests {
     #[test]
     fn test_data_endpoints() {
         use hotpath::json::JsonFunctionsList;
-        use std::{thread::sleep, time::Duration};
+        use std::time::Duration;
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
+        let _running = example("basic")
             .env("HOTPATH_METRICS_PORT", "6775")
             .env("TEST_SLEEP_SECONDS", "10")
-            .spawn()
-            .expect("Failed to spawn command");
-
-        let mut timing_json = String::new();
-        let mut last_error = None;
+            .spawn();
 
         let timing_expected = [
             "basic::sync_function",
@@ -240,40 +141,14 @@ pub mod tests {
             "custom_block",
         ];
 
-        for _attempt in 0..18 {
-            sleep(Duration::from_millis(750));
+        let timing_json = poll_endpoint(
+            "http://localhost:6775/functions_timing",
+            18,
+            Duration::from_millis(750),
+            |body| timing_expected.iter().all(|e| body.contains(e)),
+        );
 
-            match ureq::get("http://localhost:6775/functions_timing").call() {
-                Ok(mut response) => {
-                    timing_json = response
-                        .body_mut()
-                        .read_to_string()
-                        .expect("Failed to read response body");
-                    last_error = None;
-                    if timing_expected.iter().all(|e| timing_json.contains(e)) {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    last_error = Some(format!("Request error: {}", e));
-                }
-            }
-        }
-
-        if let Some(error) = last_error {
-            let _ = child.kill();
-            panic!(
-                "Failed to connect to /functions_timing after 18 retries: {}",
-                error
-            );
-        }
-
-        for expected in timing_expected {
-            assert!(
-                timing_json.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{timing_json}",
-            );
-        }
+        assert_contains_all(&timing_json, &timing_expected);
 
         let timing_response: JsonFunctionsList =
             serde_json::from_str(&timing_json).expect("Failed to parse timing JSON");
@@ -293,12 +168,7 @@ pub mod tests {
             .read_to_string()
             .expect("Failed to read alloc response body");
 
-        for expected in timing_expected {
-            assert!(
-                alloc_json.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{alloc_json}",
-            );
-        }
+        assert_contains_all(&alloc_json, &timing_expected);
 
         let _alloc_response: JsonFunctionsList =
             serde_json::from_str(&alloc_json).expect("Failed to parse alloc JSON");
@@ -332,40 +202,12 @@ pub mod tests {
                 "Expected status 200 for /functions_alloc/:id/logs endpoint"
             );
         }
-
-        let _ = child.kill();
-        let _ = child.wait();
     }
 
     // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
     #[test]
     fn test_alloc_total_bytes_not_inflated() {
-        use hotpath::json::JsonReport;
-
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let report: JsonReport = serde_json::from_str(stdout.lines().last().expect("no output"))
-            .expect("Failed to parse JSON output");
+        let report = example("basic").report();
 
         let alloc = report
             .functions_alloc
@@ -391,32 +233,9 @@ pub mod tests {
     // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc
     #[test]
     fn test_async_alloc_is_reported() {
-        use hotpath::json::JsonReport;
-
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
+        let report = example("basic")
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let report: JsonReport = serde_json::from_str(stdout.lines().last().expect("no output"))
-            .expect("Failed to parse JSON output");
+            .report();
 
         let alloc = report
             .functions_alloc
@@ -437,34 +256,11 @@ pub mod tests {
     // cargo run -p test-tokio-async --example alloc_measure --features hotpath,hotpath-alloc
     #[test]
     fn test_alloc_uninstrumented_children_tracked() {
-        use hotpath::json::JsonReport;
-
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "alloc_measure",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
+        let report = example("alloc_measure")
             .env("HOTPATH_ALLOC_CUMULATIVE", "true")
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
+            .json()
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let report: JsonReport = serde_json::from_str(stdout.lines().last().expect("no output"))
-            .expect("Failed to parse JSON output");
+            .report();
 
         let alloc = report
             .functions_alloc
@@ -500,33 +296,10 @@ pub mod tests {
     // cargo run -p test-tokio-async --example custom_allocator --features hotpath,hotpath-alloc
     #[test]
     fn test_custom_allocator_via_main_macro() {
-        use hotpath::json::JsonReport;
-
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "custom_allocator",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
+        let report = example("custom_allocator")
+            .json()
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let report: JsonReport = serde_json::from_str(stdout.lines().last().expect("no output"))
-            .expect("Failed to parse JSON output");
+            .report();
 
         let alloc = report
             .functions_alloc
@@ -560,37 +333,10 @@ pub mod tests {
     // cargo run -p test-alloc --example first_call_registration --features hotpath,hotpath-alloc
     #[test]
     fn test_first_call_registration_reports_only_measured_allocs() {
-        use hotpath::json::JsonReport;
-
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-alloc",
-                "--example",
-                "first_call_registration",
-                "--features",
-                "hotpath,hotpath-alloc",
-            ])
-            .env("HOTPATH_REPORT", "functions-alloc")
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
+        let report = example_of("test-alloc", "first_call_registration")
+            .json()
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
+            .report();
 
         let alloc = report
             .functions_alloc
