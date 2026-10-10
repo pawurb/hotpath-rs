@@ -54,7 +54,7 @@ TUI quickstart (details in `dev_docs/tui.md`): run a profiled example in one ter
 
 **Profiling pipeline**: instrumented code -> per-thread lock-free SPSC queue (`crates/hotpath-drain`) -> per-subsystem `hp-<subsystem>` worker thread (sweeps every 50ms and once more at shutdown) -> statistics -> report on guard drop. The producer path must stay free of locks and RMW atomics.
 
-**Feature gating**: `lib.rs` orchestrates via `cfg_if!`; `lib_on.rs` is the enabled implementation, `lib_off.rs` the no-op stubs. Every public macro must exist in both. Time profiling uses `time::TimeGuard`; allocation profiling uses a custom global allocator with `alloc::MeasurementGuard`.
+**Feature gating**: `lib.rs` orchestrates via `#[cfg(feature = ...)]`; `lib_on.rs` is the enabled implementation, `lib_off.rs` the no-op stubs. Every public macro must exist in both. Time profiling uses `MeasurementGuard` in `lib_on/functions/timing/guard.rs`; allocation profiling uses a custom global allocator with `MeasurementGuardSync` / `MeasurementGuardAsync` in `lib_on/functions/alloc/guard.rs`.
 
 **Async caveats**: async function profiling works on any async runtime with no runtime-specific feature flag (see `crates/test-smol-async`); the `tokio` feature is only needed for tokio-specific integrations (tokio channels/locks, async `io!` traits, `tokio_runtime!()`). Async allocation profiling is measured per `poll()` (`lib_on/futures/wrapper.rs`).
 
@@ -68,14 +68,14 @@ TUI quickstart (details in `dev_docs/tui.md`): run a profiled example in one ter
 
 - `crates/hotpath/src/lib.rs` / `lib_on.rs` / `lib_off.rs` - Entry points (feature orchestration, enabled impl, no-op stubs)
 - `crates/hotpath-macros/src/lib.rs` - Procedural macro implementations
-- `crates/hotpath/src/lib_on/<subsystem>.rs` (+ same-named subdir) - One module per instrumented subsystem: `functions` (timing/alloc, + `functions/cpu/` for sampling), `channels`, `streams`, `futures`, `rw_locks`, `mutexes`, `sql`, `http`, `io`, `threads`, `tokio_runtime`, `debug`
+- `crates/hotpath/src/lib_on/<subsystem>.rs` (+ same-named subdir) - One module per instrumented subsystem: `functions` (timing/alloc, + `functions/cpu/` for sampling), `channels`, `streams`, `futures`, `rw_locks`, `mutexes`, `sql`, `http`, `server`, `io`, `threads`, `tokio_runtime`, `debug`
 - `crates/hotpath/bin/hotpath/` - TUI binary (`cmd/console/` holds app state, views, HTTP client)
 - `crates/hotpath/bin/hotpath-utils/` - CLI for A/B benchmarks (`compare`) and CI PR comments (`profile-pr`)
 - `crates/hotpath/bin/hotpath-samply/` - CPU sampling wrapper binary
 
 ### Documentation
 
-The mdBook source lives in `docs/` (book.toml, src/, theme/). Serve a live-reloading local preview with `just docs` (`mdbook serve` on `http://localhost:3000`). Requires `mdbook`, `mdbook-assets-hash`, and `mdbook-reading-time` on PATH. The Axum web server that builds and serves the production site lives in a separate **private** repo at `../hotpath-backend`, which consumes `docs/` via a `html_src` symlink.
+The mdBook source lives in `docs/` (book.toml, src/, theme/). Serve a live-reloading local preview with `just docs` (`mdbook serve` on `http://localhost:3000`). Requires `mdbook`, `mdbook-assets-hash`, `mdbook-reading-time`, and `mdbook-blank-links` on PATH. The Axum web server that builds and serves the production site lives in a separate **private** repo at `../hotpath-backend`, which consumes `docs/` via a `html_src` symlink.
 
 ## Code style
 

@@ -251,7 +251,7 @@ Requires [`hotpath::channel!`](data_flow.md) wrappers. `type` is the channel kin
 | `hotpath_channel_instances_closed_total` | counter | `source`, `label`, `iter`, `type`, `payload` | Instances that have closed |
 | `hotpath_channel_queue_size` | gauge | `source`, `label`, `iter`, `type`, `payload` | Messages sent but not yet received |
 | `hotpath_channel_max_queue_size` | gauge | `source`, `label`, `iter`, `type`, `payload` | Since-start high-water mark of the queue size |
-| `hotpath_channel_delay_seconds` | histogram | `source`, `label`, `iter`, `type`, `payload` | Delay between send and sampled receive (wrap mode only) |
+| `hotpath_channel_delay_seconds` | histogram | `source`, `label`, `iter`, `type`, `payload` | Delay between send and sampled receive |
 
 ### Streams
 
@@ -267,7 +267,7 @@ Subtract the closed counter from the created one for the number of instances cur
 
 ### Futures
 
-Requires [`#[hotpath::measure(future = true)]`](functions.md) on the async function. `source` is the function path.
+Requires [`#[hotpath::measure(future = true)]`](functions.md) or [`#[hotpath::future_fn]`](data_flow.md#future-and-future_fn-macros) on the async function, or a [`hotpath::future!`](data_flow.md#future-and-future_fn-macros) wrapper. `source` is the function path for the attribute macros and the `file:line:column` call site for `future!`.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|

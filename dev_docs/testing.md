@@ -4,23 +4,7 @@ Integration tests live in `crates/hotpath/tests/`. They spawn an example as a ch
 
 **Live state: poll the metrics endpoint.** Run the example with `HOTPATH_METRICS_PORT` and `TEST_SLEEP_SECONDS`, then fetch the route in a retry loop (counts lag until the worker's next sweep). See `tests/channels_crossbeam.rs::test_data_endpoints`.
 
-**Exact final state: parse the guard-drop report.** Run with `Format::Json`, find the first `{` in stdout and read only the first JSON value (log lines follow it) into the typed `JsonReport`, not `serde_json::Value`:
-
-```rust
-use hotpath::json::{JsonChannelsList, JsonReport};
-
-fn parse_channels(stdout: &str) -> JsonChannelsList {
-    let json_start = stdout.find('{').expect("No JSON report in output");
-    let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-        .into_iter::<JsonReport>()
-        .next()
-        .expect("No JSON value in output")
-        .expect("Failed to parse JSON report");
-    report.channels.expect("No channels section in report")
-}
-```
-
-See `tests/channels_crossbeam.rs`.
+**Exact final state: parse the guard-drop report.** Run with `Format::Json` and parse stdout into the typed `JsonReport`, not `serde_json::Value`; log lines follow the report. See `parse_channels` in `tests/channels_crossbeam.rs`.
 
 Conventions: one module-level `#[cfg(all(test, feature = "hotpath"))]` guard per test file, and a unique `HOTPATH_METRICS_PORT` per endpoint-polling test file.
 

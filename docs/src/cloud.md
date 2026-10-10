@@ -8,11 +8,11 @@
 
 To get started, log in at <a href="https://hotpath.rs/app" target="_blank" rel="noopener noreferrer">hotpath.rs/app</a>. The hotpath-rs GitHub App asks for minimal permissions: **no access to your code**, only pull request write access to post comments, and checks to optionally report the status of each benchmark. The only data it gets from your CI is the benchmark reports your workflow uploads. 
 
-The [GitHub Actions integration](ci_integration) compares benchmark results against a baseline and posts a PR comment whenever a significant regression or improvement is detected:
+The [GitHub Actions integration](ci_integration.md) compares benchmark results against a baseline and posts a PR comment whenever a significant regression or improvement is detected:
 
 <img loading="lazy" src="{{#asset-hash images/cloud-pr-comment.webp}}" alt="hotpath Cloud pull request comment">
 
-You can define acceptable regression thresholds using a customizable [regression policy](/regression_policy) and set fine-tuned [performance budgets](/performance_budgets). This helps eliminate noisy alerts and ensures that warnings are emitted only when performance changes in a meaningful way.
+You can define acceptable regression thresholds using a customizable [regression policy](regression_policy.md) and set fine-tuned [performance budgets](performance_budgets.md). This helps eliminate noisy alerts and ensures that warnings are emitted only when performance changes in a meaningful way.
 
 ```toml
 # hotpath/policy.toml (excerpt)
@@ -36,7 +36,7 @@ timing = { sql_per_request = 5 }
 message = "too many SQL queries per request, check for N+1 calls"
 ```
 
-The [`hotpath cloud`](agents_cli) CLI and dedicated [AI skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_cloud/SKILL.md) bring the same feedback loop to coding agents. Agents can analyze benchmark results, identify regressions, and use the profiling data to guide performance optimization:
+The [`hotpath cloud`](agents_cli.md) CLI and dedicated [AI skill](https://github.com/pawurb/hotpath-rs/blob/main/skills/hotpath_cloud/SKILL.md) bring the same feedback loop to coding agents. Agents can analyze benchmark results, identify regressions, and use the profiling data to guide performance optimization:
 
 <img loading="lazy" src="{{#asset-hash images/cloud-agent-diff.webp}}" alt="AI agent summarizing a hotpath Cloud diff">
 

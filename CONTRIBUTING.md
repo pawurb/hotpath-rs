@@ -166,6 +166,7 @@ The mdBook source lives in `docs/`. Install the dependencies:
 - https://github.com/rust-lang/mdBook
 - https://github.com/pawurb/mdbook-reading-time 
 - https://github.com/pawurb/mdbook-assets-hash 
+- `mdbook-blank-links` (the `blank-links` preprocessor in `docs/book.toml`, not published on crates.io)
 
 ```bash
 cargo install mdbook
@@ -224,32 +225,16 @@ cargo test --lib --features hotpath
 cargo test -p hotpath --bin hotpath --features=tui
 cargo test -p hotpath --features cloud --test cloud_cli
 cargo run -p test-all-features --example all_noop
-cargo test --features hotpath --test guards -- --nocapture --test-threads=1
-cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
-cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
-cargo test --features hotpath --test locations -- --nocapture --test-threads=1
-cargo test --features hotpath --test functions_cpu -- --nocapture --test-threads=1
-cargo test --features hotpath --test streams -- --nocapture --test-threads=1
-cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
-cargo test --features hotpath,hotpath-prometheus --test prometheus_native -- --nocapture --test-threads=1
-cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
-cargo test --features hotpath --test channels_ftc -- --nocapture --test-threads=1
-cargo test --features hotpath --test channels_asc -- --nocapture --test-threads=1
-cargo test --features hotpath --test channels_std -- --nocapture --test-threads=1
-cargo test --features hotpath --test channels_tokio -- --nocapture --test-threads=1
-cargo test --features hotpath --test channels_flume -- --nocapture --test-threads=1
-cargo test --features hotpath --test rw_lock_std -- --nocapture --test-threads=1
-cargo test --features hotpath --test rw_lock_parking_lot -- --nocapture --test-threads=1
-cargo test --features hotpath --test mutex_std -- --nocapture --test-threads=1
-cargo test --features hotpath --test mutex_tokio -- --nocapture --test-threads=1
-cargo test --features hotpath --test mutex_async_lock -- --nocapture --test-threads=1
-cargo test --features hotpath --test threads -- --nocapture --test-threads=1
-cargo test --features hotpath --test tokio_runtime -- --nocapture --test-threads=1
-cargo test --features hotpath --test futures -- --nocapture --test-threads=1
-cargo test --features hotpath --test debug -- --nocapture --test-threads=1
 ```
 
-Or run all integration tests at once:
+Integration tests live in `crates/hotpath/tests/` and run one file at a time, for example:
+
+```bash
+cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
+cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
+```
+
+Or run all integration tests at once with the `test_all` recipe in the `justfile`:
 
 ```bash
 just test_all
@@ -265,16 +250,8 @@ just test_all
 | `hotpath-macros-meta` | Mirror of the `hotpath-macros` library, used to profile the profiler itself. |
 | `hotpath-drain` | Lock-free per-thread event queues with a single drain - the transport layer between instrumented code and the background workers |
 | `hotpath-drain-meta` | Mirror of the `hotpath-drain` library, used to profile the profiler itself. |
-| `test-tokio-async` | Integration tests and examples using the Tokio runtime |
-| `test-smol-async` | Integration tests and examples using the smol runtime |
-| `test-all-features` | Tests with all feature flags enabled |
-| `test-channels-tokio` | Tests for Tokio channels instrumentation |
-| `test-channels-ftc` | Tests for futures channels instrumentation |
-| `test-channels-crossbeam` | Tests for crossbeam channels instrumentation |
-| `test-channels-std` | Tests for std channels instrumentation |
-| `test-streams` | Tests for streams instrumentation |
-| `test-futures` | Tests for futures instrumentation |
-| `test-debug` | Tests for debug metrics functionality |
+| `test-*` | One integration-test and example crate per instrumented subsystem or third-party integration. The current list is the `members` array in the root `Cargo.toml`. |
+| `test-toasty` | Toasty integration tests. Not a workspace member (conflicting `links = "sqlite3"`), build it with `--manifest-path crates/test-toasty/Cargo.toml`. |
 
 ## License
 

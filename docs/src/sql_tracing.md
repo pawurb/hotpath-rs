@@ -115,7 +115,6 @@ That's it - every query executed through a Toasty `Db`, `Connection`, or `Transa
 
 The number of queries shown is unlimited by default (`0`). Cap it with:
 
-- Macro: `#[hotpath::main(sql_limit = n)]`
 - Builder: `.sql_limit(n)`
 - Env var: `HOTPATH_SQL_LIMIT`
 

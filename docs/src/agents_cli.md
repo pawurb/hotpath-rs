@@ -150,6 +150,8 @@ hotpath cloud init
 hotpath cloud validate-policy --pretty
 ```
 
+`init --benchmark NAME` writes `hotpath/NAME-policy.toml`, the policy of that benchmark alone, and `validate-policy --benchmark NAME` checks the file a run of that benchmark picks. `init` refuses to replace an existing file unless you pass `--force`.
+
 ## Output and exit codes
 
 Every command prints one JSON document on stdout, compact by default, indented with `--pretty`, or written to a file with `--output FILE`. An error prints one JSON document on stderr and nothing on stdout:

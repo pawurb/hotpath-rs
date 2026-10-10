@@ -1,6 +1,6 @@
 # Rust Threads performance monitoring: CPU and memory metrics 
 
-The threads view shows live per-thread CPU and memory metrics for the instrumented process. Reach for it when you need to answer questions that function-level profiling can't: which thread is burning CPU, which thread's allocations keep growing, or which threads sit blocked while the rest of your Tokio app starves. It works on Linux, macOS and Windows, and it's enabled by default via the `threads` feature flag, so if you already use hotpath for [time, CPU and memory profiling](./), per-thread monitoring is active out of the box.
+The threads view shows live per-thread CPU and memory metrics for the instrumented process. Reach for it when you need to answer questions that function-level profiling can't: which thread is burning CPU, which thread's allocations keep growing, or which threads sit blocked while the rest of your Tokio app starves. It works on Linux, macOS and Windows, and it's enabled by default via the `threads` feature flag, so if you already use hotpath for [time, CPU and memory profiling](./introduction.md), per-thread monitoring is active out of the box.
 
 ## Enabling per-thread monitoring
 
@@ -39,11 +39,9 @@ A few things to know:
 
 ## Metrics reference
 
-The view header shows process-wide numbers:
+The view header shows process-wide numbers (the PID of the profiled process is in the TUI top bar, use it to correlate hotpath's view with `ps`, `top` or `htop`):
 
-**PID** - the process identifier. Use it to correlate hotpath's view with `ps`, `top` or `htop`.
-
-**Total Alloc - Dealloc** - the aggregate allocation delta across all threads. If this number keeps growing while your app is under steady-state load, memory is being retained somewhere - a leak signal worth chasing down.
+**Alloc / Dealloc / Diff** - total bytes allocated and deallocated across all threads, and the difference between the two. If Diff keeps growing while your app is under steady-state load, memory is being retained somewhere - a leak signal worth chasing down. Requires the `hotpath-alloc` feature.
 
 **RSS** - Resident Set Size, the physical memory the process currently occupies. RSS includes code, thread stacks and allocator slack, so it can stay flat while the allocation Diff grows (the allocator reuses freed pages) or grow while Diff stays flat. Comparing the two tells you whether memory growth comes from your allocations or from elsewhere.
 
@@ -51,17 +49,17 @@ The view header shows process-wide numbers:
 
 And per-thread metrics:
 
-**Thread Name** - the logical name set via `std::thread::Builder::name` or by the runtime (e.g. `tokio-runtime-w`). Unnamed threads show up as `thread_N`, so naming the threads you spawn makes this view far more useful.
+**Thread** - the logical name set via `std::thread::Builder::name` or by the runtime (e.g. `tokio-runtime-w`). Unnamed threads show up as `thread_N`, so naming the threads you spawn makes this view far more useful.
 
 **TID** - the OS thread identifier. It matches what `htop -H`, `gdb` and sampling profilers report, so you can cross-reference the same thread across tools.
 
-**Status** - the current execution state, shown in the live TUI and the JSON API (a point-in-time value, so the final report table omits it). `Running` means on-CPU right now. `Sleeping` means parked or waiting - completely normal for idle Tokio workers. `Blocked` means an uninterruptible wait, usually disk I/O; a thread that is persistently `Blocked` is doing synchronous I/O that stalls it, which is especially bad inside async worker threads.
+**Status** - the current execution state followed by the raw OS state code, shown in the live TUI and the JSON API (a point-in-time value, so the final report table omits it). `Running` means on-CPU right now. `Sleeping` means parked or waiting - completely normal for idle Tokio workers. `Blocked` means an uninterruptible wait, usually disk I/O; a thread that is persistently `Blocked` is doing synchronous I/O that stalls it, which is especially bad inside async worker threads.
 
 **CPU %** - instantaneous CPU utilization, computed from deltas of cumulative CPU time between 250ms samples. A worker pinned near 100% indicates a busy loop or heavy computation. Like Status it is a point-in-time value, so it appears in the TUI and the JSON API only.
 
-**Max%** - the peak CPU utilization ever observed for the thread, so short spikes don't disappear between refreshes.
+**Max %** (`Max%` in the final report) - the peak CPU utilization ever observed for the thread, so short spikes don't disappear between refreshes.
 
-**Avg%** - lifetime average CPU utilization: total CPU time consumed by the thread divided by the profiler's elapsed time. Max% and Avg% together summarize a thread's whole run, which is why they are the two CPU columns kept in the final report.
+**Avg %** (`Avg%` in the final report) - lifetime average CPU utilization: total CPU time consumed by the thread divided by the profiler's elapsed time. Max% and Avg% together summarize a thread's whole run, which is why they are the two CPU columns kept in the final report.
 
 **Alloc / Dealloc** - total bytes allocated and deallocated, attributed to the thread that performed them. Requires the `hotpath-alloc` feature.
 
@@ -84,7 +82,7 @@ threads - Thread CPU and memory statistics. (Max RSS: 7.8 MB, Alloc: 2.1 MB, Dea
 +----------+-------+-------+----------+---------+----------+
 ```
 
-Two things stand out here. `main` barely uses CPU (5.1% on average) yet its Diff is 357.9 KB and growing - allocations made on that thread are being retained, so whatever it built up is never freed. `worker-1` averages 97.4% CPU for the whole run - that's the compute hotspot, and since its Diff is near zero, it's CPU-bound rather than allocation-heavy. The final report keeps the two aggregate CPU columns (Max% and Avg%); the instantaneous CPU% and thread Status live in the [TUI](./) and the JSON API, where a point-in-time value is meaningful. This kind of per-thread visibility matters most in latency-critical apps, where one saturated thread can delay everything behind it.
+Two things stand out here. `main` barely uses CPU (5.1% on average) yet its Diff is 357.9 KB and growing - allocations made on that thread are being retained, so whatever it built up is never freed. `worker-1` averages 97.4% CPU for the whole run - that's the compute hotspot, and since its Diff is near zero, it's CPU-bound rather than allocation-heavy. The final report keeps the two aggregate CPU columns (Max% and Avg%); the instantaneous CPU% and thread Status live in the [TUI](./profiling_modes.md#live-tui-dashboard) and the JSON API, where a point-in-time value is meaningful. This kind of per-thread visibility matters most in latency-critical apps, where one saturated thread can delay everything behind it.
 
 The live TUI shows the same data refreshing in real time:
 

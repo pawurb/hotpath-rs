@@ -9,6 +9,7 @@
 | `HOTPATH_OUTPUT_FORMAT` | Output format: `table`, `json`, `json-pretty`, or `none`. Using `none` silences output while keeping the metrics server and MCP server active. (default: `table`) |
 | `HOTPATH_OUTPUT_PATH` | Filesystem path for profiling reports. If unset, reports are written to `stdout`. When set, this env var takes precedence over programmatic `output_path` config. On Unix, use `/dev/stdout` or `/dev/stderr` to redirect to the standard streams. |
 | `HOTPATH_REPORT` | Report sections spec: `all`, `auto`, an exact comma-separated list (`functions-timing`, `functions-alloc`, `functions-cpu`, `channels`, `streams`, `futures`, `rw_locks`, `mutexes`, `sql`, `http`, `server`, `io`, `threads`, `debug`), or auto with exclusions like `auto,-threads` / `-threads`. (default: `auto` - function and thread sections plus every instrumented section with data) |
+| `HOTPATH_REPORT_LABEL` | Free-form name for the run, written as the top-level `label` field of the JSON report. Ignored when empty. (default: unset) |
 | `HOTPATH_DISABLE_HINTS` | Set to `1` or `true` to hide the hint line printed at the end of the table report. (default: unset) |
 | `HOTPATH_USER_METADATA` | Comma-separated `key=value` pairs attached to the report, e.g. `commit=abc123,env=ci`. Rendered as a `user_metadata` table under the report header and as a top-level `user_metadata` object in JSON output. Values are split on the first `=`, so they may contain `=` but not `,`; keys must be unique and non-empty, otherwise the guard panics at startup. Merged on top of `HotpathGuardBuilder::user_metadata`, env values win per key. |
 
@@ -16,11 +17,16 @@
 
 | Variable | Description |
 |----------|-------------|
-| `HOTPATH_LIMIT` | Maximum number of items shown in every report section (functions, channels, streams, futures, threads). Set to `0` for unlimited. Per-resource env vars (e.g. `HOTPATH_FUNCTIONS_LIMIT`) take precedence. (default: unset) |
+| `HOTPATH_LIMIT` | Maximum number of items shown in every report section except debug (functions, channels, streams, futures, locks, SQL, HTTP, server routes, I/O, threads). Set to `0` for unlimited. Per-resource env vars (e.g. `HOTPATH_FUNCTIONS_LIMIT`) take precedence. (default: unset) |
 | `HOTPATH_FUNCTIONS_LIMIT` | Maximum number of functions shown in the report. Set to `0` for unlimited. (default: `15`) |
 | `HOTPATH_CHANNELS_LIMIT` | Maximum number of channels shown in the report. Set to `0` for unlimited. (default: `0`) |
 | `HOTPATH_STREAMS_LIMIT` | Maximum number of streams shown in the report. Set to `0` for unlimited. (default: `0`) |
 | `HOTPATH_FUTURES_LIMIT` | Maximum number of futures shown in the report. Set to `0` for unlimited. (default: `0`) |
+| `HOTPATH_RW_LOCKS_LIMIT` | Maximum number of RwLocks shown in the report. Set to `0` for unlimited. (default: `0`) |
+| `HOTPATH_MUTEXES_LIMIT` | Maximum number of mutexes shown in the report. Set to `0` for unlimited. (default: `0`) |
+| `HOTPATH_SQL_LIMIT` | Maximum number of SQL queries shown in the report. Set to `0` for unlimited. (default: `0`) |
+| `HOTPATH_HTTP_LIMIT` | Maximum number of outbound HTTP endpoints shown in the report. Set to `0` for unlimited. (default: `0`) |
+| `HOTPATH_SERVER_LIMIT` | Maximum number of server routes shown in the report. Set to `0` for unlimited. (default: `0`) |
 | `HOTPATH_IO_LIMIT` | Maximum number of I/O wrappers shown in the report. Set to `0` for unlimited. (default: `0`) |
 | `HOTPATH_THREADS_LIMIT` | Maximum number of threads shown in the report. Set to `0` for unlimited. (default: `5`) |
 
@@ -53,6 +59,7 @@ Measure durations for only a fraction of calls to reduce profiling overhead in e
 
 | Variable | Description |
 |----------|-------------|
+| `HOTPATH_CPU_INCLUSIVE` | Set to `true` or `1` to credit each CPU sample to every instrumented function on its stack (inclusive) instead of only the innermost one (exclusive). (default: `false`) |
 | `HOTPATH_SAMPLY_WRAPPER_BIN` | Path to the `hotpath-samply` wrapper binary that autospawn launches under the `hotpath-cpu` feature. (default: `hotpath-samply`, resolved via `PATH`) |
 | `HOTPATH_SAMPLY_BIN` | Path to the external `samply` binary used by the `hotpath-samply` worker. (default: `samply`, resolved via `PATH`) |
 
@@ -88,7 +95,7 @@ Requires the `hotpath-prometheus` feature, see [Prometheus & Grafana](prometheus
 | Variable | Description |
 |----------|-------------|
 | `HOTPATH_TUI_REFRESH_INTERVAL_MS` | TUI dashboard refresh interval in milliseconds. (default: `1000`) |
-| `HOTPATH_TUI_TAB` | Initial tab to display when launching the TUI: `1` (Timing), `2` (Memory), `3` (Data Flow), `4` (Threads), `5` (Debug), `6` (Tokio). (default: unset) |
+| `HOTPATH_TUI_TAB` | Initial tab to display when launching the TUI: `1` (Functions), `2` (Data Flow), `3` (I/O), `4` (Threads), `5` (Debug), `6` (Tokio). (default: unset) |
 | `HOTPATH_TUI_AUTO_EXPAND_LOGS` | Auto-open the logs panel once initial data arrives and pin selection to the given table index. Set to an integer (e.g. `0` for the first row, `2` for the third). (default: unset) |
 | `HOTPATH_METRICS_HOST` | Host URL that the TUI console connects to for metrics data. (default: `http://localhost`) |
 | `HOTPATH_METRICS_PORT` | Port that the TUI console connects to for metrics data. (default: `6770`) |

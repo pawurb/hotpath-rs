@@ -40,7 +40,7 @@ HOTPATH_ALLOC_METRIC=count cargo run --features='hotpath,hotpath-alloc'
 
 **Configuring limits**
 
-`limit` sets a global cap on items shown in every report section. Per-resource limits override the global value for that section:
+`limit` sets a global cap on items shown in every report section except debug, which is never truncated. Per-resource limits override the global value for that section:
 
 ```rust
 // Global limit applies to all sections
@@ -84,6 +84,8 @@ fn main() {
 }
 ```
 
+The macro accepts `limit`, `functions_limit`, `channels_limit`, `streams_limit`, `futures_limit`, `rw_locks_limit`, `mutexes_limit` and `threads_limit`. The builder additionally has `sql_limit`, `http_limit`, `server_limit` and `io_limit`; each of these sections also has a `HOTPATH_*_LIMIT` [env var](configuration.md#limits). The debug section has no limit.
+
 ### Configuring static reports
 
 | Variable | Description |
@@ -103,6 +105,8 @@ HOTPATH_REPORT=functions-timing,threads \
 cargo run --features=hotpath
 ```
 
+The builder API selects report sections with `.report("functions-timing,threads")`, which takes the same spec as `HOTPATH_REPORT`, or with typed lists: `.sections(vec![hotpath::Section::FunctionsTiming])` shows exactly the listed sections, and `.sections_exclude(vec![hotpath::Section::Threads])` hides sections from the auto report. The last of the three calls wins, and `HOTPATH_REPORT` overrides them all.
+
 ### Timed shutdown
 
 `HOTPATH_SHUTDOWN_MS` forces the program to exit and print the report after a fixed duration. This is useful for profiling long-running processes (HTTP servers, workers) where you want to collect metrics for a predefined period without manual intervention. It also enables deterministic benchmarks - run the same workload for a fixed window across different git commits and compare the reports.
@@ -115,6 +119,8 @@ cargo run --features=hotpath
 ```
 
 Use `before_shutdown` in the `HotpathGuardBuilder` API to run cleanup logic (flush connections, drain queues) before the report is generated.
+
+With the builder API, `build_with_shutdown(duration)` replaces `build()` for programs that never return from their entry point: it moves the guard to a background thread, and after `duration` (or `HOTPATH_SHUTDOWN_MS`, which takes precedence) prints the report and exits the process. A zero duration with no env var keeps the guard alive until the process exits.
 
 ## Live TUI dashboard
 
