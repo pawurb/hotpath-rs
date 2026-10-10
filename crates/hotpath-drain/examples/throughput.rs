@@ -93,7 +93,7 @@ fn consume(batch: &[Event]) -> u64 {
 fn consumer_loop(lockstep: Arc<Lockstep>, producers_exited: Arc<Barrier>) -> u64 {
     // Sized for one round, the most a sweep can return since the vector is
     // cleared after each one, so draining never reallocates.
-    let mut batch = Vec::with_capacity((PRODUCERS as u64 * BATCH) as usize);
+    let mut batch = Vec::with_capacity(2 * (PRODUCERS as u64 * BATCH) as usize);
     let mut consumed = 0u64;
     let mut checksum = 0u64;
     for _ in 0..ROUNDS {

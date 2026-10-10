@@ -11,7 +11,7 @@ min_percent_total = 0.5
 # push and 23.1 MB over the run. Any growth past that is a breach.
 [[functions.budgets]]
 match = "hotpath_drain::EventProducer::push"
-alloc = { avg = "25 B", total = "24 MB" }
+alloc = { avg = "20 B", total = "24 MB" }
 calls = { min = 1000000, max = 1000000 }
 
 [functions.alloc]
