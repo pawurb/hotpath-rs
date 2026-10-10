@@ -227,14 +227,14 @@ cargo test -p hotpath --features cloud --test cloud_cli
 cargo run -p test-all-features --example all_noop
 ```
 
-Integration tests live in `crates/hotpath/tests/` and run one file at a time; the `test_all` recipe in the `justfile` is the full list:
+Integration tests live in `crates/hotpath/tests/` and run one file at a time, for example:
 
 ```bash
 cargo test --features hotpath --test functions_timing -- --nocapture --test-threads=1
 cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
 ```
 
-Or run all integration tests at once:
+The `test_all` recipe in the `justfile` runs most of them in one go. It is not the complete set: compare it with the files in `crates/hotpath/tests/` (for example `cloud_cli`, which needs `--features cloud`, runs through the command above).
 
 ```bash
 just test_all

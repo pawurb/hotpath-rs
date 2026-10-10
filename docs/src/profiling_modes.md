@@ -40,7 +40,7 @@ HOTPATH_ALLOC_METRIC=count cargo run --features='hotpath,hotpath-alloc'
 
 **Configuring limits**
 
-`limit` sets a global cap on items shown in every report section. Per-resource limits override the global value for that section:
+`limit` sets a global cap on items shown in every report section except debug, which is never truncated. Per-resource limits override the global value for that section:
 
 ```rust
 // Global limit applies to all sections
@@ -84,7 +84,7 @@ fn main() {
 }
 ```
 
-The macro accepts `limit`, `functions_limit`, `channels_limit`, `streams_limit`, `futures_limit`, `rw_locks_limit`, `mutexes_limit` and `threads_limit`. The builder additionally has `sql_limit`, `http_limit`, `server_limit` and `io_limit`; every section also has a `HOTPATH_*_LIMIT` [env var](configuration.md#limits).
+The macro accepts `limit`, `functions_limit`, `channels_limit`, `streams_limit`, `futures_limit`, `rw_locks_limit`, `mutexes_limit` and `threads_limit`. The builder additionally has `sql_limit`, `http_limit`, `server_limit` and `io_limit`; each of these sections also has a `HOTPATH_*_LIMIT` [env var](configuration.md#limits). The debug section has no limit.
 
 ### Configuring static reports
 

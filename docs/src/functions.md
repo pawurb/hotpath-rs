@@ -65,7 +65,7 @@ Attribute macro that initializes the background measurement processing when appl
 
 - `percentiles = [50, 95, 99]` - Custom percentiles to display, sorted and deduplicated, at most 10 (defaults to `[95]`)
 - `format = "json"` - Output format `"table"`, `"json"`, `"json-pretty"`, `"none"` (defaults to `table`)
-- `limit = 20` - Maximum number of items to display in every report section (`0` = show all)
+- `limit = 20` - Maximum number of items to display in every report section except debug (`0` = show all)
 - `functions_limit = 20` - Maximum number of functions to display, overrides `limit` (default: `15`, `0` = show all). `channels_limit`, `streams_limit`, `futures_limit`, `rw_locks_limit`, `mutexes_limit` and `threads_limit` do the same for their sections, see [Configuring limits](./profiling_modes.md#hotpathmain-vs-hotpathguardbuilder-api)
 - `output_path = "report.json"` - Filesystem path for profiling reports. If not set, the report is written to `stdout`. Can be overridden by `HOTPATH_OUTPUT_PATH`; on Unix, set that env var to `/dev/stdout` or `/dev/stderr` to redirect to the standard streams.
 - `report = "functions-timing,channels"` - Report sections spec: `all`, `auto`, an exact comma-separated list of section names, or auto with exclusions like `"auto,-threads"`. Defaults to auto - function and thread sections plus every instrumented section with data (overridden by `HOTPATH_REPORT` env var)
