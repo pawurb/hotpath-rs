@@ -18,13 +18,28 @@ This skill only builds the dashboard JSON file. It does not configure Prometheus
 
 If any of these is missing, point the user to https://hotpath.rs/prometheus_grafana and continue with the dashboard; do not edit Prometheus or Grafana config, and do not change `Cargo.toml` features or deployment env vars.
 
-Reference: https://hotpath.rs/prometheus_grafana (every metric, label and env var).
+## Documentation
+
+The hotpath docs are the reference for every metric, label and environment variable; this skill holds the procedure and the dashboard queries, which the docs do not have. Every page of https://hotpath.rs is served as markdown when requested with an `Accept: text/markdown` header:
+
+```bash
+curl -sL -H 'Accept: text/markdown' https://hotpath.rs/prometheus_grafana
+```
+
+Fetch https://hotpath.rs/prometheus_grafana before building the dashboard, and check every metric and label name a panel uses against its "Available metrics" tables instead of relying on memory. Keep `-L` (some pages redirect) and the header (there are no `.md` URLs). A `#fragment` is not sent to the server: fetch the whole page and find the heading.
+
+| Page | Covers |
+|---|---|
+| https://hotpath.rs/prometheus_grafana | metrics endpoint, scrape config, native and classic histogram queries, time sampling, every metric family with its labels, exporter environment variables |
+| https://hotpath.rs/axum_tracing | route scoping, behind every per-route panel |
+| https://hotpath.rs/profiling_overhead | time sampling, behind the profiling overhead panel |
+| https://hotpath.rs/tokio_runtime | Tokio metrics and which need `tokio_unstable` |
 
 ## Steps
 
 ### 1. Inspect the project
 
-- Check whether hotpath is already set up: a `hotpath` dependency, `#[hotpath::main]` (or `HotpathGuardBuilder`) and instrumented code. If it is not, stop and tell the user to set up profiling first with `hotpath init` (https://hotpath.rs/introduction); do not instrument the project as part of this skill.
+- Check whether hotpath is already set up: a `hotpath` dependency, `#[hotpath::main]` (or `HotpathGuardBuilder`) and instrumented code. If it is not, stop and tell the user to set up profiling first with `hotpath init` (https://hotpath.rs/); do not instrument the project as part of this skill.
 - Record which subsystems the project instruments. They decide which dashboard rows to build:
 
 | Instrumentation in the code | Dashboard row |
@@ -51,7 +66,7 @@ curl -s http://127.0.0.1:6772/metrics | grep -v '^#' | cut -d'{' -f1 | sort -u
 
 Do not start the app or change its configuration for this; when the endpoint is not reachable, rely on the code inspection alone.
 
-Every query below assumes **native histograms**: `histogram_sum()`, `histogram_count()` and `histogram_quantile()` on the bare metric name. If the user says their Prometheus stores classic histograms, rewrite every histogram query to the classic form: `histogram_quantile(q, sum by (x, le) (increase(<metric>_bucket[...])))`, `histogram_sum(increase(<metric>[...]))` becomes `increase(<metric>_sum[...])` and `histogram_count(...)` becomes `increase(<metric>_count[...])`.
+Every query below assumes **native histograms**: `histogram_sum()`, `histogram_count()` and `histogram_quantile()` on the bare metric name. If the user says their Prometheus stores classic histograms, rewrite every histogram query to the classic form, as "Classic histogram queries" in https://hotpath.rs/prometheus_grafana shows.
 
 ### 3. Build the dashboard
 

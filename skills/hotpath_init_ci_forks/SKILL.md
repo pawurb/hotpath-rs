@@ -8,15 +8,26 @@ allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 
 Set up [hotpath Cloud](https://hotpath.rs/cloud) in the current Rust project, covering pull requests from forks. A GitHub Actions job runs a benchmark with hotpath profiling enabled. hotpath.rs compares each pull request's report with the default branch's, judges the difference under the repository's policy file and posts a comment on the pull request.
 
-A job triggered by a fork's pull request runs the fork's code, so for security reasons GitHub gives it no OIDC token and it cannot upload. So:
-
-- pushes to the default branch upload directly from the benchmark job;
-- pull requests write the report to a file and store it as an artifact;
-- a relay workflow, triggered when the benchmark workflow completes, uploads the artifact from a job that never checks out or runs code from the pull request.
+A job triggered by a fork's pull request cannot upload, so the pull request job stores the report as an artifact and a relay workflow uploads it from a job that never checks out or runs code from the pull request. "Pull requests from forks" in the docs explains the design.
 
 This setup also covers pull requests from branches of the same repository. For a private repository, or one that does not need fork pull requests benchmarked, the simpler `hotpath_init_ci` skill is enough (`hotpath init-ci` without `--forks`).
 
-Reference: https://hotpath.rs/ci_integration#pull-requests-from-forks, https://hotpath.rs/regression_policy.
+## Documentation
+
+The hotpath docs are the reference for both workflow files, every environment variable and every policy key; this skill only holds the procedure. Every page of https://hotpath.rs is served as markdown when requested with an `Accept: text/markdown` header:
+
+```bash
+curl -sL -H 'Accept: text/markdown' https://hotpath.rs/ci_integration
+```
+
+Before each step, fetch the pages it names and follow them instead of relying on memory. Keep `-L` (some pages redirect) and the header (there are no `.md` URLs). A `#fragment` is not sent to the server: fetch the whole page and find the heading.
+
+| Page | Covers |
+|---|---|
+| https://hotpath.rs/ci_integration | setup, "Pull requests from forks" (the benchmark workflow, the relay workflow and its inputs, environment variables), several benchmarks, troubleshooting |
+| https://hotpath.rs/regression_policy | the policy file: sections, keys, validation, the pull request comment and check |
+| https://hotpath.rs/performance_budgets | absolute limits in the same policy file |
+| https://hotpath.rs/cloud | what hotpath Cloud is |
 
 ## Steps
 
@@ -32,20 +43,13 @@ The benchmark is a program instrumented with hotpath that runs a **fixed workloa
 - Prefer an existing example, binary or integration test that exercises the code the user cares about. Ask the user which one when it is not obvious.
 - If there is none, propose a new example (`examples/hotpath_benchmark.rs`) that drives the main code paths with fixed inputs, and write it only after the user agrees.
 - No randomness without a fixed seed, no network calls to services CI cannot reach, no timing-dependent loops. Enough calls per function that the numbers are stable.
-- Pick the benchmark name, used as `HOTPATH_BENCHMARK` and as the relay's `benchmark` input: 1 to 64 characters from `[A-Za-z0-9._-]`, for example the example's name.
+- Pick the benchmark name, used as `HOTPATH_BENCHMARK` and as the relay's `benchmark` input: 1 to 64 characters from `[A-Za-z0-9._-]`, for example the example's name. An invalid name skips the upload.
 
 ### 3. Add the `hotpath-cloud` feature
 
-In the benchmark crate's `Cargo.toml`, next to the existing hotpath features:
+Docs: https://hotpath.rs/ci_integration ("Setup").
 
-```toml
-[features]
-hotpath = ["hotpath/hotpath"]
-hotpath-alloc = ["hotpath/hotpath-alloc"]
-hotpath-cloud = ["hotpath/hotpath-cloud"]
-```
-
-Never add it to `default`. The pull request job needs it too, although it does not upload: the feature is what adds the commit, the pull request, the benchmark name and the policy file to the JSON report.
+Add the `hotpath-cloud` feature passthrough from the docs snippet to the benchmark crate's `Cargo.toml`, next to the existing hotpath features. Never add it to `default`. The pull request job needs it too, although it does not upload.
 
 ### 4. Add the policy file
 
@@ -54,7 +58,7 @@ mkdir -p hotpath
 curl -fsSL https://hotpath.rs/api/v1/policy/default | jq -j .source > hotpath/policy.toml
 ```
 
-Run it from the repository root. It writes the default policy, with comments, to `hotpath/policy.toml` (no token needed; with `wget`, use `wget -qO- https://hotpath.rs/api/v1/policy/default`). Never overwrite an existing policy file. Every upload must carry a policy file, so commit it. Do not change the defaults unless the user asks; https://hotpath.rs/regression_policy documents every key.
+Run it from the repository root. It writes the default policy, with comments, to `hotpath/policy.toml` (no token needed; with `wget`, use `wget -qO- https://hotpath.rs/api/v1/policy/default`). It is the same file `hotpath cloud init` of the docs writes, without needing the CLI. Never overwrite an existing policy file. Every upload must carry a policy file, so commit it. Do not change the defaults unless the user asks; https://hotpath.rs/regression_policy documents every key.
 
 After any edit, validate the file. A valid policy answers `{"valid":true}`, an invalid one HTTP 422 with `problems`, each with its `line` and `message`:
 
@@ -67,110 +71,31 @@ A pull request is judged under the policy file of its own branch, forks included
 
 ### 5. Add the benchmark workflow
 
-Create `.github/workflows/hotpath-benchmark.yml`. Replace `main` with the default branch, `my_benchmark` with the benchmark name, and both `cargo run` lines with the command that runs the benchmark (`-p <crate>` in a workspace, `--bin` or `--example` as appropriate). Keep `--release`. Drop `hotpath-alloc` from `--features` only if the crate has no such feature.
+Docs: https://hotpath.rs/ci_integration ("Pull requests from forks", "The benchmark workflow").
 
-```yaml
-name: hotpath benchmark
+Create `.github/workflows/hotpath-benchmark.yml` from the workflow in that section, copied as is, with its `upload` and `report` jobs. Then adapt only:
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  upload:
-    name: hotpath benchmark (push)
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Run benchmark and upload report
-        env:
-          HOTPATH_UPLOAD: fail-on-error
-          HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
-          HOTPATH_BENCHMARK: my_benchmark
-          HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
-          HOTPATH_OUTPUT_FORMAT: none
-        run: |
-          cargo run -q --release --example my_benchmark \
-            --features hotpath,hotpath-alloc,hotpath-cloud
-          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
-
-  report:
-    name: hotpath benchmark (pull request)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # The pull request's head commit, not the default merge commit.
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Run benchmark and write report
-        env:
-          HOTPATH_BENCHMARK: my_benchmark
-          HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
-          HOTPATH_OUTPUT_FORMAT: json
-          HOTPATH_OUTPUT_PATH: report.json
-        run: |
-          cargo run -q --release --example my_benchmark \
-            --features hotpath,hotpath-alloc,hotpath-cloud
-          test -s report.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hotpath-report
-          path: report.json
-          retention-days: 1
-          if-no-files-found: error
-```
-
+- `main`: the default branch.
+- `name:`: it must be unique among the repository's workflows, since the relay matches the benchmark workflow by name. If another workflow already has that name, rename this one (e.g. `hotpath benchmark`).
+- `my_benchmark`: the benchmark name, in `HOTPATH_BENCHMARK` and in the commands of both jobs.
+- both `cargo run` lines: the command that runs the benchmark (`-p <crate>` in a workspace, `--bin` or `--example` as appropriate). Keep `--release`. Drop `hotpath-alloc` from `--features` only if the crate has no such feature.
 - Add any setup the benchmark needs (system packages, a database service) to both jobs, before the benchmark, copied from the repository's existing CI.
-- Never set `HOTPATH_UPLOAD` or `id-token: write` in the `report` job: it runs untrusted code.
+
+Never set `HOTPATH_UPLOAD` or `id-token: write` in the `report` job: it runs untrusted code.
 
 ### 6. Add the relay workflow
 
-Create `.github/workflows/hotpath-relay.yml`. The `workflows:` entry must be exactly the `name:` of the benchmark workflow above.
+Docs: https://hotpath.rs/ci_integration ("The relay workflow").
 
-```yaml
-name: hotpath relay
+Create `.github/workflows/hotpath-relay.yml` from the workflow in that section, copied as is. Then check:
 
-on:
-  workflow_run:
-    workflows: ["hotpath benchmark"]
-    types: [completed]
+- The `workflows:` entry is exactly the `name:` of the benchmark workflow of step 5.
+- `benchmark`, `artifact_name` and `report_file` match what the `report` job of step 5 uses.
+- The relay is pinned as the docs describe: to the release tag of the `hotpath` version the benchmark builds with, never `@main`. The docs show the current release; if the project's `Cargo.lock` resolves an older `hotpath`, use that version's tag. If the repository pins its actions by commit hash, use the commit the tag points to, with the tag in the comment.
 
-jobs:
-  relay:
-    uses: pawurb/hotpath-rs/.github/workflows/hotpath-relay.yml@v0.28.6
-    permissions:
-      actions: read # download the artifact of the benchmark run
-      id-token: write # authenticate the upload
-      pull-requests: read # find the pull request the run belongs to
-    with:
-      benchmark: my_benchmark
-      artifact_name: hotpath-report
-      report_file: report.json
-```
+A regression never fails the job. If the user wants the pull request's `hotpath / <benchmark>` check to fail, or to block merges, follow "Failing the job" in https://hotpath.rs/ci_integration and "Pull request check" in https://hotpath.rs/regression_policy, and validate the policy after the edit.
 
-Pin the relay to the release tag of the `hotpath` version the benchmark builds with, never `@main`. If the repository pins its actions by commit hash, use the commit the tag points to (`git ls-remote https://github.com/pawurb/hotpath-rs refs/tags/v0.28.6`) with the tag in the comment: `@<commit sha> # v0.28.6`.
-
-- A regression never fails the job. If the user wants the pull request's `hotpath / <benchmark>` check to fail, add `pr_check = "fail"` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it. It then fails on a broken budget rule (every rule has `fail_check = true` unless it sets `false`) and on a regression of a section that sets `fail_check = true` (sections default to `false`, since a relative change can be noise; it needs `judged = true`). `pr_check = "report"` is a dry run that marks what would fail and never fails; `pr_check = "failures_only"` posts the check only when it fails, the least noise, but then it cannot be made required. To block merges, they use `"fail"` and make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
-
-Tell the user:
-
-- `workflow_run` runs the relay from the **default branch** only, so it does nothing until it is merged.
-- Renaming the benchmark workflow silently stops the relay.
-- The relay run is not a check on the pull request; the server posts the `hotpath / <benchmark>` check on fork pull requests too.
+Tell the user the "Things to know about `workflow_run`" of the docs: the relay runs from the default branch only, renaming the benchmark workflow silently stops it, and the relay run is not a check on the pull request.
 
 ### 7. Verify locally
 
@@ -185,9 +110,10 @@ The report must name the benchmark and `hotpath/policy.toml`: this is the file t
 
 ### 8. Tell the user what is left
 
-- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). It needs no access to the code, only pull request write access to post the comment and checks write access to post the `hotpath / <benchmark>` check.
+- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). "Setup" in https://hotpath.rs/ci_integration lists the access it needs.
 - Commit both workflows and merge them to the default branch. The first push to the default branch uploads the **baseline**, and the relay only runs once it is on the default branch. Until the baseline exists, pull request comments read "no baseline yet".
 - From then on, every pull request, forks included, gets a performance comment. The `hotpath_cloud` skill and `hotpath cloud diff` read the same verdict as JSON.
+- If an upload, a comment or the relay does not show up, the "Troubleshooting" table of https://hotpath.rs/ci_integration maps each symptom to its cause.
 
 Do not commit or push unless the user asks.
 
@@ -196,5 +122,5 @@ Do not commit or push unless the user asks.
 - Never enable `hotpath`, `hotpath-alloc` or `hotpath-cloud` by default; profiling stays opt-in.
 - Never put a token or secret in either workflow; uploads authenticate with the OIDC token of trusted jobs.
 - Never give the pull request job `id-token: write` or secrets, and never check out pull request code in the relay.
-- One benchmark per `HOTPATH_BENCHMARK` name. For several benchmarks, add one job pair and one relay job each, with their own names and artifact names; a benchmark can have its own policy in `hotpath/<benchmark>-policy.toml` (fetched the same way as `hotpath/policy.toml`).
+- One benchmark per `HOTPATH_BENCHMARK` name. For several benchmarks, add one job pair and one relay job each, with their own names and artifact names ("Several benchmarks in one repository" in https://hotpath.rs/ci_integration); a benchmark's own policy file is fetched the same way as `hotpath/policy.toml`.
 - Keep the edits to the feature, the policy file, the two workflows and, if the user agreed, the benchmark program.

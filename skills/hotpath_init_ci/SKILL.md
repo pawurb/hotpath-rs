@@ -10,7 +10,22 @@ Set up [hotpath Cloud](https://hotpath.rs/cloud) in the current Rust project. A 
 
 This skill covers pull requests from branches of the same repository. For a public repository that wants to benchmark pull requests from forks, use the `hotpath_init_ci_forks` skill instead (`hotpath init-ci --forks`).
 
-Reference: https://hotpath.rs/ci_integration, https://hotpath.rs/regression_policy.
+## Documentation
+
+The hotpath docs are the reference for the workflow file, every environment variable and every policy key; this skill only holds the procedure. Every page of https://hotpath.rs is served as markdown when requested with an `Accept: text/markdown` header:
+
+```bash
+curl -sL -H 'Accept: text/markdown' https://hotpath.rs/ci_integration
+```
+
+Before each step, fetch the pages it names and follow them instead of relying on memory. Keep `-L` (some pages redirect) and the header (there are no `.md` URLs). A `#fragment` is not sent to the server: fetch the whole page and find the heading.
+
+| Page | Covers |
+|---|---|
+| https://hotpath.rs/ci_integration | setup, the workflow ("Pull requests from the same repository"), failing the job, environment variables, several benchmarks, troubleshooting |
+| https://hotpath.rs/regression_policy | the policy file: sections, keys, validation, the pull request comment and check |
+| https://hotpath.rs/performance_budgets | absolute limits in the same policy file |
+| https://hotpath.rs/cloud | what hotpath Cloud is |
 
 ## Steps
 
@@ -27,20 +42,13 @@ The benchmark is a program instrumented with hotpath that runs a **fixed workloa
 - Prefer an existing example, binary or integration test that exercises the code the user cares about. Ask the user which one when it is not obvious.
 - If there is none, propose a new example (`examples/hotpath_benchmark.rs`) that drives the main code paths with fixed inputs, and write it only after the user agrees.
 - No randomness without a fixed seed, no network calls to services CI cannot reach, no timing-dependent loops. Enough calls per function that the numbers are stable.
-- Pick the benchmark name, used as `HOTPATH_BENCHMARK`: 1 to 64 characters from `[A-Za-z0-9._-]`, for example the example's name.
+- Pick the benchmark name, used as `HOTPATH_BENCHMARK`: 1 to 64 characters from `[A-Za-z0-9._-]`, for example the example's name. An invalid name skips the upload.
 
 ### 3. Add the `hotpath-cloud` feature
 
-In the benchmark crate's `Cargo.toml`, next to the existing hotpath features:
+Docs: https://hotpath.rs/ci_integration ("Setup").
 
-```toml
-[features]
-hotpath = ["hotpath/hotpath"]
-hotpath-alloc = ["hotpath/hotpath-alloc"]
-hotpath-cloud = ["hotpath/hotpath-cloud"]
-```
-
-Never add it to `default`. The uploader is compiled only with the feature, and uploads only when `HOTPATH_UPLOAD` is set.
+Add the `hotpath-cloud` feature passthrough from the docs snippet to the benchmark crate's `Cargo.toml`, next to the existing hotpath features. Never add it to `default`.
 
 ### 4. Add the policy file
 
@@ -49,7 +57,7 @@ mkdir -p hotpath
 curl -fsSL https://hotpath.rs/api/v1/policy/default | jq -j .source > hotpath/policy.toml
 ```
 
-Run it from the repository root. It writes the default policy, with comments, to `hotpath/policy.toml` (no token needed; with `wget`, use `wget -qO- https://hotpath.rs/api/v1/policy/default`). Never overwrite an existing policy file. Every upload must carry a policy file, so commit it. Do not change the defaults unless the user asks; https://hotpath.rs/regression_policy documents every key.
+Run it from the repository root. It writes the default policy, with comments, to `hotpath/policy.toml` (no token needed; with `wget`, use `wget -qO- https://hotpath.rs/api/v1/policy/default`). It is the same file `hotpath cloud init` of the docs writes, without needing the CLI. Never overwrite an existing policy file. Every upload must carry a policy file, so commit it. Do not change the defaults unless the user asks; https://hotpath.rs/regression_policy documents every key.
 
 After any edit, validate the file. A valid policy answers `{"valid":true}`, an invalid one HTTP 422 with `problems`, each with its `line` and `message`:
 
@@ -60,48 +68,18 @@ jq -Rs '{source: .}' hotpath/policy.toml \
 
 ### 5. Add the workflow
 
-Create `.github/workflows/hotpath-benchmark.yml`. Replace `main` with the default branch, `my_benchmark` with the benchmark name, and the `cargo run` line with the command that runs the benchmark (`-p <crate>` in a workspace, `--bin` or `--example` as appropriate). Keep `--release`. Drop `hotpath-alloc` from `--features` only if the crate has no such feature.
+Docs: https://hotpath.rs/ci_integration ("Pull requests from the same repository").
 
-```yaml
-name: hotpath benchmark
+Create `.github/workflows/hotpath-benchmark.yml` from the workflow in that section, copied as is. Then adapt only:
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  benchmark:
-    name: hotpath benchmark
-    # Fork pull requests get no `id-token: write`, so there is nothing to upload.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write # the upload authenticates with the job's OIDC token
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Run benchmark and upload report
-        env:
-          HOTPATH_UPLOAD: fail-on-error
-          HOTPATH_UPLOAD_RESPONSE_PATH: ${{ github.workspace }}/upload.json
-          HOTPATH_BENCHMARK: my_benchmark
-          HOTPATH_USER_METADATA: runner=${{ runner.os }}-${{ runner.arch }},toolchain=stable,profile=release
-          HOTPATH_OUTPUT_FORMAT: none
-        run: |
-          cargo run -q --release --example my_benchmark \
-            --features hotpath,hotpath-alloc,hotpath-cloud
-          test -s "$HOTPATH_UPLOAD_RESPONSE_PATH"
-```
-
+- `main`: the default branch.
+- `my_benchmark`: the benchmark name, in `HOTPATH_BENCHMARK` and in the command.
+- the `cargo run` line: the command that runs the benchmark (`-p <crate>` in a workspace, `--bin` or `--example` as appropriate). Keep `--release`. Drop `hotpath-alloc` from `--features` only if the crate has no such feature.
 - Add any setup the benchmark needs (system packages, a database service) as steps before the benchmark, copied from the repository's existing CI.
-- `HOTPATH_UPLOAD: fail-on-error` fails the job when the upload fails.
-- The response file exists only after an accepted upload, so `test -s` fails the job when no report was stored (a missing feature, a skipped upload). Keep its path absolute.
-- A regression never fails the job. If the user wants the pull request's `hotpath / <benchmark>` check to fail, add `pr_check = "fail"` at the top of the policy file (or of `hotpath/<benchmark>-policy.toml` for one benchmark) and validate it. It then fails on a broken budget rule (every rule has `fail_check = true` unless it sets `false`) and on a regression of a section that sets `fail_check = true` (sections default to `false`, since a relative change can be noise; it needs `judged = true`). `pr_check = "report"` is a dry run that marks what would fail and never fails; `pr_check = "failures_only"` posts the check only when it fails, the least noise, but then it cannot be made required. To block merges, they use `"fail"` and make that check required in branch protection, which also blocks merges while hotpath.rs is unavailable.
-- The workflow needs no secret: the upload authenticates with the job's OIDC token.
+
+Keep the `test -s` line, the absolute response path and `HOTPATH_UPLOAD: fail-on-error`; the docs explain what each guards against. The workflow needs no secret.
+
+A regression never fails the job. If the user wants the pull request's `hotpath / <benchmark>` check to fail, or to block merges, follow "Failing the job" in https://hotpath.rs/ci_integration and "Pull request check" in https://hotpath.rs/regression_policy, and validate the policy after the edit.
 
 ### 6. Verify locally
 
@@ -116,9 +94,10 @@ The report must name the benchmark and `hotpath/policy.toml`. Run the benchmark 
 
 ### 7. Tell the user what is left
 
-- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). It needs no access to the code, only pull request write access to post the comment and checks write access to post the `hotpath / <benchmark>` check.
+- Log in at https://hotpath.rs/app and install the hotpath GitHub App on the repository from the dashboard ("Install the hotpath app" or "Add repositories"). "Setup" in https://hotpath.rs/ci_integration lists the access it needs.
 - Commit the changes and merge them to the default branch. The first push to the default branch uploads the **baseline**; until then, pull request comments read "no baseline yet".
 - From then on, every pull request gets a performance comment. The `hotpath_cloud` skill and `hotpath cloud diff` read the same verdict as JSON.
+- If an upload or a comment does not show up, the "Troubleshooting" table of https://hotpath.rs/ci_integration maps each message to its cause.
 
 Do not commit or push unless the user asks.
 
@@ -126,5 +105,5 @@ Do not commit or push unless the user asks.
 
 - Never enable `hotpath`, `hotpath-alloc` or `hotpath-cloud` by default; profiling stays opt-in.
 - Never put a token or secret in the workflow; the upload needs none.
-- One benchmark per `HOTPATH_BENCHMARK` name. For several benchmarks, add one job each, with its own name; a benchmark can have its own policy in `hotpath/<benchmark>-policy.toml` (fetched the same way as `hotpath/policy.toml`).
+- One benchmark per `HOTPATH_BENCHMARK` name. For several benchmarks, follow "Several benchmarks in one repository" in https://hotpath.rs/ci_integration; a benchmark's own policy file is fetched the same way as `hotpath/policy.toml`.
 - Keep the edits to the feature, the policy file, the workflow and, if the user agreed, the benchmark program.
