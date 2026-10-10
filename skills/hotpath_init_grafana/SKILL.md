@@ -28,6 +28,8 @@ curl -sL -H 'Accept: text/markdown' https://hotpath.rs/prometheus_grafana
 
 Fetch https://hotpath.rs/prometheus_grafana before building the dashboard, and check every metric and label name a panel uses against its "Available metrics" tables instead of relying on memory. Keep `-L` (some pages redirect) and the header (there are no `.md` URLs). A `#fragment` is not sent to the server: fetch the whole page and find the heading.
 
+The site documents the latest hotpath release, which can be newer than the version the project uses. Never change the project's `hotpath` version because the docs show a newer one. If the docs describe something that version does not have, tell the user it needs a newer hotpath instead of working around it.
+
 | Page | Covers |
 |---|---|
 | https://hotpath.rs/prometheus_grafana | metrics endpoint, scrape config, native and classic histogram queries, time sampling, every metric family with its labels, exporter environment variables |

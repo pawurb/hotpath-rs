@@ -18,9 +18,11 @@ curl -sL -H 'Accept: text/markdown' https://hotpath.rs/functions
 
 Before each step, fetch the pages it names and follow them instead of relying on memory. Keep `-L` (some pages redirect) and the header (there are no `.md` URLs). A `#fragment` is not sent to the server: fetch the whole page and find the heading. Fetch a page only when the project uses what it covers.
 
+The site documents the latest hotpath release, which can be newer than the version the project uses. Never change the project's `hotpath` version because the docs show a newer one. If the docs describe something that version does not have, tell the user it needs a newer hotpath instead of working around it.
+
 | Page | Covers |
 |---|---|
-| https://hotpath.rs/ | `Cargo.toml` snippet with the current version, basic setup, example report |
+| https://hotpath.rs/ | basic setup, example report |
 | https://hotpath.rs/profiling_modes | `#[hotpath::main]` vs `HotpathGuardBuilder`, report options, TUI, optional vs non-optional dependency |
 | https://hotpath.rs/functions | `main`, `measure`, `measure_all`, `skip`, `measure_block!`, allocation profiling, custom allocators |
 | https://hotpath.rs/data_flow | `channel!`, `stream!`, `future!`: supported libraries and their cargo features, `hotpath::wrap::` types, call-site aggregation, `capacity` |
@@ -43,11 +45,12 @@ Before each step, fetch the pages it names and follow them instead of relying on
 
 ### 2. Add the dependency and feature passthrough
 
-Docs: https://hotpath.rs/ ("Manual installation").
-
-In the target crate's `Cargo.toml`, add the `hotpath` dependency with the version the docs snippet shows, and forward these features:
+In the target crate's `Cargo.toml`:
 
 ```toml
+[dependencies]
+hotpath = "0.28"
+
 [features]
 hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
@@ -55,7 +58,9 @@ hotpath-prometheus = ["hotpath/hotpath-prometheus"]
 hotpath-cloud = ["hotpath/hotpath-cloud"]
 ```
 
-Enable the extra hotpath cargo features on the dependency (`tokio`, a channel or lock library, an SQL or HTTP integration, ...) that the pages fetched in step 1 name for the primitives the project uses. Pick the HTTP and axum features matching the project's major versions.
+Enable the extra hotpath cargo features on the dependency (`tokio`, a channel or lock library, an SQL or HTTP integration, ...) that the pages fetched in step 1 name for the primitives the project uses. Pick the HTTP and axum features matching the project's major versions. For example: `hotpath = { version = "0.28", features = ["tokio"] }`.
+
+Use this version, not the one the docs snippets show. If the project already depends on `hotpath`, keep its version.
 
 If the crate already has a `[features]` section, merge the entries.
 

@@ -20,6 +20,8 @@ curl -sL -H 'Accept: text/markdown' https://hotpath.rs/ci_integration
 
 Before each step, fetch the pages it names and follow them instead of relying on memory. Keep `-L` (some pages redirect) and the header (there are no `.md` URLs). A `#fragment` is not sent to the server: fetch the whole page and find the heading.
 
+The site documents the latest hotpath release, which can be newer than the version the project uses. Never change the project's `hotpath` version because the docs show a newer one. If the docs describe something that version does not have, tell the user it needs a newer hotpath instead of working around it.
+
 | Page | Covers |
 |---|---|
 | https://hotpath.rs/ci_integration | setup, the workflow ("Pull requests from the same repository"), failing the job, environment variables, several benchmarks, troubleshooting |
@@ -48,7 +50,7 @@ The benchmark is a program instrumented with hotpath that runs a **fixed workloa
 
 Docs: https://hotpath.rs/ci_integration ("Setup").
 
-Add the `hotpath-cloud` feature passthrough from the docs snippet to the benchmark crate's `Cargo.toml`, next to the existing hotpath features. Never add it to `default`.
+Add the `hotpath-cloud` feature passthrough from the docs snippet to the benchmark crate's `Cargo.toml`, next to the existing hotpath features. Leave the `hotpath` dependency version as it is. Never add it to `default`.
 
 ### 4. Add the policy file
 

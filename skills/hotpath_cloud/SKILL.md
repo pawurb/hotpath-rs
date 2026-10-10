@@ -18,6 +18,8 @@ curl -sL -H 'Accept: text/markdown' https://hotpath.rs/agents_cli
 
 Fetch https://hotpath.rs/agents_cli before the first `hotpath cloud` command, and the other pages when the task reaches them, instead of relying on memory. Keep `-L` (some pages redirect) and the header (there are no `.md` URLs). A `#fragment` is not sent to the server: fetch the whole page and find the heading.
 
+The site documents the latest hotpath release, which can be newer than the version the project uses. Never change the project's `hotpath` version because the docs show a newer one. If the docs describe something that version does not have, tell the user it needs a newer hotpath instead of working around it.
+
 | Page | Covers |
 |---|---|
 | https://hotpath.rs/agents_cli | install and authenticate, `repos`, `benchmarks`, `report`, `diff` (flags, JSON answer, how to read it), `validate-policy`, `init`, output and exit codes |
