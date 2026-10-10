@@ -1,6 +1,6 @@
 # Rust Threads performance monitoring: CPU and memory metrics 
 
-The threads view shows live per-thread CPU and memory metrics for the instrumented process. Reach for it when you need to answer questions that function-level profiling can't: which thread is burning CPU, which thread's allocations keep growing, or which threads sit blocked while the rest of your Tokio app starves. It works on Linux, macOS and Windows, and it's enabled by default via the `threads` feature flag, so if you already use hotpath for [time, CPU and memory profiling](./), per-thread monitoring is active out of the box.
+The threads view shows live per-thread CPU and memory metrics for the instrumented process. Reach for it when you need to answer questions that function-level profiling can't: which thread is burning CPU, which thread's allocations keep growing, or which threads sit blocked while the rest of your Tokio app starves. It works on Linux, macOS and Windows, and it's enabled by default via the `threads` feature flag, so if you already use hotpath for [time, CPU and memory profiling](./introduction.md), per-thread monitoring is active out of the box.
 
 ## Enabling per-thread monitoring
 
@@ -82,7 +82,7 @@ threads - Thread CPU and memory statistics. (Max RSS: 7.8 MB, Alloc: 2.1 MB, Dea
 +----------+-------+-------+----------+---------+----------+
 ```
 
-Two things stand out here. `main` barely uses CPU (5.1% on average) yet its Diff is 357.9 KB and growing - allocations made on that thread are being retained, so whatever it built up is never freed. `worker-1` averages 97.4% CPU for the whole run - that's the compute hotspot, and since its Diff is near zero, it's CPU-bound rather than allocation-heavy. The final report keeps the two aggregate CPU columns (Max% and Avg%); the instantaneous CPU% and thread Status live in the [TUI](./) and the JSON API, where a point-in-time value is meaningful. This kind of per-thread visibility matters most in latency-critical apps, where one saturated thread can delay everything behind it.
+Two things stand out here. `main` barely uses CPU (5.1% on average) yet its Diff is 357.9 KB and growing - allocations made on that thread are being retained, so whatever it built up is never freed. `worker-1` averages 97.4% CPU for the whole run - that's the compute hotspot, and since its Diff is near zero, it's CPU-bound rather than allocation-heavy. The final report keeps the two aggregate CPU columns (Max% and Avg%); the instantaneous CPU% and thread Status live in the [TUI](./profiling_modes.md#live-tui-dashboard) and the JSON API, where a point-in-time value is meaningful. This kind of per-thread visibility matters most in latency-critical apps, where one saturated thread can delay everything behind it.
 
 The live TUI shows the same data refreshing in real time:
 
