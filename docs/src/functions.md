@@ -178,6 +178,21 @@ fn main() {
 
 If `hotpath` feature is disabled, the code inside block will still execute.
 
+## Exclusive time mode
+
+By default, function timing is **inclusive**: a function's duration covers everything that happens between its entry and exit, including nested measured functions. A parent therefore always reports at least as much time as its children, and a recursive function counts its nested levels again on every level.
+
+Set `HOTPATH_TIME_EXCLUSIVE=true` to switch to **exclusive** (self) time, where each function reports its own time without the time spent in the measured functions it calls. Time spent in functions that are not measured (or are filtered out by `HOTPATH_FOCUS`) stays with the nearest measured caller. The `% Total` column stays relative to the total elapsed time, so percentages are comparable between both modes, and recursive functions are counted correctly.
+
+Things to keep in mind:
+
+- **Async functions use wall-clock time.** The exclusive time of an async function is its full duration minus the measured functions it awaited, so time suspended at an `.await` (timers, I/O, waiting for another task) counts as its own time.
+- **Concurrently awaited children overlap.** When a function awaits several measured functions at once (`join!`, `select!`), the time during which at least one of them was running is subtracted from it once. Each child still reports its own full duration, so the rows can add up to more than the elapsed time.
+- **Spawned tasks are not nested calls.** A measured function running in a task spawned by another async function is not subtracted from it, even when that function awaits the task's handle. It is subtracted from a sync function that drives the runtime on the same thread, such as `main` calling `block_on`.
+- **Function time sampling is disabled.** A call that is not timed has no duration to subtract from its caller, so `HOTPATH_TIME_SAMPLING_RATE` and `HOTPATH_FUNCTIONS_TIME_SAMPLING_RATE` are ignored for functions (a warning is printed). Other resource types keep their sampling rates.
+- **Sync guards dropped on another thread report no duration.** This affects `measure_block!` blocks that span an `.await` in a task that migrates between threads, and the `#[hotpath::main]` wrapper row when a [timeout](./configuration.md) ends profiling from a background thread. Such blocks are also approximate on a single thread, because measured calls of other tasks interleaved on that thread are subtracted from them. Async functions are not affected.
+- `future!` wrappers are not functions: time spent polling them stays in the enclosing function's exclusive time.
+
 ## Memory and allocations profiling
 
 In addition to time-based profiling, `hotpath` can track memory allocations. This feature uses a custom global allocator from [allocation-counter crate](https://github.com/fornwall/allocation-counter) to intercept all memory allocations and provides detailed statistics about memory usage per function.
