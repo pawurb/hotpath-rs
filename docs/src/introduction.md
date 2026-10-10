@@ -1,6 +1,6 @@
 # A simple Rust profiler that shows exactly why your code is slow
 
-<h2 class="hero-subtitle"><b>Performance feedback for developers and coding agents.</b> Find CPU, memory, async, SQL, I/O and contention bottlenecks with a single Rust profiler. Export metrics to Prometheus and Grafana when you need production monitoring.</h2>
+<h2 class="hero-subtitle"><b>Performance profiling for developers and coding agents.</b> Find CPU, memory, async, SQL, I/O and contention bottlenecks with a single Rust profiler. Export metrics to Prometheus and Grafana when you need production monitoring.</h2>
 
 <div class="hero-badges">
   <a href="https://github.com/pawurb/hotpath-rs" target="_blank" rel="noopener noreferrer"><img src="{{#asset-hash images/stars-pawurb-hotpath-rs.svg}}" alt="GitHub Stars"></a>
@@ -8,7 +8,7 @@
 </div>
 
 <div class="hero-row">
-  <img src="{{#asset-hash images/hotpath-ferris.webp}}" alt="hotpath-rs Rust profiler mascot Ferris the crab" class="ferris-img-hero">
+  <img src="{{#asset-hash images/hotpath-ferris.webp}}" alt="hotpath-rs Rust profiling mascot Ferris the crab" class="ferris-img-hero">
   <div class="ssh-demo-container">
     <p class="ssh-demo-label">Try the TUI demo via SSH - no installation required:</p>
     <div class="terminal-shell">
