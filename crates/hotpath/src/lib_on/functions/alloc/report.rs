@@ -193,12 +193,18 @@ pub(crate) fn build_functions_list_timing(
     let exclude_wrapper = *crate::functions::EXCLUDE_WRAPPER;
     let precision = Precision::for_cloud(config.cloud);
 
+    let time_exclusive = *crate::lib_on::functions::exclusive::TIME_EXCLUSIVE;
+
     let reference_total = if exclude_wrapper {
         stats
             .values()
             .filter(|s| !s.wrapper && s.has_data)
             .map(|s| s.display_total_duration_ns())
             .sum::<u64>()
+    } else if time_exclusive {
+        // The wrapper row holds only its own time here, so the elapsed time
+        // stands in for its inclusive total.
+        config.total_elapsed.as_nanos() as u64
     } else {
         // The wrapper guard is exempt from time sampling, so its total is exact.
         let wrapper_total = stats
@@ -284,7 +290,11 @@ pub(crate) fn build_functions_list_timing(
         time_elapsed: precision.duration(total_elapsed_ns),
         total_elapsed_ns: current_elapsed_ns,
         total_allocated: None,
-        description: "Function execution time metrics.".to_string(),
+        description: if time_exclusive {
+            crate::lib_on::functions::exclusive::DESCRIPTION.to_string()
+        } else {
+            "Function execution time metrics.".to_string()
+        },
         caller_name: config.caller_name.to_string(),
         percentiles: config.percentiles.clone(),
         data,

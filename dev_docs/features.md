@@ -32,11 +32,12 @@ Where things are defined, plus gotchas the code site can't show. The code is the
 - `#[measure]` on a bare impl method needs `impl_type = "Type"` for `hotpath-cpu` attribution (see `architecture.md`).
 - `channel!` on bounded std `sync_channel` / `futures_channel::mpsc` needs `capacity = N`, otherwise it panics at runtime.
 - `channel!` / `stream!` / `io!` aggregate per call site by default; `iter = true` gives per-instance rows and grows profiler state with instance churn.
-- A new HTTP/SQL front-end must be added to the `cfg_if!` gates in `lib_on/caller_stack.rs` and `lib_on/functions.rs`, or the `Source` column stays empty.
+- A new HTTP/SQL front-end must be added to the `cfg_if!` gate in `lib_on/caller_stack.rs` and `POLL_WRAPPER_ALWAYS` in `lib_on/functions.rs`, or the `Source` column stays empty.
 - `axum!` (`lib_on/server/axum_08.rs`) must wrap the finished router; routes added afterwards are not profiled.
 - Report `location` fields: `lib_on/locations.rs`.
 
 ## Env vars
 
+- `HOTPATH_TIME_EXCLUSIVE` (exclusive function time): `lib_on/functions/exclusive.rs`; async guards must never open a frame there, their polls do (`futures/wrapper.rs`).
 - `HOTPATH_KEEP_INLINE` is read at macro expansion time; touch the source or `cargo clean` after toggling it.
 - `HOTPATH_USER_METADATA` is parsed in `HotpathGuardBuilder::build` (the builder can add pairs), not a `LazyLock`; it only reaches the final report.
