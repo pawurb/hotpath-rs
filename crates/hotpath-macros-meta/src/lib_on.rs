@@ -134,6 +134,7 @@ impl Format {
 /// * [`HotpathGuardBuilder`](../hotpath_meta/struct.HotpathGuardBuilder.html) - Manual control over profiling lifecycle
 pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
+    let attrs = &input.attrs;
     let vis = &input.vis;
     let sig = &input.sig;
     let block = &input.block;
@@ -412,6 +413,7 @@ pub fn main_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let output = quote! {
         #allocator_item
+        #(#attrs)*
         #[allow(unused_braces)]
         #vis #sig {
             #wrapped_body

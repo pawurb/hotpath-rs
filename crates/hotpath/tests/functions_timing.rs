@@ -116,6 +116,38 @@ pub mod tests {
         }
     }
 
+    // cargo run -p test-tokio-async --example main_attrs_below --features hotpath
+    #[test]
+    fn test_main_keeps_attrs_below() {
+        let output = Command::new("cargo")
+            .args([
+                "run",
+                "-p",
+                "test-tokio-async",
+                "--example",
+                "main_attrs_below",
+                "--features",
+                "hotpath",
+            ])
+            .env("HOTPATH_REPORT", "functions-timing")
+            .env("HOTPATH_OUTPUT_FORMAT", "json")
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(
+            output.status.success(),
+            "Process did not exit successfully.\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let expected = "main_attrs_below::example_function";
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains(expected),
+            "Expected:\n{expected}\n\nGot:\n{stdout}",
+        );
+    }
+
     // cargo run -p test-tokio-async --example main_percentiles --features hotpath
     #[test]
     fn test_main_percentiles_param() {
