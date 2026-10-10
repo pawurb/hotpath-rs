@@ -13,7 +13,6 @@ min_percent_total = 0.5
 match = "hotpath_drain::EventProducer::push"
 alloc = { avg = "25 B", total = "24 MB" }
 calls = { min = 1000000, max = 1000000 }
-message = "push allocates more per event than a fresh chunk per fill"
 
 [functions.alloc]
 judged = true
