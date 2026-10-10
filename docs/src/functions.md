@@ -41,17 +41,23 @@ cargo run --features=hotpath
 Output:
 
 ```text
-[hotpath] Performance summary from basic::main (Total time: 122.13ms):
-+-----------------------+-------+---------+---------+----------+---------+
-| Function              | Calls | Avg     | P99     | Total    | % Total |
-+-----------------------+-------+---------+---------+----------+---------+
-| basic::async_function | 100   | 1.16ms  | 1.20ms  | 116.03ms | 95.01%  |
-+-----------------------+-------+---------+---------+----------+---------+
-| custom_block          | 100   | 17.09µs | 39.55µs | 1.71ms   | 1.40%   |
-+-----------------------+-------+---------+---------+----------+---------+
-| basic::sync_function  | 100   | 16.99µs | 35.42µs | 1.70ms   | 1.39%   |
-+-----------------------+-------+---------+---------+----------+---------+
+[hotpath] 123.86ms | timing, threads
+
+timing - Execution duration of functions.
++-----------------------+-------+-----------+-----------+-----------+---------+
+| Function              | Calls | Avg       | P95       | Total     | % Total |
++-----------------------+-------+-----------+-----------+-----------+---------+
+| basic::main           | 1     | 123.17 ms | 123.21 ms | 123.17 ms | 100.00% |
++-----------------------+-------+-----------+-----------+-----------+---------+
+| basic::async_function | 100   | 1.16 ms   | 1.20 ms   | 116.21 ms | 94.35%  |
++-----------------------+-------+-----------+-----------+-----------+---------+
+| basic::sync_function  | 100   | 23.55 µs  | 42.11 µs  | 2.36 ms   | 1.91%   |
++-----------------------+-------+-----------+-----------+-----------+---------+
+| custom_block          | 100   | 23.52 µs  | 36.51 µs  | 2.35 ms   | 1.91%   |
++-----------------------+-------+-----------+-----------+-----------+---------+
 ```
+
+The report also includes a [threads](./threads.md) section, omitted here.
 
 ## `#[hotpath::main]` macro
 
@@ -59,7 +65,8 @@ Attribute macro that initializes the background measurement processing when appl
 
 - `percentiles = [50, 95, 99]` - Custom percentiles to display, sorted and deduplicated, at most 10 (defaults to `[95]`)
 - `format = "json"` - Output format `"table"`, `"json"`, `"json-pretty"`, `"none"` (defaults to `table`)
-- `limit = 20` - Maximum number of functions to display (default: `15`, `0` = show all)
+- `limit = 20` - Maximum number of items to display in every report section (`0` = show all)
+- `functions_limit = 20` - Maximum number of functions to display, overrides `limit` (default: `15`, `0` = show all). `channels_limit`, `streams_limit`, `futures_limit`, `rw_locks_limit`, `mutexes_limit` and `threads_limit` do the same for their sections, see [Configuring limits](./profiling_modes.md#hotpathmain-vs-hotpathguardbuilder-api)
 - `output_path = "report.json"` - Filesystem path for profiling reports. If not set, the report is written to `stdout`. Can be overridden by `HOTPATH_OUTPUT_PATH`; on Unix, set that env var to `/dev/stdout` or `/dev/stderr` to redirect to the standard streams.
 - `report = "functions-timing,channels"` - Report sections spec: `all`, `auto`, an exact comma-separated list of section names, or auto with exclusions like `"auto,-threads"`. Defaults to auto - function and thread sections plus every instrumented section with data (overridden by `HOTPATH_REPORT` env var)
 

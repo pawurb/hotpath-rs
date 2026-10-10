@@ -109,6 +109,10 @@ You can optionally run the displayed `samply load` command to open an interactiv
 
 <img loading="lazy" src="{{#asset-hash images/samply-report.png}}" alt="Interactive samply performance report">
 
+## Exclusive vs inclusive attribution
+
+By default attribution is exclusive: each CPU sample is credited to the innermost instrumented function on its stack, so a function's share excludes the instrumented functions it calls. Set `HOTPATH_CPU_INCLUSIVE=1` to credit a sample to every instrumented function on its stack instead; a function's share then includes its instrumented callees, and the shares no longer add up to 100%.
+
 ## Why inlined functions hide from CPU profilers
 
 Standard CPU profilers sometimes miss top bottleneck functions because the compiler implicitly inlines small or hot functions. Once a function is inlined, its symbol disappears from the binary and its samples get attributed to the caller, hiding it from the report.

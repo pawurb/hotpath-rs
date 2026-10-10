@@ -33,5 +33,5 @@ The TUI is a pure client of the metrics HTTP server - any data question ("what d
 
 ## Layout conventions
 
-- Report tables that get too wide are split into stacked per-kind sub-tables sharing one selection cursor (e.g. rw_locks reads/writes, io reads/writes); the terminal report mirrors the same split.
-- The Server subtab reuses the HTTP logs panel and its app state.
+- Wide tables are split into stacked per-kind sub-tables: e.g. `views/io.rs`, mirrored by the terminal report in `lib_on/report.rs`.
+- The Server subtab shares the HTTP logs panel and its state in `app.rs`.

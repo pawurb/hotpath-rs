@@ -39,11 +39,9 @@ A few things to know:
 
 ## Metrics reference
 
-The view header shows process-wide numbers:
+The view header shows process-wide numbers (the PID of the profiled process is in the TUI top bar, use it to correlate hotpath's view with `ps`, `top` or `htop`):
 
-**PID** - the process identifier. Use it to correlate hotpath's view with `ps`, `top` or `htop`.
-
-**Total Alloc - Dealloc** - the aggregate allocation delta across all threads. If this number keeps growing while your app is under steady-state load, memory is being retained somewhere - a leak signal worth chasing down.
+**Alloc / Dealloc / Diff** - total bytes allocated and deallocated across all threads, and the difference between the two. If Diff keeps growing while your app is under steady-state load, memory is being retained somewhere - a leak signal worth chasing down. Requires the `hotpath-alloc` feature.
 
 **RSS** - Resident Set Size, the physical memory the process currently occupies. RSS includes code, thread stacks and allocator slack, so it can stay flat while the allocation Diff grows (the allocator reuses freed pages) or grow while Diff stays flat. Comparing the two tells you whether memory growth comes from your allocations or from elsewhere.
 
@@ -51,17 +49,17 @@ The view header shows process-wide numbers:
 
 And per-thread metrics:
 
-**Thread Name** - the logical name set via `std::thread::Builder::name` or by the runtime (e.g. `tokio-runtime-w`). Unnamed threads show up as `thread_N`, so naming the threads you spawn makes this view far more useful.
+**Thread** - the logical name set via `std::thread::Builder::name` or by the runtime (e.g. `tokio-runtime-w`). Unnamed threads show up as `thread_N`, so naming the threads you spawn makes this view far more useful.
 
 **TID** - the OS thread identifier. It matches what `htop -H`, `gdb` and sampling profilers report, so you can cross-reference the same thread across tools.
 
-**Status** - the current execution state, shown in the live TUI and the JSON API (a point-in-time value, so the final report table omits it). `Running` means on-CPU right now. `Sleeping` means parked or waiting - completely normal for idle Tokio workers. `Blocked` means an uninterruptible wait, usually disk I/O; a thread that is persistently `Blocked` is doing synchronous I/O that stalls it, which is especially bad inside async worker threads.
+**Status** - the current execution state followed by the raw OS state code, shown in the live TUI and the JSON API (a point-in-time value, so the final report table omits it). `Running` means on-CPU right now. `Sleeping` means parked or waiting - completely normal for idle Tokio workers. `Blocked` means an uninterruptible wait, usually disk I/O; a thread that is persistently `Blocked` is doing synchronous I/O that stalls it, which is especially bad inside async worker threads.
 
 **CPU %** - instantaneous CPU utilization, computed from deltas of cumulative CPU time between 250ms samples. A worker pinned near 100% indicates a busy loop or heavy computation. Like Status it is a point-in-time value, so it appears in the TUI and the JSON API only.
 
-**Max%** - the peak CPU utilization ever observed for the thread, so short spikes don't disappear between refreshes.
+**Max %** (`Max%` in the final report) - the peak CPU utilization ever observed for the thread, so short spikes don't disappear between refreshes.
 
-**Avg%** - lifetime average CPU utilization: total CPU time consumed by the thread divided by the profiler's elapsed time. Max% and Avg% together summarize a thread's whole run, which is why they are the two CPU columns kept in the final report.
+**Avg %** (`Avg%` in the final report) - lifetime average CPU utilization: total CPU time consumed by the thread divided by the profiler's elapsed time. Max% and Avg% together summarize a thread's whole run, which is why they are the two CPU columns kept in the final report.
 
 **Alloc / Dealloc** - total bytes allocated and deallocated, attributed to the thread that performed them. Requires the `hotpath-alloc` feature.
 

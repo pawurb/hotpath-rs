@@ -72,6 +72,8 @@ sql - SQL query execution time statistics.
 
 The route is part of the grouping key, so the same statement (or the same outbound endpoint) executed under two routes appears as two rows. `Source` and `Route` are independent: a query from uninstrumented code inside a handler gets a route but no source, and a query outside any request gets neither.
 
+Route attribution is on by default. Turn it off with `.route_scope(false)` on the `HotpathGuardBuilder`, or with `HOTPATH_ROUTE_SCOPE=0`, which takes precedence.
+
 ### Queries and requests per route
 
 The `server` section turns that attribution into per-route averages: `SQL/req` is the number of SQL queries issued per request of the route, `HTTP/req` the number of outbound HTTP requests. Each column appears only when the corresponding profiling subsystem is active. This is how N+1 query patterns surface - a list endpoint averaging 51 queries per request is loading its rows one by one:

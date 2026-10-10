@@ -18,9 +18,10 @@ Where things are defined, plus gotchas the code site can't show. The code is the
 - `json` gates `hotpath::json` without pulling the profiler in (used by hotpath-backend to parse reports).
 - `demo` exists only for the TUI demo traffic (`bin/hotpath/cmd/console/demo.rs`).
 
-## Cloud (not user-documented yet)
+## Cloud
 
 - `hotpath-cloud` upload: `lib_on/cloud.rs`, called from `HotpathGuard::drop`. Report provenance: `lib_on/report_meta.rs`, `lib_on/git_info.rs`, `lib_on/ci_info.rs`. Policy file lookup: `json/policy_file.rs`.
+- User docs: the "hotpath Cloud" pages in `docs/src/SUMMARY.md`.
 - `cloud` CLI: `bin/hotpath/cmd/cloud.rs`, one file per command under `cmd/cloud/`, shared HTTP plumbing in `cmd/cloud/api.rs`.
 - `json/cloud_api.rs` is the client contract hotpath-backend imports; bodies the CLI only prints are owned by the backend. `validate_benchmark_name` must stay identical to the backend's copy.
 - The cloud path (upload or JSON output with the feature on) ignores display limits and renders exact precision; the live metrics server never does.
@@ -28,12 +29,12 @@ Where things are defined, plus gotchas the code site can't show. The code is the
 
 ## Macros
 
-- Label uniqueness (`__unique_label!` proc macro in `hotpath-macros/src/lib_on.rs`, re-exported by hotpath) is a link-time symbol clash, scoped per crate, so only `cargo build`/`test`/`run` catch duplicates, not `cargo check` or clippy. Fixtures: `test-all-features` `duplicate_labels_*` examples, `tests/unique_labels.rs`. Symbols must stay plain C identifiers or cdylib links break: `tests/cdylib.rs`.
+- Label uniqueness: `__unique_label!` in `hotpath-macros/src/lib_on.rs`, tests in `tests/unique_labels.rs` and `tests/cdylib.rs`. Duplicates surface only at link time, not in `cargo check` or clippy.
 - `#[measure]` on a bare impl method needs `impl_type = "Type"` for `hotpath-cpu` attribution (see `architecture.md`).
 - `channel!` on bounded std `sync_channel` / `futures_channel::mpsc` needs `capacity = N`, otherwise it panics at runtime.
-- `channel!` / `stream!` / `io!` aggregate per call site by default; `iter = true` gives per-instance rows and grows profiler state with instance churn.
+- `channel!` / `stream!` / `io!`: `iter = true` grows profiler state with instance churn.
 - A new HTTP/SQL front-end must be added to the `cfg_if!` gates in `lib_on/caller_stack.rs` and `lib_on/functions.rs`, or the `Source` column stays empty.
-- `axum!` (`lib_on/server/axum_08.rs`) must wrap the finished router; routes added afterwards are not profiled.
+- `axum!` (`lib_on/server.rs`, layer in `lib_on/server/axum_08.rs`) must wrap the finished router.
 - Report `location` fields: `lib_on/locations.rs`.
 
 ## Env vars

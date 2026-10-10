@@ -126,4 +126,9 @@ Entries are keyed by creation site: all wrapper instances created at one `io!` c
 
 `Rate` is per-operation transfer speed - bytes divided by summed in-flight operation time (waiting included, so on request/response traffic it reads as application-observed speed rather than wire speed). For a row aggregating concurrent instances the rate stays duration-weighted per operation, not the call site's aggregate bandwidth; `Rate * Inst` bounds the aggregate from above when all instances operate concurrently. Under time sampling the rate is computed from timed operations only, and shows `-` in count-only mode.
 
-`Seek`, `AsyncSeek`, `BufRead`, and `AsyncBufRead` delegation is not yet instrumented.
+The number of I/O wrappers shown is unlimited by default (`0`). Cap it with:
+
+- Builder: `.io_limit(n)`
+- Env var: `HOTPATH_IO_LIMIT`
+
+The wrapper does not implement `Seek`, `AsyncSeek`, `BufRead`, or `AsyncBufRead`, so a wrapped value cannot be used where those traits are required.

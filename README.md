@@ -1,5 +1,5 @@
 # <img src="media/hotpath-logo2.png" alt="hotpath-rs logo" width="80px" align="left"> hotpath - Rust Profiler for Easy Performance Debugging 
-[![GH Actions](https://github.com/pawurb/hotpath/actions/workflows/ci.yml/badge.svg)](https://github.com/pawurb/hotpath/actions) [![Latest Version](https://img.shields.io/crates/v/hotpath.svg)](https://crates.io/crates/hotpath) [![Downloads](https://img.shields.io/crates/d/hotpath?cacheSeconds=86400)](https://crates.io/crates/hotpath) [![Sponsor](https://img.shields.io/badge/Sponsor-hotpath--rs-6f42c1)](https://hotpath.rs/sponsorship)
+[![GH Actions](https://github.com/pawurb/hotpath-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/pawurb/hotpath-rs/actions) [![Latest Version](https://img.shields.io/crates/v/hotpath.svg)](https://crates.io/crates/hotpath) [![Downloads](https://img.shields.io/crates/d/hotpath?cacheSeconds=86400)](https://crates.io/crates/hotpath) [![Sponsor](https://img.shields.io/badge/Sponsor-hotpath--rs-6f42c1)](https://hotpath.rs/sponsorship)
 
 A simple Rust profiler that shows exactly why your code is slow.
 
@@ -121,7 +121,7 @@ async fn async_function(sleep: u64) {
 #[tokio::main]
 #[hotpath::main]
 async fn main() {
-    for i in 0..10000 {
+    for i in 0..1000 {
         sync_function(i);
         async_function(i * 2).await;
 
@@ -156,7 +156,7 @@ timing - Function execution time metrics.
 | docs_example::sync_function  | 1000  | 16.58 µs | 27.63 µs | 16.58 ms | 1.38%   |
 +------------------------------+-------+----------+----------+----------+---------+
 
-alloc - Cumulative allocations during each function call (including nested calls).
+alloc - Exclusive allocation bytes by each function (excluding nested calls).
 +------------------------------+-------+---------+---------+---------+---------+
 | Function                     | Calls | Avg     | P95     | Total   | % Total |
 +------------------------------+-------+---------+---------+---------+---------+
@@ -169,7 +169,7 @@ alloc - Cumulative allocations during each function call (including nested calls
 | docs_example::async_function | 1000  | 0 B     | 0 B     | 0 B     | 0.00%   |
 +------------------------------+-------+---------+---------+---------+---------+
 
-threads - Thread CPU and memory statistics. (RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc: 304.3 KB, Diff: 1.8 MB, 5/10)
+threads - Thread CPU and memory statistics. (Max RSS: 7.8 MB, Alloc: 2.1 MB, Dealloc: 304.3 KB, Diff: 1.8 MB, 5/10)
 +--------------+------+------+----------+----------+----------+
 | Thread       | Max% | Avg% | Alloc    | Dealloc  | Diff     |
 +--------------+------+------+----------+----------+----------+

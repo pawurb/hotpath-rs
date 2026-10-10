@@ -13,17 +13,19 @@ cargo install hotpath --features cloud
 hotpath cloud init
 ```
 
+`--benchmark NAME` writes `hotpath/NAME-policy.toml`, a policy for that benchmark only. An existing file is never replaced unless you pass `--force`.
+
 The starting file turns on the [pull request check](#pull-request-check) and lists the two [function sections](#functions-timing). To compare SQL queries, routes, locks or any other resource, add its section from [Sections](#sections): a section the file leaves out is not compared.
 
 ### Which file a run uses
 
-The upload takes the first policy file it finds:
+A run picks its policy file in this order:
 
-1. the file `HOTPATH_POLICY_PATH` names
+1. the file `HOTPATH_POLICY_PATH` names, relative to the working directory or absolute. When the variable is set, the two files below are never tried
 2. `hotpath/<benchmark>-policy.toml`, a benchmark's own policy
 3. `hotpath/policy.toml`, shared by every benchmark without its own
 
-An upload without a policy file is refused. A pull request is judged under the policy of its own branch, so review changes to `hotpath/*.toml` like changes to CI configuration.
+An upload without a policy file is refused. So is one whose picked file cannot be sent: a `HOTPATH_POLICY_PATH` that names a missing file, or a file that is unreadable, blank, not valid UTF-8, larger than 65536 bytes or outside the repository. The lookup does not fall through to the next file in that case. A pull request is judged under the policy of its own branch, so review changes to `hotpath/*.toml` like changes to CI configuration.
 
 ### Validating
 
