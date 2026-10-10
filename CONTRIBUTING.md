@@ -234,7 +234,7 @@ cargo test --features hotpath --test functions_timing -- --nocapture --test-thre
 cargo test --features hotpath,hotpath-prometheus --test prometheus_metrics -- --nocapture --test-threads=1
 ```
 
-The `test_all` recipe in the `justfile` runs most of them in one go. It is not the complete set: compare it with the files in `crates/hotpath/tests/` (for example `cloud_cli`, which needs `--features cloud`, runs through the command above).
+Or run all integration tests at once with the `test_all` recipe in the `justfile`:
 
 ```bash
 just test_all

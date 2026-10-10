@@ -21,6 +21,7 @@ test_all:
     cargo test --features hotpath --test time_sampling -- --nocapture --test-threads=1
     cargo test --features hotpath --test metrics_auth -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_alloc -- --nocapture --test-threads=1
+    cargo test --features hotpath --test functions_alloc_meta -- --nocapture --test-threads=1
     cargo test --features hotpath --test functions_cpu -- --nocapture --test-threads=1
     cargo test --features hotpath --test streams -- --nocapture --test-threads=1
     cargo test --features hotpath --test channels_crossbeam -- --nocapture --test-threads=1
@@ -62,6 +63,9 @@ test_all:
     cargo test --features hotpath --test cloud_limit -- --nocapture --test-threads=1
     cargo test --features hotpath --test cloud_json_file -- --nocapture --test-threads=1
     cargo test --features hotpath --test cloud_upload_guard -- --nocapture --test-threads=1
+    cargo test --features hotpath --test cloud_meta -- --nocapture --test-threads=1
+    cargo test --features hotpath --test cloud_precision -- --nocapture --test-threads=1
+    cargo test -p hotpath --features cloud --test cloud_cli
 
 # Scrape with `docker compose up -d prometheus grafana`; on native Linux add HOTPATH_PROMETHEUS_HOST=0.0.0.0.
 # Run the TUI in demo mode with the Prometheus exporter on port 6772.
