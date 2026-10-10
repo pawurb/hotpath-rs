@@ -44,7 +44,7 @@ Benchmark reports are persisted in `hotpath Cloud`, making it easy to share resu
 
 <img loading="lazy" src="{{#asset-hash images/cloud-dashboard-diff.webp}}" alt="hotpath Cloud dashboard diff page">
 
-<a href="https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/drain/reports/01a0f476-5b3a-7d0e-901a-7756f28e2414/diff" target="_blank" rel="noopener noreferrer">See this diff on hotpath.rs</a>
+<a href="https://hotpath.rs/app/repos/pawurb/hotpath-rs/benchmarks/drain/reports/01a124b3-d1f1-72ea-87ce-95057a276319/diff" target="_blank" rel="noopener noreferrer">See this diff on hotpath.rs</a>
 
 ## Getting Started
 
