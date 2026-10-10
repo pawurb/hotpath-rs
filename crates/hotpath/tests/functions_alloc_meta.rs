@@ -1,7 +1,9 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use hotpath::json::JsonReport;
-    use std::process::Command;
+    use crate::common::example::Example;
 
     // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta
     #[test]
@@ -9,35 +11,12 @@ pub mod tests {
         let meta_output = std::env::temp_dir().join("hotpath_functions_alloc_meta_test.txt");
         let _ = std::fs::remove_file(&meta_output);
 
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta",
-            ])
+        let report = Example::new("test-tokio-async", "basic")
+            .features("hotpath,hotpath-alloc,hotpath-meta,hotpath-alloc-meta")
             .env("HOTPATH_REPORT", "functions-alloc")
             .env("HOTPATH_META_REPORT", "functions-alloc")
             .env("HOTPATH_META_OUTPUT_PATH", &meta_output)
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
+            .report();
 
         let functions_alloc = report
             .functions_alloc

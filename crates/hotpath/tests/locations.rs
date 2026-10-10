@@ -1,39 +1,20 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
     use hotpath::json::{JsonLocation, JsonReport};
-    use std::process::Command;
+
+    use crate::common::example::Example;
 
     const EXAMPLE_FILE: &str = "crates/test-tokio-async/examples/locations.rs";
 
     fn run_example(source_root: Option<&str>) -> JsonReport {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            "test-tokio-async",
-            "--example",
-            "locations",
-            "--features",
-            "hotpath",
-        ]);
+        let mut example = Example::new("test-tokio-async", "locations");
         if let Some(root) = source_root {
-            cmd.env("HOTPATH_SOURCE_ROOT", root);
+            example = example.env("HOTPATH_SOURCE_ROOT", root);
         }
-        let output = cmd.output().expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
+        example.report()
     }
 
     /// 1-indexed line of the first line containing `needle` in the example

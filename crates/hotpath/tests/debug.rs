@@ -1,53 +1,32 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use std::process::Command;
+    use crate::common::assert_contains_all;
+    use crate::common::example::{poll_endpoint, Example};
+
+    fn example(name: &str) -> Example {
+        Example::new("test-debug", name)
+    }
 
     // HOTPATH_METRICS_PORT=6780 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_dbg --features hotpath
     #[test]
     fn test_dbg_endpoints() {
         use hotpath::json::{DebugEntryType, JsonDebugDbgLogs, JsonDebugList};
-        use std::{thread::sleep, time::Duration};
+        use std::time::Duration;
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-debug",
-                "--example",
-                "basic_dbg",
-                "--features",
-                "hotpath",
-            ])
+        let _running = example("basic_dbg")
             .env("HOTPATH_METRICS_PORT", "6780")
             .env("TEST_SLEEP_MS", "5000")
-            .spawn()
-            .expect("Failed to spawn command");
+            .spawn();
 
-        let mut json_text = String::new();
-        let mut last_error = None;
-
-        for _attempt in 0..12 {
-            sleep(Duration::from_millis(750));
-
-            match ureq::get("http://localhost:6780/debug").call() {
-                Ok(mut response) => {
-                    json_text = response
-                        .body_mut()
-                        .read_to_string()
-                        .expect("Failed to read response body");
-                    last_error = None;
-                    break;
-                }
-                Err(e) => {
-                    last_error = Some(format!("Request error: {}", e));
-                }
-            }
-        }
-
-        if let Some(error) = last_error {
-            let _ = child.kill();
-            panic!("Failed after 12 retries: {}", error);
-        }
+        let json_text = poll_endpoint(
+            "http://localhost:6780/debug",
+            12,
+            Duration::from_millis(750),
+            |_| true,
+        );
 
         let debug_response: JsonDebugList =
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
@@ -81,57 +60,25 @@ pub mod tests {
             !logs.source.is_empty() && logs.total_logs >= 1 && !first_log.value.is_empty(),
             "Logs response missing expected fields"
         );
-
-        let _ = child.kill();
-        let _ = child.wait();
     }
 
     // HOTPATH_METRICS_PORT=6781 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_val --features hotpath
     #[test]
     fn test_val_endpoints() {
         use hotpath::json::{DebugEntryType, JsonDebugList, JsonDebugValLogs};
-        use std::{thread::sleep, time::Duration};
+        use std::time::Duration;
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-debug",
-                "--example",
-                "basic_val",
-                "--features",
-                "hotpath",
-            ])
+        let _running = example("basic_val")
             .env("HOTPATH_METRICS_PORT", "6781")
             .env("TEST_SLEEP_MS", "5000")
-            .spawn()
-            .expect("Failed to spawn command");
+            .spawn();
 
-        let mut json_text = String::new();
-        let mut last_error = None;
-
-        for _attempt in 0..12 {
-            sleep(Duration::from_millis(750));
-
-            match ureq::get("http://localhost:6781/debug").call() {
-                Ok(mut response) => {
-                    json_text = response
-                        .body_mut()
-                        .read_to_string()
-                        .expect("Failed to read response body");
-                    last_error = None;
-                    break;
-                }
-                Err(e) => {
-                    last_error = Some(format!("Request error: {}", e));
-                }
-            }
-        }
-
-        if let Some(error) = last_error {
-            let _ = child.kill();
-            panic!("Failed after 12 retries: {}", error);
-        }
+        let json_text = poll_endpoint(
+            "http://localhost:6781/debug",
+            12,
+            Duration::from_millis(750),
+            |_| true,
+        );
 
         let debug_response: JsonDebugList =
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
@@ -189,57 +136,25 @@ pub mod tests {
         assert_eq!(logs.key, "counter", "Expected key to be 'counter'");
         assert!(logs.total_logs >= 2, "Expected at least 2 logs for counter");
         assert!(!logs.logs.is_empty(), "Expected log entries");
-
-        let _ = child.kill();
-        let _ = child.wait();
     }
 
     // HOTPATH_METRICS_PORT=6782 TEST_SLEEP_MS=5000 cargo run -p test-debug --example basic_gauge --features hotpath
     #[test]
     fn test_gauge_endpoints() {
         use hotpath::json::{DebugEntryType, JsonDebugGaugeLogs, JsonDebugList};
-        use std::{thread::sleep, time::Duration};
+        use std::time::Duration;
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-debug",
-                "--example",
-                "basic_gauge",
-                "--features",
-                "hotpath",
-            ])
+        let _running = example("basic_gauge")
             .env("HOTPATH_METRICS_PORT", "6782")
             .env("TEST_SLEEP_MS", "5000")
-            .spawn()
-            .expect("Failed to spawn command");
+            .spawn();
 
-        let mut json_text = String::new();
-        let mut last_error = None;
-
-        for _attempt in 0..12 {
-            sleep(Duration::from_millis(750));
-
-            match ureq::get("http://localhost:6782/debug").call() {
-                Ok(mut response) => {
-                    json_text = response
-                        .body_mut()
-                        .read_to_string()
-                        .expect("Failed to read response body");
-                    last_error = None;
-                    break;
-                }
-                Err(e) => {
-                    last_error = Some(format!("Request error: {}", e));
-                }
-            }
-        }
-
-        if let Some(error) = last_error {
-            let _ = child.kill();
-            panic!("Failed after 12 retries: {}", error);
-        }
+        let json_text = poll_endpoint(
+            "http://localhost:6782/debug",
+            12,
+            Duration::from_millis(750),
+            |_| true,
+        );
 
         let debug_response: JsonDebugList =
             serde_json::from_str(&json_text).expect("Failed to parse debug JSON");
@@ -297,37 +212,17 @@ pub mod tests {
             "Expected at least 3 logs for queue_size"
         );
         assert!(!logs.logs.is_empty(), "Expected log entries");
-
-        let _ = child.kill();
-        let _ = child.wait();
     }
 
     // HOTPATH_OUTPUT_FORMAT=json HOTPATH_REPORT=debug HOTPATH_METRICS_SERVER_OFF=true cargo run -p test-debug --example debug_report --features hotpath
     #[test]
     fn test_debug_report_json() {
-        let output = Command::new("cargo")
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
+        let stdout = example("debug_report")
+            .json()
             .env("HOTPATH_REPORT", "debug")
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
-            .args([
-                "run",
-                "-p",
-                "test-debug",
-                "--example",
-                "debug_report",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
+            .stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
         let report: serde_json::Value =
             serde_json::from_str(stdout.lines().last().expect("No JSON output line"))
                 .expect("Failed to parse JSON report");
@@ -416,38 +311,14 @@ pub mod tests {
     // HOTPATH_REPORT=debug HOTPATH_METRICS_SERVER_OFF=true cargo run -p test-debug --example debug_report --features hotpath
     #[test]
     fn test_debug_report_table() {
-        let output = Command::new("cargo")
+        let stdout = example("debug_report")
             .env("HOTPATH_REPORT", "debug")
             .env("HOTPATH_METRICS_SERVER_OFF", "true")
-            .args([
-                "run",
-                "-p",
-                "test-debug",
-                "--example",
-                "debug_report",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
+            .stdout();
 
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+        assert_contains_all(
+            &stdout,
+            &["debug", "gauge!", "val!", "dbg!", "queue_size", "counter"],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let expected_content = ["debug", "gauge!", "val!", "dbg!", "queue_size", "counter"];
-
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected '{}' in table output.\n\nGot:\n{}",
-                expected,
-                stdout
-            );
-        }
     }
 }

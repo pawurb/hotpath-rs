@@ -1,85 +1,49 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(test)]
 pub mod tests {
-    use std::process::Command;
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
+
+    fn example() -> Example {
+        Example::new("test-mutex-async-lock", "basic_mutex_async_lock")
+    }
 
     // cargo run -p test-mutex-async-lock --example basic_mutex_async_lock --features hotpath
     #[test]
     fn test_basic_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-mutex-async-lock",
-                "--example",
-                "basic_mutex_async_lock",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example().stdout();
 
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
+        assert_contains_all(
+            &stdout,
+            &[
+                "async-lock Mutex example completed!",
+                "mutexes",
+                "counter",
+                "Locks",
+                "Wait avg",
+                "Acq avg",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let all_expected = [
-            "async-lock Mutex example completed!",
-            "mutexes",
-            "counter",
-            "Locks",
-            "Wait avg",
-            "Acq avg",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 
     // cargo run -p test-mutex-async-lock --example basic_mutex_async_lock --features hotpath (json)
     #[test]
     fn test_json_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-mutex-async-lock",
-                "--example",
-                "basic_mutex_async_lock",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
-            .output()
-            .expect("Failed to execute command");
+        let stdout = example().json().stdout();
 
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
+        assert_contains_all(
+            &stdout,
+            &[
+                "\"mutexes\"",
+                "\"label\":\"counter\"",
+                "\"count\":6",
+                "\"wait_avg\"",
+                "\"acquire_avg\"",
+                "\"wait_percentiles\"",
+                "\"acquire_percentiles\"",
+            ],
         );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let all_expected = [
-            "\"mutexes\"",
-            "\"label\":\"counter\"",
-            "\"count\":6",
-            "\"wait_avg\"",
-            "\"acquire_avg\"",
-            "\"wait_percentiles\"",
-            "\"acquire_percentiles\"",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
     }
 }

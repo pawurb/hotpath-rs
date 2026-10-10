@@ -1,45 +1,31 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use std::process::Command;
 
-    use hotpath::json::{JsonReport, JsonStreamsList};
+    use hotpath::json::JsonStreamsList;
 
-    // Trailing log lines follow the report, so parse only the first JSON value.
-    fn parse_streams(stdout: &str) -> JsonStreamsList {
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
-        report.streams.expect("No streams section in report")
+    use crate::common::assert_contains_all;
+    use crate::common::endpoints::assert_list_and_logs_endpoints;
+    use crate::common::example::Example;
+
+    fn example(name: &str) -> Example {
+        Example::new("test-streams", name)
+    }
+
+    fn streams(name: &str) -> JsonStreamsList {
+        example(name)
+            .report()
+            .streams
+            .expect("No streams section in report")
     }
 
     // cargo run -p test-streams --example agg_streams --features hotpath
     #[test]
     fn test_default_mode_aggregates_per_callsite() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "agg_streams",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nStderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let streams = parse_streams(&stdout);
+        let streams = streams("agg_streams");
 
         // Default mode: 4 loop-created streams collapse into one entry.
         let agg = streams
@@ -84,26 +70,7 @@ pub mod tests {
     // cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_basic_streams_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "basic_streams",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = example("basic_streams").stdout();
 
         let all_expected = [
             "number-stream",
@@ -117,37 +84,13 @@ pub mod tests {
             "Yielded",
         ];
 
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(&stdout, &all_expected);
     }
 
     // cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_streams_closed_state() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "basic_streams",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = example("basic_streams").stdout();
 
         let closed_count = stdout.matches("| closed").count();
         assert!(
@@ -161,138 +104,30 @@ pub mod tests {
     // HOTPATH_METRICS_PORT=6774 TEST_SLEEP_SECONDS=10 cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_data_endpoints() {
-        use hotpath::json::JsonStreamsList;
-        use std::{thread::sleep, time::Duration};
-
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "basic_streams",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_METRICS_PORT", "6774")
-            .env("TEST_SLEEP_SECONDS", "10")
-            .spawn()
-            .expect("Failed to spawn command");
-
-        let mut json_text = String::new();
-        let mut last_error = None;
-
-        let all_expected = ["basic_streams.rs", "number-stream", "text-stream"];
-
-        for _attempt in 0..12 {
-            sleep(Duration::from_millis(750));
-
-            match ureq::get("http://localhost:6774/streams").call() {
-                Ok(mut response) => {
-                    json_text = response
-                        .body_mut()
-                        .read_to_string()
-                        .expect("Failed to read response body");
-                    last_error = None;
-                    if all_expected.iter().all(|e| json_text.contains(e)) {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    last_error = Some(format!("Request error: {}", e));
-                }
-            }
-        }
-
-        if let Some(error) = last_error {
-            let _ = child.kill();
-            panic!("Failed after 12 retries: {}", error);
-        }
-
-        for expected in all_expected {
-            assert!(
-                json_text.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{json_text}",
-            );
-        }
-
-        let streams: JsonStreamsList =
-            serde_json::from_str(&json_text).expect("Failed to parse streams JSON");
-
-        if let Some(stream) = streams.data.first() {
-            let logs_url = format!("http://localhost:6774/streams/{}/logs", stream.id);
-            let response = ureq::get(&logs_url)
-                .call()
-                .expect("Failed to call /streams/:id/logs endpoint");
-
-            assert_eq!(
-                response.status(),
-                200,
-                "Expected status 200 for /streams/:id/logs endpoint"
-            );
-        }
-
-        let _ = child.kill();
-        let _ = child.wait();
+        assert_list_and_logs_endpoints(
+            example("basic_streams"),
+            6774,
+            "streams",
+            &["basic_streams.rs", "number-stream", "text-stream"],
+            |streams: &JsonStreamsList| streams.data.first().map(|stream| stream.id),
+        );
     }
 
     // cargo run -p test-streams --example guard_timeout_streams --features hotpath
     #[test]
     fn test_guard_timeout_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "guard_timeout_streams",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = example("guard_timeout_streams").stdout();
         let expected_content = ["[hotpath]", "| streams", "timeout-stream"];
 
-        for expected in expected_content {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(&stdout, &expected_content);
     }
 
     // HOTPATH_OUTPUT_FORMAT=none cargo run -p test-streams --example basic_streams --features hotpath
     #[test]
     fn test_format_none_suppresses_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "basic_streams",
-                "--features",
-                "hotpath",
-            ])
+        let stdout = example("basic_streams")
             .env("HOTPATH_OUTPUT_FORMAT", "none")
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+            .stdout();
 
         assert!(
             stdout.contains("Stream example completed!"),
@@ -327,24 +162,7 @@ pub mod tests {
             fs::remove_file(output_path).ok();
         }
 
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "streams_file_output",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        example("streams_file_output").stdout();
 
         assert!(
             Path::new(output_path).exists(),
@@ -356,12 +174,7 @@ pub mod tests {
 
         let expected_content = ["number-stream", "\"items_yielded\""];
 
-        for expected in expected_content {
-            assert!(
-                file_content.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{file_content}",
-            );
-        }
+        assert_contains_all(&file_content, &expected_content);
 
         fs::remove_file(output_path).ok();
     }
@@ -374,28 +187,7 @@ pub mod tests {
     // cargo run -p test-streams --example same_line_streams --features hotpath
     #[test]
     fn test_same_line_call_sites_stay_distinct() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-streams",
-                "--example",
-                "same_line_streams",
-                "--features",
-                "hotpath",
-            ])
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nStderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let streams = parse_streams(&stdout);
+        let streams = streams("same_line_streams");
 
         let a = streams
             .data

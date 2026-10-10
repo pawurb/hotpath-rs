@@ -1,43 +1,22 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
-    use std::process::{Command, Output};
-
     use hotpath::json::JsonReport;
     use hotpath::{parse_bytes, parse_duration};
 
-    fn run_with_features(features: &str) -> Output {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            "test-all-features",
-            "--example",
-            "basic_all_features",
-            "--features",
-            features,
-        ])
-        .env("HOTPATH_OUTPUT_FORMAT", "json")
-        .env_remove("HOTPATH_UPLOAD")
-        .env_remove("HOTPATH_ALLOC_METRIC")
-        .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
-        .env_remove("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        output
-    }
+    use crate::common::example::Example;
 
-    fn parse_report(output: &Output) -> JsonReport {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
+    fn run_with_features(features: &str) -> JsonReport {
+        Example::new("test-all-features", "basic_all_features")
+            .features(features)
+            .json()
+            .env_remove("HOTPATH_UPLOAD")
+            .env_remove("HOTPATH_ALLOC_METRIC")
+            .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
+            .env_remove("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+            .report()
     }
 
     /// `(unit, decimals)` of a formatted duration such as `1.004999 ms`.
@@ -73,7 +52,7 @@ mod tests {
     // cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-alloc,hotpath-cloud
     #[test]
     fn cloud_report_renders_exact_values() {
-        let report = parse_report(&run_with_features("hotpath,hotpath-alloc,hotpath-cloud"));
+        let report = run_with_features("hotpath,hotpath-alloc,hotpath-cloud");
 
         let timing = report.functions_timing.expect("functions_timing section");
         assert!(!timing.data.is_empty());
@@ -149,7 +128,7 @@ mod tests {
     // cargo run -p test-all-features --example basic_all_features --features hotpath,hotpath-alloc
     #[test]
     fn display_format_kept_without_the_cloud_feature() {
-        let report = parse_report(&run_with_features("hotpath,hotpath-alloc"));
+        let report = run_with_features("hotpath,hotpath-alloc");
 
         let timing = report.functions_timing.expect("functions_timing section");
         assert!(!timing.data.is_empty());

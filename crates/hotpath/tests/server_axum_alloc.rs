@@ -4,49 +4,28 @@
 //!
 //! These run the `test-axum` `route_alloc` example as a subprocess with
 //! `hotpath-alloc` and assert on the JSON report printed when the guard drops.
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
     use hotpath::json::{JsonReport, JsonServerEntry};
-    use std::process::Command;
+
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
 
     const BIG_BYTES: f64 = 1024.0 * 1024.0;
     /// `GET /block` allocates 128 KiB before its `.await` and 256 KiB after.
     const BLOCK_BYTES: f64 = (128.0 + 256.0) * 1024.0;
 
-    fn run_example_raw(envs: &[(&str, &str)]) -> String {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            "test-axum",
-            "--example",
-            "route_alloc",
-            "--features",
-            "hotpath,hotpath-alloc",
-        ]);
-        for (key, value) in envs {
-            cmd.env(key, value);
-        }
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr),
-        );
-        String::from_utf8_lossy(&output.stdout).into_owned()
+    fn example(envs: &[(&str, &str)]) -> Example {
+        Example::new("test-axum", "route_alloc")
+            .features("hotpath,hotpath-alloc")
+            .envs(envs)
     }
 
     fn run_example(envs: &[(&str, &str)]) -> JsonReport {
-        let mut envs = envs.to_vec();
-        envs.push(("HOTPATH_OUTPUT_FORMAT", "json"));
-        let stdout = run_example_raw(&envs);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
+        example(envs).json().report()
     }
 
     fn by_route<'a>(entries: &'a [JsonServerEntry], route: &str) -> &'a JsonServerEntry {
@@ -168,13 +147,8 @@ pub mod tests {
 
     #[test]
     fn test_route_alloc_server_table_columns() {
-        let stdout = run_example_raw(&[]);
-        for expected in ["Allocs/req", "GET /big", "GET /small"] {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        let stdout = example(&[]).stdout();
+        assert_contains_all(&stdout, &["Allocs/req", "GET /big", "GET /small"]);
         // Second occurrence of the route is the memory sub-table row:
         // Route | Calls | Allocs/req | Avg | ... | Total | % Total
         let big_rows: Vec<&str> = stdout.lines().filter(|l| l.contains("GET /big")).collect();

@@ -1,8 +1,11 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use std::process::Command;
-
     use hotpath::json::{JsonFunctionEntry, JsonReport};
+
+    use crate::common::example::Example;
 
     /// Events per resource in the example workload.
     const CALLS: u64 = 1000;
@@ -10,16 +13,7 @@ pub mod tests {
     /// Runs the time-sampling example and parses the JSON report. Clears
     /// sampling env vars first so the host environment cannot leak in.
     fn run_example_with_features(features: &str, envs: &[(&str, &str)]) -> JsonReport {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            "test-all-features",
-            "--example",
-            "time_sampling",
-            "--features",
-            features,
-        ]);
+        let mut example = Example::new("test-all-features", "time_sampling").features(features);
         for name in [
             "HOTPATH_TIME_SAMPLING_RATE",
             "HOTPATH_FUNCTIONS_TIME_SAMPLING_RATE",
@@ -28,27 +22,9 @@ pub mod tests {
             "HOTPATH_FUTURES_TIME_SAMPLING_RATE",
             "HOTPATH_CHANNELS_TIME_SAMPLING_RATE",
         ] {
-            cmd.env_remove(name);
+            example = example.env_remove(name);
         }
-        cmd.env("HOTPATH_OUTPUT_FORMAT", "json");
-        for (name, value) in envs {
-            cmd.env(name, value);
-        }
-
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
+        example.json().envs(envs).report()
     }
 
     fn run_example(envs: &[(&str, &str)]) -> JsonReport {
@@ -233,34 +209,11 @@ pub mod tests {
     // cargo run -p test-futures --example basic_futures --features hotpath (json)
     #[test]
     fn test_futures_count_only() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-futures",
-                "--example",
-                "basic_futures",
-                "--features",
-                "hotpath",
-            ])
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
+        let report = Example::new("test-futures", "basic_futures")
+            .json()
             .env("HOTPATH_FUTURES_TIME_SAMPLING_RATE", "0")
             .env("HOTPATH_REPORT", "futures")
-            .output()
-            .expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}",
-            output.status
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
+            .report();
 
         let futures = report.futures.expect("No futures section");
         assert!(futures.data.iter().any(|e| e.total_polls > 0));

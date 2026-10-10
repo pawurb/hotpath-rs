@@ -1,9 +1,15 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    use hotpath::json::{JsonMeta, JsonReport};
+    use hotpath::json::JsonMeta;
+
+    use crate::common::example::{assert_success, Example};
+    use crate::common::report::parse_report;
 
     const OTHER_SHA: &str = "2222222222222222222222222222222222222222";
     const BASE_SHA: &str = "3333333333333333333333333333333333333333";
@@ -39,26 +45,17 @@ mod tests {
         cwd: Option<&Path>,
         envs: &[(&str, &str)],
     ) -> (JsonMeta, String) {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "--manifest-path",
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"),
-            "-p",
-            "test-all-features",
-            "--example",
-            example,
-            "--features",
-            "hotpath,hotpath-cloud",
-        ])
-        .env("HOTPATH_OUTPUT_FORMAT", "json")
-        .env("HOTPATH_REPORT", "functions-timing")
-        .env_remove("HOTPATH_UPLOAD")
-        .env_remove("HOTPATH_BENCHMARK")
-        .env_remove("HOTPATH_POLICY_PATH")
-        .env_remove("HOTPATH_SOURCE_ROOT");
+        let mut run = Example::new("test-all-features", example)
+            .manifest_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"))
+            .features("hotpath,hotpath-cloud")
+            .json()
+            .env("HOTPATH_REPORT", "functions-timing")
+            .env_remove("HOTPATH_UPLOAD")
+            .env_remove("HOTPATH_BENCHMARK")
+            .env_remove("HOTPATH_POLICY_PATH")
+            .env_remove("HOTPATH_SOURCE_ROOT");
         if let Some(cwd) = cwd {
-            cmd.current_dir(cwd);
+            run = run.current_dir(cwd);
         }
         for var in [
             "GITHUB_ACTIONS",
@@ -74,25 +71,13 @@ mod tests {
             "GITHUB_WORKFLOW",
             "GITHUB_ACTOR",
         ] {
-            cmd.env_remove(var);
+            run = run.env_remove(var);
         }
-        cmd.envs(envs.iter().copied());
 
-        let output = cmd.output().expect("Failed to execute command");
-        assert!(
-            output.status.success(),
-            "Process did not exit successfully.\n\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let output = run.envs(envs).output();
+        assert_success(&output);
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let meta = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report")
-            .meta;
+        let meta = parse_report(&String::from_utf8_lossy(&output.stdout)).meta;
         (meta, String::from_utf8_lossy(&output.stderr).into_owned())
     }
 

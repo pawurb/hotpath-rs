@@ -1,8 +1,11 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 mod tests {
-    use std::process::Command;
-
     use hotpath::json::JsonReport;
+
+    use crate::common::example::Example;
 
     /// The fork case: a job that measures untrusted code gets no OIDC token, so
     /// it writes the JSON report for a trusted job to upload. Nothing may be
@@ -13,26 +16,17 @@ mod tests {
         let path = std::env::temp_dir().join("hotpath_cloud_json_file_test.json");
         let _ = std::fs::remove_file(&path);
 
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-all-features",
-                "--example",
-                "basic_all_features",
-                "--features",
-                "hotpath,hotpath-cloud",
-            ])
+        let output = Example::new("test-all-features", "basic_all_features")
+            .features("hotpath,hotpath-cloud")
             .env("HOTPATH_REPORT", "functions-timing")
-            .env("HOTPATH_OUTPUT_FORMAT", "json")
+            .json()
             .env("HOTPATH_OUTPUT_PATH", &path)
             .env("HOTPATH_BENCHMARK", "fork-test")
             .env("HOTPATH_LIMIT", "1")
             .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
             .env_remove("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
             .env_remove("HOTPATH_UPLOAD")
-            .output()
-            .expect("Failed to execute command");
+            .output();
         assert!(
             output.status.success(),
             "Process did not exit successfully.\n\nstderr:\n{}",

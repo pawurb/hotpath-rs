@@ -1,8 +1,12 @@
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath-prometheus"))]
 pub mod tests {
     use prost::Message;
-    use std::process::Command;
     use std::{thread::sleep, time::Duration};
+
+    use crate::common::example::Example;
 
     const METRICS_PORT: &str = "6796";
     const PROMETHEUS_PORT: &str = "6797";
@@ -118,21 +122,12 @@ pub mod tests {
     // cargo run -p test-tokio-async --example basic --features hotpath,hotpath-prometheus
     #[test]
     fn test_native_histograms_protobuf() {
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "test-tokio-async",
-                "--example",
-                "basic",
-                "--features",
-                "hotpath,hotpath-prometheus",
-            ])
+        let _running = Example::new("test-tokio-async", "basic")
+            .features("hotpath,hotpath-prometheus")
             .env("HOTPATH_METRICS_PORT", METRICS_PORT)
             .env("HOTPATH_PROMETHEUS_PORT", PROMETHEUS_PORT)
             .env("TEST_SLEEP_SECONDS", "15")
-            .spawn()
-            .expect("Failed to spawn command");
+            .spawn();
 
         // Wait until the workload finished (100 calls) so both bodies below
         // snapshot identical, static stats.
@@ -149,98 +144,90 @@ pub mod tests {
                 }
             }
         }
-        if !ready {
-            let _ = child.kill();
-            panic!("Prometheus server did not serve metrics on port {PROMETHEUS_PORT}");
+        assert!(
+            ready,
+            "Prometheus server did not serve metrics on port {PROMETHEUS_PORT}"
+        );
+
+        let (status, content_type, text_body) = get(None).expect("text scrape");
+        assert_eq!(status, 200);
+        assert_eq!(content_type, "text/plain; version=0.0.4; charset=utf-8");
+        let text = String::from_utf8_lossy(&text_body).to_string();
+        assert!(text.contains("hotpath_function_duration_seconds_bucket"));
+
+        let (status, content_type, proto_body) =
+            get(Some(PROTOBUF_ACCEPT)).expect("protobuf scrape");
+        assert_eq!(status, 200);
+        assert_eq!(
+            content_type,
+            "application/vnd.google.protobuf; proto=io.prometheus.client.MetricFamily; encoding=delimited"
+        );
+
+        let families = decode_families(&proto_body);
+        let names: Vec<_> = families.iter().filter_map(|f| f.name.clone()).collect();
+        for expected in [
+            "hotpath_build_info",
+            "hotpath_uptime_seconds",
+            "hotpath_function_calls_total",
+            "hotpath_function_duration_seconds",
+        ] {
+            assert!(names.contains(&expected.to_string()), "missing {expected}");
         }
 
-        let result = std::panic::catch_unwind(|| {
-            let (status, content_type, text_body) = get(None).expect("text scrape");
-            assert_eq!(status, 200);
-            assert_eq!(content_type, "text/plain; version=0.0.4; charset=utf-8");
-            let text = String::from_utf8_lossy(&text_body).to_string();
-            assert!(text.contains("hotpath_function_duration_seconds_bucket"));
+        let durations = families
+            .iter()
+            .find(|f| f.name.as_deref() == Some("hotpath_function_duration_seconds"))
+            .unwrap();
+        assert_eq!(durations.r#type, Some(4), "HISTOGRAM enum value");
+        assert!(!durations.metric.is_empty());
 
-            let (status, content_type, proto_body) =
-                get(Some(PROTOBUF_ACCEPT)).expect("protobuf scrape");
-            assert_eq!(status, 200);
-            assert_eq!(
-                content_type,
-                "application/vnd.google.protobuf; proto=io.prometheus.client.MetricFamily; encoding=delimited"
+        for metric in &durations.metric {
+            let function = label_value(metric, "function");
+            let hist = metric.histogram.as_ref().expect("histogram set");
+            let sample_count = hist.sample_count.unwrap();
+            assert_eq!(hist.schema, Some(3), "{function}: schema");
+
+            // Native part: spans cover exactly the deltas, and the
+            // reconstructed bucket counts sum to sample_count.
+            let span_len: u32 = hist.positive_span.iter().map(|s| s.length.unwrap()).sum();
+            assert_eq!(span_len as usize, hist.positive_delta.len(), "{function}");
+            let mut cumulative = 0i64;
+            let mut total = 0u64;
+            for delta in &hist.positive_delta {
+                cumulative += delta;
+                assert!(cumulative >= 0, "{function}: negative bucket count");
+                total += cumulative as u64;
+            }
+            assert_eq!(total, sample_count, "{function}: native counts vs count");
+
+            // Classic part: full ladder, cumulative, consistent with the
+            // text body scraped from the same static stats.
+            assert_eq!(hist.bucket.len(), 16, "{function}: ladder size");
+            let counts: Vec<u64> = hist
+                .bucket
+                .iter()
+                .map(|b| b.cumulative_count.unwrap())
+                .collect();
+            assert!(counts.windows(2).all(|w| w[0] <= w[1]), "{function}");
+            assert!(*counts.last().unwrap() <= sample_count, "{function}");
+            let text_count_line = format!(
+                "hotpath_function_duration_seconds_count{{function=\"{function}\"}} {sample_count}"
             );
-
-            let families = decode_families(&proto_body);
-            let names: Vec<_> = families.iter().filter_map(|f| f.name.clone()).collect();
-            for expected in [
-                "hotpath_build_info",
-                "hotpath_uptime_seconds",
-                "hotpath_function_calls_total",
-                "hotpath_function_duration_seconds",
-            ] {
-                assert!(names.contains(&expected.to_string()), "missing {expected}");
-            }
-
-            let durations = families
-                .iter()
-                .find(|f| f.name.as_deref() == Some("hotpath_function_duration_seconds"))
-                .unwrap();
-            assert_eq!(durations.r#type, Some(4), "HISTOGRAM enum value");
-            assert!(!durations.metric.is_empty());
-
-            for metric in &durations.metric {
-                let function = label_value(metric, "function");
-                let hist = metric.histogram.as_ref().expect("histogram set");
-                let sample_count = hist.sample_count.unwrap();
-                assert_eq!(hist.schema, Some(3), "{function}: schema");
-
-                // Native part: spans cover exactly the deltas, and the
-                // reconstructed bucket counts sum to sample_count.
-                let span_len: u32 = hist.positive_span.iter().map(|s| s.length.unwrap()).sum();
-                assert_eq!(span_len as usize, hist.positive_delta.len(), "{function}");
-                let mut cumulative = 0i64;
-                let mut total = 0u64;
-                for delta in &hist.positive_delta {
-                    cumulative += delta;
-                    assert!(cumulative >= 0, "{function}: negative bucket count");
-                    total += cumulative as u64;
-                }
-                assert_eq!(total, sample_count, "{function}: native counts vs count");
-
-                // Classic part: full ladder, cumulative, consistent with the
-                // text body scraped from the same static stats.
-                assert_eq!(hist.bucket.len(), 16, "{function}: ladder size");
-                let counts: Vec<u64> = hist
-                    .bucket
-                    .iter()
-                    .map(|b| b.cumulative_count.unwrap())
-                    .collect();
-                assert!(counts.windows(2).all(|w| w[0] <= w[1]), "{function}");
-                assert!(*counts.last().unwrap() <= sample_count, "{function}");
-                let text_count_line = format!(
-                    "hotpath_function_duration_seconds_count{{function=\"{function}\"}} {sample_count}"
-                );
-                assert!(
-                    text.contains(&text_count_line),
-                    "{function}: text/proto count mismatch, wanted: {text_count_line}"
-                );
-            }
-
-            let calls = families
-                .iter()
-                .find(|f| f.name.as_deref() == Some("hotpath_function_calls_total"))
-                .unwrap();
-            let sync_calls = calls
-                .metric
-                .iter()
-                .find(|m| label_value(m, "function") == "basic::sync_function")
-                .unwrap();
-            assert_eq!(sync_calls.counter.as_ref().unwrap().value, Some(100.0));
-        });
-
-        let _ = child.kill();
-        let _ = child.wait();
-        if let Err(e) = result {
-            std::panic::resume_unwind(e);
+            assert!(
+                text.contains(&text_count_line),
+                "{function}: text/proto count mismatch, wanted: {text_count_line}"
+            );
         }
+
+        let calls = families
+            .iter()
+            .find(|f| f.name.as_deref() == Some("hotpath_function_calls_total"))
+            .unwrap();
+        let sync_calls = calls
+            .metric
+            .iter()
+            .find(|m| label_value(m, "function") == "basic::sync_function")
+            .unwrap();
+        assert_eq!(sync_calls.counter.as_ref().unwrap().value, Some(100.0));
     }
 }

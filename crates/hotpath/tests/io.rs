@@ -2,46 +2,26 @@
 //! cases: sync file I/O (Cursor/BufReader/error readers), async tokio file and
 //! duplex I/O, and std/tokio TCP against in-process echo servers. The
 //! service-dependent Redis test lives in `io_redis.rs`.
+#[path = "common/support.rs"]
+mod common;
+
 #[cfg(all(test, feature = "hotpath"))]
 pub mod tests {
-    use std::process::Command;
+    use hotpath::json::{JsonIoEntry, JsonIoList};
 
-    use hotpath::json::{JsonIoEntry, JsonIoList, JsonReport};
+    use crate::common::assert_contains_all;
+    use crate::common::example::Example;
 
-    fn run_example(example: &str, json: bool) -> String {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "run",
-            "-p",
-            "test-io",
-            "--example",
-            example,
-            "--features",
-            "hotpath",
-        ]);
-        if json {
-            cmd.env("HOTPATH_OUTPUT_FORMAT", "json");
-        }
-        let output = cmd.output().expect("Failed to execute command");
-
-        assert!(
-            output.status.success(),
-            "Command failed with status: {}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        String::from_utf8_lossy(&output.stdout).to_string()
+    fn example(name: &str) -> Example {
+        Example::new("test-io", name)
     }
 
-    fn parse_io(stdout: &str) -> JsonIoList {
-        let json_start = stdout.find('{').expect("No JSON report in output");
-        let report: JsonReport = serde_json::Deserializer::from_str(&stdout[json_start..])
-            .into_iter::<JsonReport>()
-            .next()
-            .expect("No JSON value in output")
-            .expect("Failed to parse JSON report");
-        report.io.expect("No io section in report")
+    fn io(name: &str) -> JsonIoList {
+        example(name)
+            .json()
+            .report()
+            .io
+            .expect("No io section in report")
     }
 
     fn entry<'a>(io: &'a JsonIoList, label: &str) -> &'a JsonIoEntry {
@@ -54,8 +34,7 @@ pub mod tests {
     // cargo run -p test-io --example basic_io_sync --features hotpath (json)
     #[test]
     fn test_sync_json_output() {
-        let stdout = run_example("basic_io_sync", true);
-        let io = parse_io(&stdout);
+        let io = io("basic_io_sync");
 
         let writer = entry(&io, "fixture-write");
         assert_eq!(writer.write.count, 10);
@@ -131,8 +110,7 @@ pub mod tests {
     // cargo run -p test-io --example basic_io_async --features hotpath (json)
     #[test]
     fn test_async_json_output() {
-        let stdout = run_example("basic_io_async", true);
-        let io = parse_io(&stdout);
+        let io = io("basic_io_async");
 
         let writer = entry(&io, "fixture-write");
         assert_eq!(writer.write.count, 10);
@@ -180,8 +158,7 @@ pub mod tests {
     // cargo run -p test-io --example basic_tcp_io --features hotpath (json)
     #[test]
     fn test_tcp_json_output() {
-        let stdout = run_example("basic_tcp_io", true);
-        let io = parse_io(&stdout);
+        let io = io("basic_tcp_io");
         let client = entry(&io, "tcp-client");
 
         assert!(client.type_name.contains("TcpStream"));
@@ -199,8 +176,7 @@ pub mod tests {
     // cargo run -p test-io --example basic_tokio_tcp_io --features hotpath (json)
     #[test]
     fn test_tokio_tcp_json_output() {
-        let stdout = run_example("basic_tokio_tcp_io", true);
-        let io = parse_io(&stdout);
+        let io = io("basic_tokio_tcp_io");
         let client = entry(&io, "tokio-tcp-client");
 
         assert!(client.type_name.contains("TcpStream"));
@@ -221,8 +197,7 @@ pub mod tests {
     // cargo run -p test-io --example basic_gzip_io --features hotpath (json)
     #[test]
     fn test_gzip_json_output() {
-        let stdout = run_example("basic_gzip_io", true);
-        let io = parse_io(&stdout);
+        let io = io("basic_gzip_io");
 
         // Stacked wrappers: the outer one sees plaintext writes, the inner one the
         // smaller compressed stream. Sizes are cross-checked, not hardcoded.
@@ -255,8 +230,7 @@ pub mod tests {
     // cargo run -p test-io --example basic_zstd_io --features hotpath (json)
     #[test]
     fn test_zstd_json_output() {
-        let stdout = run_example("basic_zstd_io", true);
-        let io = parse_io(&stdout);
+        let io = io("basic_zstd_io");
 
         // Same layer cross-checks as the gzip test, over the zstd codec.
         let plain_write = entry(&io, "zstd-plaintext-write");
@@ -286,25 +260,22 @@ pub mod tests {
     // cargo run -p test-io --example basic_io_sync --features hotpath
     #[test]
     fn test_table_output() {
-        let stdout = run_example("basic_io_sync", false);
+        let stdout = example("basic_io_sync").stdout();
 
-        let all_expected = [
-            "Sync io example completed!",
-            "Byte-level I/O statistics",
-            "fixture-write",
-            "fixture-read",
-            "Reads",
-            "Writes",
-            "Bytes",
-            "Flushes",
-            "Errors",
-        ];
-        for expected in all_expected {
-            assert!(
-                stdout.contains(expected),
-                "Expected:\n{expected}\n\nGot:\n{stdout}",
-            );
-        }
+        assert_contains_all(
+            &stdout,
+            &[
+                "Sync io example completed!",
+                "Byte-level I/O statistics",
+                "fixture-write",
+                "fixture-read",
+                "Reads",
+                "Writes",
+                "Bytes",
+                "Flushes",
+                "Errors",
+            ],
+        );
     }
 
     // Two `io!` invocations on one physical line wrapping the same concrete
@@ -315,8 +286,7 @@ pub mod tests {
     // cargo run -p test-io --example same_line_io --features hotpath (json)
     #[test]
     fn test_same_line_call_sites_stay_distinct() {
-        let stdout = run_example("same_line_io", true);
-        let io = parse_io(&stdout);
+        let io = io("same_line_io");
 
         let a = entry(&io, "same-line-a");
         let b = entry(&io, "same-line-b");
